@@ -1,7 +1,7 @@
 # pfodWeb
 
-A web-based [pfod protocol](https://www.pfod.com.au/) client for controlling and monitoring Arduino, ESP32, 
-and other embedded devices from a browser — no app install required. pfodWeb renders device-defined drawings, menus, 
+pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) client for controlling and monitoring Arduino, ESP32, 
+and other embedded devices from a browser — no app install, no internet, server access required. pfodWeb renders device-defined drawings, menus, 
 and charts, and talks to devices directly via HTTP and via Serial, BLE and TCP/IP using the **pfodProxy** bridge.
 
 pfodWeb includes a built-in Designer that lets you create menus and sub-meus of buttons, sliders and charts. pfodWeb charts include data logging and formatting options.   
