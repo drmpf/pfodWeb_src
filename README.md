@@ -2,9 +2,10 @@
 
 A web-based [pfod protocol](https://www.pfod.com.au/) client for controlling and monitoring Arduino, ESP32, 
 and other embedded devices from a browser — no app install required. pfodWeb renders device-defined drawings, menus, 
-and charts, and talks to devices over directly via HTTP and via Serial, BLE and TCP/IP via the companion **pfodProxy** bridge.
+and charts, and talks to devices directly via HTTP and via Serial, BLE and TCP/IP using the **pfodProxy** bridge.
 
-pfodWeb includes a build-in Designer that lets you create menus and sub-meus of buttons, sliders and charts. pfodWeb charts include data logging and fromatting options. 
+pfodWeb includes a built-in Designer that lets you create menus and sub-meus of buttons, sliders and charts. pfodWeb charts include data logging and formatting options.   
+See the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
 
 pfodWeb is distributed as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in a browser. 
 It can also be served directly from the microprocessor itself for complete off-line stand alone deployment.
@@ -49,13 +50,15 @@ build_data.bat   # Windows
 
 ## Documentation
 
-Full user and reference documentation is in [`docs/`](docs/index.html):
+pfodWeb user documentation is in [`docs/`](docs/index.html):
 
 - [pfodWeb User Guide](docs/pfodWeb-guide.html) — connecting, interface layout, toolbar, plotting CSV data.
 - [pfodWeb Chart Mode Guide](docs/pfodWeb-chart-mode-guide.html) — chart display, raw message viewer, field customization.
 - [pfodWeb extraFonts Guide](docs/pfodWeb-extraFonts-guide.html) — adding font subsets without rebuilding.
 - [Comparison](docs/Comparision.html) — pfodWeb vs. other Arduino remote-control approaches.
 - [License](docs/pfodWeb_pfodProxy_License.html) / [Rust Third-Party Licenses](docs/RustThirdPartyLicenses.html)
+
+For pfodWeb Designer see the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
 
 ## License
 
