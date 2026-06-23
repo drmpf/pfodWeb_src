@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Comparision</title>
+
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; max-width: 960px; margin: 40px auto;
+         padding: 0 24px; color: #222; line-height: 1.6; }
+  h1 { border-bottom: 2px solid #444; padding-bottom: 6px; }
+  h2 { border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 2em; }
+  h3 { margin-top: 1.6em; }
+  code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-size: 0.92em; }
+  pre  { background: #f4f4f4; padding: 12px 16px; border-radius: 5px;
+         overflow-x: auto; font-size: 0.88em; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th { background: #e8e8e8; text-align: left; }
+  th, td { border: 1px solid #ccc; padding: 6px 12px; }
+  tr:nth-child(even) td { background: #fafafa; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2em 0; }
+  blockquote { border-left: 3px solid #ccc; margin: 1em 0; padding: 0.4em 1em;
+               background: #fafafa; color: #555; }
+  blockquote p { margin: 0; }
+  ul { padding-left: 1.6em; }
+  li { margin: 0.2em 0; }
+  .nav { margin-bottom: 2em; font-size: 0.9em; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
+  .nav a { margin-right: 1em; color: #0066cc; }
+  .nav a.current { color: #222; font-weight: bold; text-decoration: none; }
+  .wide-table-wrapper {
+    width: 100vw;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    overflow-x: auto;
+    padding: 0 24px;
+    box-sizing: border-box;
+  }
+  .wide-table-wrapper table { max-width: 912px; width: 100%; margin: 1em auto; }
+</style>
+
+</head>
+<body>
+
+<div class="nav">
+  <a class="current" href="Comparision.html">Comparision</a>
+</div>
+
+<h1 id="arduino-remote-control-comparison-vs-pfodweb">Arduino Remote-Control — Comparison vs pfodWeb</h1>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>Putting a phone or PC interface in front of an Arduino-class device usually means picking a
+remote-control tool — and they take very different approaches: cloud dashboards, drag-and-drop
+GUI builders, self-hosted automation hubs, or protocols where the device itself defines the UI.<br>
+<strong>pfodWeb</strong> belongs to that last category: a browser-based client where the
+microcontroller emits the entire UI at runtime, no dashboard to build,
+and no cloud account.<br> This document surveys the main alternatives, groups them by how they work,
+compares them feature-by-feature against pfodWeb, and ends with a decision guide for choosing
+the right tool for a given project.</p>
+
+<h2 id="1-device-defines-the-ui-protocols">1. Device-defines-the-UI protocols</h2>
+All tools here have code in the device that describes the UI to be display by the client.<br>
+The pfod protocol makes the device the sole determinant of the UI. The pfodWeb / pfodApp clients
+provide a fixed set of menu components and drawing primitives. The messages sent by the pfod device completely control
+how those are assembled to build the UI. <br>
+For example the pfod device can change the length and contents of a menu, in real time, based on the user's or device's input.
+
+<table>
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>Transport</th>
+      <th>UI built where</th>
+      <th>Cloud needed</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="https://www.forward.com.au/pfod/index.html"><strong>pfodApp</strong></a> (native Android)</td>
+      <td>BT, BLE, WiFi/TCP, SMS</td>
+      <td>On the device, at runtime</td>
+      <td>No</td>
+    </tr>
+    <tr>
+      <td><a href="https://www.forward.com.au/pfod/pfodWeb/index.html"><strong>pfodWeb</strong></a> (browser)</td>
+      <td>HTTP and Serial, BT/BLE, TCP/IP via pfodProxy</td>
+      <td>On the device, at runtime</td>
+      <td>No</td>
+    </tr>
+  </tbody>
+</table>
+<p>Both these are supported by designers (<a href="https://www.forward.com.au/pfod/pfodDesigner/index.html"><strong>pfodDesigner</strong></a>
+ and <a href="https://www.forward.com.au/pfod/pfodWeb/index.html"><strong>pfodWeb</strong></a> designer)
+that let you build the menu / display and specify the board pins to control and then generate complete Arduino sketches.
+
+<br>These pfodWeb examples are the main screen of the
+<a href="https://journals.sagepub.com/doi/abs/10.1089/ast.2022.0036">Europa Ice Sampling Prototype</a>
+,a simple menu, and a home 
+<a href="https://www.forward.com.au/pfod/BLE/LowPower_2022/Weather/index.html">Weather Station</a>, a more advanced drawing menu item
+<P ALIGN=CENTER ">
+<img style="width: 380px; max-width: 48%;" src="Europa.jpg" alt="Main menu of Europa">&nbsp;&nbsp;<img style="width: 380px; max-width: 48%;" src="WeatherStation.jpg" alt="Main 'menu' of Weather Station">
+</p>
+
+
+<h2 id="2-drag-and-drop-gui-builders-you-design-the-screen-bind-to-virtual-pins">2. Drag-and-drop GUI builders (you design the screen, bind to virtual pins)</h2>
+
+<ul>
+  <li><strong>Blynk (2.0 / IoT)</strong> – widget dashboard, mobile + web,
+      <strong>cloud-mandatory</strong> (Blynk Legacy was shut down — a well-known longevity
+      cautionary tale).</li>
+  <li><strong>RemoteXY</strong> – visual editor generates Arduino code; BT/BLE/WiFi/cloud; free
+      tier limits elements.</li>
+  <li><strong>Virtuino / Virtuino MQTT</strong> – Android SCADA-style panels; local BT/WiFi or
+      MQTT.</li>
+  <li><strong>Bluetooth Electronics (keuwlsoft)</strong> – Android-only, BT/BLE panel
+      designer.</li>
+  <li><strong>Adafruit Bluefruit Connect</strong> – fixed BLE UART/control-pad/plotter app.</li>
+  <li><strong>ArduinoStudio</strong> (arduinostudio.com) – browser, no-code visual
+      sequence/logic editor + drag-and-drop custom UI, Firmata-based. Controls limited to Firmata
+      protocol.</li>
+</ul>
+
+<h2 id="3-cloud-iot-dashboards-account-broker-required">3. Cloud IoT dashboards (account + broker required)</h2>
+
+<ul>
+  <li><strong>Arduino IoT Cloud</strong> – official, tight IDE integration, subscription
+      tiers.</li>
+  <li><strong>Cayenne (myDevices)</strong> – drag-and-drop + rules engine, cloud.</li>
+  <li><strong>Thinger.io / ThingsBoard / Ubidots</strong> – open-source-ish platforms, server
+      hosting.</li>
+  <li><strong>MQTT Dash / IoT MQTT Panel</strong> – generic MQTT clients, you run the
+      broker.</li>
+</ul>
+
+<h2 id="4-build-your-own-generic">4. Build-your-own / generic</h2>
+
+<ul>
+  <li><strong>MIT App Inventor</strong>, <strong>Node-RED dashboard</strong>,
+      <strong>Serial Bluetooth Terminal</strong>, <strong>Telegram/IFTTT bots</strong>.</li>
+</ul>
+
+<h2 id="5-on-device-display-ui-libraries-with-optional-remote-viewing">5. On-device display UI libraries (with optional remote viewing)</h2>
+
+<ul>
+  <li><strong>LVGL (Light and Versatile Graphics Library)</strong> – open-source embedded graphics
+      library (MIT). Runs <em>on</em> the MCU and drives a TFT/OLED/e-paper panel wired directly
+      to the board. Rich widget set (buttons, sliders, labels, charts, tables, keyboards, arcs),
+      themes, animations, and touchscreen support. UI coded in C/C++ or designed visually in
+      <strong>SquareLine Studio</strong> (free community edition for non-commercial use; paid plans
+      from ~$5/month). Primary use is a wired display, but three community remote-access paths
+      exist:<br> (1) <strong>LVGLRemoteServer</strong> – open-source UDP Wi-Fi project that captures
+      screenshots and routes touch input so you can view and control the device from a desktop or
+      browser without a physical display; <br>(2) <strong>Emscripten/WebAssembly</strong> – LVGL
+      compiles cleanly for the browser, used mainly for GUI testing and simulation on a desktop;
+      <br>(3) <strong>Custom WebSocket/VNC servers</strong> – LVGL exposes raw pixel data and event
+      APIs, so developers build their own WebSocket or VNC-style servers to push screen updates
+      and route touch events back to the MCU. All three remote approaches are DIY/community, not
+      built-in.</li>
+</ul>
+
+<hr>
+
+<h2 id="feature-comparison-vs-pfodweb">Feature Comparison vs pfodWeb</h2>
+
+<div class="wide-table-wrapper">
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>pfodWeb</th>
+      <th>Blynk IoT</th>
+      <th>RemoteXY</th>
+      <th>Virtuino</th>
+      <th>Arduino Cloud</th>
+      <th>Bluetooth Electronics</th>
+      <th>ESPHome (+ Home Assistant)</th>
+      <th>Node-RED (Dashboard)</th>
+      <th>ArduinoStudio</th>
+      <th>LVGL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>No app install</strong> (runs in browser)</td>
+      <td>yes — for any browser since 2017</td>
+      <td>no — app/web cloud</td>
+      <td>no — app</td>
+      <td>no — app</td>
+      <td>partial — web + app</td>
+      <td>no — Android only</td>
+      <td>partial — browser via HA server</td>
+      <td>yes — browser dashboard (server required)</td>
+      <td>yes — browser (Web Serial)</td>
+      <td>partial — LVGLRemoteServer and Emscripten builds can run in a browser; wired display is primary mode</td>
+    </tr>
+    <tr>
+      <td><strong>Needs Dashboard/App to code</strong></td>
+      <td>partial — designer is convient, but can edit sketch directly</td>
+      <td>yes — build dashboard</td>
+      <td>yes — build + regen code</td>
+      <td>yes — build panels</td>
+      <td>yes — build things/vars</td>
+      <td>yes — build panel</td>
+      <td>partial — YAML config, dashboards built</td>
+      <td>yes — build flows + dashboard</td>
+      <td>yes — build logic + UI (no-code)</td>
+      <td>yes — C/C++ code or SquareLine Studio; remote paths require additional DIY server code</td>
+    </tr>
+    <tr>
+      <td><strong>Change UI = just edit the sketch</strong></td>
+      <td>yes — instant</td>
+      <td>no — edit dashboard too</td>
+      <td>no — regenerate</td>
+      <td>no — re-edit panel</td>
+      <td>no — edit variables</td>
+      <td>no — re-edit panel</td>
+      <td>partial — edit YAML, entities auto-add</td>
+      <td>no — UI separate from firmware</td>
+      <td>no — board runs stock Firmata; logic+UI built in app</td>
+      <td>yes — recompile firmware</td>
+    </tr>
+    <tr>
+      <td><strong>Works fully offline / no account</strong></td>
+      <td>yes</td>
+      <td>no — cloud login</td>
+      <td>partial — local modes</td>
+      <td>yes — local modes</td>
+      <td>no</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>no — account/hosted SaaS</td>
+      <td>yes — fully local (wired display or LAN via LVGLRemoteServer)</td>
+    </tr>
+    <tr>
+      <td><strong>No third-party server (privacy/longevity)</strong></td>
+      <td>yes</td>
+      <td>no</td>
+      <td>partial</td>
+      <td>yes — local</td>
+      <td>no</td>
+      <td>yes</td>
+      <td>partial — needs self-hosted HA server</td>
+      <td>partial — needs self-hosted Node-RED server</td>
+      <td>no — hosted SaaS</td>
+      <td>yes — no cloud; remote paths are DIY/self-hosted</td>
+    </tr>
+    <tr>
+      <td><strong>Multiple transports, one client</strong></td>
+      <td>yes — HTTP/Serial/BLE/BT/TCP</td>
+      <td>partial — WiFi/BLE via cloud</td>
+      <td>yes — BT/BLE/WiFi/cloud</td>
+      <td>yes — BT/WiFi/MQTT</td>
+      <td>partial — WiFi/cellular/LoRa</td>
+      <td>no — BT/BLE only</td>
+      <td>partial — WiFi/API, BLE proxy</td>
+      <td>yes — serial/MQTT/TCP/HTTP via nodes</td>
+      <td>no — USB Firmata only</td>
+      <td>partial — wired display primary; Wi-Fi via LVGLRemoteServer (UDP) or custom WebSocket/VNC (DIY)</td>
+    </tr>
+    <tr>
+      <td><strong>Served from the device itself</strong> (flash-embedded)</td>
+      <td>yes — pfodWeb.html client can be served from micro</td>
+      <td>no</td>
+      <td>no</td>
+      <td>no</td>
+      <td>no</td>
+      <td>no</td>
+      <td>partial — optional basic built-in web UI</td>
+      <td>no</td>
+      <td>no</td>
+      <td>yes — runs directly on MCU; LVGLRemoteServer also runs on the MCU</td>
+    </tr>
+    <tr>
+      <td><strong>Hierarchical menus</strong></td>
+      <td>yes</td>
+      <td>partial — tabs</td>
+      <td>partial — pages</td>
+      <td>partial</td>
+      <td>partial</td>
+      <td>no</td>
+      <td>partial — HA views/tabs</td>
+      <td>partial — dashboard tabs/groups</td>
+      <td>no — sequence canvas + panel</td>
+      <td>yes</td>
+    </tr>
+    <tr>
+      <td><strong>Interactive touch GUIs</strong></td>
+      <td>yes</td>
+      <td>no</td>
+      <td>no</td>
+      <td>partial — basic</td>
+      <td>no</td>
+      <td>no</td>
+      <td>no</td>
+      <td>partial — via template/SVG nodes</td>
+      <td>no</td>
+      <td>yes — touchscreen on wired display; remote touch via LVGLRemoteServer or custom WebSocket</td>
+    </tr>
+    <tr>
+      <td><strong>Real-time charts + CSV logging/download</strong></td>
+      <td>yes — freeze/scroll/scale, group/separate, CSV export+reload</td>
+      <td>partial — cloud SuperChart; free ~1 msg/min, CSV export PLUS/PRO</td>
+      <td>partial — live graph only, app-side history, no CSV export</td>
+      <td>partial — charts; logging via separate logger</td>
+      <td>partial — cloud charts + CSV download (emailed)</td>
+      <td>partial — rolling plot only, no logging</td>
+      <td>partial — HA history graphs; CSV via HACS card/Python</td>
+      <td>partial — chart node; CSV via wired csv/file nodes</td>
+      <td>not stated</td>
+      <td>partial — lv_chart widget on-device; no CSV logging/export</td>
+    </tr>
+    <tr>
+      <td><strong>Protocol-level 128-bit auth (no shared cloud)</strong></td>
+      <td>yes — challenge/response (i)</td>
+      <td>partial — cloud TLS</td>
+      <td>partial</td>
+      <td>partial</td>
+      <td>partial — cloud</td>
+      <td>no</td>
+      <td>yes — encrypted native API</td>
+      <td>partial — server TLS/auth</td>
+      <td>no — Firmata, hosted</td>
+      <td>no — remote paths (UDP/WebSocket/VNC) are unauthenticated by default; DIY to add</td>
+    </tr>
+    <tr>
+      <td><strong>Cost</strong></td>
+      <td>Free</td>
+      <td>Freemium/paid</td>
+      <td>Freemium/paid</td>
+      <td>Free/paid</td>
+      <td>Freemium/paid</td>
+      <td>Free</td>
+      <td>Free</td>
+      <td>Free</td>
+      <td>Freemium; UI editor paid ($9/mo+)</td>
+      <td>Free (MIT); SquareLine Studio free community / paid plans; LVGLRemoteServer free open-source</td>
+    </tr>
+    <tr>
+      <td><strong>Direct Device access from anywhere</strong></td>
+      <td>yes — for HTTP micro self-hosted</td>
+      <td>yes</td>
+      <td>partial — via cloud</td>
+      <td>partial — MQTT</td>
+      <td>yes</td>
+      <td>no</td>
+      <td>partial — paid Nabu Casa or DIY</td>
+      <td>no — DIY</td>
+      <td>partial — shareable link (hosted)</td>
+      <td>no — LAN only</td>
+    </tr>
+    <tr>
+      <td><strong>Rules/automation/push notifications</strong></td>
+      <td>no</td>
+      <td>yes</td>
+      <td>partial</td>
+      <td>partial</td>
+      <td>yes</td>
+      <td>no</td>
+      <td>yes — HA automations</td>
+      <td>yes — core feature</td>
+      <td>partial — visual sequence logic (no push stated)</td>
+      <td>partial — device-side code only</td>
+    </tr>
+    <tr>
+      <td><strong>Polished themeable drag and drop widgets</strong></td>
+      <td>no — relies on code library of interactive GUI elements</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td>yes — HA Lovelace</td>
+      <td>yes — Dashboard 2.0</td>
+      <td>yes — drag-and-drop UI (paid tier)</td>
+      <td>yes — animated widgets, themes, styles</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>(i) Note pfodApp implements 128bit auth, pfodWeb implementation to come.</p>
+
+<hr>
+
+<h2 id="minimum-board-required">Minimum Board Required</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>Minimum board</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>pfodWeb</strong></td>
+      <td>Uno or higher</td>
+      <td>USB/Serial: tiny pfod parser runs on almost any board; WiFi (TCP/IP or HTTP) and BLE can
+          be used where the board supports them</td>
+    </tr>
+    <tr>
+      <td><strong>Blynk IoT</strong></td>
+      <td>ESP8266 / ESP32</td>
+      <td>Needs an IP stack; Uno requires add-on IP capable shield</td>
+    </tr>
+    <tr>
+      <td><strong>RemoteXY</strong></td>
+      <td>Uno or higher</td>
+      <td>USB/serial on a bare Uno; BT needs an add-on module (e.g. HC-05); ESP for WiFi</td>
+    </tr>
+    <tr>
+      <td><strong>Virtuino</strong></td>
+      <td>Uno or higher</td>
+      <td>USB/serial on a bare Uno; BT needs an add-on module (e.g. HC-05); ESP for WiFi/MQTT</td>
+    </tr>
+    <tr>
+      <td><strong>Arduino Cloud</strong></td>
+      <td>ESP32 / MKR / Nano 33 IoT / Uno R4</td>
+      <td>No classic Uno R3</td>
+    </tr>
+    <tr>
+      <td><strong>Bluetooth Electronics</strong></td>
+      <td>Uno or higher</td>
+      <td>Requires a BT/BLE module (e.g. HC-05)</td>
+    </tr>
+    <tr>
+      <td><strong>ESPHome (+ Home Assistant)</strong></td>
+      <td>ESP8266 / ESP32</td>
+      <td>No AVR support</td>
+    </tr>
+    <tr>
+      <td><strong>Node-RED (Dashboard)</strong></td>
+      <td>Uno or higher</td>
+      <td>Device just talks serial/MQTT; logic runs on the Node-RED host</td>
+    </tr>
+    <tr>
+      <td><strong>ArduinoStudio</strong></td>
+      <td>Uno or higher</td>
+      <td>Board runs stock StandardFirmata; ArduinoStudio drives it from the browser over USB serial
+          (Web Serial). Any Firmata-capable board (Uno/Nano/Mega/ESP32…); no on-device WiFi/BLE
+          app</td>
+    </tr>
+    <tr>
+      <td><strong>LVGL</strong></td>
+      <td>ESP32 / STM32 / RP2040 / NXP i.MX RT</td>
+      <td>Minimum ~16 KB RAM, 64 KB flash (practical floor is ESP32-class); wired display primary
+          — requires TFT/OLED/e-paper + optional touchscreen. Remote paths (LVGLRemoteServer,
+          custom WebSocket/VNC) need Wi-Fi so ESP32-class or similar.</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2 id="charting-data-logging">Charting &amp; Data Logging</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tool</th>
+      <th>Real-time chart</th>
+      <th>Freeze / scroll / zoom</th>
+      <th>Group &amp; separate plots</th>
+      <th>CSV log / export</th>
+      <th>Local (no cloud/server)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>pfodWeb</strong></td>
+      <td>yes — live CSV stream</td>
+      <td>yes — freeze, X-scroll, halve/double pts, Y min/max</td>
+      <td>yes — any number, grouped or on separate axes</td>
+      <td>yes — export &amp; reload any CSV</td>
+      <td>yes — runs in the browser, no cloud/server</td>
+    </tr>
+    <tr>
+      <td><strong>Blynk IoT</strong></td>
+      <td>yes — SuperChart</td>
+      <td>partial — pan historical ranges</td>
+      <td>yes — multi-datastream</td>
+      <td>partial — CSV export needs PLUS/PRO (paid)</td>
+      <td>no — Blynk Cloud (free ~1 msg/min)</td>
+    </tr>
+    <tr>
+      <td><strong>RemoteXY</strong></td>
+      <td>yes — Online Graph (while connected)</td>
+      <td>no</td>
+      <td>partial — multiple vars per graph</td>
+      <td>no — no built-in export</td>
+      <td>partial — local link but phone-side history only</td>
+    </tr>
+    <tr>
+      <td><strong>Virtuino</strong></td>
+      <td>yes — chart/graph element</td>
+      <td>partial — limited</td>
+      <td>partial</td>
+      <td>partial — via separate Virtuino logger</td>
+      <td>yes — local modes</td>
+    </tr>
+    <tr>
+      <td><strong>Arduino Cloud</strong></td>
+      <td>yes — dashboard chart</td>
+      <td>yes — selectable time range</td>
+      <td>yes — multi-variable</td>
+      <td>yes — CSV download (emailed)</td>
+      <td>no — cloud account / online</td>
+    </tr>
+    <tr>
+      <td><strong>Cayenne (myDevices)</strong></td>
+      <td>yes — line-graph widgets</td>
+      <td>partial — timeframe / custom-range filter</td>
+      <td>yes — multi-widget dashboard</td>
+      <td>yes — CSV download (time-range)</td>
+      <td>no — myDevices cloud / account</td>
+    </tr>
+    <tr>
+      <td><strong>Thinger.io</strong></td>
+      <td>yes — time-series widgets</td>
+      <td>partial — historical / aggregated ranges</td>
+      <td>yes — multi-widget dashboard</td>
+      <td>yes — bucket export CSV/JSON/ARFF</td>
+      <td>yes — self-hosted (open-source) or cloud</td>
+    </tr>
+    <tr>
+      <td><strong>Bluetooth Electronics</strong></td>
+      <td>yes — rolling plot</td>
+      <td>no — fixed rolling window</td>
+      <td>partial — multiple graph panels</td>
+      <td>no — no logging/export</td>
+      <td>yes — local BT/BLE, no cloud</td>
+    </tr>
+    <tr>
+      <td><strong>ESPHome (+ Home Assistant)</strong></td>
+      <td>yes — HA history graph</td>
+      <td>partial — HA time-range zoom</td>
+      <td>partial — multi-entity cards</td>
+      <td>partial — via HACS card / Python</td>
+      <td>yes — self-hosted (no third-party cloud)</td>
+    </tr>
+    <tr>
+      <td><strong>Node-RED (Dashboard)</strong></td>
+      <td>yes — ui-chart node</td>
+      <td>partial — limited interaction</td>
+      <td>yes — multi-series / charts</td>
+      <td>partial — DIY csv + file nodes</td>
+      <td>yes — self-hosted server</td>
+    </tr>
+    <tr>
+      <td><strong>ArduinoStudio</strong></td>
+      <td>not stated</td>
+      <td>not stated</td>
+      <td>not stated</td>
+      <td>not stated</td>
+      <td>no — account/hosted SaaS</td>
+    </tr>
+    <tr>
+      <td><strong>LVGL</strong></td>
+      <td>yes — lv_chart widget (line, bar, scatter)</td>
+      <td>no — fixed canvas; scroll requires custom code</td>
+      <td>partial — multiple series per chart</td>
+      <td>no — no storage or export</td>
+      <td>yes — on-device display, no cloud/server</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Only <strong>pfodWeb</strong> is "yes" across freeze/scroll/zoom <strong>and</strong>
+group/separate plots <strong>and</strong> local CSV logging — the others are cloud-bound,
+export-limited, or require you to wire/host the logging yourself.</p>
+
+<hr>
+
+<h2 id="where-pfodweb-wins">Where pfodWeb Wins</h2>
+
+<ol>
+  <li><strong>Maximum Flexibility.</strong> The device's code can modify or replace the UI
+      as it runs. Menus, lists of varying length, interactive elements can be generated on the fly by the code.</li>
+    Also because the device completely defines the UI — change the Arduino sketch and every client updates automatically.
+      Blynk/RemoteXY/Virtuino force you to maintain a separate dashboard <em>and</em> keep
+      virtual-pin bindings in sync with firmware.</li>
+
+  <li><strong>No cloud, no account, no vendor lifetime risk.</strong> Everything is local
+      request/response. The Blynk Legacy shutdown stranded thousands of projects; pfodWeb projects
+      can't be shut down by a third party.</li>
+
+  <li><strong>One client, every transport.</strong> HTTP, Serial, Bluetooth Classic, BLE and TCP
+      from the same browser page — most competitors are single-transport or
+      cloud-only.</li>
+
+  <li><strong>Self-contained from the device.</strong> The whole UI
+      can live in the device's flash and be served over its own web server — works on an air-gapped
+      network with nothing else installed.</li>
+
+  <li><strong>Privacy/security by architecture.</strong> Optional pfod 128-bit challenge/response
+      auth, and data never traverses a shared cloud.</li>
+
+  <li><strong>Free</strong>, with rich primitives: hierarchical
+      menus, interactive touch drawings, <a href="https://www.forward.com.au/pfod/pfodWeb/Charting/index.html">live
+      charts</a>, and CSV raw-data export.</li>
+
+  <li><strong>No firmware coding required</strong> — pfodWeb includes a designer which 
+       lets you build menus and sub-menus, connect digital and analog pins, add charts and data
+      logging, then generates a complete, ready-to-compile sketches (currently for Serial connections).
+      
+      The free Android
+      <a href="https://www.forward.com.au/pfod/pfodDesigner/index.html"><strong>pfodDesigner</strong></a>
+      generates code for Bluetooth, BLE, WiFi and SMS for a wide variety of boards. The same generated code works with both pfodWeb and pfodApp.</li>
+
+  <li><strong>Interactive touch UIs</strong> — Using drawing primitives
+      (rectangles, labels, values) plus touchZones and touchActions you can
+      create interfaces that respond immediately to mouse actions. Once build these controls can be 
+      reused, scaled and position to build the UI. See the pfodDwgControls library</li>
+
+  <li><strong>Built-in real-time charting &amp; data logging —
+      <a href="https://www.forward.com.au/pfod/pfodWeb/Charting/index.html">pfodWeb Charting</a>.</strong>
+      pfodWeb streams live CSV data straight into an in-browser chart with an adjustable
+      data-point window: plot any number of fields on individual axes or grouped together, on any
+      number of separate plots, with the X-axis taken from any field (or none) and optionally
+      formatted as time (mins:secs) for time-series or XY plots. <br><strong>Freeze</strong> the chart
+      to stop it scrolling then zoom in — halve/double the
+      displayed points, scroll along the X-axis, set Y min/max — while live data keeps accumulating
+      in the background. <br><strong>Export the CSV</strong> and reload it into pfodWeb later for
+      review (any CSV loads, not just ones pfodWeb saved), bookmark/save the chart plus connection
+      and formatting config, and switch between multiple data streams — all locally, no cloud, on
+      every transport. No competitor here offers this freeze/scroll/scale/group-and-separate
+      plotting plus local CSV logging without a cloud or extra server.</li>
+</ol>
+
+<h2 id="trade-offs-vs-the-cloud-platforms">Trade-offs (vs the cloud platforms)</h2>
+
+<ul>
+  <li><strong>No turnkey "control from anywhere."</strong> Cloud tools (Blynk, Arduino Cloud) give
+      internet access with a login out of the box; pfodWeb needs you to provide the path to the device (LAN, VPN,
+      port-forward).</li>
+
+  <li><strong>No built-in rules engine / push notifications / fleet management / multi-user
+      dashboards</strong> — those are cloud-platform strengths.</li>
+
+  <li><strong>pfodProxy needed for Serial, Bluetooth and Tcp/IP socket connection.</strong>
+       HTTP connections work directly from the browser. The advantage of pfodProxy is that any browser since 2017 can be used.</li>
+
+  <li><strong>UI is functional, not a themed drag-and-drop widget gallery.</strong> The device
+      defines layout; you trade pixel-level dashboard polish for never having to build or maintain a
+      dashboard.</li>
+
+</ul>
+
+<h2 id="bottom-line">Bottom Line</h2>
+
+<p>Choose <strong>pfodWeb</strong> when you want a no-install, no-account, locally-controlled,
+instantly-updatable UI that the device itself defines — ideal for direct local control,
+privacy-sensitive or air-gapped setups, and avoiding cloud-vendor lock-in/shutdown. <br>Choose a cloud
+platform (<strong>Blynk / Arduino Cloud / Cayenne</strong>) when remote-from-anywhere access,
+automation rules, push alerts, and managed fleets matter more than locality and self-sufficiency.<br>
+<strong>RemoteXY/Virtuino/Bluetooth Electronics</strong> sit in between — local-capable but you
+still hand-build and maintain the GUI separately from the firmware.</p>
+
+<hr>
+
+<h2 id="when-to-choose-which-for-remote-control-and-data-logging">When to Choose Which for Remote Control and Data Logging</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Your priority / scenario</th>
+      <th>Best fit</th>
+      <th>Why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Uno, Mega, or other low-memory boards</td>
+      <td><strong>pfodWeb / pfodApp / RemoteXY / Virtuino</strong></td>
+      <td>pfodWeb/pfodApp and RemoteXY/Virtuino run on bare
+          AVR over USB-serial or BT module; cloud platforms (Blynk IoT, Arduino Cloud, ESPHome)
+          and LVGL all require ESP32-class hardware</td>
+    </tr>
+    <tr>
+      <td>Wide OS / Browser support for All transports, Serial, BLE, TCP/IP, HTTP</td>
+      <td><strong>pfodWeb</strong></td>
+      <td>Windows, MacOS (Intel/Apple), Linux OS's and 
+        Chrome/Chromium, FireFox, Safari, Edge browsers from 2017 onwards<br>
+        Android 8+ (2017) for pfodApp</td>
+    </tr>
+    <tr>
+      <td>No app to install, no separate UI keep in sync, change the sketch and the UI just updates</td>
+      <td><strong>pfodWeb</strong></td>
+      <td>Device emits the UI live; runs in any browser</td>
+    </tr>
+    <tr>
+      <td>Air-gapped / private / no cloud / no account, fully local control</td>
+      <td><strong>pfodWeb</strong></td>
+      <td>Local request/response, no third-party server</td>
+    </tr>
+    <tr>
+      <td>UI must be served by the device itself with nothing else installed</td>
+      <td><strong>pfodWeb</strong></td>
+      <td><code>pfodWeb.html</code> served from micro's firmware</td>
+    </tr>
+    <tr>
+      <td>One client across HTTP, USB-serial, BLE, BT and TCP</td>
+      <td><strong>pfodWeb</strong></td>
+      <td>Single browser page on all browsers since 2017, all transports</td>
+    </tr>
+    <tr>
+      <td>Real-time charting with interactive freeze / scroll / zoom, grouped or separate plots,
+          and local CSV logging — no cloud</td>
+      <td><strong>pfodWeb</strong></td>
+      <td>Built-in charting: freeze + zoom + group/separate, export &amp; reload CSV locally;
+          the others are cloud-bound, export-limited or DIY-wired</td>
+    </tr>
+    <tr>
+      <td>Polished native phone dashboard, control from anywhere over the internet, zero networking
+          setup</td>
+      <td><strong>Blynk IoT / Arduino Cloud</strong></td>
+      <td>Managed cloud, remote access, push alerts out of the box</td>
+    </tr>
+    <tr>
+      <td>Cloud rules engine, alerting, multi-device fleet management</td>
+      <td><strong>Blynk / Arduino Cloud / Cayenne</strong></td>
+      <td>Built-in automation, notifications, provisioning</td>
+    </tr>
+    <tr>
+      <td>Hand-built local panel, no cloud, willing to maintain a separate GUI</td>
+      <td><strong>RemoteXY / Virtuino / Bluetooth Electronics</strong></td>
+      <td>Local BT/BLE/WiFi panels, free/cheap, simple widgets</td>
+    </tr>
+    <tr>
+      <td>Already on ESP32/ESP8266 + Home Assistant, want automations and a themed dashboard,
+          local-first</td>
+      <td><strong>ESPHome + Home Assistant</strong></td>
+      <td>Encrypted local API, HA automations &amp; Lovelace UI (self-hosted server)</td>
+    </tr>
+    <tr>
+      <td>Heavy data wrangling, protocol bridging, custom logic between device and UI</td>
+      <td><strong>Node-RED (Dashboard)</strong></td>
+      <td>Flow-based glue, many transports, charts/CSV, scriptable automation</td>
+    </tr>
+    <tr>
+      <td>Maximum UI polish/customisation and you don't mind building it</td>
+      <td><strong>Blynk / ESPHome+HA / Node-RED / LVGL</strong></td>
+      <td>Themeable widget galleries and rich animated widgets (at the cost of build + maintain
+          effort); LVGL gives the most polished on-device</td>
+    </tr>
+    <tr>
+      <td>Browser no-code: build the control LOGIC and a custom panel, share it as a link</td>
+      <td><strong>ArduinoStudio</strong></td>
+      <td>Firmata host-driven visual builder (board is a stock-Firmata I/O slave); you build/own
+          the logic+UI in a hosted account (UI editor is a paid $9/mo+ tier) — the inverse of
+          pfodWeb's free, local, device-defined model</td>
+    </tr>
+    <tr>
+      <td>Rich on-device GUI; wired display primary, optional Wi-Fi remote view/control via
+          LVGLRemoteServer or custom WebSocket/VNC (all DIY)</td>
+      <td><strong>LVGL</strong></td>
+      <td>On-device display library; rich animated widgets and touchscreen support; UI coded in
+          C/C++ or built with SquareLine Studio; remote paths are community/DIY, not built-in</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Quick rule of thumb:</strong></p>
+<ul>
+  <li><strong>Local, instant, self-defining UI, no infrastructure</strong> → pfodWeb.</li>
+  <li><strong>You have an older machine/browser</strong> → pfodWeb.</li>
+  <li><strong>Interactive real-time charting + local CSV logging, no cloud</strong> → pfodWeb.</li>
+  <li><strong>Remote-from-anywhere + managed cloud features</strong> → Blynk / Arduino Cloud.</li>
+  <li><strong>Self-hosted home-automation hub already in place</strong> → ESPHome + Home
+      Assistant.</li>
+  <li><strong>Custom integration/logic layer between hardware and dashboard</strong> →
+      Node-RED.</li>
+  <li><strong>Cheap local hand-built panel, no cloud</strong> → RemoteXY / Virtuino / Bluetooth
+      Electronics.</li>
+  <li><strong>Browser no-code: build the logic + a shareable custom panel (Firmata,
+      hosted)</strong> → ArduinoStudio.</li>
+  <li><strong>Rich GUI on a display physically attached to the device, no phone/browser</strong>
+      → LVGL.</li>
+</ul>
+
+<hr>
+
+<h2 id="sources">Sources</h2>
+
+<ul>
+  <li><a href="https://remotexy.com/">RemoteXY – Remote control Arduino</a></li>
+  <li><a href="https://appgrooves.com/compare/app-remotexy-arduino-control-by-evgeny-shemanuev/app-blynk-iot-by-blynk-inc-1">RemoteXY vs Blynk IoT comparison</a></li>
+  <li><a href="https://appgrooves.com/compare/app-remotexy-arduino-control-pro-by-evgeny-shemanuev/android-com.virtuino.virtuino_mqtt">RemoteXY vs Virtuino MQTT comparison</a></li>
+  <li><a href="https://www.blynk.io/">Blynk – Low-Code IoT Platform</a></li>
+  <li><a href="https://www.thetips4you.com/free-iot-platform-comparison-blynk-cayenne-and-thingsboard/">Free IoT platform comparison: Blynk, Cayenne, ThingsBoard</a></li>
+  <li><a href="https://diyusthad.com/2021/03/top-10-iot-dashboards.html">Top 10 IoT Dashboards – DIY Usthad</a></li>
+  <li><a href="https://www.forward.com.au/pfod/index.html">pfodApp V3 and pfodDevices – Forward Computing</a></li>
+  <li><a href="https://forward.com.au/pfod/ArduinoProgramming/starterIndex.html">Arduino for Beginners controlled by pfodApp (no coding)</a></li>
+  <li><a href="https://play.google.com/store/apps/details?id=au.com.forward.pfodDesignerV2">pfodDesigner V3 – free Android app, builds menus/charts and generates complete sketches (Google Play)</a></li>
+  <li><a href="https://www.forward.com.au/pfod/pfodWeb/Designer/index.html">pfodWeb Designer – local browser-based GUI builder (Node.js), generates a complete pfod Arduino sketch</a></li>
+  <li><a href="https://www.forward.com.au/pfod/pfodWeb/Charting/index.html">pfodWeb Charting – real-time charting, freeze/scroll/scale, group/separate plots, CSV logging</a></li>
+  <li><a href="https://docs.blynk.io/en/blynk.apps/widgets-displays/superchart">Blynk SuperChart widget (cloud charts; raw CSV export needs PLUS/PRO)</a></li>
+  <li><a href="https://remotexy.com/en/help/controls/onlinegraph/">RemoteXY Online Graph (live only, phone-side history, no CSV export)</a></li>
+  <li><a href="https://support.arduino.cc/hc/en-us/articles/8825464267420-Export-historical-data-in-Arduino-Cloud">Arduino Cloud – export historical data as CSV (emailed link)</a></li>
+  <li><a href="https://www.keuwl.com/apps/bluetoothelectronics/">Bluetooth Electronics (keuwlsoft) – rolling graph, no built-in logging</a></li>
+  <li><a href="https://community.home-assistant.io/t/ability-to-do-csv-export-from-history/385509">Home Assistant history CSV export request / HACS History Explorer card</a></li>
+  <li><a href="https://github.com/myDevicesIoT/cayenne-docs/blob/master/docs/FEATURES.md">Cayenne (myDevices) – dashboard line graphs + Download Chart Data (CSV)</a></li>
+  <li><a href="https://docs.thinger.io/features/buckets">Thinger.io – data buckets, dashboard charts, CSV/JSON/ARFF export</a></li>
+  <li><a href="https://www.arduinostudio.com/">ArduinoStudio – browser no-code Arduino logic + UI builder (Firmata)</a></li>
+  <li><a href="https://www.arduinostudio.com/pricing">ArduinoStudio pricing – Freemium / Hobby $9/mo / Pro $19/mo (UI editor is paid)</a></li>
+  <li><a href="https://lvgl.io/">LVGL – Light and Versatile Graphics Library (open-source, MIT)</a></li>
+  <li><a href="https://docs.lvgl.io/">LVGL documentation – widgets, porting, display drivers</a></li>
+  <li><a href="https://squareline.io/">SquareLine Studio – visual GUI designer for LVGL (free community / paid plans)</a></li>
+  <li><a href="https://github.com/lvgl/lv_port_pc_eclipse">LVGLRemoteServer – open-source UDP Wi-Fi remote view/control for LVGL (screenshot + touch simulation)</a></li>
+  <li><a href="https://docs.lvgl.io/master/integration/os/pc-simulator.html">LVGL Emscripten / WebAssembly simulator – run LVGL GUI in a browser</a></li>
+</ul>
+
+</body>
+</html>

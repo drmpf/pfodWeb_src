@@ -1,0 +1,107 @@
+[package]
+name    = "pfodProxy"
+version = "4.0.0"
+edition = "2021"
+description = "HTTP-to-device proxy for pfodWeb (serial / TCP / BLE)"
+authors = ["Forward Computing and Control Pty. Ltd."]
+license = "Unlicense"
+
+# Single binary output: target/release/pfodProxy(.exe).  Ships next to
+# pfodWeb.html with zero runtime dependencies
+#
+# The mixed-case name `pfodProxy` matches the project's existing
+# camelCase convention (pfodWeb, pfodMenu, ...) rather than Rust's
+# lowercase-package convention.  Cargo's style-lint about non-lowercase
+# package names is opt-in on nightly only, so on stable there's nothing
+# to silence — name just works.
+[[bin]]
+name = "pfodProxy"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime — `full` pulls in TCP, time, sync, signal, fs.
+tokio        = { version = "1", features = ["full"] }
+# HTTP server — axum + tower-http for CORS.
+axum         = "0.7"
+tower-http   = { version = "0.5", features = ["cors"] }
+# Cross-platform serial — pyserial replacement.  MPL-2.0; obligations
+# satisfied via the auto-generated THIRD_PARTY_LICENSES.md (cargo about).
+serialport   = "4.5"
+tokio-serial = "5.4"
+# Cross-platform BLE — bleak replacement.  Statically links the WinRT
+# (Windows), CoreBluetooth (macOS), BlueZ/dbus (Linux) bindings.
+btleplug     = "0.11"
+# UUID parsing for the Nordic UART Service GATT characteristics.
+uuid         = "1"
+# Async traits + futures combinators used by btleplug callbacks.
+futures      = "0.3"
+async-trait  = "0.1"
+# URL-encode/decode for query parsing (axum exposes Query but we hand-parse
+# `cmd=` since axum's serde-driven parser stumbles on raw `{`,`}`,`:` etc.).
+urlencoding  = "2"
+# bytes — for axum response bodies.
+bytes        = "1"
+# async-stream — generator-style async streams used for the SSE
+# endpoints (discovery + connection).  Lets us write the stream body
+# as a straight-line async fn that yields events instead of
+# hand-rolling a Stream impl with a Drop guard for cleanup.
+async-stream = "0.3"
+# hex encoding for SSE byte payloads.  Each device-byte chunk is
+# rendered as plain-ASCII hex in the `data:` field so the SSE event
+# stream stays text-safe regardless of what the device emits
+# (NULs, lone-surrogate UTF-16, etc.).  ~2x wire bloat on localhost
+# is irrelevant.
+hex          = "0.4"
+# chrono — wall-clock timestamps for log prefixes.  Default features pull
+# in serde + clock support which is all we need.
+chrono       = "0.4"
+# Cross-platform default-browser opener — thin wrapper around
+# ShellExecute (Windows), open (macOS), xdg-open (Linux).
+open         = "5"
+
+# Windows-only: direct WinRT BLE advertisement watcher.  btleplug exposes
+# only `properties.local_name` which on some Windows drivers fails to
+# surface the Complete Local Name (AD type 0x09) carried in scan-response
+# packets — even though the bytes are in `DataSections`.  We subscribe to
+# `BluetoothLEAdvertisementWatcher` ourselves and parse those data
+# sections to recover names that btleplug misses (matches what Chrome
+# shows in its picker).  Already in the dep tree transitively via
+# btleplug 0.11; this just enables the features we need.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Devices_Bluetooth_Advertisement",
+    "Storage_Streams",
+    "Foundation",
+    "Foundation_Collections",
+] }
+
+# macOS-only: parallel CoreBluetooth advertisement watcher.  On macOS,
+# btleplug reads the local name from CBAdvertisementDataLocalNameKey which
+# CoreBluetooth populates with the cached GATT 0x2A00 device-name for
+# previously-connected peripherals instead of the scan-response AD type
+# 0x09.  We run a second CBCentralManager dedicated solely to reading
+# advertisement data; its didDiscoverPeripheral callback gives us
+# CBAdvertisementDataLocalNameKey directly from the advertisement packet
+# (same as what Chrome/nRFConnect report).  All crates are already in the
+# dep tree transitively via btleplug 0.11; these declarations just make
+# the dependency explicit so we can use the APIs directly.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2             = "0.5"
+objc2-foundation  = { version = "0.2", features = [] }
+objc2-core-bluetooth = { version = "0.2", features = [
+    "CBAdvertisementData",
+    "CBCentralManager",
+    "CBCentralManagerConstants",
+    "CBManager",
+    "CBPeer",
+    "CBPeripheral",
+] }
+
+[profile.release]
+# Optimise for size — the binary lands around 4-6 MB this way.  LTO and
+# one codegen unit knock another ~30 % off the default release profile.
+opt-level    = "z"
+lto          = true
+codegen-units = 1
+strip        = "symbols"
+panic        = "abort"
