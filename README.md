@@ -1,15 +1,20 @@
 # pfodWeb
 
-A web-based [pfod protocol](https://www.pfod.com.au/) client for controlling and monitoring Arduino, ESP32, and other embedded devices from a browser — no app install required. pfodWeb renders device-defined drawings, menus, and charts, and talks to devices over HTTP, Serial, or BLE via the companion **pfodProxy** bridge.
+A web-based [pfod protocol](https://www.pfod.com.au/) client for controlling and monitoring Arduino, ESP32, 
+and other embedded devices from a browser — no app install required. pfodWeb renders device-defined drawings, menus, 
+and charts, and talks to devices over directly via HTTP and via Serial, BLE and TCP/IP via the companion **pfodProxy** bridge.
 
-pfodWeb is distributed as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in a browser or served from the device/proxy itself.
+pfodWeb includes a build-in Designer that lets you create menus and sub-meus of buttons, sliders and charts. pfodWeb charts include data logging and fromatting options. 
+
+pfodWeb is distributed as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in a browser. 
+It can also be served directly from the microprocessor itself for complete off-line stand alone deployment.
 
 ## Repository Layout
 
 | Path | Description |
 |---|---|
 | `pfodWeb_src/` | JavaScript/HTML/CSS source for pfodWeb. **Edit here** — never edit the built HTML files directly. |
-| `pfodProxy_rs/` | Rust source for pfodProxy, the HTTP-to-device proxy (serial / TCP / BLE) that pfodWeb talks to. |
+| `pfodProxy_rs/` | Rust source for pfodProxy, the HTTP-to-device proxy (serial / TCP / BLE) that pfodWeb talks to for those connections. |
 | `data/` | Compressed (`.gz`) files to be served from the microprocessor's file system for stand alone deployment. |
 | `extraFonts/` | Optional supplementary font subsets (Cyrillic, Greek, etc.) loadable without rebuilding pfodWeb. |
 | `variants/` | Board definitions (`arduino/`, `esp32/`) used when generating code in the designer. |
