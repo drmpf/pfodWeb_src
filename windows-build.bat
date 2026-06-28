@@ -2,8 +2,8 @@
 REM windows-build.bat
 REM (c)2026 Forward Computing and Control Pty. Ltd. — see LICENSE.
 REM
-REM Builds pfodWeb.html from pfodWeb_src, builds pfodProxy.exe,
-REM and stages both into windows\
+REM Builds pfodProxy.exe and stages it into windows\
+REM Run build-pfodWeb.bat separately to build pfodWeb.html.
 
 cd /d "%~dp0"
 set ROOT=%~dp0
@@ -49,24 +49,7 @@ if %errorlevel% neq 0 (
 )
 
 REM ── Sync version from pfodWeb_src/version.js into Cargo.toml ─────────
-node -e "var fs=require('fs');var m=fs.readFileSync('%ROOT%pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('%ROOT%pfodProxy_rs/Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('%ROOT%pfodProxy_rs/Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
-
-REM ── Build pfodWeb.html ────────────────────────────────────────────────
-echo.
-echo Building pfodWeb.html ...
-echo.
-pushd "%ROOT%pfodWeb_src"
-node build-bundle.js
-set WEB_CODE=%errorlevel%
-popd
-if not "%WEB_CODE%"=="0" (
-    echo.
-    echo ----------------------------------------------------------------
-    echo pfodWeb build FAILED with code %WEB_CODE%
-    echo ----------------------------------------------------------------
-    pause
-    exit /b %WEB_CODE%
-)
+node -e "var fs=require('fs');var m=fs.readFileSync('pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('pfodProxy_rs/Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('pfodProxy_rs/Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
 
 REM ── Build pfodProxy.exe ───────────────────────────────────────────────
 echo.
@@ -88,19 +71,6 @@ if not "%BUILD_CODE%"=="0" (
 REM ── Stage into windows\ ───────────────────────────────────────────────
 echo.
 echo Staging artifacts to %OUT%\ ...
-
-copy /Y "%ROOT%pfodWeb.html" "%OUT%\pfodWeb.html" >nul
-if errorlevel 1 (
-    echo ERROR: could not copy pfodWeb.html
-    pause
-    exit /b 1
-)
-echo   - pfodWeb.html
-
-REM Remove the temp copy left in the repo root by build-bundle.js now that
-REM it's been staged into windows\ — only windows\pfodWeb.html is the
-REM deliverable for this script.
-del /Q "%ROOT%pfodWeb.html" >nul 2>nul
 
 copy /Y "%ROOT%pfodProxy_rs\target\release\pfodProxy.exe" "%OUT%\pfodProxy.exe" >nul
 if errorlevel 1 (
@@ -155,25 +125,6 @@ echo echo Double-click it any time to start pfodProxy.>>"%SHORTCUT_BAT%"
 echo echo.>>"%SHORTCUT_BAT%"
 echo pause>>"%SHORTCUT_BAT%"
 echo   - create-desktop-shortcut.bat
-
-if exist "%ROOT%extraFonts" (
-    xcopy /Y /I /E "%ROOT%extraFonts" "%OUT%\extraFonts" >nul
-    if errorlevel 1 (
-        echo ERROR: could not copy extraFonts\
-        pause
-        exit /b 1
-    )
-    echo   - extraFonts\
-    if exist "%ROOT%docs\pfodWeb-extraFonts-guide.html" (
-        copy /Y "%ROOT%docs\pfodWeb-extraFonts-guide.html" "%OUT%\extraFonts\pfodWeb-extraFonts-guide.html" >nul
-        if errorlevel 1 (
-            echo ERROR: could not copy pfodWeb-extraFonts-guide.html
-            pause
-            exit /b 1
-        )
-        echo   - extraFonts\pfodWeb-extraFonts-guide.html
-    )
-)
 
 echo.
 echo ================================================================

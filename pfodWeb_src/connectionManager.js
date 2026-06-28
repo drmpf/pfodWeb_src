@@ -1008,6 +1008,12 @@ class HTTPConnection extends PfodConnectionBase {
           this.timeoutId = null;
         }
 
+        // Any HTTP response body — even empty — signals the connection is alive.
+        // Fire immediately so CSV polling starts without waiting for a valid pfod reply.
+        if (this._respCallbacks && typeof this._respCallbacks.onAnyResponseReceived === 'function') {
+          this._respCallbacks.onAnyResponseReceived();
+        }
+
         console.log(`[HTTP_CONNECTION] Response received (${responseText.length} bytes)`);
 
         // Feed plain-text response through shared pipeline:

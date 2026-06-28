@@ -36,17 +36,17 @@ use axum::{
     routing::get,
     Router,
 };
-use bytes::Bytes;
+// use bytes::Bytes;
 use tokio::net::TcpListener;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    // --no-browser suppresses the automatic browser open on startup and on
-    // single-instance re-launch.  Pass it when a wrapper script (e.g.
-    // run-pfodWeb-firefox.bat) handles browser opening itself.
-    let no_browser = args.iter().any(|a| a == "--no-browser");
+    // // --no-browser suppresses the automatic browser open on startup and on
+    // // single-instance re-launch.  Pass it when a wrapper script (e.g.
+    // // run-pfodWeb-firefox.bat) handles browser opening itself.
+    // let no_browser = args.iter().any(|a| a == "--no-browser");
 
     let http_port: u16 = args.iter()
         .skip(1)
@@ -63,22 +63,14 @@ async fn main() {
     // already bound to our HTTP port.  Pre-flight bind beats a real
     // failed serve_forever for readable diagnostics.
     if connect_probe(http_port).await {
-        // pfodProxy is already running on this port — re-open the browser
-        // to the existing instance instead of showing an error.  This is
-        // the normal path when the user closes the browser tab and then
-        // re-launches pfodWeb.app / pfodProxy.exe.
-        if no_browser {
-            log::log(&format!(
-                "[pfodProxy] Already running on port {} — --no-browser set, skipping browser open.",
-                http_port
-            ));
-        } else {
-            log::log(&format!(
-                "[pfodProxy] Already running on port {} — opening pfodWeb in browser.",
-                http_port
-            ));
-            open_pfodweb(http_port);
-        }
+        log::log(&format!("[pfodProxy] Already running on port {}.", http_port));
+        // // pfodProxy is already running — re-open the browser to the existing instance.
+        // if no_browser {
+        //     log::log(&format!("[pfodProxy] Already running on port {} — --no-browser set, skipping browser open.", http_port));
+        // } else {
+        //     log::log(&format!("[pfodProxy] Already running on port {} — opening pfodWeb in browser.", http_port));
+        //     open_pfodweb(http_port);
+        // }
         std::process::exit(0);
     }
 
@@ -151,58 +143,58 @@ async fn main() {
         }
     });
 
-    // Load pfodWeb.html from next to the binary so it can be served at GET /.
-    // Opening http://127.0.0.1:{port}/ reliably launches the default browser
-    // even when Edge/Chrome is running as a background startup-boost process —
-    // http:// is a registered Windows protocol handler, file:// is not.
-    let pfodweb_html: Option<Bytes> = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("pfodWeb.html")))
-        .and_then(|p| std::fs::read(&p).ok().map(Bytes::from));
+    // // Load pfodWeb.html from next to the binary so it can be served at GET /.
+    // // Opening http://127.0.0.1:{port}/ reliably launches the default browser
+    // // even when Edge/Chrome is running as a background startup-boost process —
+    // // http:// is a registered Windows protocol handler, file:// is not.
+    // let pfodweb_html: Option<Bytes> = std::env::current_exe()
+    //     .ok()
+    //     .and_then(|p| p.parent().map(|d| d.join("pfodWeb.html")))
+    //     .and_then(|p| std::fs::read(&p).ok().map(Bytes::from));
+    //
+    // let pfodweb_found = pfodweb_html.is_some();
+    // let root_html: Bytes = match pfodweb_html {
+    //     Some(html) => html,
+    //     None => {
+    //         log::log(
+    //             "[pfodProxy] !! pfodWeb.html not found in same directory as pfodProxy.  \
+    //              Open pfodWeb.html separately."
+    //         );
+    //         Bytes::from(
+    //             r#"<!DOCTYPE html><html><head><meta charset="utf-8">
+    // <title>pfodWeb not found</title>
+    // <style>body{font-family:sans-serif;padding:2em;max-width:600px;margin:auto}</style>
+    // </head><body>
+    // <h2>pfodWeb.html not found</h2>
+    // <p><strong>pfodWeb.html</strong> was not found in the same directory as pfodProxy.</p>
+    // <p>Place <code>pfodWeb.html</code> next to the <code>pfodProxy</code> executable
+    // and restart pfodProxy, or open <code>pfodWeb.html</code> manually in your browser.</p>
+    // </body></html>"#,
+    //         )
+    //     }
+    // };
 
-    let root_html: Bytes = match pfodweb_html {
-        Some(html) => html,
-        None => {
-            log::log(&format!(
-                "[pfodProxy] WARNING: pfodWeb.html not found next to binary — \
-                 open http://127.0.0.1:{}/ manually",
-                http_port
-            ));
-            Bytes::from(
-                r#"<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>pfodWeb not found</title>
-<style>body{font-family:sans-serif;padding:2em;max-width:600px;margin:auto}</style>
-</head><body>
-<h2>pfodWeb.html not found</h2>
-<p><strong>pfodWeb.html</strong> was not found in the same directory as pfodProxy.</p>
-<p>Place <code>pfodWeb.html</code> next to the <code>pfodProxy</code> executable
-and restart pfodProxy, or open <code>pfodWeb.html</code> manually in your browser.</p>
-</body></html>"#,
-            )
-        }
-    };
-
-    let mut router = Router::new()
+    let router = Router::new()
         .route("/pfodWeb", get(handle_get))
         .route("/ping", get(handle_ping))
         .route("/shutdown", get(handle_shutdown));
 
-    router = router.route("/", get(move || {
-        let html = root_html.clone();
-        async move {
-            axum::response::Response::builder()
-                .header("content-type", "text/html; charset=utf-8")
-                .body(axum::body::Body::from(html))
-                .unwrap()
-        }
-    }));
+    // router = router.route("/", get(move || {
+    //     let html = root_html.clone();
+    //     async move {
+    //         axum::response::Response::builder()
+    //             .header("content-type", "text/html; charset=utf-8")
+    //             .body(axum::body::Body::from(html))
+    //             .unwrap()
+    //     }
+    // }));
 
-    // Generic static-file route — serves any other file found next to the
-    // binary (e.g. extraFonts/pfodweb-extra-fonts.css and the woff2 files it
-    // references), mirroring how pfodWebServer.js serves arbitrary files by
-    // path. A missing file here returns a plain 404 — the friendly
-    // "pfodWeb.html not found" page above stays exclusive to `/`.
-    router = router.fallback(serve_static);
+    // // Generic static-file route — serves any other file found next to the
+    // // binary (e.g. extraFonts/pfodweb-extra-fonts.css and the woff2 files it
+    // // references), mirroring how pfodWebServer.js serves arbitrary files by
+    // // path. A missing file here returns a plain 404 — the friendly
+    // // "pfodWeb.html not found" page above stays exclusive to `/`.
+    // router = router.fallback(serve_static);
 
     let app = router
         .with_state(app_state)
@@ -216,61 +208,61 @@ and restart pfodProxy, or open <code>pfodWeb.html</code> manually in your browse
         .unwrap_or_else(|e| panic!("[pfodProxy] bind {addr} failed: {e}"));
     log::log(&format!("[pfodProxy] Listening on http://{addr}"));
 
-    if !no_browser {
-        open_pfodweb(http_port);
-    }
+    // if !no_browser && pfodweb_found {
+    //     open_pfodweb(http_port);
+    // }
 
     axum::serve(listener, app)
         .await
         .expect("[pfodProxy] server crashed");
 }
 
-/// Serves any file found next to the pfodProxy binary, by request path
-/// (e.g. GET /extraFonts/pfodweb-extra-fonts.css). Used for optional
-/// resources — like the extraFonts subdirectory — that pfodWeb.html
-/// references but that aren't baked into the binary. Returns a plain 404
-/// when the file doesn't exist; this is deliberately NOT the friendly
-/// "pfodWeb.html not found" HTML page, which is specific to the `/` route.
-async fn serve_static(req: Request) -> impl IntoResponse {
-    let path = req.uri().path();
+// /// Serves any file found next to the pfodProxy binary, by request path
+// /// (e.g. GET /extraFonts/pfodweb-extra-fonts.css). Used for optional
+// /// resources — like the extraFonts subdirectory — that pfodWeb.html
+// /// references but that aren't baked into the binary. Returns a plain 404
+// /// when the file doesn't exist; this is deliberately NOT the friendly
+// /// "pfodWeb.html not found" HTML page, which is specific to the `/` route.
+// async fn serve_static(req: Request) -> impl IntoResponse {
+//     let path = req.uri().path();
+//
+//     // Reject ".." path segments so requests can't escape the binary's
+//     // directory (e.g. /../../secrets.txt).
+//     if path.split('/').any(|seg| seg == "..") {
+//         return (StatusCode::FORBIDDEN, "forbidden").into_response();
+//     }
+//
+//     let exe_dir = match std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+//         Some(d) => d,
+//         None => return (StatusCode::NOT_FOUND, "not found").into_response(),
+//     };
+//
+//     let file_path = exe_dir.join(path.trim_start_matches('/'));
+//
+//     match tokio::fs::read(&file_path).await {
+//         Ok(bytes) => axum::response::Response::builder()
+//             .header(header::CONTENT_TYPE, guess_content_type(&file_path))
+//             .body(axum::body::Body::from(bytes))
+//             .unwrap(),
+//         Err(_) => (StatusCode::NOT_FOUND, "not found").into_response(),
+//     }
+// }
 
-    // Reject ".." path segments so requests can't escape the binary's
-    // directory (e.g. /../../secrets.txt).
-    if path.split('/').any(|seg| seg == "..") {
-        return (StatusCode::FORBIDDEN, "forbidden").into_response();
-    }
-
-    let exe_dir = match std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-        Some(d) => d,
-        None => return (StatusCode::NOT_FOUND, "not found").into_response(),
-    };
-
-    let file_path = exe_dir.join(path.trim_start_matches('/'));
-
-    match tokio::fs::read(&file_path).await {
-        Ok(bytes) => axum::response::Response::builder()
-            .header(header::CONTENT_TYPE, guess_content_type(&file_path))
-            .body(axum::body::Body::from(bytes))
-            .unwrap(),
-        Err(_) => (StatusCode::NOT_FOUND, "not found").into_response(),
-    }
-}
-
-/// Minimal extension-to-MIME map covering the file types pfodWeb ships
-/// (fonts, stylesheets, scripts) plus common static-asset types.
-fn guess_content_type(path: &std::path::Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("css") => "text/css; charset=utf-8",
-        Some("js") => "text/javascript; charset=utf-8",
-        Some("woff2") => "font/woff2",
-        Some("html") => "text/html; charset=utf-8",
-        Some("json") => "application/json; charset=utf-8",
-        Some("ico") => "image/x-icon",
-        Some("png") => "image/png",
-        Some("svg") => "image/svg+xml",
-        _ => "application/octet-stream",
-    }
-}
+// /// Minimal extension-to-MIME map covering the file types pfodWeb ships
+// /// (fonts, stylesheets, scripts) plus common static-asset types.
+// fn guess_content_type(path: &std::path::Path) -> &'static str {
+//     match path.extension().and_then(|e| e.to_str()) {
+//         Some("css") => "text/css; charset=utf-8",
+//         Some("js") => "text/javascript; charset=utf-8",
+//         Some("woff2") => "font/woff2",
+//         Some("html") => "text/html; charset=utf-8",
+//         Some("json") => "application/json; charset=utf-8",
+//         Some("ico") => "image/x-icon",
+//         Some("png") => "image/png",
+//         Some("svg") => "image/svg+xml",
+//         _ => "application/octet-stream",
+//     }
+// }
 
 /// Trivial liveness check — pfodCommon.html's checkProxyAvailability()
 /// (the initial check, the 5s heartbeat poll, and the pre-reload check in
@@ -460,26 +452,26 @@ fn print_banner(http_port: u16) {
     println!();
 }
 
-/// Open http://127.0.0.1:{port}/ in the default browser.
-/// Using an http:// URL (rather than a file:// path) means Windows routes it
-/// through the registered http protocol handler, which reliably opens a new
-/// browser window even when Edge/Chrome is running as a background process.
-fn open_pfodweb(port: u16) {
-    let url = format!("http://127.0.0.1:{port}/");
-
-    #[cfg(windows)]
-    let result = std::process::Command::new("cmd")
-        .args(["/C", "start", "", &url])
-        .spawn()
-        .map(|_| ());
-
-    #[cfg(not(windows))]
-    let result = open::that(&url);
-
-    match result {
-        Ok(_) => log::log(&format!("[pfodProxy] Opening pfodWeb at {url}")),
-        Err(e) => log::log(&format!(
-            "[pfodProxy] WARNING: could not open browser ({e}) — open manually: {url}"
-        )),
-    }
-}
+// /// Open http://127.0.0.1:{port}/ in the default browser.
+// /// Using an http:// URL (rather than a file:// path) means Windows routes it
+// /// through the registered http protocol handler, which reliably opens a new
+// /// browser window even when Edge/Chrome is running as a background process.
+// fn open_pfodweb(port: u16) {
+//     let url = format!("http://127.0.0.1:{port}/");
+//
+//     #[cfg(windows)]
+//     let result = std::process::Command::new("cmd")
+//         .args(["/C", "start", "", &url])
+//         .spawn()
+//         .map(|_| ());
+//
+//     #[cfg(not(windows))]
+//     let result = open::that(&url);
+//
+//     match result {
+//         Ok(_) => log::log(&format!("[pfodProxy] Opening pfodWeb at {url}")),
+//         Err(e) => log::log(&format!(
+//             "[pfodProxy] WARNING: could not open browser ({e}) — open manually: {url}"
+//         )),
+//     }
+// }

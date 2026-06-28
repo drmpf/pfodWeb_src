@@ -133,7 +133,7 @@ const REQUIRED_BOARD_FIELDS = [
 /// Parsers known to this script — values that may appear in board.json's
 /// `family` field.  Adding support for a new MCU family means writing a
 /// build<Family>Board() function and registering its key here.
-const SUPPORTED_FAMILIES = new Set(['avr', 'esp32']);
+const SUPPORTED_FAMILIES = new Set(['ccode', 'avr', 'esp32']);
 
 /// Strip JSONC-style `//` line comments and `/* ... */` block comments
 /// from a text payload so the result is plain JSON ready for JSON.parse.
@@ -668,6 +668,26 @@ function buildEsp32Board(src, cfg) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// "Minimal C Code" parser — no Arduino core, no GPIOs
+// ──────────────────────────────────────────────────────────────────────
+
+/// Build a board JSON descriptor for the "Minimal C Code" target.  This
+/// family has no pin map at all — pins_arduino.h is a stub kept only so
+/// variant discovery finds the directory; its contents are not parsed.
+/// The board always reports zero pins, so the Designer's I/O-pin picker
+/// has nothing to offer and disables itself (see editMenuItem.js).
+function buildCcodeBoard(src, cfg) {
+  return {
+    name:        cfg.displayName,
+    connections: _buildConnectionsBlock(cfg, ['Serial']),
+    pwm:         cfg.pwm,
+    dac:         cfg.dac,
+    adc:         cfg.adc,
+    pins:        [],
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Variant discovery
 // ──────────────────────────────────────────────────────────────────────
 
@@ -826,6 +846,50 @@ function discoverVariants() {
     return cfgCache.get(cfgPath);
   };
 
+  // Default position in the Designer's family picker for a family.json
+  // that omits `sortOrder` — high enough that any family with an
+  // explicit (lower) sortOrder sorts ahead of it.
+  const DEFAULT_FAMILY_SORT_ORDER = 100;
+
+  // Cache family.json parses.  One of these sits at the root of each
+  // family's directory tree (e.g. variants/arduino/avr/family.json,
+  // variants/esp32/family.json, variants/ccode/family.json) and supplies
+  // the human-readable name + picker position build-bundle.js /
+  // boardSelector.js use for that family (e.g. {"familyDisplayName":
+  // "Arduino", "sortOrder": 100}).  Falls back to the raw board.json
+  // `family` id / default sort order when no family.json is found on
+  // the ancestor path — keeps a brand-new family directory buildable
+  // even before its family.json is added.
+  const familyConfigCache = new Map();
+  const loadFamilyConfig = (dir, fallbackName) => {
+    const famPath = nearestAncestorFile(dir, 'family.json');
+    if (famPath === null) {
+      return { familyDisplayName: fallbackName, familySortOrder: DEFAULT_FAMILY_SORT_ORDER };
+    }
+    if (!familyConfigCache.has(famPath)) {
+      let result = { familyDisplayName: fallbackName, familySortOrder: DEFAULT_FAMILY_SORT_ORDER };
+      try {
+        const parsed = JSON.parse(stripJsonComments(fs.readFileSync(famPath, 'utf8')));
+        if (typeof parsed.familyDisplayName === 'string' && parsed.familyDisplayName) {
+          result.familyDisplayName = parsed.familyDisplayName;
+        } else {
+          _reportConfigIssues(famPath, ['missing or empty field: familyDisplayName']);
+        }
+        if (parsed.sortOrder !== undefined) {
+          if (typeof parsed.sortOrder === 'number') {
+            result.familySortOrder = parsed.sortOrder;
+          } else {
+            _reportConfigIssues(famPath, ['field "sortOrder" must be a number']);
+          }
+        }
+      } catch (e) {
+        _reportConfigIssues(famPath, ['invalid JSON: ' + e.message]);
+      }
+      familyConfigCache.set(famPath, result);
+    }
+    return familyConfigCache.get(famPath);
+  };
+
   // Search `dir` and each ancestor up to (and including) variantsRoot
   // for a named file.  Returns the absolute path or null if not found.
   const nearestAncestorFile = (dir, fileName) => {
@@ -894,6 +958,8 @@ function discoverVariants() {
                      ? path.basename(path.dirname(boardsTxt))
                      : cfg.family;
 
+        const { familyDisplayName, familySortOrder } = loadFamilyConfig(dir, cfg.family);
+
         if (hits.length > 0) {
           // Clone so per-board boardName / displayName do not leak across
           // boards sharing the same chip-level board.json.
@@ -903,11 +969,13 @@ function discoverVariants() {
               boardName:   hit.id,
               displayName: hit.name,
               prefix,
+              familyDisplayName,
+              familySortOrder,
             }));
           }
         } else {
           // No boards.txt match — use the board.json fallback values.
-          out.push(Object.assign({}, cfg, { variantPath: p, prefix }));
+          out.push(Object.assign({}, cfg, { variantPath: p, prefix, familyDisplayName, familySortOrder }));
         }
       }
     }
@@ -941,15 +1009,18 @@ function main() {
   for (const cfg of boards) {
     const src = resolveIncludes(fs.readFileSync(cfg.variantPath, 'utf8'), cfg.variantPath);
 
-    const board = (cfg.family === 'esp32')
-                ? buildEsp32Board(src, cfg)
+    const board = (cfg.family === 'esp32') ? buildEsp32Board(src, cfg)
+                : (cfg.family === 'ccode') ? buildCcodeBoard(src, cfg)
                 : buildAvrBoard(src, cfg);
 
-    // Embed family and chip so build-bundle.js can build the board hierarchy
-    // directly from the generated JSONs without reading ../variants/ at all.
-    // chip = the directory two levels above pins_arduino.h (e.g. "esp32c3", "avr").
-    board.family = cfg.family;
-    board.chip   = path.basename(path.dirname(path.dirname(cfg.variantPath)));
+    // Embed family, chip and the family's display name so build-bundle.js
+    // can build the board hierarchy directly from the generated JSONs
+    // without reading ../variants/ at all.  chip = the directory two
+    // levels above pins_arduino.h (e.g. "esp32c3", "avr").
+    board.family            = cfg.family;
+    board.chip              = path.basename(path.dirname(path.dirname(cfg.variantPath)));
+    board.familyDisplayName = cfg.familyDisplayName;
+    board.familySortOrder   = cfg.familySortOrder;
 
     const outName = cfg.prefix + '_' + cfg.boardName;
     const outDir  = path.join(outBase, outName);

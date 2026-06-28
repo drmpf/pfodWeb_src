@@ -103,6 +103,11 @@ const BoardLoader = (() => {
 
     const board     = new BaseBoard(data.name);
     board.pins      = data.pins.map(_hydratePin);
+    // family/chip identify which parser/generator the board belongs to
+    // (e.g. 'ccode' for the Minimal C Code target) — generateCode.js's
+    // dispatch branches on board.family to pick the right code generator.
+    board.family    = data.family || null;
+    board.chip      = data.chip   || null;
     // Deep-freeze each per-transport sub-object so editMenu / future
     // protocol-switch UI can pass them around without defensive cloning.
     const conns = {};

@@ -3,7 +3,9 @@
 // Depends on: nothing
 // Called by:  pfodWeb.js (reads window.JS_VERSION on load and stores in this.js_ver,
 //             logs version after bundle load)
-  var JS_VERSION = "V4.0.0 -- 22nd June 2026";
+  var JS_VERSION = "V4.0.1 -- 26nd June 2026";
+// V4.0.1 added Minimal C Code target
+// V4.0.0 added Designer
 // V3.1.0 added menu items
 // V3.0.8 combined .js files to reduce downloads, added Chart Config
 // V3.0.7 added Chart Only option

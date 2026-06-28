@@ -167,7 +167,7 @@
                 <!-- Serial Settings -->
                 <div id="serial-settings" class="protocol-section">
                     <!-- COM port selection row: selected port label on left, picker button beside it -->
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin:5px 0;">
                         <span id="serial-port-label" style="font-size:16px; color:#888; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 0; min-width:0;">No port selected</span>
                         <button id="select-com-port-btn" type="button" onclick="pickSerialPort()" style="white-space:nowrap; flex:0 0 auto;">Select COM Port</button>
                     </div>
@@ -188,7 +188,7 @@
                 <!-- BLE Settings -->
                 <div id="ble-settings" class="protocol-section">
                     <!-- BLE device selection row: selected device label on left, picker button beside it -->
-                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin:5px 0 10px 0;">
                         <span id="ble-device-label" style="font-size:16px; color:#888; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 0; min-width:0;">No device selected</span>
                         <button id="select-ble-device-btn" type="button" onclick="pickBleDevice()" style="white-space:nowrap; flex:0 0 auto;">Select BLE Device</button>
                     </div>
@@ -221,7 +221,7 @@
                      HTTP but the port defaults to 4989 and the request is
                      routed through the proxy. -->
                 <div id="tcp-settings" class="protocol-section">
-                    <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
+                    <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin:5px 0;">
                         <label for="prompt-tcp-ip" style="white-space:nowrap;">IP Address:</label>
                         <input type="text" id="prompt-tcp-ip" placeholder="192.168.1.100:4989" maxlength="50">
                     </div>
@@ -246,13 +246,11 @@
                      pfodProxy" line is just an extra explanation shown alongside the
                      field while unreachable, not a replacement for it. -->
                 <div id="proxy-via-section" style="margin:4px 0; padding:4px 8px; background:#fff7e6; border:1px solid #f0c050; border-radius:4px;">
-                    <label for="prompt-proxy-port" style="margin-right:8px;">via pfodProxy port:</label>
+                    <label for="prompt-proxy-port" id="proxy-port-label" style="margin-right:8px;">pfodProxy port:</label>
+                    <span id="proxy-not-running-label" style="color:red; font-weight:bold; margin-right:8px; display:none;">pfodProxy not running at:</span>
                     <input type="text" id="prompt-proxy-port" value="4989" style="width:70px;" maxlength="5" inputmode="numeric">
                     <a href="#" onclick="openPfodProxyInstructions();return false;" style="margin-left:12px; font-size:13px; white-space:nowrap;">pfodProxy Instructions</a>
-                    <div id="proxy-via-unavailable" style="display:none;">
-                        <div>For Serial, BLE, TCP/IP Start pfodProxy</div>
-                        <div style="font-size:13px;">(or correct the port number above)</div>
-                    </div>
+                    <div id="proxy-start-hint" style="display:none; font-size:13px; margin-top:2px;">Start pfodProxy for Serial, BLE and TCP/IP connections.</div>
                 </div>
 
                 <!-- Response Timeout: HTTP default 10s, Serial/BLE default 3s.
@@ -292,7 +290,7 @@
                 <div id="chart-option-container" style="margin: 8px 0; padding: 6px 10px; background-color: #f0f8ff; border: 1px solid #87ceeb; border-radius: 4px;">
                     <div class="protocol-option">
                         <input type="checkbox" id="chart-only-checkbox" name="chart-mode">
-                        <label for="chart-only-checkbox">Chart Only Mode -- Opens chart of streaming csv data</label>
+                        <label for="chart-only-checkbox">Chart Only Mode -- <span style="font-size:75%;">Opens chart of streaming csv data</span></label>
                     </div>
                 </div>
 
@@ -300,7 +298,7 @@
                 <div id="debug-option-container" style="margin: 8px 0; padding: 6px 10px; background-color: #f5f5f5; border: 1px solid #ccc; border-radius: 4px;">
                     <div class="protocol-option">
                         <input type="checkbox" id="debug-checkbox" name="debug-mode">
-                        <label for="debug-checkbox">Debug logging -- Open browser DevTools to view</label>
+                        <label for="debug-checkbox">Debug logging -- <span style="font-size:75%;">Open browser DevTools to view</span></label>
                     </div>
                 </div>
 
@@ -753,17 +751,30 @@
             if (connectButton) {
                 const proxyUsed = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
                 connectButton.textContent = (protocol === 'designer') ? 'Open Designer'
-                                          : proxyUsed                 ? 'Connect by pfodProxy'
+                                          : proxyUsed                 ? 'Connect via pfodProxy'
                                           :                             'Connect';
             }
 
             validateConnectButton();
+            // Re-apply field disabled state after every protocol switch —
+            // timeout enable/disable is per-protocol, so it must be
+            // re-evaluated here (not only when proxy availability changes).
+            _setWireProtocolFieldsDisabled(!_proxyAvailable);
         }
 
-        // Validate connect button state
+        // Validate connect button state.
+        // Wire-protocol connections (serial / BLE / TCP) always go via
+        // pfodProxy, so the button is disabled if the proxy is not running
+        // regardless of any other field state.
         function validateConnectButton() {
             const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
             const connectButton = document.getElementById('connect-button');
+            const isWireProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
+
+            if (isWireProtocol && !_proxyAvailable) {
+                connectButton.disabled = true;
+                return;
+            }
 
             if (protocol === 'http') {
                 const ip = document.getElementById('prompt-ip').value.trim();
@@ -1061,53 +1072,83 @@
                 && !!window.location.port;
         }
 
-        // Applies an availability result to the UI: enables/disables the
-        // three proxy-dependent radios and refreshes the shared proxy box.
+        // Disables or enables the input fields that require pfodProxy to be
+        // running (serial COM-port picker button + baud selector, BLE device
+        // picker button, TCP/IP address field, and the timeout dropdown when
+        // a wire protocol is active).  The radio buttons themselves are NOT
+        // touched — the user can still switch between protocols while the
+        // proxy is stopped — but the fields they control are inert until the
+        // proxy is reachable.
+        // Called from _applyProxyAvailability() on every availability change
+        // and from updatePromptUI() on every protocol switch so the timeout
+        // enable/disable stays correct when the protocol changes while the
+        // proxy is already down.
+        function _setWireProtocolFieldsDisabled(disabled) {
+            ['select-com-port-btn', 'prompt-baud', 'select-ble-device-btn', 'prompt-tcp-ip', 'prompt-keepalive'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.disabled = disabled;
+            });
+            // Timeout is shared across HTTP and wire protocols (hidden only for
+            // Designer).  Only disable it when a wire protocol that needs the
+            // proxy is active — HTTP timeout stays interactive even when proxy
+            // is stopped.
+            const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
+            const isWireProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
+            const timeoutEl = document.getElementById('prompt-timeout');
+            if (timeoutEl) timeoutEl.disabled = disabled && isWireProtocol;
+            // Port/device label spans cannot carry the HTML disabled attribute.
+            // Apply grey text directly.  When re-enabling, restore the color
+            // that _updateSerialPortDisplay / _updateBleDeviceDisplay would set:
+            // bold #222 for a selected item, italic #888 for none.
+            const serialLabel = document.getElementById('serial-port-label');
+            if (serialLabel) serialLabel.style.color = (disabled || !_serialPortState.path) ? '#888' : '#222';
+            const bleLabel = document.getElementById('ble-device-label');
+            if (bleLabel) bleLabel.style.color = (disabled || !_bleDeviceState.address) ? '#888' : '#222';
+        }
+
+        // Applies an availability result to the UI: disables/enables the
+        // proxy-dependent input fields (but NOT the radio buttons), refreshes
+        // the shared proxy box, and re-validates the Connect button.
         // Called after every ping, from whichever trigger (page load,
         // protocol switch, the 5s heartbeat poll, or a failed Connect
         // attempt) detected a change.
         //
         // Deliberately does NOT force-switch the checked radio to HTTP (or
         // touch the URL) when one of the three is selected but unavailable
-        // — a disabled-but-checked radio renders fine, and the alternative
-        // (this function used to do it) actively corrupted state: a single
-        // transient failed ping — e.g. right after Exit's reload, before
-        // the proxy has finished cleaning up the previous session — would
-        // silently swap the user's actual Serial/BLE/TCP-IP selection over
-        // to HTTP and rewrite the address bar from whatever stale IP was
-        // last saved for HTTP, with no action from the user at all. That
-        // also broke the various "Cannot reach pfodProxy ... then refresh
-        // this page" messages, since refreshing only lands back on the
-        // right connection if the URL was never changed out from under it.
-        // connectWithPrompt() already does its own fresh pre-flight ping
-        // right before actually connecting, which is the point that
-        // matters for catching a genuinely-dead proxy.
+        // — keeping the selection stable means refreshing the page after
+        // starting pfodProxy lands back on the right connection without
+        // the user having to re-select the protocol.
+        // connectWithPrompt() does its own fresh pre-flight ping right before
+        // actually connecting, which is the point that matters for catching a
+        // genuinely-dead proxy.
         function _applyProxyAvailability(available) {
             _proxyAvailable = available;
-            ['prompt-protocol-serial', 'prompt-protocol-ble', 'prompt-protocol-tcp'].forEach(function(id) {
-                const radio = document.getElementById(id);
-                if (radio) radio.disabled = !available;
-            });
+            _setWireProtocolFieldsDisabled(!available);
             _updateProxyViaVisibility();
+            validateConnectButton();
         }
 
-        // Shows the shared proxy box whenever the proxy is unavailable
-        // (explaining the grayed-out radios, regardless of which protocol
-        // is currently selected) or whenever it's available AND one of the
-        // three protocols that need it is selected; picks which of its two
-        // child blocks (port field vs. "Start pfodProxy") is visible.
+        // Shows the shared proxy box only when a wire protocol (Serial / BLE /
+        // TCP) is selected — HTTP and Designer never need the proxy and should
+        // not see the port field or the "Start pfodProxy" hint even when the
+        // proxy is not running.  Within the box, picks which child block is
+        // visible: normal label when running, red "not running" label + start
+        // hint when stopped.
         function _updateProxyViaVisibility() {
             const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
             const isWireProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
             const section = document.getElementById('proxy-via-section');
-            if (section) section.style.display = (!_proxyAvailable || isWireProtocol) ? 'block' : 'none';
+            if (section) section.style.display = isWireProtocol ? 'block' : 'none';
 
-            // The port field (and instructions link) are part of the section
-            // itself now, not a separate child block — always visible
-            // whenever the section is, so a wrong port guess can still be
-            // corrected. Only this explanatory line is conditional.
-            const unavailableBlock = document.getElementById('proxy-via-unavailable');
-            if (unavailableBlock) unavailableBlock.style.display = _proxyAvailable ? 'none' : '';
+            // Toggle label: "pfodProxy port:" when running, red
+            // "pfodProxy not running" when not — port input stays visible
+            // either way so the user can correct a wrong port guess.
+            const portLabel = document.getElementById('proxy-port-label');
+            const notRunningLabel = document.getElementById('proxy-not-running-label');
+            if (portLabel) portLabel.style.display = _proxyAvailable ? '' : 'none';
+            if (notRunningLabel) notRunningLabel.style.display = _proxyAvailable ? 'none' : '';
+            const startHint = document.getElementById('proxy-start-hint');
+            if (startHint) startHint.style.display = _proxyAvailable ? 'none' : '';
 
             // "Close pfodProxy" -- only while a proxy is actually reachable
             // (nothing to close otherwise) and never in the data build,

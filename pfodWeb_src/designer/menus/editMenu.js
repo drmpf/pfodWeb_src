@@ -108,11 +108,26 @@ const DesignerEditMenu = (() => {
 
     // ── Connection row ────────────────────────────────────────────
     // Only shown for the root menu — the connection applies to the
-    // whole design, not to individual sub-menus.
+    // whole design, not to individual sub-menus.  The connection/baud
+    // picker is not meaningful for the Minimal C Code target (no real
+    // transport negotiation — supportedBauds is empty), so this renders
+    // as a pfod Label there instead — a distinct item TYPE from Button,
+    // not "a button with disabled styling".  '|!<cmd>...' is how a
+    // Label is denoted on the wire (pfodMenuParser.js: a leading '!'
+    // sets itemType = 'label' outright); it never sends a cmd, full
+    // stop, regardless of background colour.  Keeps the same blue
+    // background the live Button used — DESIGNER_DISABLED_FMT's dark
+    // navy is for an actual Button that's temporarily unusable (e.g.
+    // Move/Delete with too few items), which doesn't apply here.
     if (!isInSubmenu) {
-      out += '|' + EM_EDIT_CONNECTION_CMD + DESIGNER_MENU_FMT + '<bg bl>';
-      out += '~<-1>Connection <b>' + connectionSummary + '</b>';
-      out += '\n<-2>' + EM_HINT_COLOUR + '<i>Click here to change.';
+      if (state.board.family === 'ccode') {
+        out += '|!' + EM_EDIT_CONNECTION_CMD + '<bg bl>';
+        out += '~<-1>Target C Code\nvia Serial';
+      } else {
+        out += '|' + EM_EDIT_CONNECTION_CMD + DESIGNER_MENU_FMT + '<bg bl>';
+        out += '~<-1>Connection <b>' + connectionSummary + '</b>';
+        out += '\n<-2>' + EM_HINT_COLOUR + '<i>Click here to change.';
+      }
     }
 
     // ── Action rows ───────────────────────────────────────────────

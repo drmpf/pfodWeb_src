@@ -1,14 +1,28 @@
-# pfodWeb
+# pfodWeb / pfodProxy source repository
+
+<p align="center">
+
+![Europa](docs/Europa_md.jpg) &nbsp;&nbsp;&nbsp; ![WeatherStation](docs/WeatherStation_md.jpg)
+
+</p>
+<p align="center">
+
+![fieldsSet](docs/fieldsSet_md.jpg)
+
+</p>
 
 pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) client for controlling and monitoring Arduino, ESP32, 
 and other embedded devices from a browser — no app install, no internet, server access required. pfodWeb renders device-defined drawings, menus, 
 and charts, and talks to devices directly via HTTP and via Serial, BLE and TCP/IP using the **pfodProxy** bridge.
 
+The minimal Arduino [pfodParser library](https://github.com/drmpf/pfodParser) provides the device side support to display GUI's on pfodWeb and also the Android 
+[pfodApp](https://www.pfod.com.au/)
+
 pfodWeb includes a built-in Designer that lets you create menus and sub-meus of buttons, sliders and charts. pfodWeb charts include data logging and formatting options.   
 See the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
 
-pfodWeb is distributed as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in a browser. 
-It can also be served directly from the microprocessor itself for complete off-line stand alone deployment.
+pfodWeb is distributed as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in an off-line browser. 
+It can also be served from the microprocessor itself for complete off-line stand alone deployment.
 
 ## Repository Layout
 
@@ -18,35 +32,28 @@ It can also be served directly from the microprocessor itself for complete off-l
 | `pfodProxy_rs/` | Rust source for pfodProxy, the HTTP-to-device proxy (serial / TCP / BLE) that pfodWeb talks to for those connections. |
 | `data/` | Compressed (`.gz`) files to be served from the microprocessor's file system for stand alone deployment. |
 | `extraFonts/` | Optional supplementary font subsets (Cyrillic, Greek, etc.) loadable without rebuilding pfodWeb. |
-| `variants/` | Board definitions (`arduino/`, `esp32/`) used when generating code in the designer. |
+| `variants/` | Board definitions (`arduino/`, `esp32/`, etc) for designer, bundled in pfodWeb.html by the build. |
 | `docs/` | User guides and licensing documentation — see [docs/index.html](docs/index.html). |
-| `windows/`, `linux/`, `macOS/` | Staged, platform-specific build output (pfodWeb.html + pfodProxy binary), produced by the build scripts below. |
+| `pfodWeb/` | The built pfodWeb.html and extraFonts. This is the same for all browsers and operating systems |
+| `windows/`, `linux/`, `macOS/` | Platform-specific pfodProxy, produced by the build scripts below. |
 
 ## Building
 
-Each platform has a top-level build script that compiles `pfodProxy` (Rust) and bundles `pfodWeb.html` from `pfodWeb_src/`, staging the result into the matching output directory:
+Each platform has a top-level build script that compiles `pfodProxy` (Rust).   
+There is also a build for `pfodWeb.html` that is common to all platforms:
 
 | Platform | Script | Output |
 |---|---|---|
 | Windows | `windows-build.bat` | `windows/` |
 | Linux | `build-linux.bat` | `linux/` |
 | macOS | `build-macOSApp.sh` | `macOS/` |
+| all | `build-pfodWeb.bat / .sh` | `pfodWeb/` |
 
-Building pfodProxy requires the [Rust toolchain](https://rustup.rs/) (`cargo`).
+Building pfodProxy requires the [Rust toolchain](https://rustup.rs/) (`cargo`).  
+The macOS build is packaged as an installable app. See the detailed [macOS install instructions](https://www.forward.com.au/pfod/pfodWeb/pfodProxy/macOS/allow-pfodProxy-macOS.html).
 
-To rebuild just the standalone `pfodWeb.html` from source without the proxy:
-
-```sh
-cd pfodWeb_src
-node build-bundle.js
-```
-
-To regenerate the device-served `data/` bundles ( served from microprocessor itself for stand alone deployment):
-
-```sh
-build_data.bat   # Windows
-./build_data.sh  # Linux/macOS
-```
+To build the device-served `data/` bundle (served from microprocessor itself for stand alone deployment).   
+use `build_data.bat / .sh`  
 
 ## Documentation
 

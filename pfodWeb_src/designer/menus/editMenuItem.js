@@ -254,9 +254,16 @@ const DesignerEditMenuItem = (() => {
                      || item.type === 'pwm'
                      || item.type === 'datadisplay');
     if (itemHasPin) {
-      const pinLabel = item.pin ? 'Connected to ' + item.pin.name : 'Not connected to an I/O pin';
-      out += '|d' + EMI_IO_PIN_CMD + fmt1 + '~' + pinLabel;
-      out += '\n<-3>' + EM_HINT_COLOUR + '<i>Click here to change';
+      // Targets with no routable pins (e.g. the Minimal C Code board)
+      // have nothing for the picker to offer — disable the row instead
+      // of opening a picker with only "Not connected" in it.
+      const hasPins = state.board.pins.length > 0;
+      const pinLabel = !hasPins ? 'No I/O pins defined'
+                      : item.pin ? 'Connected to ' + item.pin.name
+                      : 'Not connected to an I/O pin';
+      const pinFmt = hasPins ? fmt1 : ('<-1>' + DESIGNER_DISABLED_FMT);
+      out += '|d' + EMI_IO_PIN_CMD + pinFmt + '~' + pinLabel;
+      if (hasPins) out += '\n<-3>' + EM_HINT_COLOUR + '<i>Click here to change';
     }
 
     // Change Item's Appearance — opens the sub-screen carrying

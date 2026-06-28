@@ -428,6 +428,15 @@ function _makeAutoCmd(type, text, existingItems) {
   }
 }
 
+/// Canonical 52-slot single-letter pfod cmd pool for the "Minimal C
+/// Code" target: 'A'..'Z' then 'a'..'z'.  Order matters — new letters
+/// are always handed out from this sequence (A-Z exhausted before any
+/// lowercase letter), and it must be an explicit array rather than
+/// char-code arithmetic since 'Z' -> 'a' is not contiguous in ASCII.
+const CCODE_CMD_POOL = Object.freeze(
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('')
+);
+
 // ── Tolerant load parsers ────────────────────────────────────────────
 //
 // Loading a saved design is intentionally lenient: each field is
@@ -539,6 +548,16 @@ function _parseItemTolerant(input, path, warnings) {
   } else {
     out.autoCmd = _makeAutoCmd(out.type, out.text, []);
     if ('autoCmd' in input) warnings.push(path + '.autoCmd: invalid — derived from type+text');
+  }
+
+  // ccodeCmd is optional and lazily assigned (see DesignerState.assignCcodeCmds) —
+  // only present once a design has been generated for the "Minimal C
+  // Code" target, so absence here is normal and not warned about.
+  used.add('ccodeCmd');
+  if (typeof input.ccodeCmd === 'string' && CCODE_CMD_POOL.indexOf(input.ccodeCmd) !== -1) {
+    out.ccodeCmd = input.ccodeCmd;
+  } else if ('ccodeCmd' in input) {
+    warnings.push(path + '.ccodeCmd: not a single A-Z/a-z letter — dropped, will be reassigned');
   }
 
   used.add('formats');
@@ -958,6 +977,60 @@ class DesignerState {
     }
     walk(this.rootMenu);
     return items;
+  }
+
+  /// Lazily assign a stable single-letter `ccodeCmd` to every item in
+  /// the whole design tree that doesn't have one yet.  Called only by
+  /// the "Minimal C Code" target's code generator — Arduino/ESP32
+  /// never call this, so their designs are unaffected and never hit
+  /// the 52-item ceiling below.
+  ///
+  /// Allocation rule (assign-only-if-missing; an item that already has
+  /// a letter is never revisited or reassigned):
+  ///   - Scan the whole tree once for every ccodeCmd already in use and
+  ///     the highest pool index among them (maxIdx, -1 if none yet).
+  ///   - For each item still missing ccodeCmd, in tree order: while
+  ///     maxIdx+1 is still within the 52-slot pool, hand out
+  ///     POOL[maxIdx+1] and bump maxIdx — a pure forward advance that
+  ///     never reuses a letter freed by a deleted item.  Only once the
+  ///     pool's tail ('z') has been handed out does it fall back to
+  ///     the lowest pool letter NOT currently in use (a gap left by a
+  ///     deleted item).
+  ///   - Throws if 52 distinct letters are already in use with no gaps
+  ///     left (i.e. more than 52 items need a letter).
+  /// Persists via save() if any item was actually assigned a letter.
+  assignCcodeCmds() {
+    const items = this.getAllItems();
+    const used  = new Set();
+    let maxIdx  = -1;
+    for (const it of items) {
+      if (it.ccodeCmd) {
+        used.add(it.ccodeCmd);
+        const idx = CCODE_CMD_POOL.indexOf(it.ccodeCmd);
+        if (idx > maxIdx) maxIdx = idx;
+      }
+    }
+    const nextLetter = () => {
+      if (maxIdx + 1 < CCODE_CMD_POOL.length) {
+        maxIdx += 1;
+        return CCODE_CMD_POOL[maxIdx];
+      }
+      for (const letter of CCODE_CMD_POOL) {
+        if (!used.has(letter)) return letter;
+      }
+      throw new Error('Minimal C Code target supports at most ' +
+                       CCODE_CMD_POOL.length + ' menu items needing a cmd letter');
+    };
+    let changed = false;
+    for (const it of items) {
+      if (!it.ccodeCmd) {
+        const letter = nextLetter();
+        it.ccodeCmd = letter;
+        used.add(letter);
+        changed = true;
+      }
+    }
+    if (changed) this.save();
   }
 
   // ── Persistence — single named design ───────────────────────────────

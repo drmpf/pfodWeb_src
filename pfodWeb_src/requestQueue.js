@@ -109,6 +109,7 @@ Object.assign(DrawingViewer.prototype, {
     // sees empty-cmd polls, no `\<refresh>` menu refreshes ever go out.
     if (request.requestType === 'dataRefresh') {
       this.dataRefreshActive = true; // Set synchronously before first await
+      let dataRefreshError = null;
       try {
         // Gate on adapter capability so SerialProxyConnection (which
         // inherits sendDataRefresh from HTTPConnection but reports
@@ -120,11 +121,28 @@ Object.assign(DrawingViewer.prototype, {
         }
       } catch (error) {
         console.warn('[DATAREFRESH] Error during dataRefresh:', error.message);
+        dataRefreshError = error;
       }
       this.dataRefreshActive = false;
       console.log(`[SENTREQUEST] CLEARED: "${request.cmd}" (${request.requestType}) - dataRefresh complete at ${new Date().toISOString()}`);
       this.sentRequest = null;
-      this.scheduleDataRefresh();
+      if (dataRefreshError) {
+        // Network failure or HTTP error during polling (distinct from {.} getting no pfod
+        // response — here the connection itself is down).  Stop polling and alert.
+        // Polling restarts automatically when any subsequent cmd response is received.
+        pfodAlert(
+          `Connection lost — device stopped responding during data polling.\n\n` +
+          `${dataRefreshError.message}\n\n` +
+          `You can:\n` +
+          `• Click "Close" to dismiss this alert\n` +
+          `• Use the pfodWeb toolbar's reload button to reconnect\n` +
+          `• Use the pfodWeb toolbar's back button to go back`,
+          () => { console.log('[DATAREFRESH] User closed connection-lost alert'); }
+        );
+        // Do not reschedule — polling stopped; restarts on next successful cmd response
+      } else {
+        this.scheduleDataRefresh();
+      }
       this.processRequestQueue();
       return;
     }
@@ -176,7 +194,10 @@ Object.assign(DrawingViewer.prototype, {
           let d;
           try { d = JSON.parse(json); } catch (e) { return; }
           applyClearOption(d);
-        }
+        },
+        // Called by HTTPConnection.sendOnce() on receipt of any HTTP response body
+        // (even empty/non-pfod) — signals the connection is live and starts CSV polling.
+        onAnyResponseReceived: () => this.scheduleDataRefresh()
       };
 
       // exitAbort: skip the generic send() below entirely — the shared exit
@@ -553,9 +574,20 @@ Object.assign(DrawingViewer.prototype, {
       // Check if this is a JSON parsing error
       const isJSONError = error instanceof SyntaxError;
 
+      // HTTP response was received but contained no pfod {..} command — connection is alive,
+      // device just doesn't send pfod (e.g. CSV-only).  Polling continues for this case.
+      const isNoPfodInResponse = error.code === 'NO_PFOD_IN_RESPONSE';
+
       // Clear canvas message on timeout
       if (isRetryExhausted) {
         this.clearCanvasMessage();
+      }
+
+      // Network/HTTP failures mean the connection itself is down — stop data polling.
+      // NO_PFOD_IN_RESPONSE means the connection works (device responded), so leave polling alone.
+      if (!isNoPfodInResponse && this.dataRefreshTimer) {
+        clearTimeout(this.dataRefreshTimer);
+        this.dataRefreshTimer = null;
       }
 
       // Display alert to user for all errors

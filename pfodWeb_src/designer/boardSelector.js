@@ -114,12 +114,13 @@ function _hierarchyAvailable() {
 }
 
 /// Return [{id, name}] for the top-level family selection screen,
-/// sorted alphabetically by display name.
+/// sorted by each family's sortOrder (from its family.json — lower
+/// sorts first), then alphabetically by display name among ties.
 function _familyItems() {
   if (!_hierarchyAvailable()) return [];
   return Object.entries(BOARD_HIERARCHY)
-    .map(([id, fam]) => ({ id, name: fam.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .map(([id, fam]) => ({ id, name: fam.name, sortOrder: fam.sortOrder }))
+    .sort((a, b) => (a.sortOrder - b.sortOrder) || a.name.localeCompare(b.name));
 }
 
 /// Return [{id, name}] for the chip selection screen within a family,
@@ -139,6 +140,24 @@ function _boardItems(familyId, chipId) {
   if (!fam) return [];
   const chip = fam.chips[chipId];
   return chip ? chip.boards : [];
+}
+
+/// Return the single {id, name} board entry for a family that has
+/// exactly one board total across all of its chip groups, or null
+/// otherwise.  Used to skip straight past the chip/board picker
+/// screens when there's nothing to actually choose between (e.g. the
+/// single-board "Minimal C Code" family).
+function _onlyBoardInFamily(familyId) {
+  const fam = _hierarchyAvailable() ? BOARD_HIERARCHY[familyId] : null;
+  if (!fam) return null;
+  let only = null;
+  for (const chip of Object.values(fam.chips)) {
+    for (const board of chip.boards) {
+      if (only) return null;   // more than one board found
+      only = board;
+    }
+  }
+  return only;
 }
 
 // ───────────────────────── Picker render ─────────────────────────────────
@@ -209,12 +228,30 @@ function _renderCurrentLevel() {
   _refreshScrollChevrons();
 }
 
+/// Commit a board id as the new target: update state, write the URL,
+/// close the overlay.  Shared by the board-level click and the family-
+/// level single-board auto-select short-circuit below.
+function _commitBoardSelection(id) {
+  setCurrentTargetId(id);
+  // updateURLFromForm() lives in pfodCommon.html's inline script and
+  // is a global function — call it so the new ?designer=<id> lands
+  // in the address bar immediately, surviving any subsequent reload.
+  if (typeof updateURLFromForm === 'function') updateURLFromForm();
+  closeBoardSelector();
+}
+
 /// Click/Enter handler for one row of the picker.  Routes by current
-/// level: family → drill into chip (or skip straight to board when the
-/// family has only one chip); chip → drill into board; board → commit
-/// the selection, write the URL, close.
+/// level: family → commit directly when the family has only one board
+/// total (nothing to choose between), else drill into chip (or skip
+/// straight to board when the family has only one chip); chip → drill
+/// into board; board → commit the selection.
 function _onSelectItem(item) {
   if (_navState.level === 'family') {
+    const onlyBoard = _onlyBoardInFamily(item.id);
+    if (onlyBoard) {
+      _commitBoardSelection(onlyBoard.id);
+      return;
+    }
     const chips = _chipItems(item.id);
     if (chips.length === 1) {
       _navState = { level: 'board', family: item.id, chip: chips[0].id };
@@ -230,12 +267,7 @@ function _onSelectItem(item) {
     return;
   }
   if (_navState.level === 'board') {
-    setCurrentTargetId(item.id);
-    // updateURLFromForm() lives in pfodCommon.html's inline script and
-    // is a global function — call it so the new ?designer=<id> lands
-    // in the address bar immediately, surviving any subsequent reload.
-    if (typeof updateURLFromForm === 'function') updateURLFromForm();
-    closeBoardSelector();
+    _commitBoardSelection(item.id);
     return;
   }
 }

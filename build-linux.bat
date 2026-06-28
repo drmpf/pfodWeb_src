@@ -2,8 +2,8 @@
 REM build-linux.bat
 REM (c)2026 Forward Computing and Control Pty. Ltd. — see LICENSE.
 REM
-REM Build pfodProxy (Linux x86_64) via WSL2 + pfodWeb.html and stage
-REM both into linux\  (i.e. pfodWeb\linux\).
+REM Build pfodProxy (Linux x86_64) via WSL2 and stage it into linux\.
+REM Run build-pfodWeb.bat separately to build pfodWeb.html.
 REM
 REM Requires:
 REM   - WSL2 installed  (wsl --install)
@@ -71,10 +71,10 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM ── Check Node.js (needed to sync version + build pfodWeb) ───────────
+REM ── Check Node.js (needed to sync version into Cargo.toml) ──────────
 where node >nul 2>nul
 if %errorlevel% neq 0 (
-    echo ERROR: Node.js not found — needed to sync version and build pfodWeb.
+    echo ERROR: Node.js not found — needed to sync version into Cargo.toml.
     echo Install from https://nodejs.org/
     echo.
     pause
@@ -82,24 +82,7 @@ if %errorlevel% neq 0 (
 )
 
 REM ── Sync version from pfodWeb_src/version.js into Cargo.toml ─────────
-node -e "var fs=require('fs');var m=fs.readFileSync('%ROOT%pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('%ROOT%pfodProxy_rs/Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('%ROOT%pfodProxy_rs/Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
-
-REM ── Build pfodWeb.html ────────────────────────────────────────────────
-echo.
-echo Building pfodWeb.html ...
-echo.
-pushd "%ROOT%pfodWeb_src"
-node build-bundle.js
-set WEB_CODE=%errorlevel%
-popd
-if not "%WEB_CODE%"=="0" (
-    echo.
-    echo ----------------------------------------------------------------
-    echo pfodWeb build FAILED with code %WEB_CODE%
-    echo ----------------------------------------------------------------
-    pause
-    exit /b %WEB_CODE%
-)
+node -e "var fs=require('fs');var m=fs.readFileSync('pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('pfodProxy_rs/Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('pfodProxy_rs/Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
 
 REM ── Build pfodProxy for Linux ─────────────────────────────────────────
 REM wslpath is called inside bash to avoid \r contamination from capturing output.
@@ -128,38 +111,6 @@ if errorlevel 1 (
     exit /b 1
 )
 echo   - pfodProxy  (Linux x86_64 binary)
-
-copy /Y "%ROOT%pfodWeb.html" "%OUT%\pfodWeb.html" >nul
-if errorlevel 1 (
-    echo ERROR: could not copy pfodWeb.html
-    pause
-    exit /b 1
-)
-echo   - pfodWeb.html
-
-REM Remove the temp copy left in the repo root by build-bundle.js now that
-REM it's been staged into linux\ — only linux\pfodWeb.html is the
-REM deliverable for this script.
-del /Q "%ROOT%pfodWeb.html" >nul 2>nul
-
-if exist "%ROOT%extraFonts" (
-    xcopy /Y /I /E "%ROOT%extraFonts" "%OUT%\extraFonts" >nul
-    if errorlevel 1 (
-        echo ERROR: could not copy extraFonts\
-        pause
-        exit /b 1
-    )
-    echo   - extraFonts\
-    if exist "%ROOT%docs\pfodWeb-extraFonts-guide.html" (
-        copy /Y "%ROOT%docs\pfodWeb-extraFonts-guide.html" "%OUT%\extraFonts\pfodWeb-extraFonts-guide.html" >nul
-        if errorlevel 1 (
-            echo ERROR: could not copy pfodWeb-extraFonts-guide.html
-            pause
-            exit /b 1
-        )
-        echo   - extraFonts\pfodWeb-extraFonts-guide.html
-    )
-)
 
 echo.
 echo ================================================================

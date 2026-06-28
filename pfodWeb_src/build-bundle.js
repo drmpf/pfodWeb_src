@@ -87,10 +87,11 @@ function _lookupAllBoardsTxt(boardsTxtPath, variantDirName) {
 /**
  * Build the 3-level board hierarchy purely from the already-generated board
  * JSON files (passed in as boardDataById).  Each board JSON now carries
- * `family` and `chip` fields written by build_boards.js, so no access to
- * ../variants/ or boards.txt is required.
+ * `family`, `chip`, `familyDisplayName` and `familySortOrder` fields
+ * written by build_boards.js (the latter two sourced from that family's
+ * family.json), so no access to ../variants/ or boards.txt is required.
  *
- *   { family: { name, chips: { chip: { name, boards: [{id, name}] } } } }
+ *   { family: { name, sortOrder, chips: { chip: { name, boards: [{id, name}] } } } }
  *
  * @param {object} boardDataById   { id → parsed board JSON }
  * @returns {object}               hierarchy as described above
@@ -104,19 +105,20 @@ function buildBoardHierarchy(boardDataById) {
     return chipId;
   };
 
-  // Pretty-print a family id.
-  const _familyDisplayName = (famId) => {
-    if (famId === 'avr')   return 'Arduino';
-    if (famId === 'esp32') return 'ESP32';
-    return famId;
-  };
-
   const hierarchy = {};
   for (const [id, data] of Object.entries(boardDataById)) {
     const family = data.family || 'unknown';
     const chip   = data.chip   || 'unknown';
     if (!hierarchy[family]) {
-      hierarchy[family] = { name: _familyDisplayName(family), chips: {} };
+      // familyDisplayName is stamped onto every board JSON by
+      // build_boards.js, sourced from that family's family.json — no
+      // family names are hardcoded here, so a new family directory under
+      // ../variants/ needs no change to this file.
+      hierarchy[family] = {
+        name:      data.familyDisplayName || family,
+        sortOrder: typeof data.familySortOrder === 'number' ? data.familySortOrder : 100,
+        chips:     {},
+      };
     }
     if (!hierarchy[family].chips[chip]) {
       hierarchy[family].chips[chip] = { name: _chipDisplayName(chip), boards: [] };
@@ -259,7 +261,20 @@ const config = {
         // DesignerDispatch and DesignerState, both loaded earlier.
         'designer/menus/saveToFile.js',
         'designer/menus/loadFromFile.js',
+        // zipBuilder.js — ZIP/CRC-32 writer + browser-download trigger
+        // shared by both code generators below.  Must load before either.
+        'designer/menus/zipBuilder.js',
         'designer/menus/generateCode.js',
+        // Raw-text assets for the "Minimal C Code" target's generator —
+        // the project's fixed pfodParserC library, inlined verbatim as JS
+        // string consts (see inlineScripts()'s '.c'/'.h' branch) so
+        // generateCcode.js never has to hand-transcribe ~470 lines of C.
+        // pfodParserStream.c is NOT inlined here — sampleCcode's copy is
+        // PIC18-specific, so generateCcode.js writes its own generic stub.
+        'designer/pfodParserC/pfodParser.c',
+        'designer/pfodParserC/pfodParser.h',
+        'designer/pfodParserC/pfodParserStream.h',
+        'designer/menus/generateCcode.js',
         'designer/index.js',
         // adapter.js depends on PfodConnectionBase (connectionManager.js,
         // loaded earlier) AND DesignerVirtualDevice (index.js above),
@@ -561,6 +576,20 @@ function inlineScripts(htmlContent, scriptFiles, bundleConfig) {
         block += `\n\n/* ========================================\n * BOARD_HIERARCHY — auto-generated three-level hierarchy:\n *   { family: { name, chips: { chip: { name, boards: [{id,name}] }}}}\n * Used by designer/boardSelector.js to drive the cascading\n * family → chip → board picker.  Computed from variants/ at bundle\n * time so the runtime never walks the filesystem.\n * ======================================== */\nconst BOARD_HIERARCHY = Object.freeze(${JSON.stringify(hierarchy, null, 2)});`;
       }
       return block;
+    }
+    if (scriptFile.endsWith('.c') || scriptFile.endsWith('.h')) {
+      // Raw C source/header bundled verbatim as a JS string constant —
+      // JSON.stringify handles all escaping (quotes, backslashes,
+      // backticks) so the file is never hand-transcribed into JS.
+      // Var name: pfodParser.c -> PFOD_PARSER_C_TEXT, pfodParser.h ->
+      // PFOD_PARSER_H_TEXT, pfodParserStream.h -> PFOD_PARSER_STREAM_H_TEXT.
+      const rawText  = readFile(scriptFile);
+      const base     = path.basename(scriptFile);
+      const ext      = path.extname(base).slice(1).toUpperCase();
+      const stem     = path.basename(base, path.extname(base))
+                          .replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+      const varName  = stem + '_' + ext + '_TEXT';
+      return `\n/* ========================================\n * Inlined verbatim from: ${scriptFile}\n * Wrapped as: const ${varName} = "...";\n * ======================================== */\nconst ${varName} = ${JSON.stringify(rawText)};`;
     }
     const jsContent = readFile(scriptFile);
     return `\n/* ========================================\n * Inlined from: ${scriptFile}\n * ======================================== */\n${jsContent}`;
