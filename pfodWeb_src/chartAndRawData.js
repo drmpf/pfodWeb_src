@@ -699,6 +699,9 @@ Object.assign(DrawingViewer.prototype, {
         window.chartConfigViewer.show();
       }
 
+      // Attach the transparent overlay canvas that drives the crosshair + tooltip.
+      window.chartDisplay.attachCrosshairOverlay(this.chartCanvas);
+
       // Start polling for chart updates - even if chart is empty, so new data gets displayed when available
       console.log('[CHART] Starting update polling');
       window.chartDisplay.startMultiSubplotUpdatePolling();

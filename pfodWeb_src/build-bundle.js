@@ -3,7 +3,10 @@
  * build-bundle.js
  * Combines all pfodWeb files into single standalone HTML files
  *
- * Usage: node build-bundle.js
+ * Usage: node build-bundle.js [--no-minify]
+ *
+ *   --no-minify  Skip JS/CSS minification; preserves comments and line
+ *                numbers for browser debugging.  Omit for release builds.
  *
  * Creates in parent directory:
  *   - pfodWeb.html (combined with inlined JS)
@@ -18,6 +21,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const { minify: terserMinify } = require('terser');
+
+const MINIFY = !process.argv.includes('--no-minify');
 
 /**
  * Discover every per-board data file under designer/boards/<Board>/<Board>.json.
@@ -501,9 +507,26 @@ function embedFavicon(htmlContent, faviconBase64) {
 }
 
 /**
+ * Strip CSS block comments and collapse whitespace.
+ * Only called when MINIFY is true.
+ *
+ * @param {string} css  Raw CSS (post font-embed, which contains no comment-like sequences)
+ * @returns {string}    Minified CSS
+ */
+function minifyCSS(css) {
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, '')  // strip block comments
+    .replace(/[ \t]+/g, ' ')            // collapse horizontal whitespace
+    .replace(/^ +/gm, '')               // remove leading spaces per line
+    .replace(/ +$/gm, '')               // remove trailing spaces per line
+    .replace(/\n{2,}/g, '\n')           // collapse blank lines
+    .trim();
+}
+
+/**
  * Inline JavaScript files into HTML
  */
-function inlineScripts(htmlContent, scriptFiles, bundleConfig) {
+async function inlineScripts(htmlContent, scriptFiles, bundleConfig) {
   let result = htmlContent;
 
   // First, collect all JavaScript content.  Entries ending in .json are
@@ -638,7 +661,22 @@ async function loadDependencies() {
   // pfodWeb.js will call it via DOMContentLoaded, but external code can also call it
   const initCodeForExternal = `\n// initializeApp is available for external callers like pfodWebDesigner\n// It's also called automatically on DOMContentLoaded by pfodWeb.js\n`;
 
-  const inlinedScript = `\n<!-- All JavaScript files combined inline -->\n<script>\n${scriptsContent}\n\n${overrideFunctions}\n${initCodeForExternal}\n</script>\n`;
+  let finalJS = scriptsContent + '\n\n' + overrideFunctions + '\n' + initCodeForExternal;
+  if (MINIFY) {
+    const rawKB = (finalJS.length / 1024).toFixed(1);
+    const result = await terserMinify(finalJS, {
+      compress: false,
+      mangle:   false,
+      format: {
+        comments: false,
+      },
+    });
+    finalJS = result.code;
+    const minKB = (finalJS.length / 1024).toFixed(1);
+    console.log(`  Minified JS: ${rawKB} KB → ${minKB} KB (${Math.round((1 - finalJS.length / (rawKB * 1024)) * 100)}% reduction)`);
+  }
+
+  const inlinedScript = `\n<!-- All JavaScript files combined inline -->\n<script>\n${finalJS}\n</script>\n`;
 
   if (insertIndex !== -1) {
     result = result.substring(0, insertIndex) + inlinedScript + result.substring(insertIndex);
@@ -676,7 +714,7 @@ function addBanner(content, bundleName) {
 /**
  * Create a single bundle
  */
-function createBundle(bundleConfig, faviconBase64, soundBase64) {
+async function createBundle(bundleConfig, faviconBase64, soundBase64) {
   console.log(`\nCreating bundle: ${bundleConfig.name}`);
   console.log(`  Template: ${bundleConfig.template}`);
   console.log(`  Scripts: ${bundleConfig.scripts.length} files`);
@@ -699,7 +737,13 @@ function createBundle(bundleConfig, faviconBase64, soundBase64) {
   // the inlined CSS already carries fully-embedded fonts (no runtime font fetches).
   const commonCssPath = path.join(config.sourceDir, 'pfodCommon.css');
   const commonCssRaw = fs.readFileSync(commonCssPath, 'utf8');
-  const commonCss = embedRobotoFonts(commonCssRaw);
+  let commonCss = embedRobotoFonts(commonCssRaw);
+  if (MINIFY) {
+    const rawKB = (commonCss.length / 1024).toFixed(1);
+    commonCss = minifyCSS(commonCss);
+    const minKB = (commonCss.length / 1024).toFixed(1);
+    console.log(`  Minified CSS: ${rawKB} KB → ${minKB} KB`);
+  }
   const templateWithCss = templateWithBody.replace(
     /[ \t]*<link rel="stylesheet" href="pfodCommon\.css">/,
     `    <style>\n${commonCss}\n    </style>`
@@ -709,7 +753,7 @@ function createBundle(bundleConfig, faviconBase64, soundBase64) {
   let bundledContent = embedFavicon(templateWithCss, faviconBase64);
 
   // Inline all scripts
-  bundledContent = inlineScripts(bundledContent, bundleConfig.scripts, bundleConfig);
+  bundledContent = await inlineScripts(bundledContent, bundleConfig.scripts, bundleConfig);
 
   // Embed sound.mp3: replace placeholder inserted by pfodButtonRenderer.js
   // If sound.mp3 was not found, placeholder remains and runtime falls back to generated sound.
@@ -741,9 +785,10 @@ function createBundle(bundleConfig, faviconBase64, soundBase64) {
 /**
  * Main build process
  */
-function build() {
+async function build() {
   console.log('========================================');
   console.log('  pfodWeb Bundle Builder');
+  console.log(`  Mode: ${MINIFY ? 'minified (release)' : 'unminified (debug --no-minify)'}`);
   console.log('========================================');
 
   // Read resources once at the start
@@ -774,7 +819,7 @@ function build() {
   const outputs = [];
   for (const bundleConfig of config.bundles) {
     try {
-      const outputPath = createBundle(bundleConfig, faviconBase64, soundBase64);
+      const outputPath = await createBundle(bundleConfig, faviconBase64, soundBase64);
       outputs.push(outputPath);
     } catch (error) {
       console.error(`\n✗ Failed to create ${bundleConfig.name}:`, error.message);
@@ -814,7 +859,7 @@ function build() {
 
 // Run build
 if (require.main === module) {
-  build();
+  build().catch((err) => { console.error(err); process.exit(1); });
 }
 
 module.exports = { build };

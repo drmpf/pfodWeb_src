@@ -43,7 +43,7 @@ else{
 echo ""
 echo "Building pfodWeb.html ..."
 echo ""
-(cd "$ROOT/pfodWeb_src" && node build-bundle.js)
+(cd "$ROOT/pfodWeb_src" && node build-bundle.js "$@")
 
 # ── Stage pfodWeb.html into pfodWeb/ ─────────────────────────────────
 echo ""

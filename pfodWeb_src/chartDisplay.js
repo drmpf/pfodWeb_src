@@ -499,6 +499,14 @@ class ChartDisplay {
     this.lastCanvasWidth = 0;           // Track previous canvas width for resize detection
     this.lastCanvasHeight = 0;          // Track previous canvas height for resize detection
     this.currentTimeFormatter = null;   // TimeFormatUtil for X-axis labels
+    this.crosshairOverlay = null;       // Transparent overlay canvas for crosshair line
+    this.crosshairTooltip = null;       // Floating tooltip div
+    this.lastMouseX = null;             // Last mouse pixel X within overlay canvas
+    this.lastMouseY = null;             // Last mouse pixel Y within overlay canvas
+    this.lastClientX = null;            // Last mouse clientX (viewport coords) for tooltip placement
+    this.lastClientY = null;            // Last mouse clientY (viewport coords) for tooltip placement
+    this._mouseMoveHandler = null;      // Stored handler ref for removeEventListener
+    this._mouseLeaveHandler = null;     // Stored handler ref for removeEventListener
     console.log('[CHART_DISPLAY] ChartDisplay instance created');
   }
 
@@ -1802,6 +1810,9 @@ class ChartDisplay {
     const bounds = new jsfc.Rectangle(0, 0, this.currentCanvas.width, this.currentCanvas.height);
     chart.draw(ctx, bounds);
 
+    // Crosshair geometry changed with the redraw — refresh if mouse is over the chart.
+    if (this.lastClientX !== null) this._updateCrosshairFromStored();
+
     this.lastDataLineCount = allCSVLines.length;
     const limitedLines = this.getLimitedLines(allCSVLines, maxPoints);
     console.log('[CHART_DISPLAY] Multi-subplot chart updated - showing', limitedLines.length, 'of', allCSVLines.length, 'CSV lines (maxPoints:', maxPoints, ')');
@@ -1968,6 +1979,11 @@ class ChartDisplay {
         const ctx = new jsfc.CanvasContext2D(canvas);
         const bounds = new jsfc.Rectangle(0, 0, canvas.width-0, canvas.height-0);
         this.currentChart.draw(ctx, bounds);
+        // Resize and reposition the crosshair overlay to match the new canvas dimensions.
+        if (this.crosshairOverlay) {
+          this._repositionOverlay(canvas);
+          this._updateCrosshairFromStored();
+        }
         console.log('[CHART_DISPLAY] Chart redrawn successfully after resize');
       } catch (error) {
         console.error('[CHART_DISPLAY] Error redrawing chart after resize:', error);
@@ -1982,6 +1998,7 @@ class ChartDisplay {
    * Stops polling and resets all chart-related state
    */
   clear() {
+    this.detachCrosshairOverlay();
     this.stopUpdatePolling();
     this.currentChart = null;
     this.currentDataset = null;
@@ -1992,6 +2009,298 @@ class ChartDisplay {
     this.lastCanvasWidth = 0;
     this.lastCanvasHeight = 0;
     console.log('[CHART_DISPLAY] Cleared chart state');
+  }
+
+  /**
+   * Attach a transparent overlay canvas for the crosshair line and value tooltip.
+   * The overlay sits on top of the chart canvas and captures all mouse events.
+   * @param {HTMLCanvasElement} chartCanvas - The main chart canvas element.
+   */
+  attachCrosshairOverlay(chartCanvas) {
+    this.detachCrosshairOverlay();
+
+    const wrapper = chartCanvas.parentElement;
+    if (!wrapper) return;
+
+    // Ensure wrapper is a positioning context so position:absolute on the overlay works.
+    if (window.getComputedStyle(wrapper).position === 'static') {
+      wrapper.style.position = 'relative';
+    }
+
+    // Overlay canvas: same pixel dimensions, stacked on top of the chart canvas.
+    // The ID lets pfodCommon.css's "body.chart-mode canvas { background-color:white }"
+    // be overridden with an explicit transparent background.
+    const overlay = document.createElement('canvas');
+    overlay.id     = 'chart-crosshair-overlay';
+    overlay.width  = chartCanvas.width;
+    overlay.height = chartCanvas.height;
+    overlay.style.cssText = 'position:absolute;top:0;left:0;cursor:crosshair;background:transparent;';
+    wrapper.appendChild(overlay);
+    this.crosshairOverlay = overlay;
+
+    // Tooltip div: fixed-position so it stays near the cursor regardless of scroll.
+    const tooltip = document.createElement('div');
+    tooltip.id = 'chart-crosshair-tooltip';
+    tooltip.style.cssText = [
+      'position:fixed',
+      'display:none',
+      'background:rgba(255,255,255,0.95)',
+      'border:1px solid #888',
+      'border-radius:4px',
+      'padding:6px 10px',
+      'font-family:Arial,sans-serif',
+      'font-size:12px',
+      'pointer-events:none',
+      'z-index:9999',
+      'box-shadow:0 2px 6px rgba(0,0,0,0.25)',
+      'max-width:320px',
+      'white-space:nowrap'
+    ].join(';');
+    document.body.appendChild(tooltip);
+    this.crosshairTooltip = tooltip;
+
+    this._mouseMoveHandler = (e) => {
+      const rect   = overlay.getBoundingClientRect();
+      // Scale CSS-pixel offset to canvas buffer coordinates.
+      // When the side panel is open the CSS width differs from canvas.width.
+      const scaleX = overlay.width  / rect.width;
+      const scaleY = overlay.height / rect.height;
+      this.lastMouseX  = (e.clientX - rect.left) * scaleX;
+      this.lastMouseY  = (e.clientY - rect.top)  * scaleY;
+      this.lastClientX = e.clientX;
+      this.lastClientY = e.clientY;
+      this._updateCrosshair(this.lastMouseX, this.lastMouseY, e.clientX, e.clientY);
+    };
+    this._mouseLeaveHandler = () => this._clearCrosshair();
+
+    overlay.addEventListener('mousemove',  this._mouseMoveHandler);
+    overlay.addEventListener('mouseleave', this._mouseLeaveHandler);
+    console.log('[CHART_DISPLAY] Crosshair overlay attached');
+  }
+
+  /**
+   * Remove the overlay canvas and tooltip, and detach all mouse listeners.
+   */
+  detachCrosshairOverlay() {
+    if (this.crosshairOverlay) {
+      if (this._mouseMoveHandler)  this.crosshairOverlay.removeEventListener('mousemove',  this._mouseMoveHandler);
+      if (this._mouseLeaveHandler) this.crosshairOverlay.removeEventListener('mouseleave', this._mouseLeaveHandler);
+      this.crosshairOverlay.remove();
+      this.crosshairOverlay = null;
+    }
+    if (this.crosshairTooltip) {
+      this.crosshairTooltip.remove();
+      this.crosshairTooltip = null;
+    }
+    this._mouseMoveHandler  = null;
+    this._mouseLeaveHandler = null;
+    this.lastMouseX  = null;
+    this.lastMouseY  = null;
+    this.lastClientX = null;
+    this.lastClientY = null;
+  }
+
+  /**
+   * Resize and reposition the overlay canvas to match the chart canvas after a resize.
+   * @param {HTMLCanvasElement} chartCanvas
+   */
+  _repositionOverlay(chartCanvas) {
+    if (!this.crosshairOverlay) return;
+    const wrapper = chartCanvas.parentElement;
+    if (!wrapper) return;
+    const canvasRect  = chartCanvas.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    this.crosshairOverlay.style.top  = (canvasRect.top  - wrapperRect.top)  + 'px';
+    this.crosshairOverlay.style.left = (canvasRect.left - wrapperRect.left) + 'px';
+    this.crosshairOverlay.width  = chartCanvas.width;
+    this.crosshairOverlay.height = chartCanvas.height;
+  }
+
+  /**
+   * Re-run the crosshair update using the stored mouse position.
+   * Called after chart.draw() completes so jsfreechart's geometry is fresh.
+   */
+  _updateCrosshairFromStored() {
+    if (this.lastClientX === null || !this.crosshairOverlay) return;
+    // Recompute canvas-buffer coordinates from viewport position every time so
+    // the scale is correct even if the side panel opened since the last mousemove.
+    const rect   = this.crosshairOverlay.getBoundingClientRect();
+    const scaleX = this.crosshairOverlay.width  / rect.width;
+    const scaleY = this.crosshairOverlay.height / rect.height;
+    const pixelX = (this.lastClientX - rect.left) * scaleX;
+    const pixelY = (this.lastClientY - rect.top)  * scaleY;
+    this._updateCrosshair(pixelX, pixelY, this.lastClientX, this.lastClientY);
+  }
+
+  /**
+   * Clear the crosshair line from the overlay canvas and hide the tooltip.
+   */
+  _clearCrosshair() {
+    if (this.crosshairOverlay) {
+      this.crosshairOverlay.getContext('2d')
+        .clearRect(0, 0, this.crosshairOverlay.width, this.crosshairOverlay.height);
+    }
+    if (this.crosshairTooltip) this.crosshairTooltip.style.display = 'none';
+    this.lastMouseX  = null;
+    this.lastMouseY  = null;
+    this.lastClientX = null;
+    this.lastClientY = null;
+  }
+
+  /**
+   * Format a numeric Y value for the crosshair tooltip.
+   * Uses more decimal places for smaller magnitudes.
+   * @param {number} val
+   * @returns {string}
+   */
+  _formatCrosshairY(val) {
+    if (val === null || val === undefined) return '—';
+    if (!Number.isFinite(val)) return String(val);
+    const abs = Math.abs(val);
+    if (abs === 0)    return '0';
+    if (abs >= 1000)  return val.toFixed(1);
+    if (abs >= 100)   return val.toFixed(2);
+    if (abs >= 1)     return val.toFixed(3);
+    return val.toFixed(4);
+  }
+
+  /**
+   * Draw the vertical crosshair line and populate the floating tooltip for the
+   * given pixel position within the overlay canvas.
+   *
+   * @param {number} pixelX  - X pixel coordinate within the overlay canvas.
+   * @param {number} pixelY  - Y pixel coordinate within the overlay canvas (unused but stored).
+   * @param {number} clientX - Viewport-relative mouse X for tooltip placement.
+   * @param {number} clientY - Viewport-relative mouse Y for tooltip placement.
+   */
+  _updateCrosshair(pixelX, pixelY, clientX, clientY) {
+    if (!this.crosshairOverlay || !this.currentChart) return;
+
+    const combinedPlot = this.currentChart.getPlot();
+    const subplotAreas = combinedPlot._subplotAreas;
+    if (!subplotAreas || subplotAreas.length === 0) return;
+
+    // All subplots share the same X pixel range — read it from the first subplot area.
+    const firstArea = subplotAreas[0];
+    const xPixMin   = firstArea.x();
+    const xPixMax   = firstArea.x() + firstArea.width();
+
+    // If the cursor is outside the data area, clear and bail.
+    if (pixelX < xPixMin || pixelX > xPixMax) {
+      this._clearCrosshair();
+      return;
+    }
+
+    const xAxis      = combinedPlot.getXAxis();
+    const xDataValue = xAxis.coordinateToValue(pixelX, xPixMin, xPixMax);
+
+    // --- Draw crosshair line spanning all subplot data areas ---
+    const overlayCtx = this.crosshairOverlay.getContext('2d');
+    overlayCtx.clearRect(0, 0, this.crosshairOverlay.width, this.crosshairOverlay.height);
+
+    const topY    = subplotAreas[0].y();
+    const lastA   = subplotAreas[subplotAreas.length - 1];
+    const bottomY = lastA.y() + lastA.height();
+    const lineX   = Math.round(pixelX) + 0.5;
+
+    overlayCtx.save();
+    overlayCtx.setLineDash([5, 4]);
+    overlayCtx.strokeStyle = 'rgba(80,80,80,0.65)';
+    overlayCtx.lineWidth   = 1;
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(lineX, topY);
+    overlayCtx.lineTo(lineX, bottomY);
+    overlayCtx.stroke();
+    overlayCtx.restore();
+
+    // --- Build tooltip ---
+    // CSS hex colors in the same order as chartDisplay's jsfc.Color palette.
+    const PALETTE_CSS = [
+      '#0000ff', '#ff0000', '#008000', '#ff8000', '#800080',
+      '#008080', '#ff69b4', '#a52a2a', '#ff7f50', '#ffff00'
+    ];
+
+    const chartInfo = this.currentChartInfo;
+    if (!chartInfo) return;
+
+    // xLabel is set from the actual X of the first nearest data point found (snapped, not interpolated).
+    let xLabel = '';
+    let rows = '';
+    const subplots = combinedPlot.getSubplots();
+
+    for (let si = 0; si < subplots.length; si++) {
+      const dataset = subplots[si].getDataset();
+      if (!dataset) continue;
+
+      const subplotSpec = chartInfo.subplots ? chartInfo.subplots[si] : null;
+
+      for (let s = 0; s < dataset.seriesCount(); s++) {
+        const itemCount = dataset.itemCount(s);
+        if (itemCount === 0) continue;
+
+        // Find the item with X closest to the cursor's data value.
+        let nearestIdx  = 0;
+        let nearestDist = Math.abs(dataset.x(s, 0) - xDataValue);
+        for (let k = 1; k < itemCount; k++) {
+          const d = Math.abs(dataset.x(s, k) - xDataValue);
+          if (d < nearestDist) { nearestDist = d; nearestIdx = k; }
+        }
+
+        // Use the actual X of the first series found so the header snaps to a real sample.
+        if (xLabel === '') {
+          const snapX = dataset.x(s, nearestIdx);
+          if (chartInfo.useCountAsXAxis) {
+            xLabel = 'Count: ' + Math.round(snapX);
+          } else if (this.currentTimeFormatter) {
+            xLabel = this.currentTimeFormatter.format(snapX);
+          } else {
+            xLabel = String(parseFloat(snapX.toPrecision(6)));
+          }
+        }
+
+        const yVal  = dataset.y(s, nearestIdx);
+        const label = dataset.seriesKey(s);
+        const fSpec = subplotSpec && subplotSpec.fieldSpecs ? subplotSpec.fieldSpecs[s] : null;
+        const unit  = fSpec ? (fSpec.unit || '') : '';
+        const cidx  = fSpec ? fSpec.index : s;
+        const color = PALETTE_CSS[cidx % PALETTE_CSS.length];
+        const yStr  = this._formatCrosshairY(yVal) + (unit ? ' ' + unit : '');
+
+        rows +=
+          '<div style="display:flex;align-items:center;margin-top:2px;">' +
+          '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;' +
+            'background:' + color + ';margin-right:5px;flex-shrink:0;"></span>' +
+          '<span style="color:' + color + ';flex:1;">' + label + ':</span>' +
+          '<span style="margin-left:8px;font-weight:bold;">' + yStr + '</span>' +
+          '</div>';
+      }
+    }
+
+    const tooltip = this.crosshairTooltip;
+    tooltip.innerHTML =
+      '<div style="font-weight:bold;margin-bottom:4px;padding-bottom:3px;border-bottom:1px solid #ccc;">' +
+        xLabel +
+      '</div>' + rows;
+    tooltip.style.display = 'block';
+
+    // Position tooltip adjacent to the crosshair line.
+    // Default: RIGHT edge of tooltip GAP px left of cursor — use CSS `right`
+    // so the actual rendered width doesn't matter.
+    // Flip to LEFT of cursor (use CSS `left`) only when too close to left edge.
+    const GAP  = 8;
+    const vpW  = window.innerWidth;
+    const vpH  = window.innerHeight;
+    let tipTop = Math.max(GAP, Math.min(clientY - 30, vpH - 180));
+    tooltip.style.top = tipTop + 'px';
+    if (clientX - GAP < 220) {
+      // Near left edge — place tooltip to the right of the line.
+      tooltip.style.left  = (clientX + GAP) + 'px';
+      tooltip.style.right = '';
+    } else {
+      // Default — anchor right edge GAP px left of the line.
+      tooltip.style.left  = '';
+      tooltip.style.right = (vpW - clientX + GAP) + 'px';
+    }
   }
 }
 

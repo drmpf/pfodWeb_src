@@ -7,7 +7,7 @@
 </p>
 <p align="center">
 
-![fieldsSet](docs/fieldsSet_md.jpg)
+![fieldsSet](docs/crosshairWithPanel_md.jpg)
 
 </p>
 
