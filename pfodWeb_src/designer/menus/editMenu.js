@@ -86,7 +86,6 @@ const DesignerEditMenu = (() => {
   function send(state) {
     // Clear the pending-new-item flag so the next addMenuItem creates a fresh item.
     state._pendingNewItemIdx = null;
-    const connectionSummary = DesignerEditConnection.summaryForEditMenu(state);
     const isInSubmenu = state.activeMenuPath.length > 0;
     console.error('[Designer] editMenu.send: path=' + JSON.stringify(state.activeMenuPath) +
                   ' idx=' + state.activeItemIdx + ' isInSubmenu=' + isInSubmenu);
@@ -108,25 +107,32 @@ const DesignerEditMenu = (() => {
 
     // ── Connection row ────────────────────────────────────────────
     // Only shown for the root menu — the connection applies to the
-    // whole design, not to individual sub-menus.  The connection/baud
-    // picker is not meaningful for the Minimal C Code target (no real
-    // transport negotiation — supportedBauds is empty), so this renders
-    // as a pfod Label there instead — a distinct item TYPE from Button,
-    // not "a button with disabled styling".  '|!<cmd>...' is how a
-    // Label is denoted on the wire (pfodMenuParser.js: a leading '!'
-    // sets itemType = 'label' outright); it never sends a cmd, full
-    // stop, regardless of background colour.  Keeps the same blue
-    // background the live Button used — DESIGNER_DISABLED_FMT's dark
-    // navy is for an actual Button that's temporarily unusable (e.g.
-    // Move/Delete with too few items), which doesn't apply here.
+    // whole design, not to individual sub-menus.
+    // Text: "board name - connection type" (e.g. "Arduino Uno - Serial").
+    // Single-transport boards render as a pfod Label ('|!<cmd>') so the
+    // row is informational only — '|!<cmd>...' sets itemType = 'label'
+    // in pfodMenuParser.js; it never sends a cmd.  Multi-transport boards
+    // render as a Button with "Click here to change" underneath.
     if (!isInSubmenu) {
-      if (state.board.family === 'ccode') {
+      const supported = DesignerEditConnection.supportedConnections(state.board);
+      // Always use the actual selected connection's short label as the base.
+      const baseLabel = DesignerEditConnection.connectionLabels[state.connection] || state.connection;
+      // For single-transport boards, preserve any extra \n-delimited markup from
+      // familyConnectionTypes (e.g. ccode/unlistedBoard add "\n<i>Use for non-Arduino boards").
+      // Multi-transport boards just show the selected transport label.
+      const fct = state.board.familyConnectionTypes || '';
+      const extraIdx = fct.indexOf('\n');
+      const connLabel = supported.length <= 1
+        ? baseLabel + (extraIdx >= 0 ? fct.slice(extraIdx) : '')
+        : baseLabel;
+      const itemText  = state.board.name + ' - ' + connLabel;
+      if (supported.length <= 1) {
         out += '|!' + EM_EDIT_CONNECTION_CMD + '<bg bl>';
-        out += '~<-1>Target C Code\nvia Serial';
+        out += '~<-1>' + itemText;
       } else {
         out += '|' + EM_EDIT_CONNECTION_CMD + DESIGNER_MENU_FMT + '<bg bl>';
-        out += '~<-1>Connection <b>' + connectionSummary + '</b>';
-        out += '\n<-2>' + EM_HINT_COLOUR + '<i>Click here to change.';
+        out += '~<-1>' + itemText;
+        out += '\n<-2>' + EM_HINT_COLOUR + '<i>Click here to change connection type.';
       }
     }
 

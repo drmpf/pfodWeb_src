@@ -3,13 +3,22 @@
 //
 // TCP transport handler — all-SSE shape.  Mirrors serial.rs.  TCP
 // has no discovery step (no scan / enumeration — the user knows
-// the IP:port).  Two endpoints:
+// the IP).  Two endpoints:
 //
-//   GET /pfodWeb?ip=<addr>&port=<n>           connection SSE
-//   GET /pfodWeb?ip=<addr>&port=<n>&cmd=…     fire-and-forget cmd write
+//   GET /pfodWeb?ip=<addr>           connection SSE
+//   GET /pfodWeb?ip=<addr>&cmd=…     fire-and-forget cmd write
 //
-// Each distinct (ip, port) target gets its own independent session
-// (see state.rs) — connecting to one target never disturbs another.
+// pfodProxy always connects on PFOD_DEVICE_PORT (see const below) —
+// there is no caller-supplied port. connectionManager.js's
+// TCPProxyConnection no longer sends a `port` param at all, so a
+// request that includes one is either stale (an old client build) or
+// a forged/probing request (e.g. trying to port-scan arbitrary hosts
+// on the LAN via `?ip=&port=`). Either way, `handle()` below hangs
+// such a request indefinitely rather than answering it, so it's
+// indistinguishable from pfodProxy simply not running.
+//
+// Each distinct ip target gets its own independent session (see
+// state.rs) — connecting to one target never disturbs another.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -32,24 +41,33 @@ use crate::state::{AppState, TcpSession, BYTES_CHANNEL_CAP};
 
 const CONNECT_TIMEOUT_SEC: f64 = 5.0;
 
+/// pfod TCP/IP devices (designer-generated code included) always listen
+/// on this port.
+const PFOD_DEVICE_PORT: u16 = 4989;
+
 pub async fn handle(
     app: Arc<AppState>,
     params: HashMap<String, String>,
 ) -> axum::response::Response {
-    let req_ip   = params.get("ip").cloned();
-    let req_port = params.get("port").and_then(|s| s.parse::<u16>().ok());
-    let cmd      = params.get("cmd").cloned();
+    if params.contains_key("port") {
+        return crate::validate::hang_silently(
+            "TCP request included a `port` param (stale or forged request)"
+        ).await;
+    }
+
+    let req_ip = params.get("ip").cloned();
+    let cmd    = params.get("cmd").cloned();
 
     log::debug(&format!(
-        "_handle_tcp: ip={:?} port={:?} cmd={:?}", req_ip, req_port, cmd
+        "_handle_tcp: ip={:?} cmd={:?}", req_ip, cmd
     ));
 
     if let Some(cmd) = cmd {
-        handle_cmd(app, req_ip, req_port, cmd).await
-    } else if let (Some(ip), Some(port)) = (req_ip.as_deref().filter(|s| !s.is_empty()), req_port) {
-        handle_connection_stream(app, ip.to_string(), port).await
+        handle_cmd(app, req_ip, PFOD_DEVICE_PORT, cmd).await
+    } else if let Some(ip) = req_ip.as_deref().filter(|s| !s.is_empty()) {
+        handle_connection_stream(app, ip.to_string(), PFOD_DEVICE_PORT).await
     } else {
-        bad_request("TCP needs ?ip=<addr>&port=<n>")
+        crate::validate::hang_silently("TCP request had neither a cmd nor ?ip=<addr>").await
     }
 }
 
@@ -125,20 +143,21 @@ async fn handle_connection_stream(
 async fn handle_cmd(
     app: Arc<AppState>,
     req_ip: Option<String>,
-    req_port: Option<u16>,
+    port: u16,
     cmd: String,
 ) -> axum::response::Response {
-    let (ip, port) = match (req_ip.as_deref().filter(|s| !s.is_empty()), req_port) {
-        (Some(ip), Some(p)) => (ip.to_string(), p),
-        // No explicit target — fall back to "the" connected TCP session,
-        // but only if there's exactly one.  In normal operation the
-        // client always includes the full target on every request (see
-        // ConnectionManager._cmdURL), so this path is a defensive
-        // fallback, not the common case.
-        _ => match single_connected_target(&app).await {
-            Some(t) => t,
-            None => return bad_request("cmd write needs ?ip=<addr>&port=<n>"),
-        },
+    if !crate::validate::is_valid_pfod_cmd(&cmd) {
+        return crate::validate::hang_silently(
+            &format!("TCP cmd write — not valid pfod syntax: {cmd:?}")
+        ).await;
+    }
+
+    // No fallback to "whichever session happens to be connected" — the
+    // target must always be explicit. See main.rs's bare-`?cmd=` case
+    // for the analogous target-less rejection.
+    let ip = match req_ip.as_deref().filter(|s| !s.is_empty()) {
+        Some(ip) => ip.to_string(),
+        None => return crate::validate::hang_silently("TCP cmd write with no ?ip=<addr>").await,
     };
 
     let session = app.get_or_create_tcp(&ip, port).await;
@@ -178,22 +197,6 @@ async fn handle_cmd(
     }
 
     reply_ok_empty()
-}
-
-/// If exactly one TCP target currently has a connected session, return
-/// it; otherwise `None` (no sessions, or more than one — ambiguous).
-async fn single_connected_target(app: &Arc<AppState>) -> Option<(String, u16)> {
-    let map = app.tcp.lock().await;
-    let mut found = None;
-    for (key, session) in map.iter() {
-        if session.state.lock().await.connected {
-            if found.is_some() {
-                return None; // more than one — ambiguous
-            }
-            found = Some(key.clone());
-        }
-    }
-    found
 }
 
 // ── Session lifecycle ────────────────────────────────────────────────
@@ -384,10 +387,6 @@ fn reply_ok_empty() -> axum::response::Response {
     headers.insert("Content-Type", HeaderValue::from_static("text/plain; charset=utf-8"));
     headers.insert("Cache-Control", HeaderValue::from_static("no-cache"));
     (StatusCode::OK, headers, Vec::<u8>::new()).into_response()
-}
-
-fn bad_request(msg: &str) -> axum::response::Response {
-    (StatusCode::BAD_REQUEST, msg.to_string()).into_response()
 }
 
 fn sse_error(msg: impl Into<String>) -> axum::response::Response {

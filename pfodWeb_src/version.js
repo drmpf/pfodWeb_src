@@ -3,7 +3,8 @@
 // Depends on: nothing
 // Called by:  pfodWeb.js (reads window.JS_VERSION on load and stores in this.js_ver,
 //             logs version after bundle load)
-  var JS_VERSION = "V4.0.2 -- 30th June 2026";
+  var JS_VERSION = "V4.1.0-- 2nd July 2026";
+// V4.1.0 revised pfodProxy added password and extraFonts
 // V4.0.2 added Mouse over show data values in chart
 // V4.0.1 added Minimal C Code target
 // V4.0.0 added Designer

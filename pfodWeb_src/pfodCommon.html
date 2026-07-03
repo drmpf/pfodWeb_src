@@ -218,14 +218,15 @@
 
                 <!-- TCP/IP Socket Settings — always via pfodProxy (browsers
                      can't open raw TCP sockets).  Same IP-address shape as
-                     HTTP but the port defaults to 4989 and the request is
+                     HTTP but the port is fixed at 4989 (pfodProxy never
+                     reads a caller-supplied port) and the request is
                      routed through the proxy. -->
                 <div id="tcp-settings" class="protocol-section">
                     <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin:5px 0;">
                         <label for="prompt-tcp-ip" style="white-space:nowrap;">IP Address:</label>
                         <input type="text" id="prompt-tcp-ip" placeholder="192.168.1.100:4989" maxlength="50">
                     </div>
-                    <div class="help-text">port optional, default:4989</div>
+                    <div class="help-text">port:4989 fixed</div>
                 </div>
 
                 <!-- Shared pfodProxy box for Serial / BLE / TCP/IP — these three
@@ -249,8 +250,19 @@
                     <label for="prompt-proxy-port" id="proxy-port-label" style="margin-right:8px;">pfodProxy port:</label>
                     <span id="proxy-not-running-label" style="color:red; font-weight:bold; margin-right:8px; display:none;">pfodProxy not running at:</span>
                     <input type="text" id="prompt-proxy-port" value="4989" style="width:70px;" maxlength="5" inputmode="numeric">
+                    <!-- Populated by _pingProxy() from the "pong[_pw] <version>" body
+                         once a ping succeeds -- hidden until then. -->
+                    <span id="proxy-version-label" style="margin-left:8px; font-size:12px; color:#666; display:none;"></span>
+                    <span id="proxy-pw-label" style="margin-left:8px; font-size:12px; color:#1a5ca8; display:none;" title="This pfodProxy requires a matching ?pw= on pfodWeb.html's load URL">&#128274; password protected</span>
                     <a href="#" onclick="openPfodProxyInstructions();return false;" style="margin-left:12px; font-size:13px; white-space:nowrap;">pfodProxy Instructions</a>
                     <div id="proxy-start-hint" style="display:none; font-size:13px; margin-top:2px;">Start pfodProxy for Serial, BLE and TCP/IP connections.</div>
+                    <!-- Reverse mismatch: pfodWeb.html was loaded with ?pw= but this
+                         pfodProxy has none configured -- filled in by _applyPingBody(). -->
+                    <div id="proxy-pw-mismatch-hint" style="display:none; color:red; font-size:13px; margin-top:2px;"></div>
+                    <!-- major.minor version mismatch between this pfodWeb.html and the
+                         connected pfodProxy -- filled in by _applyPingBody(). Connect
+                         is disabled while this is showing (see validateConnectButton()). -->
+                    <div id="proxy-version-mismatch-hint" style="display:none; color:red; font-size:13px; margin-top:2px;">pfodProxy major.minor version does not match pfodWeb</div>
                 </div>
 
                 <!-- Response Timeout: HTTP default 10s, Serial/BLE default 3s.
@@ -313,6 +325,11 @@
                          otherwise, and this is hidden outright in the data build
                          (PFODWEB_DATA_BUILD), which has no pfodProxy at all. -->
                     <button id="close-proxy-button" onclick="closePfodProxy()" style="display:none; background-color:#cc0000; color:#ffffff; border:1px solid #000000; font-size:10.6px;">Close pfodProxy</button>
+                    <!-- Shown instead of the button above when there's a pw
+                         mismatch (either direction) -- /shutdown is gated by
+                         pw_filter same as /pfodWeb, so the button would just
+                         hang silently and do nothing in that case. -->
+                    <span id="close-proxy-label" style="display:none; font-size:15.9px; font-weight:bold; color:#666;">Close pfodProxy manually</span>
                 </div>
             </div>
         </div>
@@ -771,7 +788,13 @@
             const connectButton = document.getElementById('connect-button');
             const isWireProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
 
-            if (isWireProtocol && !_proxyAvailable) {
+            // Also disabled on a major.minor version mismatch between this
+            // pfodWeb.html and the connected pfodProxy (see
+            // proxy-version-mismatch-hint / _applyPingBody()) -- an
+            // incompatible pfodProxy can silently corrupt the wire
+            // protocol rather than cleanly failing, so this is blocked
+            // outright rather than just warned about.
+            if (isWireProtocol && (!_proxyAvailable || _proxyVersionMismatch)) {
                 connectButton.disabled = true;
                 return;
             }
@@ -1041,16 +1064,216 @@
         // before the first checkProxyAvailability() call resolves.
         let _proxyAvailable = true;
 
-        // Network probe only — no UI side effects.  2s timeout is generous
-        // for a loopback call; a refused connection on localhost actually
+        // Optional pairing password read once from this page's own load URL
+        // (e.g. file:///.../pfodWeb.html?pw=secret) and reused for every
+        // request to pfodProxy for the rest of this page's lifetime. Read
+        // via window.PFOD_PROXY_PW (guarded so it's safe regardless of
+        // whether this script or connectionManager.js runs first) rather
+        // than re-reading location.search later, since updateURLFromForm()
+        // rewrites the URL from a fresh URLSearchParams as the user fills
+        // the connect form, which would otherwise silently drop it. Empty
+        // string means the page was loaded without one.
+        if (typeof window.PFOD_PROXY_PW === 'undefined') {
+            window.PFOD_PROXY_PW = new URLSearchParams(window.location.search).get('pw') || '';
+        }
+
+        // extraFonts/pfodweb-extra-fonts.css's <link> (see pfodWeb.html's
+        // <head>) loads fine over file:// -- only the @font-face src url()
+        // fetches inside it are blocked, since font resources are always
+        // fetched in CORS mode and file: isn't an allowed scheme for that.
+        // A pfodDevice-hosted pfodWeb.html never hits this (its <link>
+        // already works over real http://), so this only runs for file://.
+        //
+        // Fix: swap the <link>'s href to an absolute pfodProxy URL that
+        // serves the *same* CSS file (not just the fonts) -- a plain DOM
+        // attribute write, no origin restriction at all. The browser then
+        // does its own normal http:// fetch + CSS parsing + relative-URL
+        // resolution for the @font-face references inside, exactly as it
+        // would for any other stylesheet -- no JS ever reads the parsed
+        // rules. (An earlier version of this tried to read/rewrite
+        // link.sheet.cssRules directly -- that throws a SecurityError for
+        // this subdirectory file:// stylesheet in Chromium, confirmed by
+        // testing; extraFonts/pfodweb-extra-fonts.css on disk was never
+        // modified either way.) If pfodProxy isn't running, the swapped
+        // <link> just 404s/fails to connect the same way the original
+        // file:// fetch would have -- no functional regression, extra
+        // scripts simply fall back to the system font.
+        //
+        // Two URL shapes (see pfodProxy_rs main.rs) depending on whether
+        // this page has a pw: relative resolution of the @font-face
+        // references can't carry a query string forward, but it does
+        // preserve extra path segments, so pw (when set) has to be a path
+        // segment here, not a ?pw= query param.
+        function _rewriteExtraFontsViaProxy() {
+            if (window.location.protocol !== 'file:') return;
+
+            const link = document.querySelector('link[href="extraFonts/pfodweb-extra-fonts.css"]');
+            if (!link) return;
+
+            // pfodWeb.html's own directory (strip the filename) -- this
+            // page's own location is the only thing that knows where its
+            // sibling extraFonts/ folder actually lives, since pfodProxy
+            // and pfodWeb.html are distributed independently.
+            let ownDir = window.location.pathname.replace(/[^/\\]*$/, '');
+            // On Windows, file:// URLs represent "C:\..." as "/C:/..." in
+            // location.pathname -- that leading slash is a URL-encoding
+            // artifact, not part of the real filesystem path (pfodProxy's
+            // Path::is_absolute() correctly rejects it as non-absolute).
+            // On Linux/macOS the leading slash IS the real root and must
+            // be kept, hence only stripped when followed by a drive
+            // letter.
+            if (/^\/[A-Za-z]:\//.test(ownDir)) ownDir = ownDir.slice(1);
+            const extraFontsDir = ownDir + 'extraFonts';
+
+            const portEl = document.getElementById('prompt-proxy-port');
+            const proxyPort = (portEl && portEl.value.trim()) || '4989';
+
+            const base = 'http://127.0.0.1:' + proxyPort
+                + (window.PFOD_PROXY_PW
+                    ? ('/extraFonts_pw/' + encodeURIComponent(window.PFOD_PROXY_PW) + '/')
+                    : '/extraFonts/')
+                + encodeURIComponent(extraFontsDir) + '/';
+
+            link.href = base + 'pfodweb-extra-fonts.css';
+        }
+
+        // Set once either direction of the pw-mismatch alert has fired,
+        // so the 5s heartbeat doesn't re-alert forever while the mismatch
+        // persists — one nudge per page load is enough, per direction.
+        let _pwMismatchAlerted = false;
+        let _pwReverseMismatchAlerted = false;
+
+        // True while the last ping showed a pw mismatch (either
+        // direction) — /ping itself still succeeds either way (it isn't
+        // gated), but /shutdown IS gated by pw_filter same as /pfodWeb,
+        // so _updateProxyViaVisibility() swaps the "Close pfodProxy"
+        // button for a plain "Close pfodProxy manually" label whenever
+        // this is true, rather than offering a button that would just
+        // hang silently and appear to do nothing.
+        let _pwMismatchActive = false;
+
+        // True while the last ping's proxy version disagrees with this
+        // page's own window.JS_VERSION at the major.minor level (patch
+        // differences are fine — see validateConnectButton(), which
+        // disables Connect for Serial/BLE/TCP while this is true).
+        let _proxyVersionMismatch = false;
+
+        // Extracts "major.minor" from a version string, handling both
+        // pfodWeb's window.JS_VERSION shape ("V4.0.3-- 2nd July 2026")
+        // and pfodProxy's plain semver from /ping's body ("4.0.3").
+        // Returns '' if no leading `<digits>.<digits>` pattern is found.
+        function _majorMinor(versionStr) {
+            const m = /(\d+)\.(\d+)/.exec(versionStr || '');
+            return m ? (m[1] + '.' + m[2]) : '';
+        }
+
+        // Updates the version/password-protected labels in the shared
+        // proxy box from a "pong[_pw] <version>" ping body, and warns the
+        // user once if the two sides disagree about a password:
+        //   - proxy requires one, pfodWeb.html wasn't loaded with one
+        //   - pfodWeb.html was loaded with one, proxy doesn't require one
+        // Can't detect a *wrong* (both-present-but-different) password
+        // this way — /ping isn't gated by pw_filter, it only reports
+        // whether one is configured at all — but that covers the common
+        // cases (forgot to add ?pw= to the pfodWeb.html shortcut, or
+        // forgot to pass it to pfodProxy) without pfodProxy ever handing
+        // back a yes/no oracle for guessing the actual value.
+        function _applyPingBody(pingBody) {
+            const parts = pingBody.trim().split(/\s+/);
+            const requiresPw = parts[0] === 'pong_pw';
+            const version = parts[1] || '';
+
+            const versionLabel = document.getElementById('proxy-version-label');
+            if (versionLabel) {
+                versionLabel.textContent = version ? ('v' + version) : '';
+                versionLabel.style.display = version ? '' : 'none';
+            }
+            const pwLabel = document.getElementById('proxy-pw-label');
+            if (pwLabel) pwLabel.style.display = requiresPw ? '' : 'none';
+
+            const proxyMajorMinor = _majorMinor(version);
+            const webMajorMinor = _majorMinor(window.JS_VERSION);
+            // A missing/unparseable proxy version (e.g. an old pfodProxy
+            // build from before /ping reported one) fails closed here too
+            // -- treated the same as an actual mismatch, not silently
+            // allowed through.
+            _proxyVersionMismatch = !proxyMajorMinor || proxyMajorMinor !== webMajorMinor;
+            const versionMismatchHint = document.getElementById('proxy-version-mismatch-hint');
+            if (versionMismatchHint) versionMismatchHint.style.display = _proxyVersionMismatch ? '' : 'none';
+
+            const mismatchHint = document.getElementById('proxy-pw-mismatch-hint');
+            const forwardMismatch = requiresPw && !window.PFOD_PROXY_PW;
+            const reverseMismatch = !requiresPw && !!window.PFOD_PROXY_PW;
+            if (mismatchHint) {
+                // Built with DOM nodes (not innerHTML) so the pw value can
+                // never be mis-parsed as markup, whatever characters it
+                // contains -- the pw itself is set black to stand out
+                // against the rest of the (red) line.
+                mismatchHint.textContent = '';
+                if (forwardMismatch) {
+                    mismatchHint.appendChild(document.createTextNode("pfodWeb requires &pw=... to match pfodProxy's password"));
+                } else if (reverseMismatch) {
+                    mismatchHint.appendChild(document.createTextNode("pfodProxy requires pw to match pfodWeb's, "));
+                    const pwSpan = document.createElement('span');
+                    pwSpan.style.color = 'black';
+                    pwSpan.textContent = window.PFOD_PROXY_PW;
+                    mismatchHint.appendChild(pwSpan);
+                }
+                mismatchHint.style.display = (forwardMismatch || reverseMismatch) ? '' : 'none';
+            }
+
+            // (requiresPw && !window.PFOD_PROXY_PW) covers the other
+            // direction -- both make /pfodWeb and /shutdown hang via
+            // pw_filter, so both swap the close button for a label.
+            _pwMismatchActive = (requiresPw && !window.PFOD_PROXY_PW) || reverseMismatch;
+            _updateProxyViaVisibility();
+
+            if (requiresPw && !window.PFOD_PROXY_PW && !_pwMismatchAlerted) {
+                _pwMismatchAlerted = true;
+                alert('This pfodProxy requires a password.\n\n' +
+                      'Reopen pfodWeb.html with a matching ?pw=<password> ' +
+                      '(the same password pfodProxy was started with).');
+            } else if (reverseMismatch && !_pwReverseMismatchAlerted) {
+                _pwReverseMismatchAlerted = true;
+                alert("pfodProxy requires pw to match pfodWeb's, " + window.PFOD_PROXY_PW +
+                      '\n\nRestart pfodProxy with a matching password:\n' +
+                      'pfodProxy <port> ' + window.PFOD_PROXY_PW);
+            }
+        }
+
+        // Clears all ping-derived UI (version, password-protected label,
+        // pw mismatch hint/close-button swap, version mismatch hint) on a
+        // failed ping -- none of that state is knowable while the proxy
+        // isn't reachable, so nothing here should keep showing stale
+        // values from the last successful ping (e.g. a version number
+        // from before the proxy was stopped).
+        function _clearPingBody() {
+            const versionLabel = document.getElementById('proxy-version-label');
+            if (versionLabel) { versionLabel.textContent = ''; versionLabel.style.display = 'none'; }
+            const pwLabel = document.getElementById('proxy-pw-label');
+            if (pwLabel) pwLabel.style.display = 'none';
+            const mismatchHint = document.getElementById('proxy-pw-mismatch-hint');
+            if (mismatchHint) { mismatchHint.textContent = ''; mismatchHint.style.display = 'none'; }
+            _pwMismatchActive = false;
+            const versionMismatchHint = document.getElementById('proxy-version-mismatch-hint');
+            if (versionMismatchHint) versionMismatchHint.style.display = 'none';
+            _proxyVersionMismatch = false;
+        }
+
+        // Network probe only — UI side effects limited to the version/
+        // password-protected labels via _applyPingBody() (success) /
+        // _clearPingBody() (failure).  2s timeout is generous for a
+        // loopback call; a refused connection on localhost actually
         // fails near-instantly.
         async function _pingProxy(port) {
             const controller = new AbortController();
             const tid = setTimeout(() => controller.abort(), 2000);
             try {
-                await fetch('http://127.0.0.1:' + port + '/ping', { signal: controller.signal });
+                const resp = await fetch('http://127.0.0.1:' + port + '/ping', { signal: controller.signal });
+                _applyPingBody(await resp.text());
                 return true;
             } catch (_) {
+                _clearPingBody();
                 return false;
             } finally {
                 clearTimeout(tid);
@@ -1155,8 +1378,16 @@
             // which has no pfodProxy at all (PFODWEB_DATA_BUILD true means
             // _proxyAvailable's default of true was never actually confirmed
             // by a real ping -- checkProxyAvailability() skips entirely there).
+            // A pw mismatch (either direction) leaves the button visually
+            // reachable but functionally dead -- /ping succeeds regardless
+            // (so _proxyAvailable is still true) while /shutdown hangs via
+            // pw_filter -- so swap it for a plain label in that case
+            // instead of offering a button that silently does nothing.
+            const showClose = _proxyAvailable && !PFODWEB_DATA_BUILD;
             const closeProxyBtn = document.getElementById('close-proxy-button');
-            if (closeProxyBtn) closeProxyBtn.style.display = (_proxyAvailable && !PFODWEB_DATA_BUILD) ? '' : 'none';
+            const closeProxyLabel = document.getElementById('close-proxy-label');
+            if (closeProxyBtn) closeProxyBtn.style.display = (showClose && !_pwMismatchActive) ? '' : 'none';
+            if (closeProxyLabel) closeProxyLabel.style.display = (showClose && _pwMismatchActive) ? '' : 'none';
         }
 
         // Pings pfodProxy on the configured port and applies the result.
@@ -1193,13 +1424,35 @@
             _applyProxyAvailability(false);
             const portEl = document.getElementById('prompt-proxy-port');
             const port = (portEl && portEl.value.trim()) || '4989';
-            fetch('http://127.0.0.1:' + port + '/shutdown').catch(function() {});
+            // /shutdown is gated by pw_filter (unlike /ping) -- must carry
+            // a matching &pw= when this page was loaded with one.
+            const pwQuery = window.PFOD_PROXY_PW ? ('?pw=' + encodeURIComponent(window.PFOD_PROXY_PW)) : '';
+            // Same short, purely-informational nudge as connectWithPrompt()
+            // -- a pw mismatch where both sides have *a* password but the
+            // values differ makes this request hang for a full 2 minutes
+            // (hang_silently in pfodProxy_rs) with no distinguishing error,
+            // silently swallowed by the .catch() below same as any other
+            // failure.
+            const pwHintTimer = setTimeout(function() {
+                alert('Still waiting for pfodProxy to close.\n\n' +
+                      'If pfodProxy has a password, double-check it matches ' +
+                      "pfodWeb's ?pw= -- pfodProxy silently ignores a wrong " +
+                      'password rather than reporting an error.');
+            }, 5000);
+            fetch('http://127.0.0.1:' + port + '/shutdown' + pwQuery)
+                .catch(function() {})
+                .finally(function() { clearTimeout(pwHintTimer); });
         }
 
         // Update browser URL from current form state so the page can be bookmarked
         function updateURLFromForm() {
             const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
             const params = new URLSearchParams();
+            // Re-add ?pw= from the page's original load URL (see
+            // window.PFOD_PROXY_PW above) -- this rebuild starts from a
+            // fresh URLSearchParams and would otherwise silently drop it,
+            // breaking pfodProxy connectivity on the next reload/bookmark.
+            if (window.PFOD_PROXY_PW) params.set('pw', window.PFOD_PROXY_PW);
             if (protocol === 'http') {
                 const ip = document.getElementById('prompt-ip').value.trim();
                 if (ip) params.set('targetIP', ip);
@@ -1920,26 +2173,26 @@
                 connectionSettings.bleName    = _bleDeviceState.name || null;
             } else if (protocol === 'tcp') {
                 // TCP/IP Socket — always via pfodProxy (browsers can't open
-                // raw TCP).  Defaults port 4989 if user omits ":port".
+                // raw TCP). Port is fixed at 4989 — pfodProxy always
+                // connects there and never reads a caller-supplied port
+                // (see pfodProxy_rs tcp.rs). A trailing ":port" the user
+                // types is stripped and discarded, never sent or stored.
                 const tcpIp = document.getElementById('prompt-tcp-ip').value.trim();
                 if (!tcpIp) {
                     alert('Please enter an IP address');
                     return;
                 }
-                let deviceIp   = tcpIp;
-                let devicePort = 4989;
+                let deviceIp = tcpIp;
                 const colonIdx = tcpIp.lastIndexOf(':');
                 if (colonIdx > 0) {
                     const portNum = parseInt(tcpIp.slice(colonIdx + 1), 10);
                     if (!isNaN(portNum) && portNum > 0 && portNum <= 65535) {
-                        deviceIp   = tcpIp.slice(0, colonIdx);
-                        devicePort = portNum;
+                        deviceIp = tcpIp.slice(0, colonIdx);
                     }
                 }
                 const proxyPort = (document.getElementById('prompt-proxy-port').value || '').trim() || '4989';
                 const proxyHostPort = '127.0.0.1:' + proxyPort;
                 connectionSettings.targetIP      = deviceIp;
-                connectionSettings.targetPort    = devicePort;
                 connectionSettings.proxyHostPort = proxyHostPort;
                 // TCP-only keepAlive — see keepAlive.js startKeepAlivePolling.
                 // 0 disables; non-zero = seconds between idle `{ }` pings.
@@ -1952,14 +2205,61 @@
             try {
                 const tempConnectionManager = new ConnectionManager(connectionSettings);
 
+                // For proxy-backed protocols (Serial/BLE/TCP), a pw
+                // mismatch where BOTH sides have *a* password but the
+                // values differ can't be caught proactively by the
+                // heartbeat (see _applyPingBody's doc comment) -- pfodProxy
+                // just hangs the connection for a full 2 minutes
+                // (hang_silently in pfodProxy_rs) with no distinguishing
+                // error. Race the real connect() against a short,
+                // purely-informational timer: if it hasn't resolved yet,
+                // nudge the user to double check their password instead of
+                // making them wait out the full hang. Does NOT cancel the
+                // real connect() -- it keeps running in the background and
+                // still succeeds normally if this was just a slow device,
+                // not a pw mismatch.
+                const isProxyProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
+                let pwHintTimer = null;
+                // Only arm this timer when pfodWeb itself has a ?pw= — that is the only
+                // scenario where a silent hang can occur (both sides have *a* password
+                // but the values differ; hang_silently in pfodProxy gives no feedback).
+                // The other mismatch cases (one side has pw, other doesn't) are already
+                // caught and shown by _applyPingBody() on the ping result. Without a
+                // ?pw= there is no mismatch to warn about, so firing on every slow BLE
+                // connect would just be noise.
+                if (isProxyProtocol && window.PFOD_PROXY_PW) {
+                    pwHintTimer = setTimeout(function() {
+                        alert('Still waiting to connect via pfodProxy.\n\n' +
+                              'If pfodProxy has a password, double-check it matches ' +
+                              "pfodWeb's ?pw= -- pfodProxy silently ignores a wrong " +
+                              'password rather than reporting an error.');
+                    }, 5000);
+                }
+
                 // Open the device connection NOW for every protocol that
                 // needs one.  For BLE this waits until GATT is ready
                 // (progress:ready) before resolving so the request queue
                 // doesn't fire commands into an unready device.
                 // Any failure surfaces here instead of being deferred
                 // to the first send() that might never come.
-                await tempConnectionManager.connect();
+                try {
+                    await tempConnectionManager.connect();
+                } finally {
+                    if (pwHintTimer) clearTimeout(pwHintTimer);
+                }
                 console.log('[CONNECT_PROMPT] Connected, proceeding...');
+
+                // Rewrite the extraFonts <link> to load through pfodProxy
+                // now that connection has succeeded (proving the pw, if any,
+                // is correct). Deferred from DOMContentLoaded so a pw
+                // mismatch never sends a font request that hangs in
+                // hang_silently. Skip if ping already detected a mismatch
+                // (forward or reverse) — catches the edge case where
+                // connect() went to a pfodDevice directly (not via
+                // pfodProxy) but pfodProxy is also running with wrong pw.
+                if (!_pwMismatchActive) {
+                    _rewriteExtraFontsViaProxy();
+                }
 
                 window.pfodConnectionManager = tempConnectionManager;
                 console.log('[CONNECT_PROMPT] ConnectionManager stored, protocol:', protocol);

@@ -84,14 +84,26 @@ function setCurrentTargetId(id) {
   return _hasBoardData(id);
 }
 
-/// Look up the human-readable display name for a board id via the
-/// auto-generated BOARD_DATA_BY_ID registry.  Falls back to the id
-/// itself when the registry is absent (defensive) or the id is unknown.
+/// Look up the label for the target display span: "board name - connections".
+/// Connection types are derived from the board's actual connections object so
+/// the label reflects what this specific chip supports (not the family default).
+/// Falls back to the id itself when the registry is absent or the id is unknown.
 function _displayNameFor(id) {
   if (typeof BOARD_DATA_BY_ID !== 'undefined' && BOARD_DATA_BY_ID[id]) {
-    return BOARD_DATA_BY_ID[id].name;
+    const d = BOARD_DATA_BY_ID[id];
+    const connStr = _boardConnStr(d.connections);
+    return connStr ? d.name + ' - ' + connStr : d.name;
   }
   return id;
+}
+
+/// Build "Serial, BLE, TCP/IP, HTTP" from a board connections object,
+/// using only the keys actually present.
+const _CONN_ORDER  = ['serial', 'ble', 'tcp', 'http'];
+const _CONN_LABELS = { serial: 'Serial', ble: 'BLE', tcp: 'TCP/IP', http: 'HTTP' };
+function _boardConnStr(conns) {
+  if (!conns) return '';
+  return _CONN_ORDER.filter(c => conns[c] !== undefined).map(c => _CONN_LABELS[c]).join(', ');
 }
 
 function _hasBoardData(id) {
@@ -100,7 +112,7 @@ function _hasBoardData(id) {
 
 function _refreshTargetDisplay() {
   const span = document.getElementById('designer-target-display');
-  if (span) span.textContent = _displayNameFor(_currentTargetId);
+  if (span) span.innerHTML = _displayNameFor(_currentTargetId).replace(/\n/g, '<br>');
 }
 
 // ───────────────────────── Hierarchy access ──────────────────────────────
@@ -214,7 +226,7 @@ function _renderCurrentLevel() {
     const btn = document.createElement('button');
     btn.type        = 'button';
     btn.className   = 'board-family-btn';
-    btn.textContent = it.name;
+    btn.innerHTML = it.name.replace(/\n/g, '<br>');
     btn.dataset.id  = it.id;
     btn.addEventListener('click', () => _onSelectItem(it));
     list.appendChild(btn);

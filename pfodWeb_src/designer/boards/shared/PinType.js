@@ -13,7 +13,9 @@ const PinType = Object.freeze({
   DIGITAL_INPUT:  'digital_input',
   DIGITAL_OUTPUT: 'digital_output',
   PWM_OUTPUT:     'pwm_output',
-  ANALOG_INPUT:   'analog_input',
+  ANALOG_INPUT:        'analog_input',
+  // Available for analog input only when connection type is Serial (ESP32 ADC2).
+  ANALOG_INPUT_SERIAL: 'analog_input_serial',
   DAC_OUTPUT:     'dac_output',
   SERIAL_RX:      'serial_rx',
   SERIAL_TX:      'serial_tx',

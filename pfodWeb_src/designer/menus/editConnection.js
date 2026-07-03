@@ -2,30 +2,20 @@
  * designer/menus/editConnection.js
  *
  * Handlers for the Connection picker reached from editMenu's
- * "Connection" row.  Two pfod cmd bytes:
+ * "Connection" row.  One active pfod cmd byte:
  *
  *   'z'              — Connection picker entry / submit
- *       {z}          → render either the connection picker (multi-
- *                      transport boards) or the baud picker (serial-
- *                      only boards) depending on board.connections.
+ *       {z}          → render the connection picker (only reached when
+ *                      the board has more than one transport — single-
+ *                      transport boards show the row as a label so {z}
+ *                      is never sent).
  *       {zs`<idx>}   → connection picker submit.  Updates state.connection;
- *                      if Serial was picked, queues a follow-on `{y}` so
- *                      the user lands on the baud picker after the auto
- *                      back-nav to editMenu.  For BLE/TCP/HTTP the
- *                      auto back-nav lands the user back on editMenu
- *                      with the new transport label.
+ *                      for BLE/TCP/HTTP the auto back-nav lands the user
+ *                      back on editMenu with the new transport label.
+ *                      Serial is always 115200 — no baud picker is shown.
  *
- *   'y'              — Baud picker entry / submit
- *       {y}          → render the baud picker for the current board.
- *       {ys`<idx>}   → baud picker submit.  Updates state.baud; auto
- *                      back-nav returns to editMenu with the new baud
- *                      label.
- *
- * The button-list order on the connection picker matches the user-
- * stated requirement: Serial, BLE, TCP/IP Socket, HTTP.  Only
- * transports present in board.connections are rendered, so AVR boards
- * (serial-only) skip the connection picker entirely and go straight
- * to the baud picker.
+ *   'y'              — Baud picker (no longer used — Serial is always 115200)
+ *                      Code left in place but not registered with the dispatcher.
  *
  * (c)2026 Forward Computing and Control Pty. Ltd.
  */
@@ -66,19 +56,19 @@ const DesignerEditConnection = (() => {
     return out;
   }
 
-  /// Render the baud picker.  Initial idx points at the currently-
-  /// selected baud so the user can see what's active.
-  function _renderBaudPicker(state) {
-    const bauds   = state.board.connections.serial.supportedBauds;
-    const currIdx = Math.max(0, bauds.indexOf(state.baud));
-    let out = '{?ys`' + currIdx + '~' + DESIGNER_PROMPT_FMT +
-              'Select Baud Rate';
-    for (const b of bauds) {
-      out += '|' + b;
-    }
-    out += '}';
-    return out;
-  }
+  // Baud picker — no longer used; Serial is always 115200.  Left in place
+  // in case per-board baud selection is reinstated in future.
+  // function _renderBaudPicker(state) {
+  //   const bauds   = state.board.connections.serial.supportedBauds;
+  //   const currIdx = Math.max(0, bauds.indexOf(state.baud));
+  //   let out = '{?ys`' + currIdx + '~' + DESIGNER_PROMPT_FMT +
+  //             'Select Baud Rate';
+  //   for (const b of bauds) {
+  //     out += '|' + b;
+  //   }
+  //   out += '}';
+  //   return out;
+  // }
 
   /// Parse the trailing `<idx>}` portion of a picker submit.  Returns
   /// the integer or null when no valid digits are found.  argStart
@@ -90,8 +80,8 @@ const DesignerEditConnection = (() => {
   }
 
   /// Dispatch handler for 'z' (Connection picker entry/submit).
-  ///   bare {z}      → render picker (connection or baud depending on board)
-  ///   {zs`<idx>}    → apply connection pick + maybe queue baud picker
+  ///   bare {z}      → render connection picker (only reached for multi-transport boards)
+  ///   {zs`<idx>}    → apply connection pick; Serial is always 115200, no baud picker
   function sendConnection(rawCmd, state, depth) {
     if (rawCmd[depth + 1] === 's') {
       const idx = _parseSubmitIdx(rawCmd, depth + 2);
@@ -108,42 +98,40 @@ const DesignerEditConnection = (() => {
       // Explicit save — auto-save skips PFOD_EMPTY so without this the
       // picked connection would be visible in-session but lost on reload.
       state.save();
-      if (picked === 'serial') {
-        return { pfod: _renderBaudPicker(state), skipSave: true };
-      }
+      // Serial is always 115200 — baud picker no longer shown after picking serial.
+      // if (picked === 'serial') {
+      //   return { pfod: _renderBaudPicker(state), skipSave: true };
+      // }
       return PFOD_EMPTY;
     }
-    const supported = _supportedConnections(state.board);
-    if (supported.length === 1) {
-      return { pfod: _renderBaudPicker(state), skipSave: true };
-    }
+    // Single-connection boards render the row as a label so {z} is never
+    // sent from them — always render the connection picker here.
+    // if (supported.length === 1) {
+    //   return { pfod: _renderBaudPicker(state), skipSave: true };
+    // }
     return { pfod: _renderConnectionPicker(state), skipSave: true };
   }
 
-  /// Dispatch handler for 'y' (Baud picker entry/submit).
-  ///   bare {y}      → render baud picker
-  ///   {ys`<idx>}    → apply baud pick; auto back-nav returns to editMenu
-  function sendBaud(rawCmd, state, depth) {
-    if (rawCmd[depth + 1] === 's') {
-      const idx = _parseSubmitIdx(rawCmd, depth + 2);
-      console.error('[CONN_DBG] sendBaud submit rawCmd=', rawCmd, 'idx=', idx);
-      if (idx === null) return PFOD_EMPTY;
-      const bauds  = state.board.connections.serial.supportedBauds;
-      const picked = bauds[idx];
-      if (picked === undefined) {
-        console.error('[CONN_DBG] no baud at idx', idx, 'bauds=', bauds);
-        return PFOD_EMPTY;
-      }
-      console.error('[CONN_DBG] state.baud', state.baud, '→', picked);
-      state.baud = picked;
-      // Explicit save — dispatcher's auto-save skips PFOD_EMPTY responses
-      // (designer/index.js:73), so without this the picked baud would
-      // be visible in-session but lost on reload.
-      state.save();
-      return PFOD_EMPTY;
-    }
-    return { pfod: _renderBaudPicker(state), skipSave: true };
-  }
+  // Baud picker handler — no longer used; Serial is always 115200.
+  // Left in place in case per-board baud selection is reinstated.
+  // function sendBaud(rawCmd, state, depth) {
+  //   if (rawCmd[depth + 1] === 's') {
+  //     const idx = _parseSubmitIdx(rawCmd, depth + 2);
+  //     console.error('[CONN_DBG] sendBaud submit rawCmd=', rawCmd, 'idx=', idx);
+  //     if (idx === null) return PFOD_EMPTY;
+  //     const bauds  = state.board.connections.serial.supportedBauds;
+  //     const picked = bauds[idx];
+  //     if (picked === undefined) {
+  //       console.error('[CONN_DBG] no baud at idx', idx, 'bauds=', bauds);
+  //       return PFOD_EMPTY;
+  //     }
+  //     console.error('[CONN_DBG] state.baud', state.baud, '→', picked);
+  //     state.baud = picked;
+  //     state.save();
+  //     return PFOD_EMPTY;
+  //   }
+  //   return { pfod: _renderBaudPicker(state), skipSave: true };
+  // }
 
   /// Compute the human-readable summary shown on editMenu's Connection
   /// row.  Serial shows the baud; the other transports just show the
@@ -158,11 +146,14 @@ const DesignerEditConnection = (() => {
 
   return Object.freeze({
     sendConnection,
-    sendBaud,
+    // sendBaud no longer registered — Serial is always 115200
+    supportedConnections: _supportedConnections,
+    connectionLabels:     CONNECTION_LABELS,
     summaryForEditMenu,
   });
 })();
 
-// Self-register both cmd bytes into the top-level designer dispatcher.
+// Self-register the connection picker cmd byte.
 DesignerDispatch.add('z', DesignerEditConnection.sendConnection);
-DesignerDispatch.add('y', DesignerEditConnection.sendBaud);
+// Baud picker no longer used — Serial is always 115200.
+// DesignerDispatch.add('y', DesignerEditConnection.sendBaud);

@@ -81,10 +81,18 @@ pub struct AppState {
     /// antivirus scanning the fresh .exe, a slow --no-browser wrapper
     /// script) could log "idle" before anyone ever opened pfodWeb at all.
     pub has_seen_request: std::sync::atomic::AtomicBool,
+
+    /// Optional pairing password (third CLI arg — see main.rs). `None`
+    /// means pfodProxy was started without one. `handle_ping` reports
+    /// `Some`-ness (as "pong_pw" vs "pong") so pfodWeb.html can tell a
+    /// legitimate user their `?pw=` is missing/wrong instead of every
+    /// connection attempt just silently hanging with no explanation;
+    /// the actual value is never handed back, only whether one exists.
+    pub password: Option<String>,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(password: Option<String>) -> Self {
         Self {
             serial:           Mutex::new(HashMap::new()),
             tcp:              Mutex::new(HashMap::new()),
@@ -92,6 +100,7 @@ impl AppState {
             ble_central:      Mutex::new(None),
             last_request:     Mutex::new(Instant::now()),
             has_seen_request: std::sync::atomic::AtomicBool::new(false),
+            password,
         }
     }
 

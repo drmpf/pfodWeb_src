@@ -71,25 +71,25 @@ const DesignerAddMenuItem = (() => {
   const MENU_ITEM_OPTIONS = Object.freeze([
     // 0 — MENU_ITEM_ON_OFF
     'On/Off Setting or Pulse\n' +
-    '<-3>Set or pulse a variable.' + IO_PIN_NOTE,
+    '<-3>Set or pulse a variable.\n<-1>Option to connect to output pin.',
 
     // 1 — MENU_ITEM_INPUT_DISPLAY
     'On/Off Display\n' +
-    '<-3>Display a boolean variable (0 or 1)' + IO_PIN_NOTE,
+    '<-3>Display a boolean variable (0 or 1)\n<-1>Option to connect to input pin.',
 
     // 2 — MENU_ITEM_PWM_SLIDER
-    'Slider Input or \n PWM/Analog Output\n' +
+    'Slider Input or \n set PWM/Analog Output\n' +
     '<-3>Slider to let the user set a number.\n<-1>Option to connect to PWM or DAC pin',
 
     // 3 — MENU_ITEM_ADC_DISPLAY
-    'Data Display\n' +
+    'Data/ADC Display\n' +
     '<-3>Display an int or long variable scaled to the real value it represents with units\n' +
     'Horizontal bar indicator optional.\n' +
-    '<i>e.g. 0 to 1023 variable mapped to 0V to 3.3V displayed.</i>' + IO_PIN_NOTE,
+    '<i>e.g. 0 to 1023 ADC variable mapped to 0V to 3.3V displayed.</i>\n<-1>Option to connect to ADC pin.',
 
     // 4 — MENU_ITEM_PLOT
     'Chart Button\n' +
-    '<-3>This menu item opens a chart with upto 3 plots.' + IO_PIN_NOTE,
+    '<-3>This menu item opens a chart with upto 3 plots.\n<-1>Option to connect to ADC pins.',
 
     // 5 — MENU_ITEM_BUTTON
     'Button\n' +

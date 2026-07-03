@@ -142,6 +142,23 @@ function pfodAlert(message, onClose = null) {
 }
 
 /**
+ * Optional pairing password read once from this page's own load URL
+ * (e.g. file:///.../pfodWeb.html?pw=secret) and reused for every
+ * request to pfodProxy for the rest of this page's lifetime. Read via
+ * window.PFOD_PROXY_PW (guarded so it's safe regardless of whether
+ * this script or pfodCommon.html's inline script runs first) rather
+ * than re-reading location.search later, since updateURLFromForm() in
+ * pfodCommon.html rewrites the URL from a fresh URLSearchParams as the
+ * user fills the connect form, which would otherwise silently drop
+ * it. Empty string means the page was loaded without one -- pfodProxy
+ * treats "no &pw=" as "no password configured", not as an empty
+ * password.
+ */
+if (typeof window.PFOD_PROXY_PW === 'undefined') {
+  window.PFOD_PROXY_PW = new URLSearchParams(window.location.search).get('pw') || '';
+}
+
+/**
  * Shared dedup mechanism - used by all connection protocols
  * Rotating character prepended to commands to detect duplicates
  * Each send() call atomically gets a unique dedup character
@@ -290,9 +307,10 @@ class ConnectionManager {
       case 'tcp':
         // TCP/IP Socket — always via pfodProxy (browsers can't open raw
         // TCP sockets).  Proxy holds the persistent socket; we speak HTTP
-        // to it with ?ip=&port= query params identifying the device.
+        // to it with a ?ip= query param identifying the device — the
+        // port is fixed at 4989 in pfodProxy itself, never sent.
         this.adapter = new TCPProxyConnection(this.config, this);
-        console.log(`[CONNECTION_MANAGER] Initialized TCPProxy adapter via ${this.config.proxyHostPort} for ${this.config.targetIP}:${this.config.targetPort}`);
+        console.log(`[CONNECTION_MANAGER] Initialized TCPProxy adapter via ${this.config.proxyHostPort} for ${this.config.targetIP}`);
         break;
 
       case 'designer':
@@ -390,7 +408,9 @@ class ConnectionManager {
         // BLEProxyConnection carries bleAddress set from config.bleAddress.
         return 'ble_' + (this.adapter ? (this.adapter.bleAddress || 'unknown') : 'unknown');
       case 'tcp':
-        return 'tcp_' + (this.config.targetIP || 'unknown') + '_' + this.config.targetPort;
+        // Port is fixed at 4989 (never user-supplied), so IP alone
+        // uniquely identifies the target.
+        return 'tcp_' + this.config.targetIP;
       case 'designer':
         // In-browser virtual device — keyed by the active design name
         // so the per-design pfod-menu cache stays separate from the
@@ -1247,21 +1267,29 @@ class ProxyStreamConnection extends PfodConnectionBase {
   }
 
   /// Subclasses MUST override.  Returns the target query (e.g.
-  /// "serial=COM16&baud=115200" / "ip=10.0.0.1&port=4989" /
-  /// "ble=AA:BB:…"), plus any `&debug=` flag.
+  /// "serial=COM16&baud=115200" / "ip=10.0.0.1" / "ble=AA:BB:…"),
+  /// plus any `&debug=` flag.
   _proxyTargetQuery() {
     throw new Error(`${this.constructor.name} must override _proxyTargetQuery()`);
   }
 
+  /// `&pw=<password>` if this page was loaded with one, else ''.
+  /// /pfodWeb is gated by pw_filter in pfodProxy_rs, so every request
+  /// here needs it when one is configured.
+  _pwQuery() {
+    return window.PFOD_PROXY_PW ? ('&pw=' + encodeURIComponent(window.PFOD_PROXY_PW)) : '';
+  }
+
   /// URL for the connection SSE (no `cmd=`).
   _connectionURL() {
-    return this.baseURL + '/pfodWeb?' + this._proxyTargetQuery();
+    return this.baseURL + '/pfodWeb?' + this._proxyTargetQuery() + this._pwQuery();
   }
 
   /// URL for a cmd write (`&cmd=<encoded>` appended).
   _cmdURL(cmdWithPrefix) {
     return this.baseURL + '/pfodWeb?'
          + this._proxyTargetQuery()
+         + this._pwQuery()
          + '&cmd=' + encodeURIComponent(cmdWithPrefix);
   }
 
@@ -1692,21 +1720,21 @@ class BLEProxyConnection extends ProxyStreamConnection {
  * TCPProxyConnection — raw-TCP transport via pfodProxy.
  *
  * Browsers can't open raw TCP sockets, so reaching a pfod device that
- * speaks TCP requires the local pfodProxy.  Uses `?ip=…&port=…`; the
- * proxy holds the TCP socket and pushes recv bytes onto the SSE
- * stream.
+ * speaks TCP requires the local pfodProxy.  Uses `?ip=…`; the proxy
+ * always connects on the standard pfod device port and holds the TCP
+ * socket, pushing recv bytes onto the SSE stream. No `port` param is
+ * sent — pfodProxy ignores/hangs on one if present (see pfodProxy_rs
+ * tcp.rs), so this class must never add one back.
  */
 class TCPProxyConnection extends ProxyStreamConnection {
   constructor(config, connectionManager) {
     super(config, connectionManager, 'tcp');
-    this.deviceIP   = config.targetIP;
-    this.devicePort = config.targetPort || 4989;
-    console.log(`[TCP_PROXY] Created for ${this.deviceIP}:${this.devicePort} via ${this.baseURL}`);
+    this.deviceIP = config.targetIP;
+    console.log(`[TCP_PROXY] Created for ${this.deviceIP} via ${this.baseURL}`);
   }
 
   _proxyTargetQuery() {
-    let q = 'ip='   + encodeURIComponent(this.deviceIP)
-          + '&port=' + this.devicePort;
+    let q = 'ip=' + encodeURIComponent(this.deviceIP);
     if (window.DEBUG) q += '&debug=';
     return q;
   }

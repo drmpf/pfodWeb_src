@@ -315,7 +315,9 @@ const DesignerEditChart = (() => {
     const used = _usedPinNamesForPlot(state);
     const list = [{ label: 'Not connected', notes: null, name: null, codeName: null }];
     for (const bp of state.board.pins) {
-      if (!bp.capabilities.supports(PinType.ANALOG_INPUT)) continue;
+      const hasAnalog = bp.capabilities.supports(PinType.ANALOG_INPUT) ||
+                        bp.capabilities.supports(PinType.ANALOG_INPUT_SERIAL) && state.connection === 'serial';
+      if (!hasAnalog) continue;
       if (used.has(bp.name)) continue;
       list.push({ label: bp.label, notes: bp.notes || null, name: bp.name, codeName: bp.codeName });
     }

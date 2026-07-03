@@ -59,10 +59,19 @@ const DesignerEditMenuItemPin = (() => {
     return used;
   }
 
+  /// True if a pin supports a capability for the active connection.
+  /// The convention: "cap" is available for all connections; "cap_serial"
+  /// (or "cap_ble" etc.) is available only when that connection is active.
+  function _pinSupports(bp, cap, connection) {
+    return bp.capabilities.supports(cap) ||
+           bp.capabilities.supports(cap + '_' + connection);
+  }
+
   /// Build the ordered array of selectable entries for this item.
   /// Entry 0 is always "Not connected" (name: null, type: null).
   /// Remaining entries are board pins that support the required capability
-  /// and are not already used elsewhere in the design tree.
+  /// for the current connection type, and are not already used elsewhere
+  /// in the design tree.
   /// @returns {{ label: string, notes: string|null, name: string|null, type: string|null }[]}
   function _buildPinList(state) {
     const item = state.getActiveItem();
@@ -72,7 +81,7 @@ const DesignerEditMenuItemPin = (() => {
     const used = _usedPinNames(state);
     const list = [{ label: 'Not connected', notes: null, name: null, type: null }];
     for (const bp of state.board.pins) {
-      if (!bp.capabilities.supports(requiredCap)) continue;
+      if (!_pinSupports(bp, requiredCap, state.connection)) continue;
       if (used.has(bp.name)) continue;
       // For PWM items: a pin that natively supports DAC output should be
       // tagged dac_output so the code generator emits dacWrite() instead

@@ -133,7 +133,7 @@ const REQUIRED_BOARD_FIELDS = [
 /// Parsers known to this script — values that may appear in board.json's
 /// `family` field.  Adding support for a new MCU family means writing a
 /// build<Family>Board() function and registering its key here.
-const SUPPORTED_FAMILIES = new Set(['ccode', 'avr', 'esp32']);
+const SUPPORTED_FAMILIES = new Set(['unlistedBoard', 'ccode', 'avr', 'esp32']);
 
 /// Strip JSONC-style `//` line comments and `/* ... */` block comments
 /// from a text payload so the result is plain JSON ready for JSON.parse.
@@ -572,7 +572,7 @@ function buildEsp32Board(src, cfg) {
   }
 
   // Canonical capability emission order for chip-generic capabilities.
-  const CAP_ORDER = ['analog_input', 'digital_input', 'digital_output', 'pwm_output', 'dac_output'];
+  const CAP_ORDER = ['analog_input', 'analog_input_serial', 'digital_input', 'digital_output', 'pwm_output', 'dac_output'];
 
   const pins = [];
   const sortedGpios = [...allGpios].sort((a, b) => a - b);
@@ -867,13 +867,18 @@ function discoverVariants() {
       return { familyDisplayName: fallbackName, familySortOrder: DEFAULT_FAMILY_SORT_ORDER };
     }
     if (!familyConfigCache.has(famPath)) {
-      let result = { familyDisplayName: fallbackName, familySortOrder: DEFAULT_FAMILY_SORT_ORDER };
+      let result = { familyDisplayName: fallbackName, familySortOrder: DEFAULT_FAMILY_SORT_ORDER, familyConnectionTypes: '' };
       try {
         const parsed = JSON.parse(stripJsonComments(fs.readFileSync(famPath, 'utf8')));
         if (typeof parsed.familyDisplayName === 'string' && parsed.familyDisplayName) {
           result.familyDisplayName = parsed.familyDisplayName;
         } else {
           _reportConfigIssues(famPath, ['missing or empty field: familyDisplayName']);
+        }
+        if (typeof parsed.connectionTypes === 'string' && parsed.connectionTypes) {
+          result.familyConnectionTypes = parsed.connectionTypes;
+        } else {
+          _reportConfigIssues(famPath, ['missing or empty field: features']);
         }
         if (parsed.sortOrder !== undefined) {
           if (typeof parsed.sortOrder === 'number') {
@@ -958,7 +963,7 @@ function discoverVariants() {
                      ? path.basename(path.dirname(boardsTxt))
                      : cfg.family;
 
-        const { familyDisplayName, familySortOrder } = loadFamilyConfig(dir, cfg.family);
+        const { familyDisplayName, familySortOrder, familyConnectionTypes } = loadFamilyConfig(dir, cfg.family);
 
         if (hits.length > 0) {
           // Clone so per-board boardName / displayName do not leak across
@@ -971,11 +976,12 @@ function discoverVariants() {
               prefix,
               familyDisplayName,
               familySortOrder,
+              familyConnectionTypes,
             }));
           }
         } else {
           // No boards.txt match — use the board.json fallback values.
-          out.push(Object.assign({}, cfg, { variantPath: p, prefix, familyDisplayName, familySortOrder }));
+          out.push(Object.assign({}, cfg, { variantPath: p, prefix, familyDisplayName, familySortOrder, familyConnectionTypes }));
         }
       }
     }
@@ -1009,8 +1015,9 @@ function main() {
   for (const cfg of boards) {
     const src = resolveIncludes(fs.readFileSync(cfg.variantPath, 'utf8'), cfg.variantPath);
 
-    const board = (cfg.family === 'esp32') ? buildEsp32Board(src, cfg)
-                : (cfg.family === 'ccode') ? buildCcodeBoard(src, cfg)
+    const board = (cfg.family === 'esp32')          ? buildEsp32Board(src, cfg)
+                : (cfg.family === 'ccode'  ||
+                   cfg.family === 'unlistedBoard') ? buildCcodeBoard(src, cfg)
                 : buildAvrBoard(src, cfg);
 
     // Embed family, chip and the family's display name so build-bundle.js
@@ -1021,6 +1028,7 @@ function main() {
     board.chip              = path.basename(path.dirname(path.dirname(cfg.variantPath)));
     board.familyDisplayName = cfg.familyDisplayName;
     board.familySortOrder   = cfg.familySortOrder;
+    board.familyConnectionTypes    = cfg.familyConnectionTypes || '';
 
     const outName = cfg.prefix + '_' + cfg.boardName;
     const outDir  = path.join(outBase, outName);

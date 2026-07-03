@@ -22,6 +22,8 @@ mod serial;
 mod tcp;
 mod ble;
 mod ble_names;
+mod validate;
+mod extrafonts;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,7 +31,7 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use axum::{
-    extract::{RawQuery, Request, State},
+    extract::{Path, RawQuery, Request, State},
     http::{header, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::IntoResponse,
@@ -48,16 +50,23 @@ async fn main() {
     // // run-pfodWeb-firefox.bat) handles browser opening itself.
     // let no_browser = args.iter().any(|a| a == "--no-browser");
 
-    let http_port: u16 = args.iter()
-        .skip(1)
-        .find(|s| !s.starts_with("--"))
+    // Positional args, in order: [port] [password]. Both optional.
+    let http_port: u16 = args.get(1)
         .map(|s| s.parse().unwrap_or_else(|_| {
             eprintln!("pfodProxy: invalid port {:?} — must be a number (e.g. pfodProxy 5000)", s);
             std::process::exit(1);
         }))
         .unwrap_or(4989);
 
-    print_banner(http_port);
+    // Optional pairing password — if set, every request to /pfodWeb must
+    // carry a matching `?pw=`; if unset, requests must not carry one
+    // either (see pw_filter below). Closes the gap Origin-null
+    // filtering alone can't: a deliberately crafted null-origin context
+    // can mimic every observable property of a real request, but can't
+    // know a secret it was never given.
+    let password: Option<String> = args.get(2).cloned();
+
+    print_banner(http_port, password.is_some());
 
     // Single-instance check — refuse to start if another process is
     // already bound to our HTTP port.  Pre-flight bind beats a real
@@ -74,7 +83,7 @@ async fn main() {
         std::process::exit(0);
     }
 
-    let app_state = Arc::new(state::AppState::new());
+    let app_state = Arc::new(state::AppState::new(password.clone()));
 
     spawn_idle_logger(app_state.clone());
 
@@ -143,6 +152,61 @@ async fn main() {
         }
     });
 
+    // Origin filter — pfodWeb.html opened via file:// (the normal case)
+    // sends Origin: "null" on every cross-origin fetch()/EventSource
+    // request; an ordinary https:// or http:// website sends its own
+    // real origin. Rejecting any request whose Origin is present and
+    // isn't "null" blocks the opportunistic case where some unrelated
+    // website's script probes 127.0.0.1 for a running pfodProxy and
+    // tries to drive a device through it. This does NOT stop a
+    // deliberately crafted null-origin context (e.g. a sandboxed
+    // iframe or a malicious local file) from also presenting
+    // Origin: "null" — it narrows the drive-by case, it isn't a full
+    // authentication boundary.
+    let origin_filter = middleware::from_fn(|req: Request, next: Next| async move {
+        if let Some(origin) = req.headers().get(header::ORIGIN) {
+            if origin.as_bytes() != b"null" {
+                log::log(&format!(
+                    "[pfodProxy] origin_filter: REJECTED Origin={:?}",
+                    origin.to_str().unwrap_or("<invalid>")
+                ));
+                return (StatusCode::FORBIDDEN, "forbidden").into_response();
+            }
+        }
+        next.run(req).await
+    });
+
+    // Password filter — applied only to /pfodWeb and /shutdown (not
+    // /ping, which stays open so pfodWeb.html's heartbeat can always
+    // tell "not running" apart from "wrong password" — see handle_ping).
+    // Symmetric: if pfodProxy has a password, every request here must
+    // carry a matching `?pw=`; if it doesn't, requests must not carry
+    // one either. Either mismatch is rejected the same way as any other
+    // malformed/forged request. This is the one check in the whole
+    // stack that's real authentication rather than shape/heuristic
+    // filtering — everything else (port, origin, cmd syntax) can be
+    // mimicked by a sufficiently deliberate forger; a secret can't.
+    let pw_for_filter = password.clone();
+    let pw_filter = middleware::from_fn(move |req: Request, next: Next| {
+        let expected = pw_for_filter.clone();
+        async move {
+            let sent = parse_query(req.uri().query().unwrap_or("")).get("pw").cloned();
+            let ok = match (&expected, &sent) {
+                (None, None) => true,
+                (Some(e), Some(s)) => constant_time_eq(e.as_bytes(), s.as_bytes()),
+                _ => false,
+            };
+            if ok {
+                next.run(req).await
+            } else {
+                validate::hang_silently(&format!(
+                    "pw mismatch (proxy has_pw={} request had_pw={})",
+                    expected.is_some(), sent.is_some()
+                )).await
+            }
+        }
+    });
+
     // // Load pfodWeb.html from next to the binary so it can be served at GET /.
     // // Opening http://127.0.0.1:{port}/ reliably launches the default browser
     // // even when Edge/Chrome is running as a background startup-boost process —
@@ -175,9 +239,18 @@ async fn main() {
     // };
 
     let router = Router::new()
-        .route("/pfodWeb", get(handle_get))
+        .route("/pfodWeb", get(handle_get).layer(pw_filter.clone()))
         .route("/ping", get(handle_ping))
-        .route("/shutdown", get(handle_shutdown));
+        // Two fixed route shapes rather than pw_filter (which reads a
+        // ?pw= query param that can't survive automatic relative-URL
+        // resolution of the @font-face references inside the served
+        // CSS) -- pfodWeb.html's JS picks whichever one matches its own
+        // known pw state, and each handler independently rejects a
+        // request that used the wrong one for pfodProxy's actual
+        // configuration. See handle_extra_fonts_nopw/_pw below.
+        .route("/extraFonts/:dir/:filename", get(handle_extra_fonts_nopw))
+        .route("/extraFonts_pw/:pw/:dir/:filename", get(handle_extra_fonts_pw))
+        .route("/shutdown", get(handle_shutdown).layer(pw_filter));
 
     // router = router.route("/", get(move || {
     //     let html = root_html.clone();
@@ -200,7 +273,8 @@ async fn main() {
         .with_state(app_state)
         .layer(touch_last_request)
         .layer(cors)
-        .layer(host_filter); // outermost — checked first on every request
+        .layer(host_filter)
+        .layer(origin_filter); // outermost — checked first on every request
 
     let addr = format!("127.0.0.1:{}", http_port);
     let listener = TcpListener::bind(&addr)
@@ -270,10 +344,18 @@ async fn main() {
 /// of /pfodWeb with no target params, which handle_get correctly treats as
 /// a bad request (400) since pfodWeb itself never omits the target —
 /// that 400 is harmless but shows up as a logged network error in the
-/// browser console on every single ping. No state, no params, just 200.
-async fn handle_ping() -> impl IntoResponse {
+/// browser console on every single ping. Deliberately NOT gated by
+/// pw_filter — always responds fast so pfodWeb.html can tell "proxy not
+/// running" apart from "proxy running, wrong/missing password" instead
+/// of every real connection attempt just silently hanging with no
+/// explanation. Body is `"pong[_pw] <version>"`: the `_pw` suffix
+/// reports whether a password is configured (never the value itself —
+/// that's all pfodWeb.html needs to prompt the user to fix their
+/// `?pw=`), and `<version>` lets pfodWeb.html flag a version mismatch.
+async fn handle_ping(State(app): State<Arc<state::AppState>>) -> impl IntoResponse {
     log::debug("[pfodProxy] /ping received");
-    (StatusCode::OK, "pong")
+    let tag = if app.password.is_some() { "pong_pw" } else { "pong" };
+    (StatusCode::OK, format!("{tag} {}", env!("CARGO_PKG_VERSION")))
 }
 
 /// Shutdown handler — called only by the "Close pfodProxy" button in
@@ -291,6 +373,51 @@ async fn handle_shutdown() -> impl IntoResponse {
         std::process::exit(0);
     });
     (StatusCode::OK, "pfodProxy shutting down")
+}
+
+/// Serves one file (the CSS itself, or one of its font files) from a
+/// caller-specified extraFonts/ directory — see extrafonts.rs for the
+/// full validation. Only reached when pfodWeb.html was opened via
+/// file:// and swapped its extraFonts <link>'s href to point at
+/// pfodProxy instead of the original relative file:// path (see
+/// _rewriteExtraFontsViaProxy() in pfodCommon.html) — a
+/// pfodDevice-hosted pfodWeb.html never touches this route since its
+/// normal extraFonts/pfodweb-extra-fonts.css <link> already works over
+/// real http:// with no CORS-mode-fetch restriction.
+///
+/// Two fixed shapes rather than a `?pw=` query param: the browser's own
+/// relative-URL resolution (used for the @font-face references inside
+/// the served CSS, so pfodWeb.html's JS never has to touch them
+/// individually) can't carry a query string from the CSS's own request
+/// into those follow-up requests, but it does preserve extra path
+/// segments. pfodWeb.html's JS picks whichever route matches its own
+/// known pw state; each handler independently rejects a request that
+/// used the wrong one for pfodProxy's actual configuration, so a
+/// request can't succeed by simply omitting the pw segment.
+async fn handle_extra_fonts_nopw(
+    State(app): State<Arc<state::AppState>>,
+    Path((dir, filename)): Path<(String, String)>,
+) -> axum::response::Response {
+    if app.password.is_some() {
+        return validate::hang_silently(
+            "extraFonts: /extraFonts used but pfodProxy has a password configured"
+        ).await;
+    }
+    extrafonts::handle(&dir, &filename).await
+}
+
+async fn handle_extra_fonts_pw(
+    State(app): State<Arc<state::AppState>>,
+    Path((pw, dir, filename)): Path<(String, String, String)>,
+) -> axum::response::Response {
+    match &app.password {
+        Some(expected) if constant_time_eq(expected.as_bytes(), pw.as_bytes()) => {
+            extrafonts::handle(&dir, &filename).await
+        }
+        _ => validate::hang_silently(
+            "extraFonts_pw: password missing/mismatched, or pfodProxy has none configured"
+        ).await,
+    }
 }
 
 /// How often the idle-activity logger (below) re-checks.
@@ -394,7 +521,7 @@ async fn handle_get(
         (StatusCode::BAD_REQUEST,
          "No device target in request — cmd write needs one of:\n\
           ?serial=<path>&baud=<rate>&cmd=…\n\
-          ?ip=<addr>&port=<n>&cmd=…\n\
+          ?ip=<addr>&cmd=…\n\
           ?ble=<address>&cmd=…")
             .into_response()
     }
@@ -417,6 +544,22 @@ pub fn parse_query(raw: &str) -> HashMap<String, String> {
     out
 }
 
+/// Constant-time byte comparison for the `pw` check — avoids leaking
+/// how many leading bytes matched via response-timing, unlike a
+/// short-circuiting `==`. (Length is still compared up front; hiding
+/// that too isn't worthwhile here since length alone doesn't help
+/// guess content.)
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 async fn connect_probe(port: u16) -> bool {
     tokio::time::timeout(
         Duration::from_millis(500),
@@ -427,7 +570,7 @@ async fn connect_probe(port: u16) -> bool {
     .unwrap_or(true)
 }
 
-fn print_banner(http_port: u16) {
+fn print_banner(http_port: u16, has_password: bool) {
     println!();
     println!("=== pfodProxy {} ===", env!("CARGO_PKG_VERSION"));
     println!("Listening on      : http://127.0.0.1:{http_port}");
@@ -436,9 +579,17 @@ fn print_banner(http_port: u16) {
     println!("  pfodProxy <port>        e.g.  pfodProxy 5000");
     println!("(default port is 4989)");
     println!();
+    if has_password {
+        println!("Password protection: ENABLED — every /pfodWeb request must carry a");
+        println!("matching &pw=<password>, e.g. when opening pfodWeb.html:");
+        println!("  file:///path/to/pfodWeb.html?pw=<password>");
+    } else {
+        println!("Password protection: disabled (pass one to enable: pfodProxy <port> <password>)");
+    }
+    println!();
     println!("Connection SSE (long-lived per session):");
     println!("  http://127.0.0.1:{http_port}/pfodWeb?serial=<path>&baud=<rate>");
-    println!("  http://127.0.0.1:{http_port}/pfodWeb?ip=<device_ip>&port=<device_tcp_port>");
+    println!("  http://127.0.0.1:{http_port}/pfodWeb?ip=<device_ip>");
     println!("  http://127.0.0.1:{http_port}/pfodWeb?ble=<address>");
     println!();
     println!("Discovery SSE (picker only):");

@@ -115,7 +115,9 @@ pub async fn handle(
         let name = params.get("name").cloned();
         handle_connection_stream(app, addr.to_string(), name).await
     } else {
-        bad_request("expected ?ble= (discovery) or ?ble=<address> (connection or cmd)")
+        crate::validate::hang_silently(
+            "BLE request matched neither discovery, connection, nor cmd shape"
+        ).await
     }
 }
 
@@ -491,18 +493,18 @@ async fn handle_cmd(
     ble_arg: Option<String>,
     cmd: String,
 ) -> axum::response::Response {
-    // Determine target.  If the caller supplied an address, use it;
-    // otherwise fall back to "the" connected BLE session, but only if
-    // there's exactly one.  In normal operation the client always
-    // includes the full target on every request (see
-    // ConnectionManager._cmdURL), so this path is a defensive
-    // fallback, not the common case.
+    if !crate::validate::is_valid_pfod_cmd(&cmd) {
+        return crate::validate::hang_silently(
+            &format!("BLE cmd write — not valid pfod syntax: {cmd:?}")
+        ).await;
+    }
+
+    // Target must always be explicit — no fallback to "whichever
+    // session happens to be connected". See main.rs's bare-`?cmd=`
+    // case for the analogous target-less rejection.
     let addr = match ble_arg.as_deref().filter(|s| !s.is_empty()) {
         Some(a) => a.to_string(),
-        None => match single_connected_target(&app).await {
-            Some(a) => a,
-            None => return bad_request("cmd write needs ?ble=<address>"),
-        },
+        None => return crate::validate::hang_silently("BLE cmd write with no ?ble=<address>").await,
     };
 
     let session = app.get_or_create_ble(&addr).await;
@@ -543,24 +545,6 @@ async fn handle_cmd(
     }
 
     reply_ok_empty()
-}
-
-/// If exactly one BLE address currently has a connected session,
-/// return it; otherwise `None` (no sessions, or more than one —
-/// ambiguous).
-async fn single_connected_target(app: &Arc<AppState>) -> Option<String> {
-    let map = app.ble.lock().await;
-    let mut found = None;
-    for session in map.values() {
-        let b = session.state.lock().await;
-        if b.connected {
-            if found.is_some() {
-                return None; // more than one — ambiguous
-            }
-            found = b.addr.clone();
-        }
-    }
-    found
 }
 
 // ── Session lifecycle ────────────────────────────────────────────────
@@ -808,10 +792,6 @@ fn reply_ok_empty() -> axum::response::Response {
     headers.insert("Content-Type", HeaderValue::from_static("text/plain; charset=utf-8"));
     headers.insert("Cache-Control", HeaderValue::from_static("no-cache"));
     (StatusCode::OK, headers, Vec::<u8>::new()).into_response()
-}
-
-fn bad_request(msg: &str) -> axum::response::Response {
-    (StatusCode::BAD_REQUEST, msg.to_string()).into_response()
 }
 
 #[allow(dead_code)]

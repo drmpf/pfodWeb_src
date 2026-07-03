@@ -93,7 +93,8 @@ directory without needing to recompile pfodWeb.</p>
 <section>
 <h2>1. Why extraFonts/ exists</h2>
 
-<p><code>pfodWeb.html</code> embeds Roboto's <strong>Latin</strong> and <strong>Latin Extended</strong>
+<p>Having a consistent set of fonts give consistent displays of menus and drawings on different platforms, Android, iPhone, Windows, MacOS, linux. 
+<code>pfodWeb.html</code> embeds (Android's) Roboto's <strong>Latin</strong> and <strong>Latin Extended</strong>
 subsets directly as base64 <code>data:</code>, because almost every pfodWeb screen needs them and
 they're always wanted as soon as the page loads. References to every other font needed
 (Cyrillic, Greek, etc.) are moved out into a separate, plain CSS file —
@@ -192,20 +193,31 @@ the four faces already inlined in <code>pfodCommon.css</code>.</p>
 
 <!-- ============================================================ -->
 <section>
-<h2>5. Serving at runtime: pfodProxy and micro self-hosted</h2>
+<h2>5. Serving at runtime: micro self-hosted vs. file://</h2>
 
+<p>How <code>extraFonts/pfodweb-extra-fonts.css</code> and its <code>.woff2</code> files actually get
+loaded depends on how <code>pfodWeb.html</code> itself was opened:</p>
 
-When the browser requests <code>extraFonts/pfodweb-extra-fonts.css</code> (and then the
-individual <code>.woff2</code> files that CSS references via relative <code>url(...)</code>), pfodProxy and ESP_PicoW_pfodWebServer
-(in the micro self-hosted case) has no specific route for <code>/extraFonts/...</code>, so the request falls through to a generic
-fallback handler that serves static files. That handler:
-  <ul>
-  <li>In pfodProxy, resolves the request path relative to the directory the <code>pfodProxy</code> executable itself
-  lives in (<code>std::env::current_exe()</code>'s parent), not the current working directory and rejects any <code>..</code>
-  path segments (basic directory-traversal guard).</li>
-  <li>In both cases, reads the file and returns it with a correct <code>Content-Type</code>, maps <code>.woff2</code> → <code>font/woff2</code>,
-  <code>.css</code> → <code>text/css</code>, etc. OR returns a plain 404 if the file's missing.</li>
-  </ul>
+<h3>Micro self-hosted (pfodDevice's own HTTP server)</h3>
+<p>When a pfodDevice serves <code>pfodWeb.html</code> itself (e.g. ESP_PicoW_pfodWebServer), the browser's
+requests for <code>extraFonts/pfodweb-extra-fonts.css</code> and the individual <code>.woff2</code> files
+it references go straight to that same device over ordinary <code>http://</code> — ESP_PicoW_pfodWebServer
+serves them like any other static file it hosts, mapping <code>.woff2</code> → <code>font/woff2</code>,
+<code>.css</code> → <code>text/css</code>, etc., or returning 404 if a file is missing. Nothing about this
+path changed.</p>
+
+<h3>Opened directly via file:// (the common case)</h3>
+<p>Browser security rules don't allow font files to be loaded directly from local disk this way, so when
+<code>pfodWeb.html</code> is opened as a <code>file://</code> page, it instead asks pfodProxy (if running)
+to serve <code>pfodweb-extra-fonts.css</code> and its font files on its behalf. This is automatic — nothing
+to configure — and if pfodProxy isn't running, extra-script text just falls back to the system font, the
+same as if <code>extraFonts/</code> were missing entirely.</p>
+
+<p>pfodProxy validates every such request before serving anything (see
+<a href="pfodProxyInstructions.html#security">pfodProxy's Security section</a> for the full list) and 
+only grants access to pfodWeb's <code>extraFonts/pfodweb-extra-fonts.css</code> and its valid font files.
+If pfodProxy has a password configured (see <a href="pfodProxyInstructions.html#password">Setting a password</a>), these requests 
+are also password protect.</p>
 
 </section>
 

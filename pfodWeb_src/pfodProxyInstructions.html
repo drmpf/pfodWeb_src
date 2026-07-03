@@ -45,6 +45,7 @@
     <li><a href="#linux">Linux</a></li>    
     </ul>
     <li><a href="#closing-pfodProxy">Closing the pfodProxy</a></li>
+    <li><a href="#password">Setting a password</a></li>
     <li><a href="#multiple-connections">Multiple Connections</a></li>
     <li><a href="#classic-bt">How to connect a Classic Bluetooth device</a></li>
     <li><a href="#custom-port">Using a custom port for pfodProxy</a></li>
@@ -104,6 +105,26 @@
 <p>Close the pfodProxy manually or use the pfodWeb <strong>Close pfodProxy</strong> button.<br>
 That button will only show when the pfodProxy is running.
 </p>
+
+<h2 id="password">Setting a password</h2>
+<p>By default pfodProxy accepts requests from any pfodWeb.html on the same machine.
+If you're concerned about other software/webpages/scripts running on the same machine
+sending commands to your pfodDevices via the pfodProxy. You can
+optionally add a pfodProxy password as the second argument, after the port:</p>
+<pre># Windows
+pfodProxy.exe 4989 mypassword
+
+# macOS (from Terminal)
+pfodProxy.app/Contents/MacOS/pfodProxy 4989 mypassword
+
+# Linux
+./pfodProxy 4989 mypassword</pre>
+<p>Once the pfodProxy password is set, open pfodWeb.html with a matching <code>?pw=</code> on its own URL, e.g.:</p>
+<pre>file:///path/to/pfodWeb.html?pw=mypassword</pre>
+<p>The easiest way to use this day-to-day is to create a short cut that 
+launches <code>pfodProxy.exe 4989 mypassword</code>, and a bookmark that opens
+<code>pfodWeb.html?pw=mypassword</code>
+<p>pfodWeb will display error messages for miss-matching passwords.</p>
 
 <h2 id="multiple-connections">Multiple Connections</h2>
 
@@ -178,6 +199,14 @@ pfodProxy.app/Contents/MacOS/pfodProxy 4990
 <h2 id="security">Security</h2>
 
 <ul>
+  <li><strong>Password secured pfodProxy</strong> — see <a href="#password">Setting a password</a> above. Recommended if
+      you're concerned about other software/webpages/scripts running on the same machine sending commands to your pfodDevices
+      via the pfodProxy. When secured with a password, every request must then carry a matching <code>&amp;pw=</code>,
+      checked with a constant-time comparison. A mismatched or missing password is rejected the
+      same way as any other malformed request — silently, with no distinguishing error — so it can't
+      be used for guessing the real password.</li>
+
+      <p><strong>The following security features are active even if a password has not been set</strong></p>
   <li><strong>Host header filter</strong> — every request to the pfodProxy must carry a <code>Host</code> of
       <code>localhost:&lt;port&gt;</code> or <code>127.0.0.1:&lt;port&gt;</code>. Any other value
       (including an attacker's rebinding domain) is rejected with <code>403 Forbidden</code> before
@@ -185,6 +214,28 @@ pfodProxy.app/Contents/MacOS/pfodProxy 4990
 
   <li><strong>Loopback-only bind</strong> — pfodProxy binds to <code>127.0.0.1</code> only, never
       <code>0.0.0.0</code>. It is not reachable from other machines on the network.</li>
+
+
+  <li><strong>Origin filter</strong> — pfodWeb.html opened via <code>file://</code> (the normal case) sends
+      <code>Origin: null</code> on every request; an ordinary website has its own real origin instead.
+      Any request whose <code>Origin</code> is present and isn't <code>null</code> is rejected, blocking
+      the common case of some unrelated website's script probing <code>127.0.0.1</code> for a running
+      pfodProxy.</li>
+
+  <li><strong>Fixed TCP/IP device port</strong> — pfodProxy always connects to a pfod TCP/IP device on
+      port 4989 and never reads a caller-supplied port. This stops an un-secured pfodProxy (no password set) from
+      being usable as a general-purpose port scanner against other hosts on your LAN.</li>
+
+  <li><strong>Cmd syntax validation</strong> — every cmd written to a device (Serial, BLE, or TCP/IP) must
+      be a <code>{...}</code> pfod command, optionally preceded by a single dedup character, or it's
+      rejected. This stops pfodProxy being used to write arbitrary non-pfod data to a connected
+      device.</li>
+
+  <li><strong>No informative errors</strong> — any rejected or malformed request (bad password, bad cmd
+      syntax, wrong port, missing target, unrecognised shape) is met with silence rather than an error
+      response: pfodProxy just doesn't reply, the same as if nothing were listening. This is logged on
+      the pfodProxy console for your own troubleshooting, but nothing is ever sent back that could
+      confirm pfodProxy is running or hint at what failed.</li>
 </ul>
 
 <div class="note">

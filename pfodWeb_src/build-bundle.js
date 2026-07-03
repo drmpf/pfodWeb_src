@@ -111,6 +111,14 @@ function buildBoardHierarchy(boardDataById) {
     return chipId;
   };
 
+  // Connection types in display order and their short labels for chip buttons.
+  const _connOrder  = ['serial', 'ble', 'tcp', 'http'];
+  const _connLabels = { serial: 'Serial', ble: 'BLE', tcp: 'TCP/IP', http: 'HTTP' };
+
+  // Build "Serial, BLE, TCP/IP, HTTP" style string from a board connections object.
+  const _connStr = (conns) =>
+    _connOrder.filter(c => conns && conns[c] !== undefined).map(c => _connLabels[c]).join(', ');
+
   const hierarchy = {};
   for (const [id, data] of Object.entries(boardDataById)) {
     const family = data.family || 'unknown';
@@ -121,13 +129,17 @@ function buildBoardHierarchy(boardDataById) {
       // family names are hardcoded here, so a new family directory under
       // ../variants/ needs no change to this file.
       hierarchy[family] = {
-        name:      data.familyDisplayName || family,
+        name:      (data.familyDisplayName || family) + (data.familyConnectionTypes ? ' - ' + data.familyConnectionTypes : ''),
         sortOrder: typeof data.familySortOrder === 'number' ? data.familySortOrder : 100,
         chips:     {},
       };
     }
     if (!hierarchy[family].chips[chip]) {
-      hierarchy[family].chips[chip] = { name: _chipDisplayName(chip), boards: [] };
+      const cs = _connStr(data.connections);
+      hierarchy[family].chips[chip] = {
+        name: _chipDisplayName(chip) + (cs ? ' - ' + cs : ''),
+        boards: [],
+      };
     }
     hierarchy[family].chips[chip].boards.push({ id, name: data.name || id });
   }

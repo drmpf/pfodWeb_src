@@ -128,7 +128,9 @@ pub async fn handle(
         // Connection SSE — target set, no cmd.
         handle_connection_stream(app, path.to_string(), baud).await
     } else {
-        bad_request("expected ?serial= (discovery) or ?serial=<path>&baud=<rate> (connection or cmd)")
+        crate::validate::hang_silently(
+            "Serial request matched neither discovery, connection, nor cmd shape"
+        ).await
     }
 }
 
@@ -268,18 +270,20 @@ async fn handle_cmd(
     req_baud: Option<u32>,
     cmd: String,
 ) -> axum::response::Response {
-    // Determine target.  If the caller supplied serial+baud, use
-    // them; otherwise fall back to "the" connected serial session,
-    // but only if there's exactly one.  In normal operation the
-    // client always includes the full target on every request (see
-    // ConnectionManager._cmdURL), so this path is a defensive
-    // fallback, not the common case.
+    if !crate::validate::is_valid_pfod_cmd(&cmd) {
+        return crate::validate::hang_silently(
+            &format!("Serial cmd write — not valid pfod syntax: {cmd:?}")
+        ).await;
+    }
+
+    // Target must always be explicit — no fallback to "whichever
+    // session happens to be connected". See main.rs's bare-`?cmd=`
+    // case for the analogous target-less rejection.
     let (path, baud) = match (serial_arg.as_deref().filter(|s| !s.is_empty()), req_baud) {
         (Some(p), Some(b)) => (p.to_string(), b),
-        _ => match single_connected_target(&app).await {
-            Some(t) => t,
-            None => return bad_request("cmd write needs ?serial=<path>&baud=<rate>"),
-        },
+        _ => return crate::validate::hang_silently(
+            "Serial cmd write with no ?serial=<path>&baud=<rate>"
+        ).await,
     };
 
     let session = app.get_or_create_serial(&path).await;
@@ -325,24 +329,6 @@ async fn handle_cmd(
     }
 
     reply_ok_empty()
-}
-
-/// If exactly one serial path currently has a connected session,
-/// return it; otherwise `None` (no sessions, or more than one —
-/// ambiguous).
-async fn single_connected_target(app: &Arc<AppState>) -> Option<(String, u32)> {
-    let map = app.serial.lock().await;
-    let mut found = None;
-    for (path, session) in map.iter() {
-        let s = session.state.lock().await;
-        if s.connected {
-            if found.is_some() {
-                return None; // more than one — ambiguous
-            }
-            found = Some((path.clone(), s.baud.unwrap_or(115200)));
-        }
-    }
-    found
 }
 
 // ── Session lifecycle ────────────────────────────────────────────────
@@ -565,10 +551,6 @@ fn reply_ok_empty() -> axum::response::Response {
     headers.insert("Content-Type", HeaderValue::from_static("text/plain; charset=utf-8"));
     headers.insert("Cache-Control", HeaderValue::from_static("no-cache"));
     (StatusCode::OK, headers, Vec::<u8>::new()).into_response()
-}
-
-fn bad_request(msg: &str) -> axum::response::Response {
-    (StatusCode::BAD_REQUEST, msg.to_string()).into_response()
 }
 
 fn sse_error(msg: impl Into<String>) -> axum::response::Response {

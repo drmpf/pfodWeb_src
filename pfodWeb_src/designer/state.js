@@ -875,11 +875,9 @@ class DesignerState {
     // must support serial (BoardLoader enforces it).  Updated by the
     // connection picker in designer/menus/editConnection.js.
     this.connection = 'serial';
-    // Currently-chosen baud rate for the serial transport.  Defaults
-    // to the board's own default; persisted so the user's pick from
-    // the baud picker survives reload.  Validated against the board's
-    // supportedBauds on _tryLoad — boards may change between sessions.
-    this.baud = board.connections.serial.defaultBaud;
+    // Serial baud rate.  Fixed at 115200 — the baud picker is no longer
+    // shown; state.baud is used only by code generation.
+    this.baud = 115200;
     // The whole design's menu tree.  rootMenu carries the top-level
     // prompt + format + items; items of type 'submenu' nest sub-menus
     // recursively (no fixed depth cap).
@@ -1193,10 +1191,11 @@ class DesignerState {
           && this.board.connections[payload.connection]) {
         this.connection = payload.connection;
       }
-      if (typeof payload.baud === 'number'
-          && this.board.connections.serial.supportedBauds.includes(payload.baud)) {
-        this.baud = payload.baud;
-      }
+      // Baud selection no longer offered — Serial is always 115200.
+      // if (typeof payload.baud === 'number'
+      //     && this.board.connections.serial.supportedBauds.includes(payload.baud)) {
+      //   this.baud = payload.baud;
+      // }
     } else {
       console.log('[DesignerState] target changed since save (' +
                   payload.boardName + ' → ' + this.board.name +
@@ -1230,7 +1229,8 @@ class DesignerState {
       name:     this.name,
       savedAt:  new Date().toISOString(),
       data: {
-        rootMenu: this.rootMenu,
+        rootMenu:   this.rootMenu,
+        connection: this.connection,
       },
     };
     return JSON.stringify(out, null, 2);
@@ -1284,6 +1284,9 @@ class DesignerState {
     this.activeMenuPath = [];
     this.activeItemIdx  = null;
     this.contextStack   = [];
+    if (typeof d.connection === 'string' && this.board.connections[d.connection]) {
+      this.connection = d.connection;
+    }
     this.save();
 
     if (warnings.length > 0) {
