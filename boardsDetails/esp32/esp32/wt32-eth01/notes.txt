@@ -1,0 +1,95 @@
+wt32-eth01 - onboard button/LED research notes
+================================================
+
+Sources consulted:
+
+1. https://files.seeedstudio.com/products/102991455/WT32-ETH01_datasheet_V1.1-%20en.pdf
+   Official Wireless-Tag datasheet (V1.1, 2019.10.23, hosted by Seeed Studio, text
+   extracted with pdftotext). This is the primary source used for this task.
+   - Table-2 "Module IO Description": pin 2 = "CFG  IO32, CFG" - just a labelled
+     header pin/pad, no mention of a mounted pushbutton/switch anywhere in the doc.
+   - Section 6.2.2 "Restore factory settings": "Hardware mode to restore factory
+     settings: CFG pin grounding, restart the module." - describes manually
+     grounding the CFG pin (e.g. with a jumper wire or user-added button), not an
+     onboard switch that already exists on the module.
+   - Section 4.2 "Indicator Description":
+       LED1 - "The power indicator, the power on is normal, the light is on" -
+         hardwired to the power rail, not GPIO controlled.
+       LED3 - "Serial port indicator, when RXD2 (IO5) has data flow, the light is
+         on." - wired directly onto the UART2 RX signal line as a passive activity
+         indicator, not a general-purpose status LED under firmware digitalWrite
+         control.
+       LED4 - "Serial port indicator, when TXD2 (IO17) has data flow, the light is
+         on." - wired directly onto the UART2 TX signal line, same passive
+         activity-indicator behaviour as LED3.
+   - Section 4.4 "Description of Network Port Operating Indicator": Green/Yellow
+     LEDs = Ethernet link/activity, hardwired to the LAN8720A PHY chip (RJ45 jack
+     indicator LEDs), not ESP32 GPIOs at all.
+
+2. https://github.com/egnor/wt32-eth01/blob/main/README.md
+   Community-maintained WT32-ETH01 reference doc. Confirms GPIO16=ETH power,
+   GPIO18=MDIO, GPIO23=MDC, GPIO0=PHY REF_CLK input (all already excluded in this
+   board's board.json/pins_arduino.h from an earlier audit). No mention of an
+   onboard user button or a GPIO-driven status LED distinct from the PHY/serial
+   indicators above.
+
+3. https://www.espboards.dev/esp32/wt32-eth01/
+   Third-party pinout/spec page. No documented onboard user button or status LED;
+   pinout diagram shows GPIO32 as general ADC1_CH4 GPIO with no button annotation.
+
+4. https://tenstar.pro/wt32-eth01-pinout/
+   Third-party pinout diagram page. No LED/button wiring details beyond generic
+   pin list.
+
+5. https://templates.blakadder.com/wireless_tag_WT32-ETH01.html
+   Tasmota community board template. Lists GPIO17 as usable for a "LedLink"
+   *software* role in Tasmota configs (i.e. users repurpose the TXD2 pin/LED4 as
+   a software-blinked link LED in their own Tasmota config) - this is a
+   community convention layered on top of the passive LED4 hardware, not a
+   vendor-documented dedicated status LED. Not used as confirming evidence.
+
+6. https://www.letscontrolit.com/forum/viewtopic.php?t=8094 - page blocked
+   (Anubis anti-bot page, no content retrieved). Not usable as a source.
+
+7. https://manuals.plus/esp32/wt32-eth01-development-board-manual and
+   https://manuals.plus/m/f3f55c3e38f2efca2103ce29ac44e3d4d2882743ef2b58378057a119a4d471eb
+   - both returned HTTP 403, no content retrieved. Not usable as a source.
+
+8. https://www.tinytronics.nl/product_files/003612_WT32-ETH01_manual%20(1).pdf
+   Reseller-hosted copy of the vendor datasheet; PDF fetched but WebFetch's
+   summarizer could not read the binary stream directly, so this source was
+   superseded by source #1 (pdftotext extraction of the Seeed-hosted copy of the
+   same datasheet), which gave clean, quotable text.
+
+Pins considered and NOT tagged:
+
+- GPIO32 (CFG pin): Considered as a possible "button" pin. Vendor datasheet
+  describes it only as a pin/pad you must manually ground (with your own jumper
+  or externally-added button) to trigger a factory-reset; there is no mounted
+  pushbutton switch on the module. This does NOT meet the "confirmable onboard
+  button" bar required by this task. No guess was made - left untagged
+  deliberately based on explicit vendor text, not uncertainty.
+
+- GPIO5 (RXD2, LED3) and GPIO17 (TXD2, LED4): Considered as possible "onboard
+  LED" pins. Vendor datasheet explicitly documents both as passive serial-port
+  *activity* indicators wired directly across the UART2 RX/TX signal lines, not
+  as general-purpose status LEDs meant to be turned on/off via digitalWrite() by
+  application code. Note GPIO17 is not even present in this board's chipGpios in
+  board.json (falls in a pre-existing chip-level default exclusion range), so it
+  could not have been tagged in-place even if confirmed as a real "LED"
+  capability - would have required re-adding an excluded pin, which is out of
+  scope per this task's rules. GPIO5 IS present in chipGpios but was left
+  untagged because the LED is not GPIO-driven in the pfodWeb sense (it lights
+  from UART line activity, not from an application digitalWrite HIGH/LOW).
+  No guess was made either way.
+
+- LED1 (power indicator): hardwired to the power rail, not connected to any
+  ESP32 GPIO at all. Not applicable/not tagged.
+
+- Ethernet LINK/activity LEDs on the RJ45 jack: hardwired to the LAN8720A PHY
+  chip, not ESP32 GPIOs. Not applicable/not tagged.
+
+Summary of what was tagged: NOTHING. board.json was not modified. This is a
+bare WiFi+Ethernet module with no onboard user pushbutton and no
+GPIO-controllable general-purpose status LED, per official Wireless-Tag
+datasheet V1.1.

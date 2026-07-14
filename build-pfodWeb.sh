@@ -27,18 +27,6 @@ fi
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-# ── Sync version from pfodWeb_src/version.js into Cargo.toml ─────────
-node -e "
-var fs=require('fs');
-var m=fs.readFileSync('$ROOT/pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);
-if(!m){console.log('WARNING: version not found');}
-else{
-  var v=m[1];
-  var c=fs.readFileSync('$ROOT/pfodProxy_rs/Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');
-  fs.writeFileSync('$ROOT/pfodProxy_rs/Cargo.toml',c,'utf8');
-  console.log('Synced version '+v+' into Cargo.toml');
-}"
-
 # ── Build pfodWeb.html ────────────────────────────────────────────────
 echo ""
 echo "Building pfodWeb.html ..."

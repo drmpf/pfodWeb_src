@@ -1,0 +1,88 @@
+Board: soldered_nula_mini_esp32c6 (chip: esp32c6)
+Audit: dedicated-hardware pin-exclusion audit, 2026-07-12
+
+Flagged by discovery sweep for:
+  static const uint8_t USER_BTN = 9;
+
+Full pins_arduino.h content (unchanged, no deletions needed - see below):
+  LED_BUILTIN = 23
+  USER_BTN    = 9
+  TX = 16, RX = 17
+  SDA = 6, SCL = 7
+  SS = 2, MOSI = 3, MISO = 4, SCK = 5
+  A0..A6 = GPIO 0..6
+
+Sources consulted:
+  - https://github.com/espressif/arduino-esp32/pull/11852
+    "feat(board): add support for Soldered NULA Mini ESP32C6" by JosipKuci,
+    merged by me-no-dev (project maintainer) into the official
+    espressif/arduino-esp32 repo on 2025-09-23. PR description: "Add board
+    definition for upcoming Soldered NULA Mini ESP32C6 board by Soldered
+    Electronics." A Soldered Electronics representative (rsoric) commented
+    on the thread referring to it as "our board" and expressing excitement
+    "to have this ready for our product launch" - i.e. this is a
+    vendor-authored/vendor-endorsed board definition, not a third-party
+    guess. Fetching the PR's pins_arduino.h contents confirmed every pin
+    value in this repo's local copy matches exactly, including
+    USER_BTN = GPIO9, LED_BUILTIN = GPIO23, and the SDA/SCL/SS/MOSI/MISO/
+    SCK/TX/RX values - i.e. our local variant file IS this upstream vendor
+    file, not a stale/modified copy.
+  - https://soldered.com/products/nula-mini-esp32-c6 (product page) -
+    confirms board identity (WiFi6/BLE5.3/Thread/Zigbee, ultra-compact
+    25.33x25.33mm breakout) but does not itemize the button in prose.
+  - https://docs.soldered.com/nula-mini-esp32-c6/hardware/ (hardware
+    details page) - documents a subset of exposed GPIO (IO2-5, IO18-19,
+    TX, RX) and a power LED (JP1 jumper controlled), but does not
+    separately call out USER_BTN by name. No NeoPixel/addressable RGB LED
+    is documented anywhere on this board.
+  - https://docs.soldered.com/nula-mini-esp32-c6/arduino/ (Arduino
+    getting-started page) - basic example sketch only, no button/LED
+    hardware detail.
+  - https://github.com/SolderedElectronics/NULA-Universal-Test-Code -
+    production test-code repo; README mentions a "Push Button" test step
+    ("Prompts the user to press a button by blinking the onboard LED very
+    fast") as part of the standard NULA-family production test sequence,
+    consistent with these boards having a populated user button, though
+    the exact GPIO wasn't visible in the fetched README alone.
+
+Reasoning:
+  The authoritative signal here is the merged upstream PR: this repo's
+  pins_arduino.h is a byte-for-byte match (all pin values) with the
+  PR that Soldered Electronics itself participated in and endorsed as
+  "our board." That is strong enough vendor confirmation that GPIO9 is a
+  genuinely populated onboard push-button (not a copy-paste artifact or
+  a repurposed strapping pin with no physical switch), especially given
+  the ESP32-C6 boot-strapping note on GPIO9 ("must be HIGH for normal
+  boot") is exactly the electrical behavior expected of a BOOT/user
+  button wired to pull GPIO9 low when pressed - the standard ESP32-C3/C6
+  BOOT-button pattern.
+
+  Alias-collision check: build_boards.js (parseEsp32Consts/
+  buildEsp32Board, ~L541-548) unconditionally appends spi_ss/spi_mosi/
+  spi_miso/spi_sck/i2c_sda/i2c_scl capabilities to whichever GPIO number
+  matches consts.SS/MOSI/MISO/SCK/SDA/SCL by exact declared value. In
+  this file: SDA=6, SCL=7, SS=2, MOSI=3, MISO=4, SCK=5, TX=16, RX=17 -
+  none of these equal 9. GPIO9 carries no other alias in this file
+  besides USER_BTN. No collision found; no alias line needed deletion.
+
+  No onboard NeoPixel was found in any source (product page, hardware
+  docs, or the vendor-confirmed pins_arduino.h) - only a plain
+  LED_BUILTIN on GPIO23 - so no section 7a NeoPixel capability action
+  was warranted for this board.
+
+Applied:
+  Created variants/esp32/esp32c6/soldered_nula_mini_esp32c6/board.json as
+  a full copy of the chip-level default
+  (variants/esp32/esp32c6/board.json), with GPIO9's chipGpios entry
+  changed from the full default capability set to
+  ["digital_input","button"], plus a `// pfodWeb NOTE:` comment citing
+  sources and reasoning (written in plain English only, per this
+  session's rule against reproducing the original `static const
+  uint8_t ... = 9;` declaration text inside a comment, which would be
+  re-matched by the comment-blind parser).
+
+Summary: GPIO9 (USER_BTN) confirmed as a genuine onboard button via the
+vendor-endorsed upstream espressif/arduino-esp32 PR #11852; KEPT and
+tagged ["digital_input","button"]; no alias collisions found (SDA/SCL/
+SS/MOSI/MISO/SCK/TX/RX all map to different GPIOs); no NeoPixel present
+on this board.

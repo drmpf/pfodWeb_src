@@ -1,0 +1,63 @@
+mPython board (labplus.cn / mpython.cn) - button/LED capability tagging research notes
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32\mpython
+Date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+https://mpython.readthedocs.io/en/master/board/hardware.html
+  Official mPython board hardware/pinout page. States: "P5" connected to
+  button A and neopixel support; "P11" connected to button B and neopixel
+  support; "P7" connected to RGB LED; P6 buzzer; P4 light sensor; P10 sound
+  sensor; P19/P20 I2C (OLED/accelerometer). This is the primary source for
+  both button and RGB LED pin identity.
+
+https://mpython.readthedocs.io/en/v2.2.1/tutorials/basics/neopixel.html
+  "3. RGB LED" tutorial page. Confirms board is built in with 3x WS2812
+  RGB LEDs (single-wire addressable). Onboard RGB is normally accessed via
+  a pre-built `rgb` object after `from mpython import *`, rather than by
+  raw pin number in the tutorial text itself - GPIO number not stated here.
+
+https://raw.githubusercontent.com/labplus-cn/mpython-docs/master/docs/en/library/micropython/neopixel.rst
+  Official neopixel library doc source (labplus-cn/mpython-docs repo).
+  Text states "pins available for NeoPixel are P5, P6, P7 (RGB on board),
+  P8, P9, P11, P13, P14, P15, P16, P19, P20" - explicitly marks P7 as
+  "RGB on board". The accompanying code example constructs
+  `pin = Pin(17, Pin.OUT); np = neopixel.NeoPixel(pin, n=3, bpp=3,
+  timing=1)` i.e. GPIO17, n=3 LEDs - consistent with P7=GPIO17 per this
+  board's own pins_arduino.h (P7 = 17) and with the "3x WS2812" LED count
+  quoted on the RGB LED tutorial page above. Used as corroborating
+  evidence that P7/GPIO17 is the onboard RGB data pin.
+
+C:\ai\aicode\pfodWeb\variants\esp32\esp32\mpython\pins_arduino.h (local file, not a URL)
+  Confirms P5 = GPIO0 = BTN_A, P11 = GPIO2 = BTN_B, P7 = GPIO17. Also
+  confirms TX=1, RX=3 (neither GPIO0, GPIO2 nor GPIO17 conflict with
+  serial TX/RX on this board).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+GPIO17 (P7, onboard 3x WS2812 NeoPixel RGB LED data pin) - NOT TAGGED.
+  Confirmed by vendor docs (see sources above) as the onboard RGB LED
+  pin, and would otherwise qualify for ["digital_output", "led_neopixel"].
+  However GPIO17 has NO entry in this chip's chipGpios in the chip-level
+  default board.json (C:\ai\aicode\pfodWeb\variants\esp32\esp32\board.json)
+  - GPIOs 16-17 are excluded chip-wide as PSRAM-reserved pins per that
+  file's own comment. Per task rules, re-adding an excluded pin is out of
+  scope (would reverse a pre-existing chip-level exclusion done in an
+  earlier audit pass). This is a confident identification, not a guess -
+  left untagged strictly because of the chip-level exclusion, for human
+  review/decision if the exclusion itself should ever be revisited for
+  this specific board.
+
+No other candidate pins were considered - only two physical buttons (A/B)
+and the one onboard NeoPixel RGB LED strip exist on this board per all
+sources found; no discrete single-color or discrete R/G/B LED was
+documented.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input", "button"]  (Button A / P5)
+GPIO2 -> ["digital_input", "button"]  (Button B / P11)
+(both previously had ["analog_input_serial","digital_input","digital_output","pwm_output"]
+in the chip-level default; replaced per task rules for confirmed buttons)
+File created: C:\ai\aicode\pfodWeb\variants\esp32\esp32\mpython\board.json
+(new file - none existed previously for this board)

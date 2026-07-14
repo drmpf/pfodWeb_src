@@ -1,0 +1,75 @@
+Board: Adafruit Feather ESP32-S3 (No PSRAM) (ESP32-S3 Dev Module variant)
+Date: 2026-07-14 (independent verification pass - batch E, real vendor research)
+
+Sources consulted:
+- Official upstream arduino-esp32 GitHub repo, this exact variant's own
+  vendor-supplied pins_arduino.h:
+  https://github.com/espressif/arduino-esp32/blob/master/variants/adafruit_feather_esp32s3_nopsram/pins_arduino.h
+  - `LED_BUILTIN` = GPIO13
+  - `PIN_NEOPIXEL` = GPIO33
+  - `NEOPIXEL_POWER` = GPIO21 (active HIGH)
+  - `I2C_POWER` / `PIN_I2C_POWER` = GPIO7
+  This matches this repo's local pins_arduino.h copy exactly, including
+  the USB PID (0x8113, "Feather ESP32-S3 No PSRAM") which distinguishes
+  it from the PSRAM sibling variant (adafruit_feather_esp32s3, PID
+  0x811B) - confirming this is genuinely the no-PSRAM board's own vendor
+  file, not a copy-paste of the PSRAM sibling's file.
+- Adafruit's own official ESP32-S3 Feather pinouts page (same physical
+  LED/power-gate circuit is shared across the PSRAM/no-PSRAM Feather
+  ESP32-S3 variants per Adafruit's own product documentation - both share
+  PCB IDs 5323/5477/5885 as noted on the Feather ESP32-S3 product
+  schematic download page):
+  https://learn.adafruit.com/adafruit-esp32-s3-feather/pinouts
+  - "You can manually cut power to the QT port completely by setting
+    GPIO 7 to an output and LOW" - confirms GPIO7 is the STEMMA QT/I2C
+    power-gate line (I2C_POWER).
+- Adafruit's own Arduino Blink guide for this board family:
+  https://learn.adafruit.com/adafruit-esp32-s3-feather/arduino-blink
+  - Sketch: `digitalWrite(led, HIGH);   // turn the LED on (HIGH is the
+    voltage level)` / `digitalWrite(led, LOW);    // turn the LED off` -
+    explicitly confirms the onboard red LED (`led = LED_BUILTIN` = GPIO13)
+    is active-HIGH.
+
+Per-pin findings:
+- GPIO0: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag. pinNotes: "Must be HIGH for normal boot" (standard
+  strapping-pin note). No vendor source claims a dedicated button here.
+- GPIO1-GPIO6: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag.
+- GPIO7: excluded (no chipGpios entry) - CONFIRMED internal power-gate
+  line (I2C_POWER/PIN_I2C_POWER) via the official upstream arduino-esp32
+  pins_arduino.h for this exact variant, and Adafruit's own pinouts page.
+- GPIO8-GPIO10: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag.
+- GPIO11, GPIO12: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag.
+- GPIO13: capabilities [digital_output, pwm_output, led_high] - tagged
+  "led_high". CONFIRMED active-high onboard user LED, via Adafruit's own
+  Arduino Blink guide (HIGH turns the LED on, LOW turns it off) and the
+  upstream pins_arduino.h (`LED_BUILTIN`=13) for this exact variant.
+- GPIO14-GPIO18: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag.
+- GPIO21: excluded - CONFIRMED internal power-gate line (NEOPIXEL_POWER,
+  active HIGH) via the official upstream arduino-esp32 pins_arduino.h for
+  this exact variant.
+- GPIO38-GPIO48: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag. pinNotes on GPIO3/45/46: "Must be LOW or floating on
+  reboot" (standard strapping-pin notes).
+- GPIO33 (PIN_NEOPIXEL): NOT tagged and not present as a chipGpios entry.
+  CONFIRMED via the upstream pins_arduino.h that GPIO33 is indeed
+  PIN_NEOPIXEL on this board; not tagged because GPIO33 falls outside the
+  ESP32-S3 chip-level default's available chipGpios range, a pre-existing
+  pin-availability gap out of scope for this tagging pass, not a wrong
+  finding to correct.
+
+Summary: All existing findings CONFIRMED against real, independent
+Adafruit vendor documentation and the official upstream arduino-esp32
+GitHub source for this exact no-PSRAM board variant (verified distinct
+from, but electrically identical in LED/power-gate wiring to, its PSRAM
+sibling adafruit_feather_esp32s3 via matching USB PID and pin
+definitions) - GPIO13 is the confirmed active-high onboard LED, and
+GPIO7/GPIO21 are confirmed internal power-gate lines (I2C_POWER/
+NEOPIXEL_POWER) correctly excluded as not general-purpose. No corrections
+were needed; board.json's chipGpios map is unchanged, its top comment was
+updated to record these citations. Identical tagging pattern and
+verification result to the sibling adafruit_feather_esp32s3 (PSRAM) board.

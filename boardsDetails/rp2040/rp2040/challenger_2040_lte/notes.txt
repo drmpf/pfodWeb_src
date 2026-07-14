@@ -1,0 +1,244 @@
+Board: iLabs "Challenger RP2040 LTE" / "Challenger RP2040 LTE MkII" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/challenger_2040_lte/
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+Confirmed the onboard u-blox SARA-R410M LTE-M/NB-IoT cellular modem
+occupies GPIO4,5,6,7 (UART1 TX/RX/CTS/RTS) and GPIO13,14,15 (power-on,
+reset, and LDO-power-enable control lines). Found these seven pins were
+ALREADY fully excluded from the Designer's pin list by a prior-session
+edit to this board's pins_arduino.h (no static const uint8_t alias
+declared for any of them) - so no board.json chipGpios entries were
+needed or added for the modem pins themselves (see "WHY NO chipGpios
+ENTRIES..." reasoning below - adding them would have been
+counterproductive, per independently-verified build_boards.js behavior).
+Created board.json (this board previously had none) containing a single
+chipGpios entry: GPIO19, tagged as the onboard general-purpose LED
+(active-high, cross-referenced inference). No onboard NeoPixel or user
+button found. pins_arduino.h was NOT modified this session (already
+correct - GPIO20/SPI0 MISO gap flagged but left alone, out of scope).
+
+SOURCES CONSULTED
+------------------
+1. https://ilabs.se/challenger-rp2040-lte-datasheet/ (official iLabs
+   datasheet, fetched directly via WebFetch) - states verbatim: "GPIO4
+   acts as UART1 TXD", "GPIO5 acts as UART1 RXD", "GPIO6 acts as UART1
+   CTS", "GPIO7 acts as UART1 RTS" (the SARA-R410M's UART link); "GPIO13
+   is connected the power on signal of the SARA R410M module", "GPIO14
+   is connected to the reset signal of the SARA R410M module", "GPIO15
+   is connected to the LDO that supplies the modem with power". Also:
+   "This LED is connected to pin D15 and can easily be controlled by the
+   user program" (iLabs' own board-silkscreen "Dxx" numbering, distinct
+   from arduino-pico's Dn aliases - see source #2 for GPIO resolution).
+   Does not state the LED's active-high/active-low polarity. No NeoPixel
+   or discrete user pushbutton mentioned anywhere on the page.
+2. https://circuitpython.org/board/challenger_rp2040_lte/ and the
+   matching CircuitPython pins.c for board "challenger_rp2040_lte"
+   (github.com/adafruit/circuitpython, ports/raspberrypi/boards/
+   challenger_rp2040_lte/pins.c, fetched directly via WebFetch) -
+   independently confirms `board.LED` -> GPIO19, resolving the
+   datasheet's ambiguous "pin D15" silkscreen reference to an
+   unambiguous GPIO number that matches this board's own local
+   pins_arduino.h (PIN_LED=(19u), D17=(19u), LED_BUILTIN=PIN_LED)
+   exactly. The same CircuitPython pins.c defines no NEOPIXEL and no
+   BUTTON pin for this board - corroborating the datasheet's silence.
+   Also lists board.D5-D13, A0-A5, all matching this board's local
+   pins_arduino.h numbering.
+3. https://github.com/earlephilhower/arduino-pico
+   variants/challenger_2040_lte/pins_arduino.h (upstream arduino-pico
+   source that this repo's local copy is derived from, fetched directly
+   via WebFetch) - confirmed byte-identical pin assignments to the local
+   copy in this repo (PIN_LED=19, Serial2 TX/RX/CTS/RTS=4/5/6/7,
+   PIN_SARA_ON=13, PIN_SARA_RST=14, PIN_SARA_PWR=15); no NEOPIXEL or
+   button define present in the upstream file either.
+4. https://ilabs.se/challenger-rp2040-wifi-datasheet/ (sibling board in
+   the same iLabs Challenger RP2040 product line, already audited in
+   this repo - see variants/rp2040/rp2040/challenger_2040_wifi/
+   board.json) - explicitly states "Active level: High" for its own
+   onboard user LED, the same shared reference LED circuit (GPIO ->
+   resistor -> LED -> GND) reused across this entire product line.
+   Combined with every other RP2040 board audited in this family to
+   date (rpipico, wiznet_5500_evb_pico, adafruit_feather_scorpio,
+   challenger_2040_lora, challenger_2040_wifi, challenger_2040_nfc,
+   challenger_2040_subghz - all confirmed or cross-reference-inferred
+   active-high, none active-low), GPIO19 is tagged led_high on this
+   cross-referenced basis.
+5. Local codebase: variants/rp2040/rp2040/challenger_2040_lte/
+   pins_arduino.h - already carried a prior-session "pfodWeb NOTE"
+   (lines 66-68) recording: "D14-D16 deliberately NOT declared --
+   GPIO13/14/15 are the SARA-R4XX modem's ON/RST/PWR control lines, not
+   general-purpose (GPIO4-7, the modem's Serial2/CTS/RTS bus, are
+   already excluded above)." Verified directly: the file's only
+   `static const uint8_t` declarations are D0-D13, D17, and A0-A5,
+   resolving to GPIOs {16,17,24,23,22,2,3,0,1,12,11,10,9,8,19,29,28,27,
+   26,25,21} - none of {4,5,6,7,13,14,15} appear anywhere.
+6. pfodWeb_src/build_boards.js (read directly to confirm parser
+   behavior - see "WHY NO chipGpios ENTRIES..." below for the exact
+   mechanism traced, with line numbers, matching and independently
+   re-verifying the reasoning already used on the challenger_2040_lora
+   and challenger_2040_subghz siblings' board.json/notes.txt).
+7. variants/rp2040/rp2040/board.json (chip-level defaults - chipGpios:{}
+   deliberately empty, copied verbatim into this board's new board.json
+   except for the added chipGpios entry).
+8. Precedent/schema reference: variants/rp2040/rp2040/challenger_2040_
+   lora/board.json, variants/rp2040/rp2040/challenger_2040_subghz/
+   board.json (dedicated-hardware-pin-omission-is-sufficient pattern,
+   with a single LED chipGpios entry) and variants/rp2040/rp2040/
+   challenger_2040_wifi/board.json, variants/rp2040/rp2040/
+   challenger_2040_nfc/board.json (contrasting pattern - see
+   inconsistency note below) - all four read in full before writing
+   this board's board.json.
+9. WebSearch cross-checks: "ilabs Challenger RP2040 LTE datasheet
+   SARA-R4" and "challenger_2040_lte pins_arduino.h github
+   earlephilhower arduino-pico" (both used to locate sources #1-3
+   above); also searched for schematic-level LED polarity confirmation
+   (none found beyond the cross-referenced inference in source #4);
+   also found and reviewed github.com/adafruit/circuitpython issue #8272
+   ("Problem with board pin assignments on Challenger RP2040 LTE") -
+   confirms GPIO20 (silkscreened "SDI") is a genuine general-purpose
+   SPI0 pin (matches this board's own PIN_SPI0_MISO=(20u)) missing a
+   board/pins_arduino.h alias in both CircuitPython and this repo's
+   local file - unrelated to the modem/LED audit, flagged for awareness
+   only, not fixed (out of scope, matching the analogous gap flagged on
+   the challenger_2040_lora sibling's notes.txt).
+
+WHY NO chipGpios ENTRIES FOR THE MODEM PINS (GPIO4,5,6,7,13,14,15)
+--------------------------------------------------------------------
+build_boards.js's buildEsp32Board() (the parser the "rp2040" family
+routes through) only lists a GPIO in the Designer's pin picker if it
+appears either (a) as a `static const uint8_t` alias in pins_arduino.h,
+or (b) as a key in this board's chipGpios object:
+  `const allGpios = new Set(aliasesByGpio.keys());
+   for (const key of Object.keys(chipGpiosMap)) { ... allGpios.add(n); }`
+  (build_boards.js ~line 535-539)
+
+Since this board's pins_arduino.h already declares NO `static const
+uint8_t` alias resolving to GPIO4, 5, 6, 7, 13, 14, or 15 (see source #5
+above), those seven GPIOs are already 100% absent from the Designer's
+pin list with zero board.json involvement. Adding chipGpios entries for
+them here would have been COUNTERPRODUCTIVE: build_boards.js
+unconditionally appends a "Check if available on board" note to ANY
+rp2040-family GPIO absent from pins_arduino.h, regardless of whether a
+chipGpios entry (with its own custom note) exists for it:
+  `if (!inPinsH && cfg.family !== 'esp32' && cfg.family !== 'esp8266')
+     noteParts.push('Check if available on board');`
+  (build_boards.js ~line 718, confirmed by direct read this session -
+  fires unconditionally on the inPinsH flag, NOT gated on chipGpios
+  presence)
+Adding entries here would re-add each pin to allGpios as a bare, visible
+"GPIO<n>" row carrying that redundant/misleading note alongside the real
+explanation - undoing the full concealment the pins_arduino.h omission
+already achieves, and misleadingly suggesting the pin's availability is
+merely unverified rather than physically dedicated to the LTE modem.
+
+FLAGGED INCONSISTENCY (not fixed, out of scope): the earlier
+challenger_2040_wifi and challenger_2040_nfc sibling audits this session
+DID add chipGpios entries for some of their own unaliased dedicated
+pins (e.g. wifi's GPIO4/5/13/19 and nfc's GPIO9/10/11/12/14), which by
+the same build_boards.js mechanism traced above would actually surface
+those pins in the Designer with a "Check if available on board" note
+attached - the opposite of full concealment. This appears to be an
+inconsistency between those two earlier audits and the later lora/
+subghz audits' (and this audit's) more carefully-traced reasoning about
+build_boards.js's actual runtime behavior, not a deliberate alternative
+approach. This audit follows the lora/subghz reasoning (independently
+re-verified by reading build_boards.js directly, not just trusting the
+prior notes.txt). No changes were made to the wifi/nfc boards - fixing
+them is out of scope for this task, which is scoped to challenger_2040_lte
+only.
+
+PER-PIN REASONING
+------------------
+GPIO4 (PIN_SERIAL2_TX): SARA-R410M modem's dedicated UART1 TX line
+  ("GPIO4 acts as UART1 TXD" per the official datasheet). Not
+  general-purpose. No pins_arduino.h alias exists for this GPIO;
+  already fully absent from the Designer pin list. No board.json entry
+  needed or added.
+
+GPIO5 (PIN_SERIAL2_RX): SARA-R410M modem's dedicated UART1 RX line
+  ("GPIO5 acts as UART1 RXD"). Same reasoning as GPIO4.
+
+GPIO6 (PIN_SERIAL2_CTS): SARA-R410M modem's UART1 hardware flow-control
+  CTS line ("GPIO6 acts as UART1 CTS"). Same reasoning as GPIO4.
+
+GPIO7 (PIN_SERIAL2_RTS): SARA-R410M modem's UART1 hardware flow-control
+  RTS line ("GPIO7 acts as UART1 RTS"). Same reasoning as GPIO4.
+
+GPIO13 (PIN_SARA_ON): SARA-R410M modem's power-on control line, driven
+  by the RP2040 ("GPIO13 is connected the power on signal of the SARA
+  R410M module"). Not general-purpose. Same reasoning as GPIO4.
+
+GPIO14 (PIN_SARA_RST): SARA-R410M modem's reset control line, driven by
+  the RP2040 ("GPIO14 is connected to the reset signal of the SARA
+  R410M module"). Same reasoning as GPIO4.
+
+GPIO15 (PIN_SARA_PWR): SARA-R410M modem's power-supply LDO enable line,
+  driven by the RP2040 ("GPIO15 is connected to the LDO that supplies
+  the modem with power"). Same reasoning as GPIO4.
+
+GPIO19 (PIN_LED / LED_BUILTIN, D17 alias): tagged in the new board.json
+  chipGpios with ["digital_output", "pwm_output", "led_high"]. Presence
+  and GPIO number confirmed by cross-referencing the official iLabs
+  datasheet's "pin D15" (iLabs' own silkscreen numbering) against
+  CircuitPython's independent board.LED=GPIO19 definition, which
+  matches this board's own PIN_LED=(19u) exactly - two independent
+  sources agree on GPIO19. Active-high polarity is a cross-referenced
+  inference (no schematic or datasheet text was found that states the
+  polarity explicitly for this specific board's LED), based on: (a) the
+  sibling challenger_2040_wifi board's own datasheet explicitly stating
+  "Active level: High" for the identical shared reference LED circuit
+  (GPIO -> resistor -> LED -> GND) reused across this iLabs product
+  line, and (b) every other RP2040 board audited in this repo's family
+  to date (rpipico, wiznet_5500_evb_pico, adafruit_feather_scorpio,
+  challenger_2040_lora, challenger_2040_wifi, challenger_2040_nfc,
+  challenger_2040_subghz) being confirmed or cross-reference-inferred
+  active-high, none active-low. digital_input capability dropped to
+  match this repo's established led_high precedent for dedicated
+  onboard LED pins; pwm_output kept since arduino-pico's analogWrite()
+  works on any RP2040 GPIO.
+
+No onboard NeoPixel found - confirmed absent by the iLabs datasheet, the
+  upstream arduino-pico pins_arduino.h (no NEOPIXEL/PIN_NEOPIXEL
+  define), and the CircuitPython pins.c (no board.NEOPIXEL). No
+  chipGpios tag applied.
+
+No onboard user button found - confirmed absent by the iLabs datasheet
+  (no pushbutton mentioned beyond standard reset/BOOTSEL, which is not
+  a normal GPIO on RP2040, out of scope per the rpipico/board.json
+  precedent) and the CircuitPython pins.c (no board.BUTTON). No
+  chipGpios tag applied.
+
+GPIO19 carries no SPI/I2C/other bus alias on this board (SPI0 lives on
+  GPIO20-23, Wire0 on GPIO0-1), so the build_boards.js unconditional
+  bus-capability auto-append (the "confirmed button/LED pin also
+  aliased as SDA/SCL/SS/MOSI/MISO/SCK" bug class flagged for this
+  audit) does not apply here - no pins_arduino.h edit was needed.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax using a standalone
+  script (scratchpad/validate_json.js) that strips `//` line comments
+  (respecting quoted strings) and then runs a plain JSON.parse() -
+  confirmed valid, and confirmed the file has exactly the required 10
+  top-level fields (boardName, displayName, family, inputOnlyGpios,
+  connections, pinNotes, chipGpios, pwm, dac, adc) plus the chipGpios
+  object with exactly one entry (GPIO19). No build script was executed
+  and build_boards.js was never require()'d, per task instructions.
+- inputOnlyGpios/connections/pinNotes/pwm/dac/adc/boardName/displayName/
+  family values reproduce the chip-level variants/rp2040/rp2040/
+  board.json defaults verbatim except for the added chipGpios entry and
+  the connections/pinNotes/family comments explaining board-specific
+  context, per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/challenger_2040_lte/board.json (new
+  file - this board previously had none)
+- Created: boardsDetails/rp2040/rp2040/challenger_2040_lte/notes.txt
+  (this file)
+- pins_arduino.h: NOT modified this session (a prior session had already
+  correctly removed all D-alias declarations for the SARA-R410M modem's
+  GPIOs; verified correct and left untouched). The unrelated GPIO20/SPI0
+  MISO missing-alias gap (source #9 above) was flagged but not fixed,
+  out of scope for this modem/LED audit.

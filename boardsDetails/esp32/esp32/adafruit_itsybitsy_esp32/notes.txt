@@ -1,0 +1,68 @@
+Board: adafruit_itsybitsy_esp32 (Adafruit ItsyBitsy ESP32), chip esp32
+Task: section 7a button/LED capability-tagging retrofit (this board already had a
+board.json from an earlier dedicated-hardware-exclusion pass; that pass never
+applied button/LED tagging).
+
+Sources consulted:
+- https://learn.adafruit.com/adafruit-itsybitsy-esp32/pinouts
+  Authoritative vendor pinout page. Confirmed all three onboard-hardware items
+  in one source:
+    * Onboard red LED (LED_BUILTIN) on GPIO13, "below the BAT pin", active
+      high ("set high to turn on"). Available in Arduino as LED_BUILTIN or
+      pin 13, in CircuitPython as board.LED.
+    * Onboard NeoPixel (PIN_NEOPIXEL) on GPIO0. Requires NEOPIXEL_POWER
+      (GPIO2) power-gate for full brightness/power management - GPIO2 was
+      already excluded from chipGpios by the earlier dedicated-hardware pass
+      (see the pre-existing board.json comment), left untouched this pass.
+    * A user-accessible pushbutton ("User Switch", separate from reset) on
+      GPIO35, with an onboard pull-up resistor, referenced as BUTTON in both
+      Arduino and CircuitPython. Matches this board's own pins_arduino.h,
+      which declares `static const uint8_t BUTTON = 35;` under a
+      `// internal switch` comment - vendor page independently corroborates
+      the pins_arduino.h alias, so this is not a "guessed from alias name
+      alone" case (per playbook policy, alias names are never sufficient on
+      their own; the vendor pinout page is the actual evidence used here).
+- https://learn.adafruit.com/adafruit-itsybitsy-esp32/led-blink
+  Confirmed GPIO13/D13 as the red LED location ("beneath the pin labelled
+  BAT"). Did not independently restate polarity in this specific page's
+  fetched text (the pinouts page above is the source for the active-high
+  polarity claim) - used as a secondary corroboration of the LED's identity
+  and pin number only.
+
+Bus-alias collision check (per playbook's mandatory pre-tag check): this
+board's pins_arduino.h declares TX=20, RX=8, SDA=15, SCL=27, SS=32, MOSI=21,
+MISO=22, SCK=19. None of these equal 13, 0, or 35, so none of the three
+tagged pins collide with build_boards.js's unconditional bus-alias capability
+append. No lines needed to be deleted.
+
+Pins considered but NOT tagged:
+- GPIO2 (NEOPIXEL_POWER): not a candidate for button/LED tagging (it's a
+  power-gate control line, not an LED/button itself) and was already
+  correctly excluded from chipGpios entirely by the prior dedicated-hardware
+  pass. No change made or needed this pass.
+- No other GPIOs on this board showed any LED/button-shaped alias in
+  pins_arduino.h (checked TX/RX/SDA/SCL/SS/MOSI/MISO/SCK/A0-A5/T0-T9/DAC1-2 -
+  all standard bus/analog/touch/DAC boilerplate, nothing else onboard-fixed).
+
+Applied (board.json edited in place, prior content/comments preserved):
+- GPIO13: capabilities changed from the generic chip-level default to
+  ["digital_output", "led_high", "pwm_output"]. Confidence: high (vendor
+  pinout page explicitly states pin, LED_BUILTIN identity, and active-high
+  polarity).
+- GPIO0: capabilities changed from the generic chip-level default to
+  ["digital_output", "led_neopixel", "pwm_output"]. Confidence: high (vendor
+  pinout page explicitly confirms GPIO0 = PIN_NEOPIXEL, matches this board's
+  own pins_arduino.h).
+- GPIO35: capabilities changed from ["analog_input", "digital_input"] to
+  ["digital_input", "button"] (analog_input dropped per playbook policy - a
+  button pin with a fixed pull resistor has no useful externally-driven
+  analog circuit). Confidence: high (vendor pinout page explicitly documents
+  a "User Switch" on GPIO35 with onboard pull-up; independently corroborated
+  by this board's own pins_arduino.h `// internal switch` comment on the
+  same GPIO).
+
+Summary: GPIO13 tagged led_high, GPIO0 tagged led_neopixel, GPIO35 tagged
+button - all three vendor-confirmed via learn.adafruit.com, no bus-alias
+collisions found, no other changes needed.
+
+[2026-07-12] Applied section 7a button/LED capability retrofit.

@@ -1,0 +1,43 @@
+m5stack_stamp_s3 - button/LED tagging research notes
+=====================================================
+
+Sources consulted:
+- https://docs.m5stack.com/en/core/StampS3
+  Official M5Stack spec page. Confirms StampS3 module has "a
+  programmable physical button x 1" wired to G0, and "a programmable
+  RGB LED (WS2812B-2020) x 1". Also confirms G0 is the strapping/boot
+  pin (must be held low at power-up to enter download mode), consistent
+  with the existing pinNotes["0"] = "Must be HIGH for normal boot" in
+  the chip-level default board.json.
+- https://github.com/m5stack/STAMP-S3/blob/main/examples/Led/Led.ino
+  Official M5Stack example sketch for this exact board. Confirms the
+  RGB LED is driven via FastLED.addLeds<WS2812, PIN_LED, GRB>(...)
+  with PIN_LED = 21 (GPIO21), and the button is read via
+  digitalRead(PIN_BUTTON) with PIN_BUTTON = 0 (GPIO0), with basic
+  debounce and button-press cycling through LED colour states.
+
+Pin check against TX/RX hard-reservation:
+- pins_arduino.h for this board declares TX = 43, RX = 44.
+- GPIO0 (button) and GPIO21 (NeoPixel) do not coincide with TX/RX, so
+  no conflict - both are safe to tag.
+
+Pins considered but NOT tagged:
+- None. Both candidate pins (G0 button, G21 NeoPixel LED) were
+  confirmed via official M5Stack vendor documentation and the official
+  example sketch for this exact board, and neither conflicts with
+  TX/RX or falls inside a chip-level pin-exclusion range. No guessing
+  was required - this is a high-confidence, fully-documented case.
+
+What was tagged:
+- GPIO0: capabilities set to ["digital_input", "button"] (confirmed
+  physical G0 button per docs.m5stack.com and official example).
+- GPIO21: capabilities set to ["digital_output", "led_neopixel",
+  "pwm_output"] (confirmed onboard WS2812B-2020 addressable RGB LED
+  per docs.m5stack.com and official example; pwm_output retained
+  because it was already present on GPIO21 in the chip-level default
+  chipGpios entry).
+
+board.json created fresh for this variant (none existed previously),
+as a full copy of variants/esp32/esp32s3/board.json with only the
+GPIO0 and GPIO21 capability arrays modified, plus the two pfodWeb
+NOTE comments documented above.

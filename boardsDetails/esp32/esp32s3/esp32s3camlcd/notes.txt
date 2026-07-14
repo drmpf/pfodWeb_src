@@ -1,0 +1,92 @@
+Board: ESP32-S3-CAM-LCD (ESP32-S3 Dev Module variant, fixed camera +
+parallel-TFT board) — boards.txt display name "ESP32S3 CAM LCD"
+Date: 2026-07-14 (real independent re-verification pass; supersedes the
+prior "documentation backfill" pass, which cited only board.json's own
+comment and no external URLs)
+
+Sources consulted (real, external, independently fetched this pass):
+- https://github.com/espressif/arduino-esp32/blob/master/variants/esp32s3camlcd/pins_arduino.h
+  Official Espressif arduino-esp32 upstream variant file - the exact
+  canonical source this repo's local pins_arduino.h is a (deliberately
+  simplified) copy of. Confirmed identical pin roles: TX/RX 43/44,
+  SDA/SCL 17/18, camera SIOD/SIOC(shared I2C)/Y9-Y2/VSYNC/HREF/PCLK/XCLK
+  on 39/41/42/12/3/14/47/13/21/38/11/40, TFT WR/DC/D0-D7 on 4/2/45/16/15/
+  10/8/7/6/5 (480x320, 8-bit parallel, 40MHz), SDMMC CMD/CLK/DATA on
+  20/9/19, microphone MIC_CLK/MIC_DATA on 0/1. (The real upstream file
+  additionally declares SS/MOSI/MISO/SCK = 10/11/12/13 as plain aliases
+  of the same camera/TFT pins; this repo's local copy deliberately
+  removes those aliases to avoid double-exposing them, per its own
+  existing pfodWeb NOTE - a pre-existing, harmless simplification, not
+  something this pass needed to change.)
+- https://github.com/espressif/arduino-esp32/blob/master/boards.txt
+  (grep for "esp32s3camlcd.name=") - display name is the generic
+  "ESP32S3 CAM LCD", with no vendor/brand string anywhere in the entry.
+- https://github.com/espressif/arduino-esp32/pull/6341
+  "Esp32 s3 support" - the bulk PR (March 2022) that added this variant
+  along with dozens of other ESP32-S3 board variants (Adafruit,
+  Unexpected Maker, etc.) in one batch. Checked via the GitHub commits
+  API (path=variants/esp32s3camlcd) - this file's earliest history traces
+  to that same bulk PR, alongside routine subsequent style/refactor
+  commits only. No dedicated PR, vendor discussion, or product
+  announcement specific to this one variant was found.
+- https://www.espboards.dev/esp32/esp32s3camlcd/
+  Third-party pinout aggregator. Also does not name any manufacturer/
+  vendor - describes it generically as "a development board based on the
+  ESP32S3 microcontroller featuring a 2MP camera and LCD display" with
+  Amazon.com/Amazon.de listing links (generic marketplace listings, not a
+  single identifiable branded product).
+- Multiple targeted web searches for third-party commercial products
+  matching this exact pin signature (8-bit PARALLEL TFT bus with
+  dedicated TFT_D0-D7 lines, as opposed to an SPI TFT) turned up several
+  superficially similar commercial boards (Elecrow "ESP-Terminal 3.5",
+  Makerfabs "MaTouch 3.5", Waveshare "ESP32-S3-Touch-LCD-3.5") but all of
+  those use an SPI (ILI9488) display, not an 8-bit parallel bus - so none
+  of them are a match for this board's actual pins_arduino.h. No
+  commercial product with a matching 8-bit-parallel TFT + DVP camera +
+  SDMMC + PDM-mic pin signature could be found.
+
+Per-pin findings (cross-checked directly against the real, confirmed
+upstream pins_arduino.h #define values):
+- GPIO0, GPIO1: excluded (removed from chipGpios entirely) - onboard
+  microphone clock/data (MIC_CLK=0, MIC_DATA=1). CONFIRMED exact match
+  against the official upstream file.
+- GPIO2, GPIO4, GPIO5, GPIO6, GPIO7, GPIO8, GPIO10, GPIO15, GPIO16,
+  GPIO45: excluded - onboard 8-bit parallel TFT data/control lines
+  (DC=2, WR=4, D7=5, D6=6, D5=7, D4=8, D3=10, D2=15, D1=16, D0=45).
+  CONFIRMED exact match.
+- GPIO9, GPIO19, GPIO20: excluded - onboard SDMMC microSD card
+  (CLK=9, DATA=19, CMD=20; GPIO19/20 already excluded chip-wide as native
+  USB D-/D+ pins on every ESP32-S3 board, independently correct).
+  CONFIRMED exact match.
+- GPIO10, GPIO11, GPIO12, GPIO13, GPIO3, GPIO14, GPIO47, GPIO21, GPIO38,
+  GPIO39, GPIO40, GPIO41, GPIO42: excluded - onboard DVP camera data/
+  clock/sync lines (also the shared camera/TFT SPI-style bus): PCLK=11,
+  VSYNC=21, HREF=38, XCLK=40, Y2=13, Y3=47, Y4=14, Y5=3, Y6=12, Y7=42,
+  Y8=41, Y9=39 (GPIO10 already counted above as TFT_D3). CONFIRMED exact
+  match.
+- GPIO17, GPIO18: kept as SDA/SCL (shared general I2C, also used by the
+  camera's SCCB interface per the upstream file's I2C_SDA/I2C_SCL/
+  SIOD/SIOC defines). Capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag. CONFIRMED correct to
+  keep.
+- GPIO43, GPIO44: kept as TX/RX. Capabilities [digital_input,
+  digital_output, pwm_output] - generic, no tag. CONFIRMED correct to
+  keep (standard UART0, not claimed by any onboard peripheral).
+- GPIO46, GPIO48: capabilities [digital_input, digital_output,
+  pwm_output] - generic, no tag, not otherwise claimed in the upstream
+  file. CONFIRMED correct to keep.
+
+Summary: Every excluded and kept pin in this board's chipGpios override
+is CONFIRMED, pin-for-pin, against the real official Espressif
+arduino-esp32 upstream pins_arduino.h for this exact variant. No third-
+party commercial vendor, product page, schematic, or datasheet could be
+identified for this specific board despite a genuine search - it appears
+to be Espressif's own generic internal reference variant (bulk-added in
+PR #6341 alongside dozens of unrelated boards, with only a generic
+boards.txt display name and no brand attribution anywhere upstream), so
+the official arduino-esp32 pins_arduino.h itself was treated as the
+authoritative source, and this is stated honestly here rather than
+inventing a vendor. No corrections were needed; no button/LED tags apply
+(none of these pins are buttons or LEDs). board.json's top-of-file
+comment and this notes.txt were both updated with the sources and
+reasoning above.

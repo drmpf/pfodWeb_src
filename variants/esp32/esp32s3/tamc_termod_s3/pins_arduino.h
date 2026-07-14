@@ -15,11 +15,12 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 8;
 static const uint8_t SCL = 9;
 
-static const uint8_t SS = 10;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard TFT+microSD shared SPI bus (same GPIOs as TFT_CS/RST/DC and
+// SD_CS below).
 
+// pfodWeb NOTE: A9-A13/A17 and T10-T14 deliberately NOT declared - same
+// dedicated TFT/SD SPI bus and TFT_DC/RST pins as below.
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
@@ -29,15 +30,9 @@ static const uint8_t A5 = 6;
 static const uint8_t A6 = 7;
 static const uint8_t A7 = 8;
 static const uint8_t A8 = 9;
-static const uint8_t A9 = 10;
-static const uint8_t A10 = 11;
-static const uint8_t A11 = 12;
-static const uint8_t A12 = 13;
-static const uint8_t A13 = 14;
 static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
 static const uint8_t A16 = 17;
-static const uint8_t A17 = 18;
 static const uint8_t A18 = 19;
 static const uint8_t A19 = 20;
 
@@ -50,21 +45,12 @@ static const uint8_t T6 = 6;
 static const uint8_t T7 = 7;
 static const uint8_t T8 = 8;
 static const uint8_t T9 = 9;
-static const uint8_t T10 = 10;
-static const uint8_t T11 = 11;
-static const uint8_t T12 = 12;
-static const uint8_t T13 = 13;
-static const uint8_t T14 = 14;
 
 static const uint8_t BAT_LV = 1;
 #define BAT_VOLT_PIN BAT_LV
 static const uint8_t CHG = 2;
-static const uint8_t TFT_CS = 10;
-static const uint8_t TFT_DC = 18;
-static const uint8_t TFT_RST = 14;
-static const uint8_t TFT_BCKL = 48;  // TFT Backlight is enabled by soldering JP2 together
-static const uint8_t SD_CS = 21;
-static const uint8_t SD_CD = 47;  // uSD Card Detect is enabled by soldering JP1 together.
+// pfodWeb NOTE: TFT_CS/DC/RST/BCKL and SD_CS/CD deliberately NOT declared
+// - dedicated onboard TFT display + microSD card (see board.json).
 
 #define DISPLAY_PORTRAIT       2
 #define DISPLAY_LANDSCAPE      3

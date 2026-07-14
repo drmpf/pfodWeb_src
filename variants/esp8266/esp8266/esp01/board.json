@@ -1,0 +1,69 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP01" -> designer/boards/ESP01/ESP01.json -> const ESP01Data = {...}
+  //
+  // Unlike every other board under variants/esp8266/, "ESP-01" has no
+  // entry in the real Arduino-ESP8266 core's boards.txt at all — real
+  // Arduino IDE users just pick "Generic ESP8266 Module" for it. This is
+  // a pfodWeb-specific addition (boardName/displayName here are used
+  // directly, not overridden by any boards.txt lookup) because the
+  // ESP-01's 8-pin castellated module physically breaks out only 4
+  // GPIOs, and picking "Generic ESP8266 Module" would wrongly let a
+  // user assign SDA/SCL/SPI/A0 pins that don't exist on the physical
+  // board — this dedicated entry gives it a precise, correct pin picker.
+  "boardName": "ESP01",
+  "displayName": "ESP-01 (AI-Thinker)",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // pfodWeb NOTE: no button/LED capability tags added anywhere on this board.
+  // Verified via the official Ai-Thinker "ESP-01/07/12 Series Modules User's
+  // Manual V1.3" (Section 7 "Module Selection" table, "Indicator light" row):
+  //   https://home-assistant-guide.com/wp-content/uploads/2021/04/ESP-01_ESP-07_ESP-12_Series_User_Manual_V1.3.pdf
+  // That table distinguishes the plain "ESP-01" (this board) from "ESP-01S":
+  // ESP-01 = "TXD0 / POWER" indicator lights (a TX-activity LED hardwired to
+  // the UART0 TX line, plus a power-on LED hardwired to VCC) — NEITHER is
+  // GPIO-controllable. Only the separate "ESP-01S" variant lists "GPIO2" as
+  // its indicator light. Table 2.2 (Pin Function Definitions) for the
+  // "01/01S" column also lists no button pin at all - no onboard user
+  // button exists on the bare module (GPIO0 is only wired to a button on
+  // third-party programmer/breakout adapters, not on the module itself).
+  // So GPIO0 gets no "button" tag and GPIO2 gets no "led_*" tag here; see
+  // boardsDetails/esp8266/esp8266/esp01/notes.txt for full research notes.
+  "pinNotes": {
+    "0": "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. Often wired to a FLASH/BOOT button on ESP-01 programmer adapters",
+    "2": "Must be HIGH at boot. Commonly wired to the on-board LED"
+  },
+
+  // The ESP-01 module only breaks out these 4 GPIOs (plus VCC/GND/CH_PD/
+  // RST, none of which are GPIOs) — GPIO4/5/9-15/16 and A0 exist on the
+  // chip but have no castellated pad on this specific module, so they
+  // are deliberately NOT declared here (unlike the shared ESP8266
+  // chip-level board.json, which exposes the full chip GPIO superset for
+  // boards that do break them out).
+  "chipGpios": {
+    "0": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1": { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3": { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  // ESP-01 has no A0 pin broken out — this describes the chip's ADC
+  // peripheral for consistency with other ESP8266 board.json files, but
+  // no pin on this board actually carries analog_input capability.
+  // pfodWeb NOTE: confirmed via the official Ai-Thinker user manual (see
+  // pinNotes comment above for the URL) - Table 2.2 lists the ADC pin as
+  // "-" (absent) for the "01/01S" column, only appearing from ESP-01M
+  // (16-pin) onward. defaultRefVolts left at the chip-level "1.0" default
+  // since no divider is relevant to a pin that isn't exposed.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "1.0" }
+}

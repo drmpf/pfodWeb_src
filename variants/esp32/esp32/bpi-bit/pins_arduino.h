@@ -23,7 +23,8 @@ static const uint8_t LIGHT_SENSOR2 = 39;
 
 static const uint8_t TEMPERATURE_SENSOR = 34;
 
-static const uint8_t MPU9250_INT = 0;
+// pfodWeb NOTE: MPU9250_INT (GPIO0) deliberately NOT declared - dedicated
+// onboard IMU interrupt line, not general-purpose.
 
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;

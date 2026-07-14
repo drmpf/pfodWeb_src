@@ -22,13 +22,10 @@ static const uint8_t MOSI = 10;
 static const uint8_t MISO = 11;
 static const uint8_t SCK = 9;
 
+// pfodWeb NOTE: A1-A6 deliberately NOT declared - dedicated onboard
+// E-ink display pins (see RST_EINK/BUSY_EINK/CLK_EINK/CS_EINK/DC_EINK/
+// SDI_EINK below).
 static const uint8_t A0 = 1;
-static const uint8_t A1 = 2;
-static const uint8_t A2 = 3;
-static const uint8_t A3 = 4;
-static const uint8_t A4 = 5;
-static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
 static const uint8_t A7 = 8;
 static const uint8_t A8 = 9;
 static const uint8_t A9 = 10;
@@ -44,12 +41,8 @@ static const uint8_t A18 = 19;
 static const uint8_t A19 = 20;
 
 static const uint8_t T1 = 1;
-static const uint8_t T2 = 2;
-static const uint8_t T3 = 3;
-static const uint8_t T4 = 4;
-static const uint8_t T5 = 5;
-static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
+// pfodWeb NOTE: T2-T7 deliberately NOT declared - same dedicated E-ink
+// display pins as above.
 static const uint8_t T8 = 8;
 static const uint8_t T9 = 9;
 static const uint8_t T10 = 10;
@@ -58,13 +51,9 @@ static const uint8_t T12 = 12;
 static const uint8_t T13 = 13;
 static const uint8_t T14 = 14;
 
-static const uint8_t Vext = 45;
 static const uint8_t LED = 18;
-static const uint8_t RST_EINK = 6;
-static const uint8_t BUSY_EINK = 7;
-static const uint8_t CLK_EINK = 3;
-static const uint8_t CS_EINK = 5;
-static const uint8_t DC_EINK = 4;
-static const uint8_t SDI_EINK = 2;
+// pfodWeb NOTE: Vext (power-gate) and RST_EINK/BUSY_EINK/CLK_EINK/
+// CS_EINK/DC_EINK/SDI_EINK deliberately NOT declared - internal control
+// line and dedicated onboard E-ink display SPI bus.
 
 #endif /* Pins_Arduino_h */

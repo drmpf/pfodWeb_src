@@ -1,0 +1,95 @@
+// pfodWeb NOTE (2026-07-11): button/LED tags and the ADC defaultRefVolts
+// below were verified against Seeed Studio's own Wio Link v1.0 schematic
+// (CC-BY-SA, sheet 4/4 "I/O"):
+//   https://github.com/SeeedDocument/Wio_Link/raw/master/resource/Wio%20Link%20v1.0%20sch.pdf
+// Sheet 4 shows two tactile switches: K1 wired between net
+// "SPICS2/GPIO0" and GND (= the CONFIG/FUNCTION button — pulls GPIO0 to
+// GND when pressed, active-low, matches
+// https://github.com/Seeed-Studio/Wio_Link/wiki/Advanced-User-Guide 's
+// "Press the CONFIG button over 5 seconds..." and
+// https://wiki.seeedstudio.com/Wio_Link/ 's Function-key description);
+// K2 is wired to the RST/EXT_RSTB net (a hardware reset button, not a
+// GPIO, so it has no chipGpios entry).
+// Also on sheet 4: LED D4 (blue) — anode at 3V3, cathode through 1k
+// resistor R21 to net "U1TXD/GPIO2" — so GPIO2 sinks current and the LED
+// lights when GPIO2 is driven LOW (active-low), matching this repo's
+// nodemcu/board.json precedent for the same ESP-12-style GPIO2 LED.
+// LED D5 (red) — anode at the switched "3V3B" Grove-power rail, cathode
+// through 1k resistor R22 straight to GND — it is a passive power-present
+// indicator for the 3V3B rail (gated by GPIO15 via Q1/Q2, see the
+// existing chipGpios comment below), not an independently GPIO-driven
+// LED, so it is intentionally left untagged/unlisted, consistent with
+// GPIO15 already being excluded from chipGpios.
+// ADC: sheet 4 also shows the Grove analog port (J6) wired through a
+// resistor divider before reaching the ESP8266's ADC/TOUT net: R25
+// (220k, 1%) in series from the ADC net to the Grove SIG pin, and R26
+// (180k, 1%) from that same junction to GND. So Vadc = Vsig *
+// 180k/(220k+180k) = Vsig * 0.45, meaning the native 0-1.0V ESP8266 ADC
+// range corresponds to an external full-scale of 1.0V / 0.45 ≈ 2.22V at
+// the Grove analog connector — this board does have a divider after all,
+// and the previously-set bare "1.0" was wrong. Corrected to "2.22" below.
+{
+  "boardName": "ESP8266",
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. This board's onboard CONFIG/FUNCTION pushbutton (K1), pulled to GND when pressed — schematic-confirmed, see pfodWeb NOTE above",
+    "2":  "Must be HIGH at boot. This board's onboard (blue) LED — active-low, driven via a 1k resistor from 3V3 (D4/R21) — schematic-confirmed, see pfodWeb NOTE above",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards). Also this board's Grove-port power-enable line — see chipGpios note",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. This board's Grove analog port has an onboard 220k/180k resistor divider ahead of it — see adc note below and pfodWeb NOTE above"
+  },
+
+  // Per-board override: GPIO15 must be held HIGH to keep power enabled to
+  // this board's Grove connector ring (per pins_arduino.h's
+  // PIN_GROVE_POWER comment) — repurposing it as a normal GPIO risks
+  // silently cutting power to every attached Grove sensor. Removed
+  // entirely from the chip-level default map below.
+  // pfodWeb NOTE (2026-07-12, re-confirmed): official Seeed wiki and an
+  // ESPHome community issue both confirm the Grove-port MOSFET power
+  // switch is NOT enabled automatically by board bootstrap code — a
+  // sketch normally has to explicitly call pinMode(15, OUTPUT) then
+  // digitalWrite(15, HIGH) in setup() to turn Grove power on at all, and
+  // driving it LOW again at runtime cuts power to every attached Grove
+  // sensor (including any other Grove sensor a pfodWeb GUI might be
+  // simultaneously displaying). This is exactly the kind of single-
+  // purpose, whole-board-consequence gate line the pin-audit playbook's
+  // EXCLUDE category covers (power-enable lines whose default state a
+  // downstream peripheral depends on) — kept excluded from chipGpios
+  // rather than exposed as a general controllable output, since a
+  // naive Designer pin pick could silently kill an unrelated sensor's
+  // power. GPIO15 also has no static const uint8_t alias anywhere in
+  // this board's own pins_arduino.h (only a bare #define), so it was
+  // never reachable via the pin-alias parser in the first place — this
+  // exclusion is belt-and-braces documentation, not a parser workaround.
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"], "note": "Onboard CONFIG/FUNCTION pushbutton (K1) — active-low, schematic-confirmed, see pfodWeb NOTE above" },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_output", "pwm_output", "led_low"], "note": "LED_BUILTIN — onboard blue LED, active-low (schematic-confirmed, see pfodWeb NOTE above)" },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  // Corrected from the previously-set bare "1.0" — this board's Grove
+  // analog port has an onboard 220k/180k resistor divider ahead of the
+  // ESP8266's native ADC pin (schematic-confirmed, see pfodWeb NOTE at
+  // top of file): Vadc = Vsig * 180k/(220k+180k), so the native 0-1.0V
+  // ADC range corresponds to an external full-scale of 1.0/0.45 ≈ 2.22V.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "2.22" }
+}

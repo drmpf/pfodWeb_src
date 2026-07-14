@@ -1,0 +1,154 @@
+adafruit_feather_esp32c6 board.json button/LED capability-tagging audit notes
+================================================================================
+
+Board: adafruit_feather_esp32c6 (variants/esp32/esp32c6/adafruit_feather_esp32c6),
+chip esp32c6. Product: Adafruit ESP32-C6 Feather - STEMMA QT (product #5933).
+pins_arduino.h declares: PIN_NEOPIXEL=9, LED_BUILTIN=15, RGB_BUILTIN (virtual
+sentinel = SOC_GPIO_PIN_COUNT + PIN_NEOPIXEL for rgbLedWrite()), NEOPIXEL_I2C_
+POWER/PIN_NEOPIXEL_I2C_POWER=20, TX=16, RX=17, SDA=19, SCL=18, SS=0, MOSI=22,
+MISO=23, SCK=21, A0-A6. A board.json override already existed from an earlier
+dedicated-hardware-exclusion pass (excludes GPIO20 from chipGpios with a
+pfodWeb NOTE comment already at the top of the file) but that earlier pass
+never applied button/LED capability tagging to GPIO9 or GPIO15 - this audit
+does that tagging now, edited board.json in place (existing content/comments
+preserved, only appended to).
+
+Sources consulted
+------------------
+- https://learn.adafruit.com/adafruit-esp32-c6-feather/pinouts
+  Official Adafruit Learn guide pinout page. States: "Red LED - This little
+  red LED, labeled 15 on the board, is on or blinks during certain operations
+  (such as pulsing when in the bootloader), and is controllable in code. It
+  is available in CircuitPython as board.LED, and in Arduino as LED_BUILTIN
+  or 15." Also: "NeoPixel LED - This addressable RGB NeoPixel LED, labeled
+  Neo on the board, can be controlled with code. It does not act as a status
+  LED in CircuitPython because it shares a pin with the Boot button (IO9)...
+  available in CircuitPython as board.NEOPIXEL, and in Arduino as
+  PIN_NEOPIXEL." And: "There is a NeoPixel power pin that needs to be pulled
+  high for the NeoPixel to work. It is the same pin as the I2C power pin
+  (IO20). This is done automatically by CircuitPython and Arduino." And
+  explicitly: "The NeoPixel and Boot button are both connected to IO9."
+- https://cdn-learn.adafruit.com/downloads/pdf/adafruit-esp32-c6-feather.pdf
+  Full official Adafruit Learn guide PDF (162 pages), downloaded and
+  converted to text with pdftotext for full-text search since WebFetch
+  could not summarize the whole 15MB PDF in one call. Key excerpts:
+  - p.87 "New Blink Sketch" (Arduino IDE walkthrough specific to this
+    board): "int led = LED_BUILTIN; ... pinMode(led, OUTPUT); ...
+    digitalWrite(led, HIGH);   // turn the LED on (HIGH is the voltage
+    level)" - board-specific tutorial (not the generic stock Arduino
+    example elsewhere in the repo's playbook warnings), confirms HIGH
+    lights the LED for this exact product.
+  - p.15 "Buttons" section: "Boot button - This button can be read as an
+    input in code. It is connected to pin IO9, which is also broken out
+    separately on the Feather. It is available as board.BUTTON in
+    CircuitPython, and pin 9 in Arduino. Simply set it to be an input with
+    a pullup. This pin is shared with the onboard NeoPixel." Confirms the
+    onboard BOOT button physically IS GPIO9 (input w/ internal pullup,
+    active-low press), same pin as PIN_NEOPIXEL.
+  - p.119 WipperSnapper "Button Location": "There is a single input button
+    ... furthest from the USB port and labelled BOOT. It is connected to
+    pin IO9, which is also broken out separately on the Feather and shared
+    with the onboard NeoPixel." Corroborates the above.
+  - p.11 "Logic Pins": "There are three sets of shared pins on the Feather:
+    Boot/NeoPixel/IO9, A2/IO6 and A3/IO5." and "IO0, IO5-IO9, IO12, IO15 -
+    These are digital pins. IO9 is shared with the Boot [button and
+    NeoPixel]." Confirms GPIO9 dual-role is a documented, deliberate
+    hardware design (single physical pin), not an incidental overlap.
+- https://www.adafruit.com/product/5933
+  Vendor product listing corroborating board identity (ESP32-C6 Feather -
+  STEMMA QT).
+- Existing repo precedent (checked for tagging-array consistency):
+  variants/esp8266/esp8266/espectro/board.json GPIO15 ["digital_output",
+  "led_high","pwm_output"]; variants/esp32/esp32s2/lolin_s2_mini/board.json
+  GPIO15 same pattern; variants/esp32/esp32c6/XIAO_ESP32C6/board.json GPIO15
+  ["digital_output","pwm_output","led_low"] (different vendor/board, cited
+  only to confirm the "drop digital_input, keep pwm_output+led_x" tagging
+  convention, not as evidence of this board's polarity - XIAO is a
+  different manufacturer's ESP32-C6 board with unrelated schematic).
+
+GPIO15 (LED_BUILTIN) - CONFIRMED onboard red status LED, real hardware per
+  Adafruit's own Learn guide pinout page. Polarity: CONFIRMED active-high
+  via Adafruit's own board-specific "New Blink Sketch" Arduino tutorial
+  (PDF p.87), which explicitly comments "digitalWrite(led, HIGH); // turn
+  the LED on" for this exact product (not the repo's previously-flagged
+  generic/copy-pasted stock Arduino Blink.ino boilerplate - this is a
+  board-specific walkthrough page tailored to the ESP32-C6 Feather that
+  Adafruit tested and published). Tagged capabilities ["digital_output",
+  "led_high","pwm_output"] (digital_input dropped, matching the repo's
+  established led_high/led_low tagging convention for LED-only pins, e.g.
+  espectro and lolin_s2_mini GPIO15). The existing chip-level pinNotes entry
+  "15": "Must be LOW or floating on reboot" (ESP32-C6 strapping pin) was
+  left unchanged - expected/documented for this pin, not removed.
+
+GPIO9 (PIN_NEOPIXEL) - CONFIRMED onboard NeoPixel (addressable RGB LED,
+  labeled "Neo" on the board), directly stated by Adafruit's Learn guide and
+  matching the RGB_BUILTIN/rgbLedWrite() virtual-sentinel mechanism in this
+  board's own pins_arduino.h. Tagged capabilities ["digital_output",
+  "led_neopixel"] exactly per this task's instruction (digital_input and
+  pwm_output dropped). IMPORTANT CAVEAT found and documented: Adafruit's own
+  guide states GPIO9 is a genuinely shared/multiplexed physical pin - it is
+  ALSO the onboard BOOT button (input w/ pullup) - "The NeoPixel and Boot
+  button are both connected to IO9... You will only be able to add/use one
+  component on pin IO9 at a time" (WipperSnapper section, PDF p.119). No
+  separate "button" capability tag was added to GPIO9 in board.json: (a)
+  this task's explicit tag policy for this pin is the fixed NeoPixel tag,
+  (b) pins_arduino.h for this board declares no BUTTON symbol at all -
+  PIN_NEOPIXEL is the only Arduino-visible name bound to GPIO9 in the file
+  being audited, so tagging button here would not correspond to any
+  pins_arduino.h symbol the way every other button tag in this repo does.
+  The dual-role fact is recorded here (and in a board.json NOTE comment) so
+  a future audit pass revisiting BUTTON-symbol coverage has the context
+  without silently colliding with the led_neopixel tag applied now.
+
+GPIO20 (NEOPIXEL_I2C_POWER / PIN_NEOPIXEL_I2C_POWER) - Already EXCLUDED from
+  chipGpios by the earlier dedicated-hardware-exclusion pass (pre-existing
+  pfodWeb NOTE comment at top of board.json). Re-confirmed correct per this
+  audit's research: Adafruit's Learn guide states "There is a NeoPixel power
+  pin that needs to be pulled high for the NeoPixel to work. It is the same
+  pin as the I2C power pin (IO20). This is done automatically by
+  CircuitPython and Arduino." - i.e. unlike the QT Py ESP32 precedent
+  (NEOPIXEL_POWER, GPIO8) where Adafruit's own Arduino examples require the
+  sketch to manually pinMode/digitalWrite it HIGH, this board's Arduino core
+  drives GPIO20 automatically at startup/variant-init time, with no user
+  sketch code involved at all. This is an even stronger case for EXCLUDE
+  than the manual-driving precedent already established for other Adafruit
+  QT Py/Feather boards this session - left excluded, no board.json change
+  needed for this pin beyond the pre-existing exclusion.
+
+Alias-conflict check (per this session's playbook step)
+-----------------------------------------------------------
+Checked whether GPIO9, GPIO15, or GPIO20 is separately aliased anywhere else
+in this board's pins_arduino.h as SDA/SCL/SS/MOSI/MISO/SCK (the
+build_boards.js mechanism that unconditionally appends i2c_sda/i2c_scl/
+spi_ss/spi_mosi/spi_miso/spi_sck capabilities to any GPIO matching those
+alias values, regardless of chipGpios contents). This board's aliases:
+SDA=19, SCL=18, SS=0, MOSI=22, MISO=23, SCK=21, TX=16, RX=17. None of these
+values is 9, 15, or 20. No conflict exists; no pins_arduino.h edit was
+necessary or performed.
+
+What was changed
+-------------------
+Edited variants/esp32/esp32c6/adafruit_feather_esp32c6/board.json in place
+(existing content and the pre-existing pfodWeb NOTE comment preserved,
+nothing overwritten):
+  - Appended a new pfodWeb NOTE comment block above the existing one,
+    documenting the GPIO15/GPIO9/GPIO20 findings and sourcing summary.
+  - GPIO9 capabilities changed to ["digital_output","led_neopixel"] (was
+    ["digital_input","digital_output","pwm_output"]).
+  - GPIO15 capabilities changed to ["digital_output","led_high","pwm_output"]
+    (was ["digital_input","digital_output","pwm_output"]).
+  - GPIO20 unchanged (already absent from chipGpios from the earlier pass).
+  - No pins_arduino.h edit was needed (no alias conflict found).
+Created this notes.txt (boardsDetails dir for this board did not exist
+before this audit; created boardsDetails/esp32/esp32c6/adafruit_feather_esp32c6/).
+
+Summary: LED_BUILTIN (GPIO15) confirmed real onboard red LED, active-high
+per Adafruit's own board-specific Blink tutorial, tagged led_high.
+PIN_NEOPIXEL (GPIO9) confirmed real onboard NeoPixel, tagged led_neopixel;
+also discovered and documented that GPIO9 is a genuinely shared physical pin
+with the onboard BOOT button (vendor-documented, mutually exclusive use) -
+no button tag applied since no BUTTON symbol exists in this board's
+pins_arduino.h. NEOPIXEL_I2C_POWER (GPIO20) exclusion from the earlier pass
+re-confirmed and strengthened (vendor docs say it's auto-driven by the
+Arduino core, not manual sketch code). No alias-collision bug found for any
+of the three pins.

@@ -1,0 +1,97 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+// Board: uPesy ESP32-C3 Basic (a.k.a. "uPesy ESP32-C3 Low Power Basic" in
+// uPesy's own docs/product listing - same board, USB_PRODUCT string in this
+// variant's pins_arduino.h reads "uPesy ESP32C3 Basic"), ESP32-C3-MINI-1
+// module on a narrow 2x-per-side breadboard-friendly carrier. This board's
+// own pins_arduino.h declares TX=21, RX=20, SDA=3, SCL=10, SS=7, MOSI=6,
+// MISO=5, SCK=4, A0-A5=0-5 (generic ESP32-C3 template aliases), and
+// VBAT_SENSE=0 (aliased to BAT_VOLT_PIN). No board.json override existed
+// before this audit (used the chip-level esp32c3/board.json default).
+// Flagged by the discovery sweep for having VBAT_SENSE=0 declared but never
+// individually reviewed. Sibling board uPesy_esp32c3_mini (near-identical
+// pins_arduino.h) is being audited separately this wave - NOT assumed
+// identical; verified independently below.
+//
+// Sources consulted:
+//  - https://www.upesy.com/blogs/tutorials/upesy-esp32c3-basic-low-power-board-documentation-version-latest
+//    Official uPesy documentation page for this exact board. States (French):
+//    "La broche GPIO0 (non exposee) est utilisee par la carte pour mesurer
+//    la tension d'alimentation" (GPIO0, not exposed, is used by the board to
+//    measure the supply voltage) - vendor-confirmed dedicated battery-sense
+//    pin, not broken out to a header pad despite the Arduino core's generic
+//    A0=0 naming alias. Gives the measurement formula:
+//    "V_BAT = 2 x (V_IO0_bits / 4095) x 3.3V" and provides example code
+//    reading analogRead(0) - confirms a 2x multiplier (equal-ratio resistive
+//    divider, i.e. R_series == R_shunt) ahead of the ADC, and explicitly
+//    warns the reading is only valid when the board is battery-powered (USB
+//    power present gives an incorrect result - out of scope for a static
+//    capability audit, noted for the user).
+//  - https://www.upesy.com/products/esp32c3-low-power-basic-board
+//    Official product page, confirms "GPIO0 (not exposed) is used by the
+//    board to measure the power supply voltage" and lists GPIO2/GPIO8 as
+//    the strapping pins with pull-ups for BOOT mode - matches this chip's
+//    existing pinNotes (2, 8, 9) already inherited from the esp32c3 chip
+//    default, no change needed there.
+//
+// GPIO0 (VBAT_SENSE / BAT_VOLT_PIN / A0): confirmed onboard dedicated
+// battery-voltage-sense pin via uPesy's own official documentation and
+// product page (both independently state GPIO0 is not exposed on a header
+// and is reserved for supply-voltage measurement), with a vendor-given 2x
+// multiplier equivalent to a 1:1 (equal-value) resistive divider, giving an
+// effective corrected reference of 3.3V * (R_series+R_shunt)/R_shunt =
+// 3.3V * 2 = 6.6V for the raw ADC-to-battery-volts conversion. Per this
+// project's battery/voltage-monitor KEEP policy, this pin's capabilities
+// are left unchanged from the chip-level default (analog_input retained,
+// not excluded) - only a documentation "note" was added, matching the
+// established pattern (see e.g. esp32c3/ttgo-t-oi-plus's GPIO2). adc.
+// defaultRefVolts is NOT changed board-wide (still "3.3") because the
+// divider is wired only to this one dedicated pin, not to the board's other
+// analog-capable pins.
+//
+// Alias-conflict check (playbook step): checked this board's own
+// pins_arduino.h for any SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias landing on
+// GPIO0: SDA=3, SCL=10, SS=7, MOSI=6, MISO=5, SCK=4, TX=21, RX=20 - none is
+// 0, so no bus-capability contamination risk and no alias line needed
+// deletion. No other declaration in this file aliases GPIO0 besides A0,
+// VBAT_SENSE and BAT_VOLT_PIN.
+//
+// No LED_BUILTIN, BUT_BUILTIN, or any other button/LED alias is declared
+// anywhere in this board's pins_arduino.h, and neither the uPesy
+// documentation page nor the product page mentions an onboard user button
+// or status LED for this specific board - section 7a (opportunistic
+// button/LED check) found nothing to tag.
+//
+// See boardsDetails/esp32/esp32c3/uPesy_esp32c3_basic/notes.txt for the
+// full research trail.
+
+{
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "VBAT_SENSE / BAT_VOLT_PIN - onboard battery-voltage sense, not physically exposed on a header pad per vendor docs (1:1 divider; vendor formula applies a 2x multiplier to the raw ADC reading, equivalent to an effective 6.6V corrected reference). Only valid when battery-powered, not on USB power. See pfodWeb NOTE above." },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

@@ -1,0 +1,150 @@
+Board: esp32/esp32/vintlabsdevkitv1 ("VintLabs ESP32 Devkit" / "vintlabs-devkit-v1")
+
+=====================================================================
+AUDIT 2 (2026-07-12): dedicated-hardware pin-exclusion audit (PWM0-7)
+=====================================================================
+Flagged by a fresh discovery sweep: pins_arduino.h declares 8 pins as
+PWM0..PWM7 on GPIO12-19, preceded by the comment "// PWM Driver pins for
+PWM Driver board". Question: general-purpose PWM header (KEEP) or wired
+to fixed onboard actuators (EXCLUDE)?
+
+Sources consulted:
+1. https://www.espboards.dev/esp32/vintlabs-devkit-v1/
+   Describes "VintLabs ESP32 Devkit v1" as a general-purpose ESP32 dev
+   board ("versatile ... ideal for learning, custom PCB integration, and
+   wireless prototyping"), 240 MHz, 4 MB flash. No onboard PWM driver
+   hardware mentioned (consistent with Audit 1's finding above).
+2. https://github.com/vintlabs/ESP32-PWM-Driver-Devkit (README.md)
+   A SEPARATE VintLabs product: "ESP WROOM-32 DevKit with 8 2A PWM
+   Drivers (5-15V)" - genuine onboard driver channels for LED
+   lighting/DC motors, external 5-15V power recommended. This is the
+   "PWM Driver board" the pins_arduino.h comment refers to.
+3. https://github.com/espressif/arduino-esp32/pull/3252
+   Original PR (contributor "pvint", merged 2019-09-24) adding this
+   board id. Author's own words: "I've had a lot of users confused as
+   to which board to select for VintLabs devkits, so I'd like to add
+   the board definition (which also allows using PWMx variables to
+   reference PWM driver outputs on the PWM driver kit)." Confirms ONE
+   board id is deliberately shared across multiple VintLabs devkit
+   products (plain devkit + PWM driver devkit).
+4. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/vintlabsdevkitv1/pins_arduino.h
+   Fetched and compared to this repo's local pins_arduino.h - byte-for-
+   byte identical, confirming the local file is the authentic,
+   unmodified vendor file (including the SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+   boilerplate aliases).
+
+Decision: KEEP all of GPIO12/13/14/15/16/17/18/19 as ordinary
+general-purpose GPIO - no actuator/driver capability tag applied.
+Evidence is genuinely mixed for this shared board id: this pfodWeb
+variants tree has only ONE vintlabsdevkitv1 directory (no separate entry
+for the PWM-driver-only product), so it must serve as the general "plain
+devkit" selection too, which per source #1 has no confirmed onboard
+driver hardware. Since every ESP32 GPIO already supports LEDC PWM
+natively, "PWM0-7" reads as a convenience naming layer for the companion
+product's firmware rather than proof of fixed actuator wiring on the
+board a pfodWeb Designer user actually has. Per the playbook's
+default-to-KEEP-on-ambiguity rule, KEEP was applied.
+
+Alias-collision check (playbook step 4): PWM6 (GPIO18) collides with
+this board's own SCK=18; PWM7 (GPIO19) collides with its own MISO=19.
+Both verified (source #4) as genuine, byte-identical vendor-shipped
+aliases (standard ESP32 VSPI default pins), not fabricated boilerplate.
+Since the decision above is KEEP (no exclusion attempted on GPIO18/19),
+build_boards.js's automatic spi_sck/spi_miso capability addition for
+these pins is correct/wanted, not contamination. No alias lines deleted.
+
+Separate fix applied - GPIO16/GPIO17 re-added: the chip-level default
+(variants/esp32/esp32/board.json) omits GPIO16/17 from chipGpios
+entirely ("excluded - not user-accessible on modules with integrated
+... PSRAM"). This board's own vendor pins_arduino.h explicitly declares
+PWM4=16 and PWM5=17 as named, working aliases - direct evidence the
+VintLabs DevKit V1 uses a plain ESP32-WROOM-32 module WITHOUT PSRAM, so
+both pins are genuinely user-accessible GPIO here. Created board.json
+(full copy of chip-level default) and added:
+  "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+(no analog_input - GPIO16/17 are not ADC-capable on ESP32 silicon). This
+follows the precedent in variants/esp32/esp32/espino32/board.json, which
+re-added GPIO16 for its own confirmed non-PSRAM module.
+
+No new LED/button evidence was found in this pass; Audit 1's findings
+below (no confirmed onboard LED or button) still stand and were left
+untouched - GPIO2 (LED_BUILTIN) keeps its default, non-tagged
+capabilities.
+
+Audit 2 summary: KEEP all PWM0-7 pins as plain GPIO (ambiguous shared
+board id, defaulted to KEEP). No alias deletions needed. board.json
+created solely to re-add GPIO16/GPIO17, which this board's own
+pins_arduino.h proves are real usable GPIO despite the chip-level
+default's blanket PSRAM-based exclusion.
+
+=====================================================================
+AUDIT 1 (2026-07-11): button/LED/ADC capability retrofit
+=====================================================================
+Research date: 2026-07-11
+
+pins_arduino.h facts (not used as sole evidence, per task rules):
+- LED_BUILTIN = GPIO2 (alias only)
+- TX = GPIO1, RX = GPIO3 (GPIO2 does NOT conflict with TX/RX)
+- No BUTTON/BOOT/FLASH alias defined anywhere in this pins_arduino.h at all.
+
+Sources consulted:
+1. https://www.espboards.dev/esp32/vintlabs-devkit-v1/
+   - Auto-generated board database page. States GPIO2 = "LED_BUILTIN" and shows a generic
+     "GPIO2 - 220ohm - LED - GND" schematic snippet. This appears to be a templated diagram
+     espboards.dev generates from the arduino-esp32 pins_arduino.h LED_BUILTIN alias itself
+     (same source data already in our repo), not independent vendor confirmation of a
+     physical LED. No polarity (active-high/low) stated. No button mentioned.
+
+2. https://docs.platformio.org/en/latest/boards/espressif32/vintlabs-devkit-v1.html
+   (also checked mirror: phd-sid.ethz.ch copy, and raw .rst source on
+    https://github.com/platformio/platformio-docs/blob/develop/boards/espressif32/vintlabs-devkit-v1.rst)
+   - Generic MCU/build config only (flash size, upload protocol, f_cpu). No mention of any
+     onboard LED or button hardware at all.
+
+3. https://github.com/espressif/arduino-esp32/pull/3252/files
+   - The original 2019 PR (merged by me-no-dev) that added this board to arduino-esp32.
+     Adds variants/vintlabsdevkitv1/pins_arduino.h with LED_BUILTIN=2 (matches our local file
+     exactly). No PR discussion/comments confirming physical LED presence, polarity, or any
+     button pin were visible.
+
+4. https://github.com/vintlabs (VintLabs company GitHub org)
+   - Repo listing shows no dedicated "ESP32 DevKit v1" hardware repo. Only
+     ESP32-PWM-Driver-Devkit, ESP32-Zip, I2C-PWM-Driver, etc. No standalone bare-devkit
+     hardware/schematic repo matching this exact board exists.
+
+5. https://github.com/vintlabs/ESP32-PWM-Driver-Devkit/blob/master/README.md
+   - Instructs users to select "VintLabs ESP32 DevKit" in Arduino IDE Tools->Board for THIS
+     (different, PWM-driver) product too — implying the "vintlabsdevkitv1" Arduino board
+     definition is reused generically across multiple different VintLabs physical products,
+     not tied to one specific verifiable PCB. No LED/button GPIO mentioned in this README.
+
+6. https://www.vintlabs.com/product/vintlabs-esp32-zip-an-esp32-devkit-that-fits-in-a-pi-zero-case/
+   - Real vendor product page, but for a DIFFERENT product (ESP32-Zip), not confirmed to be
+     the same physical board as "DevKit v1". States it has "LEDs for Power, USB Tx/Rx and a
+     utility LED on GPIO2" — corroborates that VintLabs boards in general often carry a
+     GPIO2 utility LED, but is not vendor documentation of THIS specific board/product, and
+     does not state polarity (active-high vs active-low) or mention any button.
+
+7. https://www.vintlabs.com/shop/ (current VintLabs shop/product listing)
+   - Confirms there is no bare/plain "ESP32 DevKit" product currently sold by VintLabs
+     separate from the Zip and PWM-driver kits — the exact board this Arduino variant maps
+     to appears to be an older/discontinued or bundled product with no standalone vendor
+     page or schematic found.
+
+Pins considered but NOT tagged:
+- GPIO2 (LED_BUILTIN alias): NOT tagged. No independent vendor schematic/product page could
+  be found that confirms GPIO2 drives a physical onboard LED specifically on the exact
+  "VintLabs DevKit v1" board (as opposed to the differently-named ESP32-Zip product, which
+  does have a documented GPIO2 utility LED but is not confirmed to be the same PCB/product).
+  Per task rules, the LED_BUILTIN alias name alone is explicitly disallowed as sole evidence,
+  and espboards.dev's schematic snippet appears to be auto-derived from that same alias
+  rather than an independent source. This is a genuine "not confirmed" case, not a
+  best-guess judgment call — no tag was applied.
+- No button candidate exists at all: pins_arduino.h defines no BUTTON/BOOT/FLASH alias for
+  this board, and no vendor source found describes a user button on any GPIO.
+- TX/RX check: GPIO1 (TX) and GPIO3 (RX) were checked and are NOT the candidate pin, so the
+  TX/RX hard-reservation bug was not a factor in this decision.
+
+Summary: NO CHANGE. No board.json was created/modified for this board — insufficient
+confirming vendor evidence for an onboard LED, and no button candidate exists to evaluate.

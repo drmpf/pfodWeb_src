@@ -1,0 +1,173 @@
+um_tinyc6 (chip: esp32c6) - Unexpected Maker TinyC6
+Button/LED capability-tagging audit (playbook section 7a) - 2026-07-12
+
+CONTEXT
+-------
+This board already had a board.json from an earlier dedicated-hardware
+pin-exclusion pass (sections 1-6): it excludes GPIO22 (RGB_PWR, the
+NeoPixel's internal power-gate line) from chipGpios. That earlier pass
+never applied the section 7a button/LED capability tags. This session's
+task was to apply those tags only, using the virtual-pin resolution hint
+from sibling boards um_edges3_d/um_nanos3 (RGB_BUILTIN = PIN_NEOPIXEL +
+SOC_GPIO_PIN_COUNT convention).
+
+FILES READ
+----------
+- variants/esp32/esp32c6/um_tinyc6/pins_arduino.h (full file, 63 lines).
+  Key declarations:
+    static const uint8_t RGB_DATA = 23;
+    #define RGB_BUILTIN (RGB_DATA + SOC_GPIO_PIN_COUNT)
+    static const uint8_t LED_BUILTIN = RGB_BUILTIN;
+  No BUTTON/BOOT macro or static const declared anywhere in this file -
+  the BOOT button's existence and GPIO had to be confirmed externally
+  (see sources below), it is not named in pins_arduino.h at all.
+  Bus aliases present: SDA=6, SCL=7, SS=18, MOSI=21, MISO=20, SDO=21,
+  SDI=20, SCK=19, TX=16, RX=17.
+- variants/esp32/esp32c6/um_tinyc6/board.json (pre-existing, before this
+  pass): chip-level-derived chipGpios map with GPIO22 already omitted;
+  no button/led_* tags present anywhere.
+- Sibling boards read for tagging-convention precedent (JSON shape, note
+  style, what "plus pwm_output if applicable" means in practice):
+  variants/esp32/esp32c6/pandabyte_xc6/board.json (GPIO23 tagged
+  led_neopixel, GPIO22 tagged button - different GPIO than this board,
+  useful only as a schema example) and
+  variants/esp32/esp32c6/waveshare_esp32_c6_zero/board.json (GPIO8
+  led_neopixel, GPIO9 button - GPIO9-as-BOOT-button precedent directly
+  relevant to this board).
+- variants/esp32/esp32s3/um_nanos3/pins_arduino.h and board.json, and
+  variants/esp32/esp32s3/um_edges3_d/board.json+notes.txt - read to
+  confirm the virtual-pin convention mentioned in the task hint. Found
+  that um_nanos3's own RGB_DATA pin (GPIO41) has NOT actually been
+  tagged led_neopixel yet either (still plain digital_input/output/pwm)
+  - confirms neither sibling is a "led_neopixel already applied" example
+  to copy from, only a confirmation of the RGB_BUILTIN-encoding pattern
+  itself. (This is also independently noted as open follow-up work in
+  the project's board-variant-pin-audit-playbook memory, section 12's
+  "Remaining work" - um_nanos3/um_edges3_d are out of scope for this
+  task.)
+
+SOURCES CONSULTED (external research)
+--------------------------------------
+1. https://github.com/UnexpectedMaker/esp32c6 (repo root) - README points
+   to per-board subfolders containing schematics/pinout cards. Used to
+   locate the TinyC6 folder.
+2. https://api.github.com/repos/UnexpectedMaker/esp32c6/contents/TinyC6
+   - directory listing, found TinyC6_Schematic_P1.pdf and
+   TinyC6_P1_Pinout_Card.jpg.
+3. https://github.com/UnexpectedMaker/esp32c6/raw/main/TinyC6/TinyC6_Schematic_P1.pdf
+   - DOWNLOADED AND READ DIRECTLY (KiCad E.D.A. 7.0.7, Rev P1,
+   2023-11-18, sheet "TinyC6_P1.kicad_sch"). This is the authoritative
+   source for both findings below - a real vendor schematic, not a
+   secondhand pinout-card description.
+     - "RGB LED" schematic block: LED2 is a WS2812B1515 (WS2812-family
+       addressable RGB LED) with pins DI/DO/GND/VDD. DI (data-in) is
+       wired to net IO23. VDD is routed through net IO22 (the RGB_PWR
+       power-gate, already excluded from this board's chipGpios by the
+       earlier audit pass). This directly confirms RGB_DATA=23 in
+       pins_arduino.h is the real, physical NeoPixel data pin, and that
+       GPIO22 is correctly excluded as an internal power-gate rather
+       than a general-purpose pin.
+     - "BUTTONS" schematic block: switch SW1, pulled up to 3.3V through
+       R14 (100K), with one contact pair wired to net IO9 and the other
+       side to GND (this is the classic BOOT-button-to-strapping-pin
+       wiring: idle HIGH via pull-up, pulled LOW when pressed). A
+       second, separate contact pair on the same physical SW1 footprint
+       is wired to the chip's RESET/EN line (labelled "RESET" in the
+       schematic, feeding into CHIP_PU on the ESP32-C6 - not a GPIO at
+       all). This confirms the board has two physical buttons: a
+       user/BOOT button on GPIO9, and a hardware RESET button with no
+       GPIO to tag.
+   This single source was sufficient and authoritative for both pins -
+   no secondary corroboration was needed since it's the vendor's own
+   circuit design file, not a third-party description.
+4. https://www.espboards.dev/esp32/um-tinyc6/ - third-party pinout
+   aggregator. Corroborated GPIO23=RGB_DATA/RGB_BUILTIN/LED_BUILTIN and
+   GPIO22=RGB_PWR (matches pins_arduino.h and the schematic exactly).
+   Its pin table had no button/BOOT column entry at all - this source
+   was insufficient on its own for the button finding, which is why the
+   schematic (source 3) was pulled to confirm it directly rather than
+   guessing from generic "ESP32-C6 uses GPIO9 for BOOT" chip-level
+   knowledge.
+5. WebSearch results referencing help.unexpectedmaker.com (UM's own
+   help/support site) confirmed a physical BOOT button exists on this
+   board ("hold the BOOT button while connecting the USB cable... to
+   enter download mode", and a safe-mode entry procedure via holding
+   BOOT after the RGB LED goes purple) - corroborates the schematic's
+   SW1 finding as a real, user-facing, documented button, not just an
+   internal test point.
+6. Dead end: https://unexpectedmaker.com/tinyc6 and
+   https://www.tindie.com/products/seonr/tinyc6/ - both product pages
+   fetched via WebFetch, but their pinout/button detail is embedded in
+   image assets (pinout card JPG, product gallery images) that WebFetch
+   could not read as text. Not used as a source for either finding;
+   listed here only so a future reviewer doesn't re-try the same fetch
+   expecting different results.
+
+PER-PIN REASONING
+------------------
+GPIO23 (RGB_DATA / RGB_BUILTIN virtual pin) - TAGGED
+  Virtual-pin resolution: pins_arduino.h defines
+  "RGB_BUILTIN = RGB_DATA + SOC_GPIO_PIN_COUNT", which is a virtual pin
+  number (SOC_GPIO_PIN_COUNT is a compile-time chip-pin-count constant,
+  not itself a GPIO) - build_boards.js's regex-only parser has no way to
+  evaluate that arithmetic expression, so it cannot resolve RGB_BUILTIN
+  to a real pin on its own. The real underlying GPIO is simply the value
+  stored in RGB_DATA, i.e. 23 - confirmed both by pins_arduino.h's own
+  "static const uint8_t RGB_DATA = 23;" line and independently by the
+  vendor schematic's DI-to-IO23 wiring (source 3 above).
+  Alias-collision check: this board's SDA/SCL/SS/MOSI/MISO/SCK/SDO/SDI
+  aliases resolve to 6/7/18/21/20/19/21/20 respectively - none equal 23,
+  so tagging GPIO23 will not cause build_boards.js to append a spurious
+  i2c_*/spi_* capability alongside led_neopixel. No pins_arduino.h edit
+  was required.
+  TX/RX check: TX=16, RX=17 - GPIO23 is neither, so the tag will not be
+  silently discarded by the hard TX/RX capability override.
+  Applied: chipGpios["23"].capabilities =
+    ["digital_output", "led_neopixel", "pwm_output"]
+  (pwm_output kept since GPIO23 supports it at the chip level per the
+  pre-existing chip-level default and the sibling precedent boards above
+  both keep pwm_output alongside led_neopixel.)
+
+GPIO9 (BOOT button, silicon strapping pin) - TAGGED
+  No pins_arduino.h alias names this pin as a button (as expected - the
+  project's established policy is that pins_arduino.h alias names are
+  never trusted alone for button/LED identity; this pin was found and
+  confirmed purely via the vendor schematic's SW1/R14/IO9 wiring,
+  corroborated by UM's own help-site documentation of BOOT-button
+  behavior). This board.json's existing pinNotes already carried
+  "9": "Must be HIGH for normal boot" from the earlier strapping-pin
+  audit pass, consistent with (but not by itself sufficient evidence
+  for) a BOOT button being wired there - the schematic confirms it.
+  Alias-collision check: GPIO9 is not SDA/SCL/SS/MOSI/MISO/SCK/SDO/SDI
+  (6/7/18/21/20/19/21/20) on this board, and not TX/RX (16/17) either -
+  no spurious bus/serial capability risk, no pins_arduino.h edit
+  required.
+  Applied: chipGpios["9"].capabilities = ["digital_input", "button"]
+  (restricted set only - the pre-existing digital_output/pwm_output
+  entries were removed per policy: a button pin with a fixed pull
+  resistor + switch has no externally-useful output/PWM role).
+
+GPIO22 (RGB_PWR) - NO CHANGE (re-confirmed, not re-tagged)
+  Already excluded from chipGpios by the earlier dedicated-hardware
+  pass, with a pre-existing header comment. The schematic (source 3)
+  independently re-confirms this is correct: GPIO22 feeds the WS2812's
+  VDD pin as a power-gate/enable line, not a general-purpose or
+  button/LED-identity pin in its own right. No capability tag applies
+  here and none was added.
+
+RESET button contact (schematic SW1, second contact pair) - NOT TAGGED
+  Wired directly to the ESP32-C6's RESET/EN silicon pin (CHIP_PU), which
+  is not a GPIO and has no entry in chipGpios at all. Nothing to tag.
+
+SUMMARY
+-------
+Tagged GPIO23 as the real NeoPixel data pin (resolved from the virtual
+RGB_BUILTIN = RGB_DATA + SOC_GPIO_PIN_COUNT encoding) with
+["digital_output","led_neopixel","pwm_output"], and GPIO9 as the
+confirmed onboard BOOT button with ["digital_input","button"]. Both
+findings confirmed directly from the vendor's own KiCad schematic
+(TinyC6_Schematic_P1.pdf), no guessing from pins_arduino.h alias names
+alone. No SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias collisions found on
+either tagged GPIO, so no pins_arduino.h edit was needed. GPIO22
+(RGB_PWR power-gate) remains correctly excluded from the earlier pass;
+re-confirmed, not re-tagged.

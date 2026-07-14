@@ -1,0 +1,83 @@
+Board: mgbot-iotik32a (variants/esp32/esp32/mgbot-iotik32a)
+Task: confirm onboard user button and/or onboard LED, tag matching GPIO capabilities.
+
+Sources consulted:
+- https://books.mgbot.ru/devices/IOTIK32A-2-1.pdf
+  Official MGBOT vendor datasheet "Техническая документация на «контроллер
+  ЙоТик 32А v2.1»". Page 7, table "Обозначение кнопок и светодиодов"
+  (button/LED designations) is the authoritative source:
+    * Кнопка P1 (EN): reset button, pulls EN pin low. Not a GPIO-readable
+      user button (it's the hardware reset line), no GPIO number.
+    * Кнопка P2 (GPIO0): physical pushbutton, used together with P1 to put
+      the controller into programming mode by pulling GPIO0 low. Standard
+      ESP32 BOOT-style button, confirmed physically present and wired to
+      GPIO0.
+    * Светодиод LED1: lights when 5V present via USB. Color blue. Not
+      GPIO-controlled (power/status indicator only).
+    * Светодиод LED2: lights when external 8-30V power present. Color red.
+      Not GPIO-controlled (power/status indicator only).
+    * Светодиод LED3: "Управляется через порт ввода/вывода GPIO4 в режиме
+      выхода или ШИМ" (controlled via GPIO4 in output or PWM mode). Color
+      pink/magenta. This is the one genuinely user-controllable LED, and
+      matches LED_BUILTIN=4 already declared in this board's
+      pins_arduino.h.
+    * Светодиод LED4: lights when 3.3V supplied to the ESP32 module.
+      Color green. Not GPIO-controlled (power/status indicator only).
+  This same PDF's connector pinout table (pages 4-6) also confirms GPIO0
+  is not the board's UART TX/RX (TX=GPIO1, RX=GPIO3), so no TX/RX
+  conflict for the button pin, and GPIO4 is likewise not TX/RX.
+
+- https://iotik.ru/en/iotik32a/ and https://iotik.ru/iotik32a/
+  Manufacturer's own IoTik32A product page. General marketing/spec
+  content only; does not describe button/LED GPIO assignments in the
+  text extracted (no "кнопка"/"светодиод" mentions found). Used only to
+  confirm this is the same product family as the PDF datasheet.
+
+- https://docs.platformio.org/en/latest/boards/espressif32/mgbot-iotik32a.html
+  PlatformIO board registry page. No onboard peripheral/LED/button
+  documentation, hardware specs only. Not useful for confirmation.
+
+- https://www.espboards.dev/esp32/mgbot-iotik32a/
+  Third-party aggregator site. Its pinout table just echoes the
+  LED_BUILTIN=GPIO4 alias already present in pins_arduino.h - this is
+  exactly the kind of alias-only "evidence" the task instructions say
+  NOT to rely on by itself, so it was not used as a confirming source by
+  itself (the MGBOT PDF and the GitHub example below were used instead).
+
+- https://github.com/MAKblC/IoTik32 (official example-code repo, linked
+  directly from the MGBOT PDF's "Полезные ссылки"/useful-links section
+  as "Примеры программных кодов для контроллера")
+  File GyverPortal/LED.ino (raw:
+  https://raw.githubusercontent.com/MAKblC/IoTik32/main/GyverPortal/LED.ino):
+    #define LedBord 4 // 18, если ЙоТик 32В
+    pinMode(LedBord, OUTPUT);
+    digitalWrite(LedBord, (valBtn || valSwitch || valCheck));
+  This confirms (a) GPIO4 is the LED pin on the 32A variant specifically
+  (the comment explicitly says GPIO18 is used instead on the 32B
+  variant - and indeed sibling board mgbot-iotik32b's pins_arduino.h
+  declares LED_BUILTIN=18, matching), and (b) digitalWrite(pin, HIGH)
+  turns the LED on (writing the boolean-OR result, which is 1/HIGH when
+  any control is active, turns the LED on) - i.e. active-high polarity.
+
+Pins considered but NOT tagged:
+- None. Both confirmable components (P2 button on GPIO0, LED3 on GPIO4)
+  were tagged - see below. Кнопка P1 (EN reset) was not tagged because
+  it is not a GPIO pin (it drives the chip's EN/reset line directly, no
+  digital_input capability applies). LED1, LED2, LED4 were not tagged
+  because they are hardwired power/status indicators (USB 5V, external
+  8-30V, 3.3V rail respectively) with no GPIO connection at all, per the
+  MGBOT datasheet.
+
+Summary of changes made:
+- GPIO0 tagged ["digital_input", "button"] - confirmed onboard Button P2
+  (BOOT/programming button), MGBOT official datasheet.
+- GPIO4 tagged ["digital_output", "led_high", "pwm_output"] - confirmed
+  onboard LED3, MGBOT official datasheet (identity/GPIO) + MAKblC/IoTik32
+  official example code (active-high polarity).
+- Created new board.json for mgbot-iotik32a (none existed previously) as
+  a full copy of the chip-level default variants/esp32/esp32/board.json
+  with only chipGpios "0" and "4" modified, plus NOTE comments at top.
+- No existing pin-exclusions were present in this board's pins_arduino.h
+  to preserve (unlike sibling mgbot-iotik32b, which excludes GPIO27 for
+  an IR receiver); GPIO0 and GPIO4 both have normal chipGpios entries in
+  the chip-level default, so no re-add-after-exclusion issue applies.

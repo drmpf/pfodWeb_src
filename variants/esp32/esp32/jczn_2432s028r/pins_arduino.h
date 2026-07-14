@@ -21,10 +21,10 @@ static const uint8_t T7 = 27;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 5;
-static const uint8_t MOSI = 23;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK not declared — these are the same
+// pins as CYD_SD_SS/MOSI/MISO/SCK below, i.e. this whole bus is the
+// onboard microSD card's SPI bus, not a general-purpose SPI header
+// (see this board's own board.json chipGpios override).
 
 #define CYD_TP_IRQ     36
 #define CYD_TP_MOSI    32

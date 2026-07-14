@@ -1,0 +1,73 @@
+// pfodWeb NOTE: per-board override for the Pcbcupid GLYPH H2
+// (learn.pcbcupid.com/boards/glyph-h2 - a small ESP32-H2-MINI-1-N4
+// BLE/Zigbee/Thread dev board, shop.pcbcupid.com/product/gd003/,
+// also listed on Tindie). Full copy of
+// variants/esp32/esp32h2/board.json with two per-board additions below.
+//
+// pfodWeb NOTE: GPIO1 (BAT_MEASURE / BAT_VOLT_PIN / MSR in this board's
+// pins_arduino.h) - confirmed via vendor docs
+// (learn.pcbcupid.com/documentation/modules/glyph/glyph-esp32h2/pinouts-h2:
+// "MSR PADS: Short this MSR pad to measure battery capacity using IO1")
+// that this is the on-board LiPo/Li-ion battery voltage/capacity sense
+// pin, and via the ESP32-H2 datasheet (Table 2-5, Analog Function of
+// IO Pins) that GPIO1 = ADC1_CH0, a genuine ADC-capable pin on this
+// chip (unlike some H2 GPIOs). No voltage-divider ratio is documented
+// by the vendor, so adc.defaultRefVolts is left at the chip default
+// (3.3V) - not corrected. Per playbook policy, battery-voltage-sense
+// pins are KEEP (not excluded from the pin picker); only a "note" was
+// added to GPIO1's chipGpios entry documenting the reading - GPIO1's
+// capabilities list is unchanged from the chip-level default. Note the
+// vendor docs say the MSR pad must be physically bridged/shorted to
+// connect the measurement circuit, so a reading of 0/floating on an
+// unmodified board is expected, not a fault.
+//
+// pfodWeb NOTE: GPIO9 tagged "button" (opportunistic section 7a check)
+// - confirmed onboard physical BOOT button via vendor docs
+// (learn.pcbcupid.com/boards/glyph-h2/pinouts: GPIO9 is the boot-mode
+// strapping pin, "connected to the onboard BOOT button"; hold LOW
+// during reset to enter Serial Download Mode). This matches the
+// existing convention elsewhere in this database of tagging a
+// board's physical BOOT-button strapping pin as "button" while
+// dropping digital_output/pwm_output from its capability list (the pin
+// must not be driven as an output by the pfod UI, since that could
+// interfere with boot strapping) - see e.g.
+// variants/esp32/esp32s2/Bee_Motion/board.json and
+// variants/esp32/esp32s3/lilygo_t_display_s3/board.json for the same
+// pattern on GPIO0. No onboard status/NeoPixel LED was found in any
+// vendor source consulted - LED_BUILTIN=0 in this board's
+// pins_arduino.h is the standard Espressif-core boilerplate alias
+// (identical comment appears verbatim across many ESP32 core variant
+// files) and GPIO0 is left untagged, matching chip-level default.
+{
+  "boardName": "ESP32H2",
+  "displayName": "Pcbcupid GLYPH H2",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble"],
+  "pinNotes": {
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot - also this board's onboard BOOT pushbutton (hold LOW during reset for Serial Download Mode)"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "BAT_MEASURE / MSR / BAT_VOLT_PIN — on-board battery voltage/capacity sense (ADC1_CH0); MSR pad must be bridged/shorted on the board to connect the measurement circuit" },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

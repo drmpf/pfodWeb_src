@@ -1,0 +1,93 @@
+nano32 board.json research notes
+=================================
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32\nano32
+pins_arduino.h: LED_BUILTIN=16, BUILTIN_KEY=0, TX=1, RX=3 (aliases only, not
+used alone as evidence per task rules - independent confirmation sought below).
+
+Sources consulted (URLs) and what each told me
+------------------------------------------------
+1. https://github.com/espressif/arduino-esp32/commits?path=variants/nano32/pins_arduino.h
+   (GitHub API commit history) - Found the original PR that added the
+   BUILTIN_KEY/LED_BUILTIN constants: "Added boards constants for LED_BUILTIN
+   and KEY_BUILTIN (#177)" whose commit message explicitly lists per-board
+   sources, including: "nano32: http://iot-bits.com/closer-look-esp32-nano32/".
+   This is the load-bearing find - it tells us exactly which external source
+   the arduino-esp32 maintainers used to justify these pin aliases for nano32,
+   and the same commit's sources for sibling boards (hornbill32dev, espea32)
+   were official vendor schematic PDFs that this codebase already accepted as
+   confirmation (see their existing board.json NOTE comments).
+
+2. http://iot-bits.com/closer-look-esp32-nano32/ - dead (404) at time of
+   research; the live site no longer hosts this article.
+
+3. https://web.archive.org/web/20220518030930/http://iot-bits.com/closer-look-esp32-nano32/
+   (Wayback Machine archived snapshot, fetched via curl since WebFetch tool
+   cannot reach web.archive.org directly) - This is a hands-on "closer look"
+   review article with board photos. Relevant verbatim text: "There are 2
+   buttons on the NANO32, which enable easy programming mode selection and
+   resetting of the device. A very thoughtfully included LED, connected to
+   GPIO16 - comes in handy for indication!" This confirms (a) a physical
+   pushbutton exists for "programming mode selection" (i.e. the BOOT/GPIO0
+   strapping button, matching BUILTIN_KEY=0), and (b) a physical LED exists on
+   GPIO16. It does NOT state the LED's polarity (active-high/active-low) or
+   show a schematic net trace, only that it exists.
+
+4. https://www.espboards.dev/esp32/nano32/ - third-party aggregator page,
+   inconsistent with itself (separately lists "GPIO2 220Ω LED GND" template
+   text alongside "GPIO16 = LED_BUILTIN" from the pin table) - treated as
+   unreliable/non-authoritative and NOT used as evidence.
+
+5. https://www.gravitech.us/naiotdebo4mb.html (official Gravitech product
+   page, co-designer of the Nano32) - WebFetch returned no usable content
+   (page likely JS-rendered); no information obtained.
+
+6. https://www.cytron.io/p-nano32-iot-development-board and
+   https://www.pantechsolutions.net/nano32-esp32-iot-development-board
+   (distributor product pages) - fetched but contained no button/LED/GPIO
+   detail (Cytron page blocked outbound fetch with HTTP 403; Pantech page had
+   only generic peripheral counts, no LED/button mention).
+
+7. https://docs.platformio.org/en/latest/boards/espressif32/nano32.html -
+   PlatformIO board doc; generic MCU specs only, no button/LED/GPIO detail.
+
+8. Medium series "Fast & furious guide to programming the Nano32" (Parts 1,
+   2, 4, 6) by William Hooi - promised an LED-blink walkthrough "in the next
+   part" repeatedly but the located parts never actually covered it; no
+   GPIO/polarity information obtained from this series.
+
+9. Sibling board.json files in this repo tagged from the SAME original PR
+   #177: variants/esp32/esp32/hornbill32dev/board.json and
+   variants/esp32/esp32/espea32/board.json - both independently confirmed a
+   GPIO0 "BOOT"/"programming mode" pushbutton as capability "button" using
+   sources cited in the same PR commit message. Used as interpretive
+   precedent: this codebase already treats a confirmed BOOT/programming-mode
+   pushbutton as the "button" capability, not just a strapping pin.
+
+Pins considered but NOT tagged
+--------------------------------
+- GPIO16 (LED, per iot-bits.com "connected to GPIO16"): NOT tagged. GPIO16
+  falls inside this ESP32 chip's flash/PSRAM pin-exclusion range (16-17
+  excluded; no "16" entry in chipGpios in the chip-level default
+  variants/esp32/esp32/board.json, with existing comment "GPIOs 6-11 (flash)
+  and 16-17 (PSRAM) are excluded - not user-accessible on modules with
+  integrated flash/PSRAM"). Per task rules, re-adding an excluded GPIO is out
+  of scope for this task, even though the LED's physical existence is
+  reasonably well confirmed by the iot-bits.com source. This is a clear,
+  documented case, not a guess - flagged here for human review in case the
+  exclusion should be revisited for this specific module variant.
+- No RGB/NeoPixel or discrete R/G/B LED evidence was found for this board
+  anywhere; not considered.
+- LED polarity (active-high vs active-low) was never determined from any
+  source (no schematic net trace was found), which is moot anyway since
+  GPIO16 is excluded and not tagged.
+
+What was tagged
+------------------
+GPIO0 tagged capabilities ["digital_input", "button"] (stripped
+analog_input_serial/digital_output/pwm_output that were present in the
+chip-level default), confirmed as the onboard BOOT/programming-mode
+pushbutton via the iot-bits.com "closer look" review (the same source cited
+by the original arduino-esp32 PR that defined BUILTIN_KEY=0 for this board),
+consistent with how sibling boards hornbill32dev and espea32 (same PR,
+comparable evidence strength) already tag their GPIO0 boot buttons in this
+repo. GPIO0 is not this board's TX/RX pin (TX=1, RX=3), so no TX/RX conflict.

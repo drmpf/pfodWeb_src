@@ -1,0 +1,122 @@
+Board: waveshare_esp32_s3_touch_lcd_185_box
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\waveshare_esp32_s3_touch_lcd_185_box
+Date: 2026-07-11
+
+IDENTITY CAUTION (read first)
+------------------------------
+This directory's own pins_arduino.h self-identifies as USB_PRODUCT
+"ESP32-S3-Touch-LCD-2.1" (USB_PID 0x825B) - NOT "1.85" at all - even
+though the directory name is "waveshare_esp32_s3_touch_lcd_185_box" and
+esp32_board_variants/boards.txt labels it "Waveshare
+ESP32-S3-Touch-LCD-1.85-BOX" (pid 0x8242, itself a third, different
+PID). Its I2C pins are SCL=7, SDA=15 - these do NOT match the true
+"1.85" sibling directory (waveshare_esp32_s3_touch_lcd_185, SCL=10,
+SDA=11), so the sibling's already-confirmed GPIO0-button finding could
+NOT be safely transferred by pinout-matching alone (unlike the
+146->185_box product-string precedent noted in
+boardsDetails/.../waveshare_esp32_s3_touch_lcd_146/notes.txt, where
+this same "185_box" directory's mismatched product string was already
+flagged as unreliable). Instead, GPIO7/GPIO15 were independently
+verified against Waveshare's real "ESP32-S3-Touch-LCD-2.1" product
+documentation and schematic (below), which match exactly. Conclusion:
+this directory is electrically the "ESP32-S3-Touch-LCD-2.1" product,
+mislabeled/misfiled under a "185_box" directory name by Waveshare's own
+inconsistent variant-generation process. All findings below are sourced
+from the "2.1" product's own official documentation/schematic, not
+assumed from the "1.85" sibling.
+
+SOURCES CONSULTED
+------------------
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C
+  Fetched OK. For the (different, non-box) "1.85C" product: confirms
+  SCL=GPIO10, SDA=GPIO11 (matches the true "185" sibling directory, NOT
+  this "185_box" directory) - used to help rule out the "185_box"
+  directory being electrically a 1.85-family board.
+
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C-BOX
+  HTTP 404 Not Found - no such page exists; could not be consulted
+  directly.
+
+https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.85C
+  HTTP 403 Forbidden (blocked); could not be consulted.
+
+https://gist.github.com/fallenartist/22d1d01e125afb02ae4ebdcdf02d1f80
+  (Third-party/community gist, "Waveshare ESP32-S3 Touch LCD 2.1
+  Example".) Fetched OK. Confirms I2C SCL=GPIO7, SDA=GPIO15 for a
+  "Waveshare esp32-s3 2.1 touch" board - first hint that this
+  directory's I2C pins (7/15) match the "2.1" product family, not
+  "1.85". Treated as corroborating-only (not primary vendor source).
+
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-2.1
+  Fetched OK (official Waveshare docs site). PRIMARY SOURCE. Confirms
+  I2C "SCL (GPIO7)" / "SDA (GPIO15)" - EXACT match to this directory's
+  pins_arduino.h. Also lists onboard "RESET Button" and "BOOT Button"
+  by name, but this fetch did not surface explicit GPIO numbers for
+  them, and stated no onboard LED is mentioned.
+
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-2.1/Resources-And-Documents
+  Fetched OK. Provided the direct download link to the "2.1" product's
+  schematic PDF (next source) plus datasheet/demo links.
+
+https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.1/ESP32-S3-Touch-LCD-2.1_schematic_diagram.pdf
+  Fetched and read directly as a PDF (native schematic + flattened
+  netlist text). PRIMARY EVIDENCE SOURCE for the button/LED tagging
+  decision. Key findings from the netlist:
+    - Net "IO0"/"GPIO0" (U7 ESP32-S3R8, pin 5, silkscreen "GPIO0") is
+      tied to: pushbutton "Key1" pin 2, pull resistor R42 (10K),
+      transistor VT2 collector (part of the DTR/RTS "AUTO PROGRAM
+      CIRCUIT" used for auto-reset/auto-flash from the CH343 USB-serial
+      chip), and C23 (1uF, debounce/filter). Key1 pin 1 is on the
+      common GND net (confirmed - same net as Key2 pin 1, LED2 cathode,
+      etc). This is a standard active-low BOOT/download pushbutton
+      circuit, directly analogous to the confirmed GPIO0 button found
+      on the true "1.85" sibling board (there, the equivalent component
+      was named "Key2" instead of "Key1" - just different reference
+      designators between the two boards' schematics, same circuit
+      role).
+    - Net "RESET" (U7 pin 4, CHIP_PU/EN - not a GPIO) is tied to
+      pushbutton "Key2" pin 2 (with pull resistor R43 10K and
+      transistor VT1 as part of the same auto-program circuit). This is
+      the physical RESET button; not a GPIO, so no capability tag
+      applies to it.
+    - LED1 ("LED 0602") is wired through R6 (1K) to pin 9 ("STAT") of
+      the battery-charger IC U1 (ETA6098) - a hardwired charge-status
+      indicator, not GPIO-driven.
+    - LED2 ("贴片LED 侧面红光 0602" = SMD side-emitting red LED) has its
+      cathode (K) tied to the common GND net (confirmed - same net as
+      Key1/Key2 pin 1) and its anode (A) tied to a net shared with R13
+      (2.2K), Q1 (AO3401 P-MOSFET) and R26/R27 (100K/470K) - a
+      battery-power/voltage-sense indicator circuit, not GPIO-driven.
+    - No WS2812/NeoPixel or RGB LED component appears anywhere on the
+      schematic.
+
+PINS CONSIDERED BUT NOT TAGGED
+--------------------------------
+- Key2 / RESET button: wired to CHIP_PU/EN (not a GPIO at all) - cannot
+  be tagged under this scheme. Not a judgment call; simply not a GPIO.
+- LED1 (charge indicator) and LED2 (power/battery indicator): both
+  confirmed hardwired to non-GPIO nets (charger IC STAT pin, and a
+  battery-voltage-sense/MOSFET network respectively) - not GPIO-driven,
+  correctly left untagged, not a judgment call.
+- No RGB/NeoPixel LED found on the schematic. Not tagged.
+- TX/RX check: this board's TX=43, RX=44 (per pins_arduino.h). GPIO0
+  does not conflict with TX/RX, so no TX/RX-reservation conflict
+  applies to the GPIO0 button tag.
+- The sibling "1.85" (non-box) directory's independently-confirmed
+  GPIO0 button finding was NOT simply transferred/assumed here - the
+  I2C pinout mismatch (7/15 vs 10/11) was treated as evidence AGAINST
+  a shared-pinout transfer, per the task's explicit caution. Instead a
+  fresh, independent confirmation was obtained directly from the "2.1"
+  product's own schematic (which happens to also land on GPIO0, purely
+  coincidentally matching the sibling's finding).
+
+SUMMARY OF WHAT WAS TAGGED
+-----------------------------
+GPIO0 capabilities set to ["digital_input", "button"] (was
+["digital_input","digital_output","pwm_output"] in the esp32s3
+chip-level default). No LED tag applied anywhere on this board (no
+GPIO-driven LED exists per schematic). board.json created new for this
+directory (none existed previously) as a full copy of
+variants/esp32/esp32s3/board.json with only GPIO0 modified, plus a NOTE
+comment at the top documenting the source and the identity-mismatch
+caution above.

@@ -28,6 +28,45 @@ const TouchZoneSpecialValues = {
   TOUCHED_ROW: 65532, // Only used in touchZone actions to specify touched row value
 };
 
+// pfodDevice/pfodParser TouchActionInput dialogs auto-escape/un-escape the 5
+// restricted characters { } | ` ~ round-trip (see escapeDocs.txt) — unlike
+// plain String Input screens, where the user must escape manually. These two
+// helpers implement that round-trip for showTextInputDialog().
+
+// Decode the 5 restricted-char escapes back to their literal characters when
+// loading an existing value into the dialog for editing, so the user sees
+// (and can freely retype) the true current text rather than escape codes.
+// Any literal `\uXXXX` (backslash + 'u' + exactly 4 hex digits) surviving in
+// the result is then re-escaped to `&#92;uXXXX` — otherwise it would be
+// silently swallowed by the live \uXXXX->Unicode-char conversion on the next
+// keystroke, or misread as a real Unicode escape. This mirrors pfodApp's own
+// "converts \u.... to &#92;u.... to maintain the text" load-time behaviour.
+function _pfodDwgUnescapeRestrictedChars(str) {
+  if (!str) return str;
+  return str
+    .replace(/&#96;/g,  '`')
+    .replace(/&#123;/g, '{')
+    .replace(/&#124;/g, '|')
+    .replace(/&#125;/g, '}')
+    .replace(/&#126;/g, '~')
+    .replace(/\\u([0-9a-fA-F]{4})/g, '&#92;u$1');
+}
+
+// Escape the 5 restricted characters in the user's typed text before sending
+// it to the pfodDevice, matching the automatic escaping TouchActionInput
+// performs (unlike plain String Input screens, which send raw text and rely
+// on the user to escape manually). Order is irrelevant — none of the 5
+// replacement sequences contains any of the other 4 source characters.
+function _pfodDwgEscapeRestrictedChars(str) {
+  if (!str) return str;
+  return str
+    .replace(/`/g,  '&#96;')
+    .replace(/\{/g, '&#123;')
+    .replace(/\|/g, '&#124;')
+    .replace(/\}/g, '&#125;')
+    .replace(/~/g,  '&#126;');
+}
+
 // Make pfodWebMouse available globally for browser use
 window.pfodWebMouse = {
   // Flag to track if touchActionInput dialog is currently open
@@ -1161,7 +1200,10 @@ window.pfodWebMouse = {
     // Create text input
     const input = document.createElement('input');
     input.type = 'text';
-    input.value = initialText;
+    // Auto-unescape the 5 restricted chars ({ } | ` ~) so the user edits the
+    // true current text, not escape codes — see escapeDocs.txt and
+    // _pfodDwgUnescapeRestrictedChars's own doc comment.
+    input.value = _pfodDwgUnescapeRestrictedChars(initialText);
     input.maxLength = 255;
     input.style.width = '100%';
     input.style.padding = '6px';
@@ -1171,6 +1213,26 @@ window.pfodWebMouse = {
     input.style.marginBottom = '10px';
     input.style.boxSizing = 'border-box';
     dialog.appendChild(input);
+
+    // Live \uXXXX -> Unicode-char conversion as the user types, matching
+    // String Input screens (pfodInputDisplay.js's _handleInput) — same
+    // regex, same cursor-shift compensation for the 6-char->1-char shrink.
+    input.addEventListener('input', () => {
+      const selStart = input.selectionStart;
+      let cursorShift = 0;
+      const val = input.value.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex, offset) => {
+        const ch = String.fromCodePoint(parseInt(hex, 16));
+        if (offset < selStart - cursorShift) {
+          cursorShift += 5; // match.length(6) - ch.length(1)
+        }
+        return ch;
+      });
+      if (val !== input.value) {
+        input.value = val;
+        const newCursor = Math.max(0, selStart - cursorShift);
+        input.setSelectionRange(newCursor, newCursor);
+      }
+    });
 
     // Create button container
     const buttonContainer = document.createElement('div');
@@ -1206,7 +1268,10 @@ window.pfodWebMouse = {
 
     // Event handlers
     const handleOk = () => {
-      const text = input.value;
+      // Auto-escape the 5 restricted chars ({ } | ` ~) before sending, per
+      // escapeDocs.txt — unlike plain String Input screens, TouchActionInput
+      // dialogs escape the user's typed text automatically.
+      const text = _pfodDwgEscapeRestrictedChars(input.value);
       window.pfodWebMouse.hideTextInputDialog.call(this);
       callback('ok', text);
     };

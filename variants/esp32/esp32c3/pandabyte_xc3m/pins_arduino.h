@@ -13,8 +13,14 @@ static const uint8_t RX = 20;
 static const uint8_t SDA = 1;
 static const uint8_t SCL = 0;
 
+// pfodWeb NOTE: the vendor's boilerplate SPI pin block originally also
+// declared a default hardware SPI data-out alias on the same GPIO used
+// for the onboard addressable RGB LED. That duplicate alias was removed
+// here because build_boards.js reads these constants directly and would
+// otherwise silently attach an unconfirmed SPI bus capability onto the
+// confirmed NeoPixel pin. See board.json and boardsDetails notes for the
+// research and sources behind this change.
 static const uint8_t SS = 3;
-static const uint8_t MOSI = 6;
 static const uint8_t MISO = 5;
 static const uint8_t SCK = 4;
 

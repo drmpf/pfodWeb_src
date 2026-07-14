@@ -1,0 +1,152 @@
+BharatPi-Node-Wifi (chip: esp32) - dedicated-hardware pin-exclusion audit + LED capability tagging
+Date: 2026-07-12
+
+FLAGGED DECLARATIONS (from pins_arduino.h, no prior board.json/NOTE trail):
+  static const uint8_t SAFFRON_LED = 12;
+  static const uint8_t WHITE_LED   = 2;
+  static const uint8_t GREEN_LED   = 13;
+  static const uint8_t TX2 = 17;
+  static const uint8_t RX2 = 16;
+
+Also present, for context (not flagged, standard boilerplate):
+  TX = 1, RX = 3 (primary UART0, the board's pfod serial connection)
+  A0-A5 aliases (A1=13, A2=12, A4=2 duplicate the LED GPIOs as analog aliases -
+    same boilerplate pattern seen on sibling board BharatPi-LoRa)
+  SDA=21, SCL=22, SS=5, MOSI=23, MISO=19, SCK=18 (standard I2C/SPI, unchanged)
+
+SOURCES CONSULTED
+
+1. https://bharatpi.net/product/bharat-pi-node-wifi/ (vendor product page)
+   - Direct WebFetch: FAILED (connect ECONNREFUSED - host appears to block/reject
+     this environment's outbound fetch).
+   - Via WebSearch snippet: confirmed board = ESP32-WROOM 4MB + WiFi + BT +
+     microSD card slot (up to 64GB), USB-C, 9-12V DC input. No mention of any
+     onboard GSM/LoRa/GPS radio module - those are separate BharatPi SKUs
+     (BharatPi-A7672S-4G, BharatPi-LoRa, both already present as sibling
+     variants in this repo with their own board.json overrides).
+
+2. https://bharatpi.net/bharat-pi-node-wi-fi-board-pinout/ and the edgehax.com
+   PDF mirror (https://edgehax.com/wp-content/uploads/2023/11/Bharat-Pi-Node-WiFi-Pinout-grid.pdf)
+   - Direct WebFetch: FAILED (403 Forbidden / ECONNREFUSED on both bharatpi.net
+     and the edgehax.com mirror, and on r.jina.ai reader proxy for both - HTTP
+     422). Could not read the actual pinout diagram image/PDF content.
+   - WebSearch snippets only gave the PDF's legend categories ("1 GPIO 2 ADC
+     3 ESP PINS 4 LED 5 Touch 6 VCC 7 INPUT ONLY PINS") - not useful on its
+     own, no GPIO-level detail extracted. Not relied on for any decision.
+
+3. https://github.com/Bharat-Pi/iot-projects (official BharatPi GitHub org,
+   MIT-licensed vendor sample code) - HIGH CONFIDENCE SOURCE, fetched
+   successfully via api.github.com (dir listing) + raw.githubusercontent.com
+   (file contents):
+   a) Bharat_Pi_Node_WiFi_LED_Splash/Bharat_Pi_Node_WiFi_LED_Splash.ino
+      - setup() calls pinMode(2,OUTPUT), pinMode(12,OUTPUT), pinMode(13,OUTPUT),
+        then a ledBlink(time) helper does digitalWrite(pin,HIGH); delay;
+        digitalWrite(pin,LOW); delay for each of 2, 12, 13 IN SEQUENCE
+        (one at a time, not simultaneously) across several splash-blink
+        patterns, ending with all three set HIGH in loop().
+      - CONFIRMS: three independently-controlled simple GPIO LEDs on GPIO2,
+        12, 13 (matches SAFFRON_LED=12/WHITE_LED=2/GREEN_LED=13 - Saffron/
+        White/Green = the Indian tricolor flag, three separate status LEDs,
+        NOT one packaged RGB emitter - sequential independent blinking in the
+        vendor's own splash routine is consistent with 3 discrete LEDs).
+      - CONFIRMS: active-HIGH polarity (digitalWrite HIGH = LED on) for all
+        three pins - no inversion/pull-up-active-low pattern anywhere in the
+        code.
+   b) BharatPi_Blink_LED_Test/BharatPi_Blink_LED_Test.ino
+      - #define LED_BUILTIN 2; standard Arduino Blink pattern; comment
+        explicitly states "turn the LED on (HIGH is the voltage level)".
+      - Corroborates GPIO2 = active-high LED (matches WHITE_LED and the
+        board's own pins_arduino.h LED_BUILTIN=2 declaration).
+   c) Bharat_Pi_SD_Card_Test_Program/Bharat_Pi_SD_Card_Test_Program.ino
+      - Documents SD-to-ESP32 wiring in a comment block: D3->SS, CMD->MOSI,
+        CLK->SCK, D0->MISO, VDD->3.3V, VSS->GND (D2/D1 unconnected) - i.e.
+        the standard SPI bus, not GPIO16/17. Code itself just calls
+        SD.begin() with the board's default SPI pins (GPIO5/23/19/18 per
+        this board's own pins_arduino.h SS/MOSI/MISO/SCK values).
+      - CONFIRMS: no reference anywhere to GPIO16, GPIO17, TX2, or RX2 in
+        the SD card test code or its wiring comments - the SD card does not
+        use the second UART.
+   - Repo root listing (via api.github.com) also shows separate GSM
+     (A7672S AT-command/HTTP/MQTT), GPS/NavIC, and LoRa project folders -
+     all clearly tied to BharatPi's OTHER board SKUs (A7672S-4G, LoRa), not
+     to Node-WiFi. No Node-WiFi-specific project folder references TX2/RX2,
+     GPIO16, or GPIO17 anywhere findable via search.
+
+4. https://www.hackster.io/bharatpi/bharat-pi-node-wi-fi-board-with-esp32-and-sd-card-cfccc0
+   - Direct WebFetch: FAILED (403 Forbidden). Not used.
+
+5. Sibling board precedent: variants/esp32/esp32/BharatPi-LoRa/board.json
+   (already audited in an earlier session) - excludes GPIO2/4/14 for its
+   onboard LoRa radio's SS/RST/DIO0 lines. Confirms BharatPi's LoRa-specific
+   hardware lives on a DIFFERENT physical board (BharatPi-LoRa), not
+   Node-WiFi, and that GPIO2 on the LoRa board is dedicated to the radio's
+   chip-select - but on Node-WiFi (no radio module present) GPIO2 is
+   confirmed by section 3a/3b above to be the WHITE_LED, a completely
+   different, legitimate use consistent with this specific board's own
+   hardware. Not a contradiction - different physical products.
+
+REASONING PER FLAGGED PIN
+
+- GPIO12 (SAFFRON_LED): CONFIRMED (not a guess) simple GPIO-driven LED,
+  active-high, via vendor's own MIT-licensed sample code (source 3a).
+  TAGGED: capabilities ["digital_output", "led_high", "pwm_output"] in
+  board.json chipGpios (pwm_output kept since it was already present on
+  GPIO12 in the chip-level default; analog_input_serial/digital_input
+  dropped per the LED-tag exclusion rule in the audit playbook section 7a).
+  Not TX/RX (board's TX=1/RX=3) so the tag is not overridden by the
+  serial-pin hard-reservation in build_boards.js.
+
+- GPIO2 (WHITE_LED): CONFIRMED (not a guess) simple GPIO-driven LED,
+  active-high, via vendor's own MIT-licensed sample code (source 3a) AND
+  independently corroborated by the separate Blink_LED_Test sketch (3b)
+  which explicitly comments "HIGH is the voltage level" = on. Also matches
+  this board's own pins_arduino.h LED_BUILTIN=2 declaration (pre-existing,
+  unflagged boilerplate). TAGGED: ["digital_output", "led_high",
+  "pwm_output"]. Not TX/RX.
+
+- GPIO13 (GREEN_LED): CONFIRMED (not a guess) simple GPIO-driven LED,
+  active-high, via vendor's own MIT-licensed sample code (source 3a).
+  TAGGED: ["digital_output", "led_high", "pwm_output"]. Not TX/RX.
+  NOTE: three separate single-color LED tags used (led_high on each of
+  GPIO2/12/13 individually), NOT led_r_high/led_g_high/led_b_high - no
+  evidence found anywhere (vendor code, product description, or naming)
+  that these are one physical packaged RGB LED; the Saffron/White/Green
+  naming and the vendor's own sequential (not simultaneous/color-mixing)
+  blink pattern both point to three discrete single-color LEDs.
+
+- GPIO17 (TX2) / GPIO16 (RX2): CONFIRMED general-purpose (not a guess of
+  "probably fine" - actively verified absence of any dedicated onboard
+  consumer). These are the classic ESP32's default UART2 pins, broken out
+  to the header as this board's secondary hardware serial port. No vendor
+  source (product page, official GitHub sample code covering SD card, LED,
+  and other Node-WiFi-specific projects) ties them to an onboard GSM/LoRa/
+  GPS module - this specific "Node WiFi" SKU has no such module (those are
+  BharatPi's separate A7672S-4G and LoRa product lines, each with its own
+  already-audited board.json in this repo). LEFT AS-IS: no board.json
+  chipGpios change, no pins_arduino.h edit - both remain normal available
+  GPIOs. Mentioned in the board.json's top NOTE comment as the board's
+  secondary UART for future reviewers' context, but no pin-level
+  exclusion or special tag was warranted.
+
+GUESS VS NO-GUESS SUMMARY
+- No guesses were made. Every tagging/exclusion decision above is backed by
+  either the vendor's own MIT-licensed GitHub sample code (LED polarity/
+  independence, SD card pin usage) or a documented absence of evidence
+  after actively searching for a TX2/RX2-to-peripheral connection (product
+  page, pinout page attempts, GitHub project folder listing).
+- Sources that were attempted but failed/were unhelpful (bharatpi.net direct
+  fetch, edgehax.com PDF mirror, r.jina.ai proxy of both, Hackster.io page)
+  are recorded above as dead ends so a future reviewer doesn't re-attempt
+  the same failing fetches expecting a different result - the GitHub sample
+  code ended up being the decisive, sufficient source for all 5 pins.
+
+SUMMARY
+- GPIO12/SAFFRON_LED, GPIO2/WHITE_LED, GPIO13/GREEN_LED: tagged "led_high"
+  (+ pwm_output, kept from chip default) in board.json chipGpios - three
+  separate confirmed single-color active-high LEDs.
+- GPIO17/TX2, GPIO16/RX2: confirmed general-purpose secondary UART, NOT
+  excluded - left available, no board.json chipGpios change, no
+  pins_arduino.h edit. Noted in board.json's top comment for context.
+- Created variants/esp32/esp32/BharatPi-Node-Wifi/board.json (full copy of
+  the chip-level esp32/esp32/board.json default, edited only the GPIO2/12/13
+  chipGpios entries, plus a pfodWeb NOTE comment block citing all sources).

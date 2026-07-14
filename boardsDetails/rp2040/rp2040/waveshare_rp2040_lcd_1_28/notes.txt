@@ -1,0 +1,253 @@
+Board: waveshare_rp2040_lcd_1_28 (chip: rp2040)
+Waveshare "RP2040-LCD-1.28" — a Pico-form-factor RP2040 board with an
+onboard 1.28" round 240x240 65K-colour IPS TFT LCD (GC9A01-family
+controller, 4-wire SPI + separate D/C line), an onboard QMI8658C 6-axis
+IMU (3-axis gyroscope + 3-axis accelerometer), an MX1.25 header for a
+3.7V Li-po battery with onboard recharge management, and a USB-C
+connector.
+Audit date: 2026-07-13.
+
+SOURCES CONSULTED
+1. This repo's own files:
+   - variants/rp2040/rp2040/waveshare_rp2040_lcd_1_28/pins_arduino.h
+     (already present before this audit; vendor-sourced header comments
+     cite waveshare.com/wiki/RP2040-LCD-1.28, the board's schematic PDF,
+     and a detail photo; declares PIN_LCD_DC=8, PIN_LCD_CS=9,
+     PIN_LCD_SCLK=10, PIN_LCD_MOSI=11, PIN_LCD_RST=12, PIN_LCD_BL=25,
+     PIN_BAT_ADC=29, PIN_IMU_SDA=6, PIN_IMU_SCL=7, PIN_IMU_INT1=23,
+     PIN_IMU_INT2=24, and an inline "pfodWeb NOTE: bespoke pin set"
+     comment from an earlier audit pass already identifying
+     GPIO6,7,8,9,10,11,12,13,14,15,23,24,25 as onboard-dedicated and
+     already omitting D6/D7/D8-D15/D23-D25 aliases accordingly).
+   - variants/rp2040/rp2040/waveshare_rp2040_lcd_0_96/pins_arduino.h and
+     board.json/notes.txt — sibling board (0.96" instead of 1.28" LCD,
+     no IMU, no battery header), same LDC_SPI/PIN_LCD_* GPIO layout
+     (8/9/10/11/12/25), and the SAME GPIO8/9 Wire0-SDA/SCL vs LCD-DC/CS
+     collision bug already found and fixed there this session — checked
+     specifically per this task's brief and confirmed the identical bug
+     is present in this board's pins_arduino.h too (see "BUG FOUND /
+     FIXED" section below).
+   - rp2040_board_variants/variants/waveshare_rp2040_lcd_1_28/
+     pins_arduino.h — the pristine, un-audited original (still `#include
+     "../generic/common.h"`), confirms the working copy in
+     variants/rp2040/rp2040/... is this repo's own Designer-parsing
+     mirror, not a file consumed by any real firmware-build toolchain.
+   - variants/esp32/esp32s3/m5stack_cores3/board.json — precedent for
+     fully excluding a dedicated internal I2C bus used by an onboard
+     IMU/sensor (that board's GPIO11/12, commented "dedicated internal
+     I2C: touch/IMU/RTC/PMU", carry no capabilities/no board.json entry
+     at all since they have no pins_arduino.h alias — same pattern
+     applied here to this board's GPIO6/7 IMU bus).
+   - variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios={}).
+   - pfodWeb_src/build_boards.js — re-read buildEsp32Board() lines
+     ~630-724 to reconfirm the SDA/SCL bus-role auto-append (`if (g ===
+     sda) caps.push('i2c_sda')`, ~line 698) fires unconditionally
+     regardless of any chipGpios capability override, keyed off
+     `consts.SDA`/`consts.SCL` (populated only from a literal
+     `static const uint8_t SDA/SCL = ...;` declaration, not from a raw
+     `#define`) — confirming the same bug class applies here.
+
+2. WebSearch covering waveshare.com/wiki/RP2040-LCD-1.28 and
+   waveshare.com/rp2040-lcd-1.28.htm (direct WebFetch of the wiki page
+   returned HTTP 403; used WebSearch result snippets instead). Confirmed:
+   onboard QMI8658C 6D MEMS IMU (3-axis gyro + 3-axis accelerometer); an
+   MX1.25 header "used to connect a 3.7V lithium battery... allows the
+   battery to be charged while powering the board at the same time";
+   GPIO6 confirmed as the IMU's I2C_SDA and GPIO7 as I2C_SCL (with 4.7k
+   pull-ups), alongside IMU INT1/INT2 interrupt signals — matching this
+   board's own PIN_IMU_SDA=6/PIN_IMU_SCL=7/PIN_IMU_INT1=23/PIN_IMU_INT2=24
+   #defines exactly.
+
+3. nuttx.apache.org/docs/12.1.0/platforms/arm/rp2040/boards/
+   waveshare-rp2040-lcd-1.28/ (independent, hardware-verified upstream
+   board-support documentation, fetched successfully via WebFetch).
+   Confirms: "2 x SPI, 2 x I2C, 2 x UART, 4 x 12-bit ADC, 16 x
+   controllable PWM channels" (note: 4 ADC channels, one more than a
+   stock Pico's 3 — corroborating GPIO29/A3 as a deliberate, board-
+   specific analog feature); "Onboard 1.28-inch 240 x 240 resolution, 65K
+   RGB IPS LCD display" driven by the gc9a01 driver; "Lithium battery
+   recharge/discharge header"; Buttons section lists ONLY a "BOOT button
+   for programming mode entry"; LEDs section explicitly states "No user
+   LED is provided" — directly confirming no onboard status LED and no
+   secondary user button beyond BOOT/RESET.
+
+4. forums.raspberrypi.com/viewtopic.php?t=344941 (Raspberry Pi forum
+   thread specifically discussing Waveshare RP2040-PLUS and
+   RP2040-LCD-1.28) and thepihut.com product/tutorial pages for this
+   board — corroborate the round IPS LCD + accelerometer/gyroscope +
+   Li-po battery feature set; no additional button or LED mentioned
+   anywhere.
+
+5. github.com/mertaksoy/RP2040-LCD-1.28 — third-party example repo
+   specifically for this board's LCD (GC9A01 driver examples); fetched
+   but contained no inline GPIO pin definitions on the page reachable via
+   WebFetch (repository metadata only) — not used as a pin-mapping
+   source, listed here only to record it was checked and was
+   unproductive for that purpose.
+
+6. Standard RP2040 BOOTSEL/RESET: as with every other Pico-family board
+   already audited in this repo (rpipico, waveshare_rp2040_plus,
+   waveshare_rp2040_lcd_0_96, bridgetek_idm2040_43a): BOOTSEL is not a
+   normal GPIO — arduino-pico exposes it as a `BOOTSEL` boolean, not
+   `digitalRead()` — so out of scope for GPIO capability tagging, not a
+   missed button. Source #3 (NuttX) independently confirms only a BOOT
+   button exists on this specific board (plus an implied RESET, standard
+   on all Pico-form-factor boards, not separately called out).
+
+BUG FOUND / FIXED: GPIO8/GPIO9 SDA/SCL vs LCD DC/CS collision
+(same bug class as waveshare_rp2040_lcd_0_96, confirmed present here too)
+
+This board's pins_arduino.h declared `#define PIN_WIRE0_SDA (8u)` /
+`#define PIN_WIRE0_SCL (9u)` (Wire0's vendor-default I2C0 location on a
+stock Pico) plus top-level `static const uint8_t SDA = PIN_WIRE0_SDA;` /
+`SCL = PIN_WIRE0_SCL;` aliases — but GPIO8/9 on this board are physically
+the LCD's dedicated DC/CS lines (PIN_LCD_DC=8, PIN_LCD_CS=9), so Wire0 can
+never actually be used at that location while the display is present.
+Because build_boards.js's i2c_sda/i2c_scl bus-role auto-append
+(buildEsp32Board(), ~line 698: `if (g === sda) caps.push('i2c_sda')`)
+fires unconditionally regardless of any chipGpios capabilities:[]
+override, GPIO8/9 would otherwise still be mistagged i2c_sda/i2c_scl on
+top of already showing full general-purpose digital I/O — both wrong.
+FIXED at the source: removed `#define PIN_WIRE0_SDA`/`#define
+PIN_WIRE0_SCL` and the two referencing `static const uint8_t SDA/SCL`
+lines from variants/rp2040/rp2040/waveshare_rp2040_lcd_1_28/
+pins_arduino.h. Grepped the whole file afterward for "PIN_WIRE0" and
+confirmed only descriptive comments remain, no dangling code reference
+(this repo's Designer-parsing mirror, not a file consumed by any real
+firmware-build toolchain — the pristine original at
+rp2040_board_variants/variants/waveshare_rp2040_lcd_1_28/pins_arduino.h
+is untouched). Wire1 (GPIO6/7, the onboard IMU's genuine I2C bus) is
+unaffected and untouched.
+
+PER-PIN REASONING / DECISIONS
+
+GPIO6 (PIN_IMU_SDA, Wire1) — onboard QMI8658C IMU's dedicated I2C data
+  line. Confirmed by source #2 (WebSearch: "GPIO6 serves as I2C1 SDA").
+  This is a genuine, confirmed hardware use (not an accidental default
+  collision like GPIO8/9's Wire0 case), so Wire1's #defines were left
+  untouched in pins_arduino.h. Already excluded from the Designer via the
+  missing D6 alias (earlier audit pass). Added chipGpios["6"] = empty
+  capabilities + note, matching the M5Stack CoreS3 precedent of fully
+  excluding a dedicated internal-IMU I2C bus pin.
+
+GPIO7 (PIN_IMU_SCL, Wire1) — same reasoning and treatment as GPIO6.
+
+GPIO8 (PIN_LCD_DC) — onboard LCD's dedicated SPI data/command select
+  line. Confirmed by source #1 (this board's own header, and identical
+  wiring on the 0.96 sibling). Already excluded from pins_arduino.h's own
+  D-alias list. ADDITIONALLY carried the vendor's default Wire0 SDA alias
+  — see "BUG FOUND / FIXED" above. Added chipGpios["8"] = empty
+  capabilities + note documenting both the LCD dedication and the removed
+  Wire0 alias.
+
+GPIO9 (PIN_LCD_CS) — onboard LCD's dedicated SPI1 chip-select line. Same
+  confirmation and same bug-class fix as GPIO8. Added chipGpios["9"] =
+  empty capabilities + note.
+
+GPIO10 (PIN_LCD_SCLK) — onboard LCD's dedicated SPI1 clock line,
+  software-remapped from SPI1's silicon-default GPIO14 to GPIO10 (a
+  valid, ordinary RP2040 GPIO-mux remap — not a discrepancy, identical to
+  the 0.96 sibling's wiring). Confirmed by source #1. Already excluded
+  from pins_arduino.h's own D-alias list. Added chipGpios["10"] = empty
+  capabilities + note, purely to document the dedication (matches the
+  0.96 sibling's and bridgetek_idm2040_43a's precedent of recording
+  already-invisible dedicated pins for clarity).
+
+GPIO11 (PIN_LCD_MOSI / DIN) — onboard LCD's dedicated SPI1 data-out line,
+  similarly remapped from SPI1's silicon-default GPIO15. Confirmed by
+  source #1. Same treatment as GPIO10.
+
+GPIO12 (PIN_LCD_RST) — onboard LCD's dedicated hardware reset line.
+  Confirmed by source #1. Same treatment as GPIO10. (Also SPI1's
+  silicon-default MISO pin per PIN_SPI1_MISO=12, irrelevant here since
+  RST is driven as a plain digital output, not read via SPI1.)
+
+GPIO13, GPIO14, GPIO15 (PIN_SPI1_SS/SCK/MOSI, SPI1's silicon-*default*
+  pins) — NOT confirmed by any source consulted as physically wired to
+  the LCD, IMU, or any other onboard peripheral (the LCD's actual SPI1
+  usage is entirely on the remapped GPIO10/11 + manual GPIO8/9/12 GPIO
+  lines). An earlier audit pass already removed their D13/D14/D15
+  aliases from pins_arduino.h (grouped under the same "dedicated to an
+  onboard peripheral" comment as GPIO6-12/23-25). Per this audit's
+  "confirm via real vendor documentation, never guess — report NO CHANGE
+  rather than guess" rule: NOT added to chipGpios (no entry needed
+  anyway, already excluded by the missing alias; no new evidence supports
+  changing that prior decision either way) — matching the identical
+  decision already made for the 0.96 sibling's GPIO13/14/15.
+
+GPIO23 (PIN_IMU_INT1) — onboard QMI8658C IMU's dedicated interrupt-1
+  output line. Confirmed by source #2 (WebSearch: "IMU interrupt signals
+  INT1 and INT2"). Already excluded from pins_arduino.h's own D-alias
+  list. Added chipGpios["23"] = empty capabilities + note.
+
+GPIO24 (PIN_IMU_INT2) — onboard IMU's dedicated interrupt-2 output line.
+  Same confirmation and treatment as GPIO23.
+
+GPIO25 (PIN_LCD_BL) — onboard LCD's dedicated, PWM-dimmable
+  backlight-enable line. Confirmed via source #1 (this board's own
+  header) and source #3 (NuttX docs independently confirm "No user LED is
+  provided", ruling out any competing interpretation of GPIO25 as a
+  general status LED). This is NOT a general-purpose status LED (unlike,
+  e.g., rpipico's or waveshare_rp2040_plus's GPIO25, which are genuinely
+  spare onboard LEDs on those non-display boards) — it is entirely
+  committed to the onboard LCD's backlight circuit, so it is tagged with
+  empty capabilities (no led_high/led_low/pwm_output), matching this
+  repo's dedicated-hardware-pin convention. Already excluded from
+  pins_arduino.h's own D-alias list. Added chipGpios["25"] = empty
+  capabilities + note.
+
+GPIO29 (PIN_BAT_ADC, also aliased D29/A3) — wired to the onboard Li-po
+  battery connector's voltage-sense divider. Confirmed via source #2
+  (Waveshare's own product page: "Li-ion battery recharge manager") and
+  source #3 (NuttX docs: "4 x 12-bit ADC channels" — one more than a
+  stock Pico's 3, meaning this 4th channel, GPIO29/A3, is a deliberate
+  board-specific analog feature rather than a stock-Pico carry-over).
+  UNLIKE the LCD/IMU pins above, no source found states this pin is
+  analog-input-only or otherwise pin-locked away from general GPIO/PWM
+  use — RP2040's ADC channels are always dual-purpose digital+analog
+  pins by silicon design, and no vendor documentation was found
+  describing a hardware interlock (e.g. a Pico-style "must be enabled via
+  another GPIO" scheme) that would prevent ordinary digital use here. Per
+  "confirm via real vendor documentation, never guess": did NOT reduce
+  this pin's capabilities via a chipGpios override (it keeps the default
+  full analog_input + digital_input + digital_output + pwm_output set,
+  same as A0-A2). Instead, added a plain pinNotes["29"] entry (not a
+  chipGpios entry) documenting that analogRead(A3) reads a proportion of
+  battery voltage when a battery is connected — informational only, no
+  capability change.
+
+Onboard buttons — NONE beyond BOOT/RESET (both out of scope, not normal
+  GPIOs). Source #3 (NuttX, independent/hardware-verified) explicitly
+  lists only "BOOT button for programming mode entry" under this board's
+  Buttons section. Sources #2 and #4 corroborate by omission (no button
+  mentioned in any feature list). No button capability added anywhere.
+
+Onboard LEDs — NONE. Source #3 (NuttX) explicitly states "No user LED is
+  provided". GPIO25 drives the LCD's backlight only (see above), not a
+  status LED. No led_high/led_low/led_neopixel capability added anywhere.
+
+Onboard NeoPixel/WS2812 — NONE found in any source consulted.
+
+SUMMARY
+Created variants/rp2040/rp2040/waveshare_rp2040_lcd_1_28/board.json (new
+file — none existed before). Fixed a confirmed GPIO8/9 bus-role collision
+bug in this board's pins_arduino.h (removed `#define PIN_WIRE0_SDA/SCL`
+and the two referencing `static const uint8_t SDA/SCL` lines) — the same
+bug class already found and fixed on the sibling waveshare_rp2040_lcd_0_96
+board this session, confirmed present here too per this task's brief.
+Added chipGpios documentation entries (empty capabilities + sourced note)
+for GPIO6/7 (onboard QMI8658C IMU's dedicated I2C bus), GPIO8/9/10/11/12/25
+(onboard LCD's DC/CS/SCLK/MOSI/RST/backlight lines), and GPIO23/24 (onboard
+IMU's interrupt lines) — all except GPIO8/9 were already excluded from
+pins_arduino.h's own alias declarations by an earlier audit pass, so this
+formalizes/documents rather than newly changes their Designer exposure.
+GPIO29 (battery-voltage-divider ADC input) was investigated and confirmed
+as a genuine board feature, but left at full default capabilities (no
+chipGpios override) since no source confirms any capability restriction —
+only a plain pinNotes entry was added. GPIO13/14/15 (SPI1's unused
+silicon-default pins) were investigated but left unchanged/undocumented in
+chipGpios, matching the identical "no vendor confirmation either way"
+decision already made for the 0.96 sibling. No onboard button found beyond
+BOOT/RESET (both out of scope, standard Pico-family precedent). No onboard
+LED found — NuttX docs explicitly confirm "No user LED is provided". No
+onboard NeoPixel found.

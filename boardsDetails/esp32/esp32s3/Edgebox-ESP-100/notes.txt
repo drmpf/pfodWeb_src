@@ -1,0 +1,116 @@
+Board: Edgebox-ESP-100 (ESP32-S3 Dev Module variant) — Seeed Studio
+industrial edge controller (CAN/RS485/Ethernet/4G LTE)
+Date: 2026-07-14 (real independent re-verification pass; supersedes the
+prior "documentation backfill" pass, which cited only board.json's own
+"vendor pins_arduino.h" comment and no external URLs). This pass found
+TWO real corrections (see below) - not a pure confirmation.
+
+Sources consulted (real, external, independently fetched this pass):
+- https://wiki.seeedstudio.com/Edgebox-ESP-100-Arduino/
+  Official Seeed Studio wiki "Getting Started with Arduino" page. Publishes
+  the full GPIO allocation table:
+    CAN_TXD IO1, CAN_RXD IO2
+    RS485 TXD IO17, RXD IO18, RTS IO8
+    Ethernet(W5500 SPI): CS0 IO10, MISO IO11, MOSI IO12, SCK IO13,
+      INT# IO14, RST# IO15
+    Cellular modem(A7670G): PWR_EN IO16, PWR_KEY IO21, TXD IO48, RXD IO47
+    RTC interrupt IO9
+    I2C: SCL IO19, SDA IO20
+    Buzzer IO45
+    Reset Button IO0 (stated twice: once in the GPIO multiplex table,
+    once again in the programming/debug-port section - "The GPIO0 is
+    also connected to the Reset Button.")
+- https://www.espboards.dev/esp32/edgebox-esp-100/
+  Independent third-party pinout aggregator. Lists GPIO0 as "RST (Reset)",
+  and Digital I/O "GPIO4-7 (DI0-DI3), GPIO36-40 (DO0-DO5)" (aggregator's
+  own summary rounds this range; this board's actual pins_arduino.h and
+  the Seeed wiki both confirm the precise range is GPIO35-40) -
+  independently corroborating both the button and the DO3-DO5 findings.
+- https://www.cnx-software.com/2022/12/21/edgebox-esp-100-esp32-s3-industrial-controller-with-rs485-can-bus-dio-4g-lte/
+  Independent product-launch review. Confirms the general feature set
+  (isolated CAN, isolated RS485, W5500 Ethernet, A7670G 4G LTE module,
+  phoenix-connector industrial I/O).
+- https://www.seeedstudio.com/EdgeBox-ESP-100-p-5490.html
+  Vendor storefront page (general feature confirmation only - no GPIO
+  table).
+
+Per-pin findings:
+- GPIO0: CORRECTION. Previously generic [digital_input, digital_output,
+  pwm_output], no tag. The official Seeed wiki (link above) explicitly
+  states "GPIO0 is also connected to the Reset Button" - in two separate
+  places in the document - and this is independently corroborated by
+  espboards.dev listing GPIO0 as "RST (Reset)". This is a genuine,
+  vendor-documented physical pushbutton on this board (not merely the
+  universal ESP32 BOOT/download-mode strapping pin every board has),
+  meeting the same confirmation bar already established elsewhere in
+  this codebase for tagging a GPIO0 "button" (e.g.
+  crabik_slot_esp32_s3's GPIO0, confirmed via a schematic net name).
+  CORRECTED: capabilities changed to [digital_input, button] (dropping
+  digital_output/pwm_output, matching the established button-tag
+  exclusivity convention). pinNotes "Must be HIGH for normal boot"
+  unchanged.
+- GPIO1, GPIO2: excluded - CAN bus. CONFIRMED exact match against the
+  Seeed wiki's CAN_TXD/CAN_RXD IO1/IO2.
+- GPIO3-GPIO7: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] (GPIO3) / generic (GPIO4-7) - no tag. GPIO4-7 are the
+  DI0-DI3 industrial digital-input terminals per this board's own
+  pins_arduino.h and confirmed by both external sources - correctly kept
+  as plain digital/analog inputs (no dedicated "industrial input"
+  capability tag exists in this repo's vocabulary).
+- GPIO8: excluded - RS485 RTS. CONFIRMED exact match.
+- GPIO9-GPIO15: excluded - RTC interrupt (GPIO9) + W5500 Ethernet SPI bus
+  (GPIO10-15: CS0/MISO/MOSI/SCK/INT/RST). CONFIRMED exact match against
+  the Seeed wiki's full Ethernet pin table.
+- GPIO16: excluded - A7670G cellular modem PWR_EN. CONFIRMED exact match.
+- GPIO17, GPIO18: excluded - RS485 TXD/RXD. CONFIRMED exact match.
+- GPIO21: excluded - A7670G cellular modem PWR_KEY. CONFIRMED exact
+  match.
+- GPIO35, GPIO36, GPIO37: CORRECTION. Previously silently absent from
+  chipGpios (no entry at all - inherited the chip-level esp32s3 default's
+  octal-PSRAM exclusion for GPIO33-37, see variants/esp32/esp32s3/board.json's
+  own comment "GPIOs ... 33-37 (octal flash/PSRAM) ... are excluded").
+  This board's own pins_arduino.h declares DO5=35, DO4=36, DO3=37 (the
+  industrial digital-output terminal bank), and both the Seeed wiki
+  ("DO0-DO5 respectively IO40/39/38/37/36/35") and espboards.dev
+  independently confirm these exact GPIOs are wired to real,
+  vendor-exposed digital outputs. A board cannot simultaneously use
+  GPIO35-37 for octal PSRAM internally AND wire them out to an external
+  industrial DO terminal block - so this specific Edgebox-ESP-100
+  ESP32-S3 module evidently does not use octal PSRAM (consistent with
+  third-party specs describing it as a "4MB flash" part with no PSRAM
+  mentioned). This contradicted the inherited chip-level default, so it
+  is a real correction, not merely a missing citation. CORRECTED: added
+  GPIO35/36/37 to chipGpios with capabilities [digital_input,
+  digital_output, pwm_output], matching DO0-DO2 (GPIO40/39/38) which were
+  already present. This also matches the board's own pins_arduino.h
+  comment, which already said "DO0-5/DI0-3/AO0-1 stay kept - the
+  industrial I/O terminal banks are the point of using this board" - the
+  prior chipGpios simply hadn't fully implemented that stated intent.
+- GPIO38-GPIO40: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag. DO2/DO1/DO0 industrial outputs, correctly kept
+  (unchanged).
+- GPIO41, GPIO42: capabilities [digital_input, digital_output,
+  pwm_output] - generic, no tag. AO1/AO0 analog-output-driver terminals
+  (driven as plain digital/PWM GPIOs from the ESP32-S3 side, per the
+  board's own pins_arduino.h) - correctly kept (unchanged).
+- GPIO43, GPIO44: kept as TX/RX. Capabilities [digital_input,
+  digital_output, pwm_output] - generic, no tag. Unchanged.
+- GPIO45: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag. Buzzer line per the board's own pins_arduino.h and the
+  Seeed wiki - correctly kept generic (no "buzzer" capability tag exists
+  in this repo's vocabulary, which only covers button/LED identities).
+- GPIO46: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag, not otherwise claimed by any documented peripheral.
+  Unchanged.
+- GPIO47, GPIO48: excluded - A7670G cellular modem RXD/TXD. CONFIRMED
+  exact match.
+
+Summary: The pre-existing CAN/RS485/Ethernet/cellular-modem exclusions
+were all CONFIRMED pin-for-pin against Seeed Studio's own official wiki.
+Two real corrections were made based on that same research: (1) GPIO0 is
+now tagged "button" - vendor-documented as a physical Reset Button, not
+just the universal BOOT strap; (2) GPIO35/36/37 (DO5/DO4/DO3) were
+restored to chipGpios as plain digital I/O - they had been silently
+dropped by inheriting the chip-level octal-PSRAM exclusion, which does
+not apply to this board's actual (non-octal-PSRAM) hardware. Both
+board.json and this notes.txt were updated with the real citations above.

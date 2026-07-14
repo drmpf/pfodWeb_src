@@ -26,21 +26,21 @@ static const uint8_t SCL = 40;
 #define PIN_QWIIC_SDA 39
 #define PIN_QWIIC_SCL 40
 
-// Secondary I2C MPU6050
+// Secondary I2C MPU6050 (built-in onboard IMU — GPIO42/45/46 deliberately
+// not declared as SCL1/SDA1/pins here; see this board's own board.json
+// chipGpios override)
 #define WIRE1_PIN_DEFINED 1  // See Wire.cpp at bool TwoWire::initPins(int sdaPin, int sclPin)
-static const uint8_t SCL1 = 42;
-static const uint8_t SDA1 = 45;
 #define PIN_I2C_SCL 42
 #define PIN_I2C_SDA 45
 #define PIN_I2C_INT 46
 
-// SPI
-static const uint8_t SS = 42;
-static const uint8_t MOSI = 35;
-static const uint8_t SCK = 36;
-static const uint8_t MISO = 37;
+// pfodWeb NOTE: SS/MOSI/SCK/MISO (GPIO42/35/36/37) deliberately NOT
+// declared — this bus is shared with the XBEE1/XBEE2 "Bee" module
+// sockets below (confirmed via senseBox docs: pluggable LoRa-Bee/GSM-
+// Bee/SD-Bee modules), not a free general-purpose SPI bus.
 
-// XBEE Pins
+// XBEE Pins (optional plug-in "Bee" module sockets — confirmed via
+// senseBox docs; GPIO33/34/38/41 deliberately not declared as pins)
 #define PIN_XBEE_ENABLE 41
 #define PIN_XBEE_INT    33
 #define PIN_XBEE_CS     34
@@ -93,11 +93,14 @@ static const uint8_t RX = 44;
 #define PIN_UART_RXD    44
 #define PIN_UART_ENABLE 26
 
-// UART XBee
-static const uint8_t TX1 = 17;
-static const uint8_t RX1 = 18;
+// UART XBee (GPIO17/18 deliberately not declared as TX1/RX1/DAC1/DAC2 —
+// dedicated to whichever Bee module is plugged in; also this chip's
+// only 2 DAC pins, but the Bee link takes priority since it's the
+// board's own documented primary use for these pins)
 
-// PD-Sensor
+// PD-Sensor (built-in photodiode light sensor — PD_SENSE(14) kept
+// available as a sensor reading, matching thermistor/battery-monitor
+// precedent; PD_ENABLE(21) is its power-enable control line, excluded)
 #define PD_SENSE      14
 #define PD_ENABLE     21
 #define PIN_PD_ENABLE 21
@@ -126,8 +129,5 @@ static const uint8_t T4 = PIN_IO4;
 static const uint8_t T5 = PIN_IO5;
 static const uint8_t T6 = PIN_IO6;
 static const uint8_t T7 = PIN_IO7;
-
-static const uint8_t DAC1 = 17;
-static const uint8_t DAC2 = 18;
 
 #endif /* Pins_Arduino_h */

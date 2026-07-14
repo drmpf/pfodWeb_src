@@ -1,0 +1,65 @@
+Board: waveshare_esp32_s3_touch_amoled_241
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_241
+Task: confirm onboard user button / onboard LED, tag GPIO capability if confirmable.
+
+SOURCES CONSULTED
+------------------
+https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-2.41
+  Direct WebFetch returned HTTP 403 Forbidden (site blocks the fetch tool directly).
+
+https://r.jina.ai/https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-2.41
+  (Reader-proxy fetch of the same wiki page, succeeded.) Confirms board has a BOOT
+  button and a RESET button ("Long press the BOOT button, press RESET at the same
+  time, then release RESET, then release the BOOT button, at this time the module
+  can enter the download mode."). Also mentions a PWR button used "to power the
+  lithium battery" (physical power switch for the battery, not a GPIO). Pinout/
+  interfaces table lists "GPIO0 BOOT0", i.e. GPIO0 is the BOOT strap pin. States
+  no RGB LED or NeoPixel is documented for this board, and no dedicated user LED
+  is described. Lists GPIO16 (BAT_Control), GPIO17 (BAT_ADC), GPIO15 (Key_BAT) as
+  battery-related pins, not LEDs.
+
+WebSearch "ESP32-S3-Touch-AMOLED-2.41 pinout BOOT button GPIO0 LED"
+  Search-engine summary (Waveshare wiki-derived) states: "under normal working
+  conditions, GPIO0 can detect the high and low level of the button ... low level
+  is pressed, which can recognize click, double-click, multi-click, and long-press
+  actions" and "board includes onboard RST button, along with programmable BOOT
+  and PWR buttons". Corroborates GPIO0 = BOOT button, independently of the r.jina
+  fetch above.
+
+Cross-check within this repo (not an external source, but corroborating evidence):
+variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_143/board.json,
+variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_18/board.json,
+variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_206/board.json
+  All three sibling Waveshare AMOLED boards already have GPIO0 tagged
+  ["digital_input","button"] with NOTE comments citing the same
+  Waveshare-wiki BOOT-button pattern. The 2.41 board's own
+  pins_arduino.h does not declare GPIO0 for anything else (display/
+  touch/RTC/IMU pins are 9-14,21,47,48; UART0 is 43/44; PSFlash SPI is
+  32-37/34-37), so GPIO0 is free and consistent with the same BOOT
+  button wiring used across this board family.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- No onboard LED (single-color or NeoPixel/RGB) is documented anywhere for this
+  board across all sources checked. No LED-related GPIO was found in the wiki
+  page, product page snippets, or pins_arduino.h (no LED_BUILTIN-style define
+  exists in this board's pins_arduino.h at all). Decision: made NO guess -
+  did not tag any LED capability.
+- RESET button: this is a hardware EN/reset line, not a GPIO the sketch can read
+  as a digital input, so it is not a "button" candidate in the pfodWeb
+  digital_input/button sense. Not tagged (not applicable, not a judgment call).
+- PWR button: per the wiki text this is a physical switch for controlling
+  lithium-battery power delivery, not a GPIO-readable user button. Not tagged
+  (not applicable, not a judgment call).
+- GPIO16/17 (BAT_Control / BAT_ADC) and GPIO15 (Key_BAT): battery-monitoring
+  circuit pins, not button/LED candidates. Not tagged.
+- Checked GPIO0 against this board's TX/RX (TX=43, RX=44 per pins_arduino.h) -
+  no conflict, so the button tag was safe to apply.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input","button"] (was ["digital_input","digital_output","pwm_output"]),
+confirmed as the onboard BOOT button via Waveshare's own wiki page (accessed via
+r.jina.ai proxy due to direct-fetch 403) plus corroborating search-engine summary
+and consistent sibling-board precedent (amoled_143/18/206). NOTE comment added to
+board.json documenting the tag and citation.

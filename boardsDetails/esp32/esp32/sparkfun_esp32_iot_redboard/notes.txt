@@ -1,0 +1,54 @@
+Board: sparkfun_esp32_iot_redboard
+Path: C:\ai\aicode\pfodWeb\variants\esp32\esp32\sparkfun_esp32_iot_redboard
+Date: 2026-07-11
+
+Sources consulted:
+- https://learn.sparkfun.com/tutorials/iot-redboard-esp32-development-board-hookup-guide/all
+  -> Official SparkFun hookup guide. Confirms "LED 18" is described as "the
+     general Status LED. It is connected to the SCK pin" (GPIO18) and is
+     turned on via digitalWrite(LED_BUILTIN, HIGH) in the Blink example
+     (active-high). Also confirms "RGB GPIO2" is a WS2812 addressable
+     NeoPixel-type LED on GPIO2. States there is no onboard user
+     pushbutton beyond the Reset and Boot buttons.
+- https://github.com/sparkfun/SparkFun_IoT_RedBoard-ESP32/blob/main/README.md
+  -> SparkFun's GitHub repo README for the board. General overview only
+     (ESP32-WROOM, USB-C, Qwiic, microSD, LiPo charger/fuel gauge); does
+     not itself list LED/button GPIOs, so not used as the primary source
+     for GPIO numbers (hookup guide above was used for that).
+- WebSearch: "SparkFun ESP32 IoT RedBoard schematic GPIO button LED"
+  -> Search results pointed to the hookup guide and product pages above;
+     confirmed LED 18 example ("play with the links to turn LED 18 on and
+     off") and the GitHub repo location.
+- WebSearch: "SparkFun ESP32 IoT RedBoard hookup guide onboard LED GPIO16"
+  -> Confirmed GPIO 18 (not 16) is the correct onboard status LED per the
+     WiFi Access Point example (LED_BUILTIN = 18).
+
+Pins considered but NOT tagged:
+- No GPIO was tagged "button". The hookup guide only documents a Reset
+  button and a Boot button (used for entering flash-download mode); no
+  separate general-purpose user pushbutton wired to a free GPIO is
+  documented anywhere in the vendor sources reviewed. This is a definite
+  "no" based on vendor docs, not a guess — no button tag applied.
+- GPIO0 (BOOT button) was considered as a possible "button" candidate
+  since many ESP32 dev boards expose the strapping/boot button as a
+  usable input, but the hookup guide does not describe it as a general
+  user input, and GPIO0 is a strapping pin (must be HIGH or floating at
+  boot, per this board's pinNotes) typically reserved for flash-mode
+  entry. Left untagged deliberately — no guess made.
+- GPIO18 and GPIO2 do not conflict with this board's TX/RX pins
+  (TX = GPIO1, RX = GPIO3 per pins_arduino.h), so no TX/RX exclusion
+  applies to either tagged pin.
+- Both GPIO18 and GPIO2 already existed as normal (non-excluded) entries
+  in the chip-level esp32/board.json chipGpios list, so no pre-existing
+  pin-exclusion was reversed by this change.
+
+Summary of what was tagged:
+- Created new board.json (none existed before) for sparkfun_esp32_iot_redboard
+  as a full copy of the chip-level esp32/board.json default, with:
+  - GPIO18 -> ["digital_output", "led_high", "pwm_output"] (onboard status LED,
+    active-high; pwm_output retained because it was already present on this
+    pin in the chip default).
+  - GPIO2 -> ["digital_output", "led_neopixel", "pwm_output"] (onboard WS2812
+    addressable RGB LED; pwm_output retained because it was already present
+    on this pin in the chip default).
+  No button GPIO was tagged (see above).

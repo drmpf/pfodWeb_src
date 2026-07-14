@@ -1,0 +1,77 @@
+// pfodWeb NOTE: full copy of the chip-level default (variants/esp32/esp32c3/board.json)
+// with one addition — a documentation-only "note" on GPIO0's chipGpios entry.
+// GPIO0 (BAT_MEASURE / A0 / D0 in this board's pins_arduino.h) is this board's
+// battery-voltage-sense pin. Per PCBCUPID's own docs (learn.pcbcupid.com), the
+// "MSR" pads on the rear of the board must be bridged/soldered to connect a
+// resistor voltage-divider ahead of GPIO0 so it can read the LiPo/Li-ion
+// battery voltage (BAT+ pad, ~2.7V-4.2V) scaled into the ADC's safe input
+// range; the divider ratio documented there is ~1.585 (i.e. actual battery
+// volts ~= ADC-reported volts x 1.585 once MSR is bridged). This is a
+// solder-selectable feature, not an always-connected divider: with MSR left
+// open, GPIO0 behaves as a normal chip-default ADC/GPIO pin. Because the
+// divider is conditional and per-pin (not a fixed board-wide ADC full-scale
+// change), the chip-level "adc.defaultRefVolts": "3.3" is left unchanged here
+// — changing it would incorrectly rescale every other ADC-capable pin on the
+// board, not just GPIO0. Per the playbook's battery/voltage-monitor KEEP
+// policy this pin's analog_input capability is retained (not excluded), and
+// the note below documents the divider/jumper behaviour for future users.
+// No onboard user button was found (GPIO9 is the BOOT button per
+// PCBCUPID's own docs, but no #define/alias for it is declared in this
+// board's pins_arduino.h, so it is left untagged, consistent with how
+// other audited boards handle un-named strapping pins).
+//
+// RE-CHECK (2026-07-12): GPIO1 (LED_BUILTIN) was re-audited after the
+// original pass's "already has digital_output, so no tag needed" reasoning
+// was flagged as invalid (that's a capability check, not a hardware-
+// identity check). Fresh research (learn.pcbcupid.com pinouts/overview/
+// blink-led pages, all independently stating "onboard LED on GPIO1", PLUS
+// Adafruit's CircuitPython board definition for this exact board —
+// MICROPY_HW_LED_STATUS = &pin_GPIO1 in mpconfigboard.h and a dedicated
+// "LED" -> pin_GPIO1 alias in pins.c) CONFIRMS a real, populated onboard
+// LED at GPIO1, not just Arduino-core boilerplate. However, its drive
+// polarity could NOT be confirmed by any source found: PCBCUPID's own
+// Blink example is the generic stock Arduino Blink.ino sketch (comment
+// "HIGH is the voltage level" turns it on) with no schematic, inversion
+// note, or DTS active-state property anywhere (checked PCBCUPID docs, the
+// Tindie listing, PCBCUPID's public GitHub org, and the CircuitPython
+// board files) — the same evidentiary bar this repo's own
+// sparkfun_pro_micro_esp32c3 precedent (GPIO10 LED_BUILTIN) already
+// established as insufficient for a led_high/led_low tag. So: LED
+// existence confirmed (documented via the `note` below), polarity
+// genuinely unconfirmable, no led_high/led_low capability tag added.
+// Alias-collision check: pins_arduino.h aliases are TX=21, RX=20, SDA=4,
+// SCL=5, SS=3, MOSI=6, MISO=7, SCK=10 — none is 1, so GPIO1 is not
+// double-aliased as a bus pin; no pins_arduino.h edit needed.
+// See boardsDetails/esp32/esp32c3/Pcbcupid_GLYPH_C3/notes.txt for the full
+// re-check research trail.
+{
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "BAT_MEASURE / MSR — battery-voltage sense (A0/D0). Short the MSR pads on the rear of the board to connect an onboard resistor divider (~1.585x) ahead of this pin so it reads the LiPo/Li-ion battery voltage (BAT+, ~2.7-4.2V) scaled into the ADC's 0-3.3V range; leave MSR open to use this pin as a plain ADC/GPIO." },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "LED_BUILTIN — CONFIRMED onboard status LED (learn.pcbcupid.com pinouts/overview/blink-led pages, plus Adafruit CircuitPython's board definition for this exact board). Drive polarity could not be confirmed by any source (no schematic/inversion/active-state documentation found) so no led_high/led_low tag is applied — see pfodWeb NOTE above and boardsDetails/esp32/esp32c3/Pcbcupid_GLYPH_C3/notes.txt." },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

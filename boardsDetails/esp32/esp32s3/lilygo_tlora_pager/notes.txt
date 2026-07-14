@@ -1,0 +1,46 @@
+lilygo_tlora_pager - button/LED confirmation research notes
+=============================================================
+
+Sources consulted:
+- https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/master/docs/hardware/lilygo-t-lora-pager.md
+  Vendor hardware doc (interface diagram). Shows GPIO0 labeled "(GPIO0) Custom Button
+  or Enter download Mode" / "BOOT". GPIO42 labeled "Display Backlight(16 Level)".
+  No single-color or NeoPixel/RGB LED mentioned anywhere in the doc. GPIO9/43/44 are
+  the only pins marked free ("✅") for user customization; all others pre-allocated.
+- https://wiki.lilygo.cc/products/t-lora-series/t-lora-pager/
+  Official vendor wiki product page. Confirms three physical buttons: BOOT, PWR, RST.
+  BOOT is wired to GPIO0 and documented as usable as a custom/programmable button or
+  to enter download mode (hold BOOT while clicking RESET). PWR button is a fixed
+  hardware wake function only when device is off, not GPIO-controllable/programmable.
+  RST is a fixed hardware reset, not GPIO-controllable/programmable. No onboard LED
+  (single-color or RGB/NeoPixel) documented anywhere on this page; only LED-adjacent
+  item is the ST7796 display backlight on GPIO42 (PWM, "16 Level"), which is a display
+  control line, not a general-purpose indicator LED.
+- (General search results, not fetched directly, used only to corroborate the above)
+  https://meshtastic.org/docs/hardware/devices/lilygo/lora/buttons/ - confirms LilyGO
+  Lora devices' three-button pattern (RST/BOOT/PWR) generally, consistent with above.
+
+Pins considered but NOT tagged:
+- GPIO42 (display backlight, PWM) - already excluded from chipGpios in this board's
+  existing per-board pin-exclusion audit (see NOTE comments already in board.json:
+  "display control lines (37,38,42)"). It is a display backlight, not a standalone
+  user-facing LED, so even if it had not already been excluded it would not qualify
+  as an led_high/led_low/led_neopixel candidate per the task's LED definition. No
+  guess made - this is a documented display control line, not treated as an LED.
+- PWR button and RST button - both are fixed hardware-level functions per vendor wiki
+  (PWR only wakes device when off; RST is a hard reset), explicitly stated by LilyGO
+  as NOT programmable/GPIO-readable by firmware. No GPIO pin is associated with either
+  in application code, so neither is a taggable "button" capability. No guess made.
+- Keyboard matrix keys (KB_INT=GPIO6, plus internal matrix scanned via the XL9555 I2C
+  GPIO expander) - explicitly out of scope per task instructions (keyboard matrix keys
+  are not a single standalone GPIO button). Not tagged, no guess made.
+- Rotary encoder (GPIO7/40/41) - a rotary encoder, not a push-button in the tagged
+  sense (though ROTARY_C/GPIO7 could be a rotary push-click in some designs); not
+  confirmed as a discrete "button" by vendor docs, and these pins are already excluded
+  from chipGpios in this board's earlier pin-exclusion audit. Not tagged, no guess made.
+
+What was tagged:
+- GPIO0 -> ["digital_input","button"] (BOOT button), confirmed via LilyGoLib vendor
+  hardware doc and wiki.lilygo.cc product page. GPIO0 is not this board's TX/RX
+  (TX=43, RX=44 per pins_arduino.h), so no TX/RX conflict. No LED was tagged - no
+  onboard single-color, RGB, or NeoPixel LED is documented for this board.

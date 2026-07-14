@@ -1,0 +1,138 @@
+esp32s2thing_plus (SparkFun ESP32-S2 Thing Plus) - dedicated-hardware pin-exclusion
+audit + opportunistic button/LED capability check
+====================================================================================
+Date: 2026-07-12
+
+Flagged by discovery sweep for:
+  #define TX1 34
+  #define RX1 33
+
+Sources consulted
+------------------
+1. https://learn.sparkfun.com/tutorials/esp32-s2-thing-plus-hookup-guide/all
+   (and sub-page /hardware-overview)
+   Official SparkFun hookup guide. Confirms:
+     - "RX1/TX1 Pins: Serial1" - explicitly documents TX1/RX1 as a genuine
+       second hardware UART (Serial1), broken out to header pins, alongside
+       "UART (USB): Serial" as the primary port. Not an internal-only or
+       dedicated peripheral pin.
+     - "The user (0) button allows users to short IO 0 to ground (GND)...
+       configured as an input with an internal pullup (INPUT_PULLUP)" with
+       example code `const int BUTTON_PIN = 0;` /
+       `if (digitalRead(BUTTON_PIN) == LOW)` - genuine application-level
+       button use, not merely a bootloader-entry button.
+     - "The blue, status (13) LED is typically used as a test or status
+       LED" with Blink example `int ledPin = 13;` ...
+       `digitalWrite(ledPin, HIGH)` to turn on - confirms active-high,
+       matches this board's existing LED_BUILTIN=13 alias.
+     - IO1/IO2 = SDA/SCL (Qwiic I2C) - matches pins_arduino.h exactly.
+     - Does not mention any battery-voltage-sense/fuel-gauge pin or an
+       onboard NeoPixel/addressable RGB LED anywhere in the guide.
+
+2. https://www.espboards.dev/esp32/sparkfun-esp32s2-thing-plus/
+   Third-party structured pinout table. Independently confirms every alias
+   in this board's pins_arduino.h verbatim: LED_BUILTIN=GPIO13, RX1=GPIO33,
+   TX1=GPIO34, SDA=GPIO1, SCL=GPIO2, MOSI=GPIO35, SCK=GPIO36, MISO=GPIO37,
+   SS=GPIO42, TX=GPIO43, RX=GPIO44, DAC1=GPIO17, DAC2=GPIO18. This
+   agreement between an independent third-party source and the repo's own
+   .h file is strong confirmation the .h file's aliases are accurate (no
+   vendor documentation error / silkscreen-vs-GPIO mismatch here).
+
+3. https://github.com/sparkfun/ESP32-S2_Thing_Plus (official vendor repo)
+   and .../tree/master/Hardware
+   Confirms board identity (SparkFun ESP32-S2-WROOM Thing-Plus-compatible
+   board with Qwiic connector). Hardware folder lists only
+   ESP32-S2_Thing_Plus.sch / .brd / esp32-s2-wroom.lbr - no
+   NeoPixel/WS2812/fuel-gauge-named files, consistent with the hookup
+   guide's silence on those features.
+
+4. WebSearch: "ESP32-S2 Thing Plus" battery voltage sense pin GPIO ADC fuel
+   gauge sparkfun
+   Explicitly confirms this board "does not have an inherent built-in
+   capability to measure remaining battery charge", contrasting it with
+   SparkFun's newer ESP32 WROOM Thing Plus boards which added an onboard
+   MAX17048 fuel-gauge IC (I2C-based, not a GPIO analog pin) for exactly
+   this purpose. This board only has a 2-pin JST LiPo connector + onboard
+   MCP73831 charge IC - no battery-sense GPIO exists to tag.
+
+5. WebSearch: "ESP32-S2 Thing Plus" WS2812 NeoPixel onboard RGB LED github
+   schematic
+   No NeoPixel/WS2812 evidence found for this specific board. One noisy
+   aggregated-search snippet claimed "WS2812 RGB LED connected to GPIO 02"
+   but tracing it back showed this referred to Espressif's unrelated
+   ESP32-S2-DevKitM-1 dev board (and/or possibly SparkFun's separate,
+   newer non-S2 "Thing Plus - ESP32 WROOM (USB-C)" board) being conflated
+   into the aggregated result - not this board. GPIO2 is this board's I2C
+   SCL pin per pins_arduino.h/espboards.dev; no vendor source ties a
+   NeoPixel to it here. pins_arduino.h itself has zero NEOPIXEL/WS2812/
+   PIXEL-named alias anywhere (contrast with confirmed-NeoPixel sibling
+   boards micro_s2 and um_feathers2neo, which do declare such an alias) -
+   absence of any such alias on a board this thoroughly vendor-documented
+   is itself good negative evidence.
+
+6. Local file precedent review (read-only, not modified):
+   - variants/esp32/esp32/esp32thing_plus/pins_arduino.h + board.json +
+     its "pfodWeb NOTE" header comment. Same vendor's earlier non-S2 ESP32
+     Thing Plus. Confirms the established repo convention for GPIO0
+     button tagging (["digital_input", "button"], digital_output/
+     pwm_output dropped) and GPIO13 LED tagging (["digital_output",
+     "pwm_output", "led_high"]) - and separately documents that on THAT
+     board TX1/RX1 are `#define TX1 TX` / `#define RX1 RX` aliases (a
+     false positive, same physical pins as primary UART). This board
+     (esp32s2thing_plus) is different: TX1(34)/RX1(33) here are genuinely
+     distinct GPIOs from TX(43)/RX(44) - a real second UART, confirmed
+     independently per source 1 above, not a false-positive alias like
+     its sibling.
+   - variants/esp32/esp32s2/micro_s2/board.json + its notes.txt (same
+     esp32s2 chip). Confirms the same-chip precedent for button/led_high
+     capability-set shape (chip-default analog/serial capabilities
+     dropped when a hardware-identity tag is applied) that was replicated
+     here.
+
+Pin-by-pin conclusions
+-----------------------
+GPIO34 (TX1) / GPIO33 (RX1): KEEP, NO CHANGE from chip-level default
+  (plain ["digital_input", "digital_output", "pwm_output"]). Confirmed
+  genuine general-purpose second UART (Serial1) broken out to the header,
+  not an internal-only/dedicated-hardware pin - source 1 above ("RX1/TX1
+  Pins: Serial1"). Checked for SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias
+  collision per this session's new policy: this board's aliases are
+  SDA=1, SCL=2, SS=42, MOSI=35, MISO=37, SCK=36, TX=43, RX=44 - none
+  equal 33 or 34, so no collision. Additionally confirmed from
+  build_boards.js's own doc comment that `#define`-form macros (which is
+  how TX1/RX1 are declared, unlike the `static const uint8_t` aliases
+  used for TX/RX/SDA/etc.) are intentionally NOT parsed into the alias
+  table at all - so these two pins carry zero bus-capability
+  contamination risk regardless of board.json content.
+
+GPIO0: TAGGED "button" (["digital_input", "button"]). Confirmed
+  general-purpose onboard user button per source 1, matching this repo's
+  established convention (source 6). Retains this chip's existing
+  strapping pinNote ("Must be HIGH for normal boot") unchanged.
+
+GPIO13 (LED_BUILTIN): TAGGED "led_high"
+  (["digital_output", "pwm_output", "led_high"]). Confirmed onboard
+  single-color (non-addressable) status LED, active-high, per source 1.
+
+No onboard NeoPixel/addressable RGB LED: NOT TAGGED - no vendor evidence
+  found (source 3, 5); pins_arduino.h has no NeoPixel-related alias.
+
+No battery-voltage-sense pin: NOT TAGGED - explicitly confirmed absent on
+  this specific board model (source 4).
+
+Files changed
+--------------
+- Created variants/esp32/esp32s2/esp32s2thing_plus/board.json as a full
+  copy of the esp32s2 chip-level default
+  (variants/esp32/esp32s2/board.json), with GPIO0 and GPIO13 overridden
+  as described above. All other GPIOs left identical to the chip default.
+  pfodWeb NOTE comments added at the top of the file citing sources.
+- This notes.txt (new file/directory).
+- pins_arduino.h was NOT modified (out of scope / vendor file).
+
+Summary: TX1(GPIO34)/RX1(GPIO33) confirmed as a genuine, vendor-documented
+general-purpose second UART - KEEP, no exclusion needed, no alias-collision
+contamination risk. Opportunistic check found and tagged a confirmed
+onboard user button (GPIO0) and status LED (GPIO13, active-high); found no
+onboard NeoPixel and no battery-voltage-sense pin on this specific board
+model, so neither was tagged.

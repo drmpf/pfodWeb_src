@@ -1,0 +1,94 @@
+ViraLink-G0.1 (esp32/esp32) - button/LED capability-tagging audit
+==================================================================
+
+2026-07-12: Section 7a button/LED capability-tagging pass.
+
+Context: this board already has a board.json override from an earlier
+dedicated-hardware-exclusion pass (excludes GPIO15/34/36/39 Wiegand,
+GPIO17-19/21-23/25-27 Ethernet EMAC, GPIO32/35 RS485; keeps RELAY1-4/
+BUZZER). That earlier pass never applied button/LED tagging - this pass
+is specifically to fill that gap.
+
+Candidates identified from pins_arduino.h:
+- GPIO5: `static const uint8_t LED_BUILTIN = 5;` (plus BUILTIN_LED/
+  LED_BUILTIN #define aliases pointing at the same constant).
+- GPIO0: `static const uint8_t RESET_KEY = 0;` - name strongly suggests
+  an onboard reset/boot button, already declared as an alias (so the
+  "check for an onboard button not currently declared as an alias" task
+  step is satisfied - it already has one; no new undeclared button was
+  found).
+
+Sources consulted:
+1. WebSearch "ViraLink G0.1 ESP32" - surfaced the fact that
+   "ViraLink-G0.1" exists verbatim as a variant directory in the upstream
+   espressif/arduino-esp32 repo (github.com/espressif/arduino-esp32/tree/
+   master/variants/ViraLink-G0.1), plus the viralinkio GitHub org and its
+   ViraLink-MQTT-Client library. No hardware/product detail returned.
+2. WebFetch on the upstream GitHub tree page for ViraLink-G0.1 - only
+   confirms pins_arduino.h is the sole file present, no README.
+3. WebFetch on the raw pins_arduino.h from espressif/arduino-esp32 master
+   - content matches this repo's copy exactly (LED_BUILTIN=5, RESET_KEY=0,
+   RS485 TX=32/RX=35, SDA=4/SCL=16, BUZZER=12, RELAY1-4=2/13/14/33,
+   Wiegand pins 15/34/39/36, Ethernet EMAC 17-27, SPI pins -1/unset).
+   Confirms our local file is NOT a stale copy - useful confirmation, but
+   the upstream file itself carries no polarity/behavioural documentation
+   beyond the same alias names we already have.
+4. WebSearch "ViraLink ESP32 gateway relay board" - no hits for the brand
+   at all; only unrelated generic ESP32 relay-board products from other
+   vendors (Waveshare, generic Amazon listings, ESPHome device pages).
+5. WebFetch github.com/viralinkio (repository list) - confirmed ViraLink
+   IoT platform is a real, active company/org (MQTT client libraries in
+   C++/TypeScript/Python, a Tasmota fork, and an "ESP32-GATEWAY" forked
+   repo describing "ESP32 IoT Gateway board with BLE WIFI and Ethernet").
+   None of these repos is specifically the G0.1 hardware; no schematic,
+   photo, or product datasheet for G0.1 found among them.
+6. WebSearch (Farsi) "ویرالینک گیت وی سخت افزار رله بازر" (ViraLink
+   gateway hardware relay buzzer) - no relevant hits; returned unrelated
+   Iranian smart-relay/gate-control products from other companies.
+7. WebSearch "viralink.io hardware gateway shop relay wiegand rs485" and
+   "viralink.io G0.1 access control gateway product" - no product page,
+   datasheet, or schematic for G0.1 located. viralink.io appears to be
+   primarily a cloud device-management/MQTT platform (per Tracxn company
+   profile snippet), with the physical gateway hardware line not
+   publicly documented in a way search could surface.
+
+Reasoning / decision:
+- GPIO5 (LED_BUILTIN): the pin's IDENTITY as an LED alias is plausible
+  (real company, real product line with RS485/Wiegand/relay/buzzer
+  hardware consistent with an access-control gateway that would
+  reasonably have a status LED), but per playbook policy names alone
+  (LED_BUILTIN) are never sufficient to assign led_high/led_low - only
+  applied after confirming ACTUAL POLARITY from a schematic, teardown, or
+  vendor documentation. No such source was found despite a genuine
+  multi-query attempt (English + Farsi, GitHub org drill-down, upstream
+  arduino-esp32 tree check). Left UNTAGGED. This is a "no guess" outcome,
+  not a "confirmed absent" outcome - GPIO5 almost certainly does drive a
+  real onboard LED, but the polarity is unknown.
+- GPIO0 (RESET_KEY): same reasoning - name suggests a button, and it's
+  already declared as an alias in pins_arduino.h (task's "check for an
+  undeclared button" step is satisfied by this existing alias), but no
+  vendor source confirms it is a physical pushbutton (vs., e.g., a
+  software-level "key" concept, or a strapping-pin-only reset path with
+  no user-accessible button). Left UNTAGGED, no "button" capability
+  applied.
+- Bus-alias collision check (per the parser-contamination bug class):
+  confirmed neither GPIO5 nor GPIO0 collides with any SDA/SCL/SS/MOSI/
+  MISO/SCK/TX/RX alias in this file. SDA=4, SCL=16; SS/MOSI/SCK/MISO are
+  deliberately NOT declared (upstream -1 sentinel, would wrap to 255 -
+  already excluded by the earlier dedicated-hardware pass); TX/RX are not
+  declared anywhere in this file at all. This check was performed as a
+  precaution even though no tag was ultimately applied (so contamination
+  is moot for this pass, but confirmed clean regardless).
+
+Result: NO CHANGE to chipGpios capabilities. A documentation-only
+`// pfodWeb NOTE (2026-07-12)` comment block was appended to board.json
+(existing content/comments preserved, nothing overwritten) so a future
+auditor sees this board's LED/button pins were already researched and
+found inconclusive, rather than re-flagging it as never-examined.
+
+Summary: GPIO5 (LED_BUILTIN) and GPIO0 (RESET_KEY) both left untagged -
+genuine research attempt made (upstream arduino-esp32 source cross-check,
+vendor GitHub org, English + Farsi web search) but no product
+page/schematic/teardown for the physical G0.1 board was found to confirm
+LED polarity or button presence/behaviour. No bus-alias contamination
+risk found for either pin.

@@ -13,16 +13,6 @@
   // Supported values: "avr", "esp32".
   "family": "avr",
 
-  // Default serial baud rate offered to the user on connect.
-  "defaultBaud": 115200,
-
-  // Baud rates the designer's baud-picker offers for this board, in the
-  // order they appear in the UI.
-  "supportedBauds": [
-    300, 600, 1200, 2400, 4800, 9600, 14400, 19200,
-    28800, 38400, 57600, 115200
-  ],
-
   // Default PWM output range for analogWrite().  AVR is 8-bit (0–255).
   "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
 
@@ -48,7 +38,26 @@
   // No boot-time pin restrictions on AVR boards.
   "pinNotes": {},
 
-  // No chip GPIO concept on AVR boards (pins are addressed by digital pin
-  // number, not GPIO number).
-  "chipGpios": {}
+  // D13 — onboard status LED, active-high (official Arduino documentation:
+  // "The built-in LED on pin 13 operates as active high"). Also this
+  // board's PIN_SPI_SCK — the classic Arduino pin-13 LED+SCK sharing
+  // convention, not a bug. A chipGpios capability override COMPLETELY
+  // REPLACES the auto-derived capability list for this pin (including
+  // the spi_sck tag it would otherwise get) — deliberately, to avoid the
+  // "confirmed identity tag contaminated with a spurious bus-role tag"
+  // bug class documented in the pin-audit playbook (section 12).
+  //
+  // This board.json is also reached via the ancestor-fallback mechanism
+  // by every sibling directory with no board.json of its own that
+  // #includes this file — atmegang, diecimila, unomini (boards.txt
+  // build.variant=standard) and, one level further via eightanaloginputs
+  // (nano/mini/bt/pro), all inherit this same D13 tag. Confirmed correct
+  // for all of them: every one is an ordinary 5V classic-Arduino-pinout
+  // board with the same well-documented D13 status LED convention (no
+  // vendor deviates from it). lilypad/lilypadusb/fio were split into
+  // their own directories specifically because their 3.3V operation
+  // needs a different adc.defaultRefVolts — see those board.json files.
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED, active-high. Also PIN_SPI_SCK (classic Arduino pin-13 LED+SCK sharing, not a conflict for typical use)." }
+  }
 }

@@ -1,0 +1,112 @@
+RP2040 family audit — board: pimoroni_pga2040
+Date: 2026-07-13
+Chip: rp2040 (variants/rp2040/rp2040/pimoroni_pga2040/)
+
+BOARD IDENTITY
+--------------
+boards.txt entry: `pimoroni_pga2040.name=Pimoroni PGA2040`
+(variants/rp2040/boards.txt lines ~25047-25332). USB VID 0x2e8a with 8
+PID pairs (various BOOTSEL/CDC/UF2 modes), build.board=PIMORONI_PGA2040,
+build.usb_manufacturer="Pimoroni", build.usb_product="PGA2040". No WiFi
+build flags anywhere in the entry — plain (non-radio) RP2040 board.
+Note: `pimoroni_pga2040.build.led=` is present but EMPTY in boards.txt —
+however this is true of essentially every board in this file (rpipico,
+pimoroni_tiny2040, pimoroni_pga2350 all also have an empty build.led),
+so it is not a meaningful per-board signal either way and was not relied
+upon.
+
+SOURCES CONSULTED
+-----------------
+1. shop.pimoroni.com/en-us/products/pga2040 (official Pimoroni product
+   page, fetched directly via WebFetch) — quotes the vendor verbatim:
+   "it has no fripperies like LEDs, buttons and USB connectors - you'll
+   need to attach your own USB connector to be able to program it."
+   Also documents: 48-pin Pin Grid Array (2.54mm pitch), 21mm square
+   footprint, 30 multi-function GPIO (4 more than a Raspberry Pi Pico),
+   4 of those ADC-capable, 8 GND pins, 3V-5.5V input on VB pin only.
+   Onboard components limited to crystal oscillator, 8MB QSPI flash,
+   3V3/300mA regulator, and "essential support circuits" only.
+2. WebSearch corroboration (electronics-lab.com "Pimoroni PGA2040: A
+   Compact RP2040-based Breakout Board", hackster.io coverage) — both
+   independently describe it as a minimal bare-chip RP2040 breakout with
+   no onboard LED/button/USB connector, consistent with source #1.
+3. This board's own pins_arduino.h
+   (variants/rp2040/rp2040/pimoroni_pga2040/pins_arduino.h):
+     #pragma once
+     // This is a bare board with no real predefined pins, so use generic
+     #include "../generic/pins_arduino.h"
+   i.e. it declares nothing itself and falls through entirely to the
+   shared generic fallback.
+4. variants/rp2040/rp2040/generic/pins_arduino.h (the shared fallback
+   this board includes) — declares `#define PIN_LED (25u)` plus standard
+   Serial1/Serial2, SPI0 (MISO16/MOSI19/SCK18/SS17), SPI1 (MISO12/MOSI15/
+   SCK14/SS13), Wire0 (SDA4/SCL5), Wire1 (SDA26/SCL27) aliases, sourced
+   from "https://datasheets.raspberrypi.org/pico/pico-datasheet.pdf" per
+   its own header comment — i.e. this is a verbatim copy of the reference
+   Pico's pinout, used as a generic template for boards that don't supply
+   their own pins_arduino.h. It is NOT board-specific to the PGA2040.
+5. variants/rp2040/rp2040/generic/common.h — confirms `#ifdef PIN_LED /
+   #define LED_BUILTIN PIN_LED`, so LED_BUILTIN resolves to GPIO25 on
+   this board purely via the generic template, plus D0-D22/A0-A2
+   (GPIO26-28) and SS/MOSI/MISO/SCK/SDA/SCL bus-alias declarations.
+6. variants/rp2040/rp2040/board.json (chip-level defaults) — confirms
+   `chipGpios: {}` at the chip level, meaning prior to this audit GPIO25
+   (and every other GPIO with any alias) received full digital_input/
+   digital_output/pwm_output capability by default with no LED/button
+   semantic tag, purely because it happens to have the LED_BUILTIN alias
+   inherited from the generic template.
+7. Precedent reviewed: rpipico/board.json (real Pico, GPIO25 genuinely
+   IS an onboard LED, confirmed via official Raspberry Pi Pico datasheet
+   -> tagged led_high) and DudesCab/board.json (custom third-party PCB,
+   GPIO25/PIN_LED left untagged because no vendor documentation could
+   confirm or deny an onboard LED on that specific PCB -> NO CHANGE).
+   The PGA2040 case is stronger than either: the vendor affirmatively
+   states there is NO onboard LED (or button) at all, so PIN_LED=25 here
+   is confirmed to be a template artifact rather than real hardware.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED / LED_BUILTIN, inherited from generic/pins_arduino.h):
+  Real PGA2040 hardware has no onboard LED of any kind (vendor-confirmed,
+  source #1: "no fripperies like LEDs, buttons and USB connectors").
+  GPIO25 on this specific board is just another general-purpose broken-
+  out GPIO pin, electrically identical to its neighbors, not connected to
+  any onboard LED. LED_BUILTIN=25 exists in software only because this
+  board's pins_arduino.h falls through to the shared generic Pico-derived
+  template, which was written for boards that don't supply real pin data
+  — it does not describe this board's actual PCB. No led_high/led_low/
+  led_neopixel tag applied. digital_input/digital_output/pwm_output
+  capabilities remain available on GPIO25 via the chip-level default (it
+  is still a perfectly usable GPIO), just with no LED semantic attached.
+
+GPIO0-22, 26-28 (A0-A2), SPI0/SPI1, Wire0/Wire1 bus pins (all inherited
+from generic/pins_arduino.h and generic/common.h):
+  No onboard peripherals of any kind on this board per vendor
+  documentation (crystal, flash, regulator, and "essential support
+  circuits" only) — no button, no NeoPixel, no dedicated-hardware pin to
+  tag. No override applied to any of these.
+
+BUS-COLLISION CHECK (SDA/SCL/SS/MOSI/MISO/SCK auto-append bug)
+----------------------------------------------------------------
+Not applicable — no pin is being tagged button/LED/NeoPixel on this
+board, so there is nothing for build_boards.js's unconditional bus-alias
+auto-append to collide with. Confirmed anyway for completeness: this
+board's inherited bus aliases (SPI0 SS=17/MOSI=19/MISO=16/SCK=18, Wire0
+SDA=4/SCL=5, Wire1 SDA=26/SCL=27) do not coincide with GPIO25.
+
+CONCLUSION
+----------
+NO CHANGE to capability tagging (chipGpios left empty — no button, LED,
+or NeoPixel exists on this board per direct vendor confirmation). Created
+variants/rp2040/rp2040/pimoroni_pga2040/board.json as a full per-board
+file (chip-level defaults copied verbatim) with an empty chipGpios object
+and an inline pfodWeb NOTE documenting this research trail, so the audit
+is recorded for this board even though no capability tag was warranted.
+This is a "confirmed absence" case (stronger than the more common
+"no documentation found" NO CHANGE precedent), since Pimoroni explicitly
+markets this board's minimalism as a feature (bare-chip breakout for
+embedded/PCB integration).
+
+JSON validity of board.json checked via manual `//`-comment stripping +
+JSON.parse (no build tooling invoked, per task instructions) — confirmed
+valid, chipGpios parses to {}.

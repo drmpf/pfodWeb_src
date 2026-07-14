@@ -38,9 +38,11 @@ static const uint8_t OUTPUT_IO11 = 11;
 static const uint8_t OUTPUT_IO12 = 12;
 static const uint8_t OUTPUT_IO13 = 13;
 
-// Def for I2C that shares the IMU I2C pins
-static const uint8_t SDA = -1;
-static const uint8_t SCL = -1;
+// pfodWeb NOTE: SDA/SCL deliberately NOT declared - upstream declares
+// them as -1 ("shares the IMU I2C pins", a template artifact from a
+// different Waveshare board with an onboard IMU; this bare dev board
+// has none). -1 wraps to 255 as a uint8_t, which would otherwise leak a
+// phantom "GPIO255" pin.
 
 // Mapping based on the ESP32S3 data sheet - alternate for SPI2
 static const uint8_t SS = 34;    // FSPICS0

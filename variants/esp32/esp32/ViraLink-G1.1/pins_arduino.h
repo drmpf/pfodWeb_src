@@ -5,46 +5,30 @@
 
 static const uint8_t RESET_KEY = 0;
 
-static const uint8_t RF433 = 5;
+// pfodWeb NOTE: RF433 deliberately NOT declared - dedicated onboard
+// 433MHz radio, not general-purpose.
 
-static const uint8_t RS485_TX = 32;
-static const uint8_t RS485_RX = 35;
-
-static const uint8_t GSM1_TX = 15;
-static const uint8_t GSM1_RX = 34;
-
-static const uint8_t GSM2_TX = 32;
-static const uint8_t GSM2_RX = 35;
-
-static const uint8_t GSM_PWR = 33;
+// pfodWeb NOTE: RS485_TX/RX, GSM1_TX/RX, GSM2_TX/RX, GSM_PWR
+// deliberately NOT declared - dedicated onboard RS485 transceiver and
+// GSM modem(s), not general-purpose.
 
 static const uint8_t SDA = 4;
 static const uint8_t SCL = 16;
 
 static const uint8_t EXT1 = 12;
 static const uint8_t EXT2 = 13;
-static const uint8_t PCF1_INT = 14;
+// pfodWeb NOTE: PCF1_INT deliberately NOT declared - dedicated
+// interrupt line for the onboard PCF8574-style I2C GPIO expander.
 
-static const uint8_t Wiegand1_D0 = 15;
-static const uint8_t Wiegand1_D1 = 34;
+// pfodWeb NOTE: Wiegand1_D0/D1 and Wiegand2_D0/D1 deliberately NOT
+// declared - dedicated onboard Wiegand card-reader interface.
 
-static const uint8_t Wiegand2_D0 = 39;
-static const uint8_t Wiegand2_D1 = 36;
+// pfodWeb NOTE: ETH_CLK_OUT and EMAC_MDIO/TXD0/TX_EN/TXD1/MDC/RXD0/
+// RXD1/RXD_DV deliberately NOT declared - dedicated onboard Ethernet
+// MAC (RMII) interface, not general-purpose (see board.json).
 
-static const uint8_t ETH_CLK_OUT = 17;
-
-static const uint8_t EMAC_MDIO = 18;
-static const uint8_t EMAC_TXD0 = 19;
-static const uint8_t EMAC_TX_EN = 21;
-static const uint8_t EMAC_TXD1 = 22;
-static const uint8_t EMAC_MDC = 23;
-static const uint8_t EMAC_RXD0 = 25;
-static const uint8_t EMAC_RXD1 = 26;
-static const uint8_t EMAC_RXD_DV = 27;
-
-static const uint8_t SS = -1;
-static const uint8_t MOSI = -1;
-static const uint8_t SCK = -1;
-static const uint8_t MISO = -1;
+// pfodWeb NOTE: SS/MOSI/SCK/MISO deliberately NOT declared - upstream
+// declares them as -1 (no SPI on this board), which wraps to 255 as a
+// uint8_t and would otherwise leak a phantom "GPIO255" pin.
 
 #endif /* Pins_Arduino_h */

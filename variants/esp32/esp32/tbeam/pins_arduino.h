@@ -26,15 +26,13 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 18;
-static const uint8_t MOSI = 27;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 5;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard LoRa radio SPI bus (no other SPI peripheral on this board).
 
+// pfodWeb NOTE: A4/A5 and T8/T9 deliberately NOT declared - dedicated
+// onboard LoRa radio IO1/IO2 pins (see LORA_IO1/IO2 above).
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
-static const uint8_t A4 = 32;
-static const uint8_t A5 = 33;
 static const uint8_t A6 = 34;
 static const uint8_t A7 = 35;
 
@@ -50,8 +48,6 @@ static const uint8_t T1 = 0;
 static const uint8_t T2 = 2;
 static const uint8_t T4 = 13;
 static const uint8_t T6 = 14;
-static const uint8_t T8 = 33;
-static const uint8_t T9 = 32;
 
 static const uint8_t DAC1 = 25;
 

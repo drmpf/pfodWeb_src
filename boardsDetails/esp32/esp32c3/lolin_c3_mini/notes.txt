@@ -1,0 +1,118 @@
+lolin_c3_mini - dedicated-hardware pin-exclusion audit + opportunistic button check
+Board: Wemos/LOLIN C3 Mini (ESP32-C3FH4, mini WiFi + BLE5 dev board)
+Variant path: variants/esp32/esp32c3/lolin_c3_mini
+
+Why flagged: discovery sweep found
+  #define PIN_RGB_LED 7
+  #define RGB_BRIGHTNESS 64
+in pins_arduino.h. Sibling board lolin_c3_pico (also this wave) has an
+identical `#define PIN_RGB_LED 7` line but ALSO declares a VBAT
+battery-sense pin (GPIO3) via `static const uint8_t VBAT = 3;` and
+`#define BAT_VOLT_PIN VBAT`. This board's own pins_arduino.h has no such
+VBAT/BAT_VOLT_PIN declaration anywhere, so the two boards were NOT
+assumed to be identical hardware - verified independently, and no
+battery pin was added here.
+
+Sources consulted:
+- https://www.wemos.cc/en/latest/c3/c3_mini.html
+  Official vendor documentation (WEMOS/LOLIN's own site - the same URL
+  already cited in this board's own pins_arduino.h header comment,
+  "based on https://www.wemos.cc/en/latest/c3/c3_mini.html"). Confirmed
+  via WebFetch: the board includes "1x WS2812B RGB LED". A pin-diagram
+  image and schematic PDF are referenced from this page but were not
+  directly readable as text by WebFetch.
+- https://mischianti.org/wemos-lolin-esp32-c3-mini-v2-1-high-resolution-pinout-and-specs/
+  Independent third-party pinout/datasheet reference. A WebSearch
+  summary of this page stated "GPIO7 is connected to the on-board
+  WS2812B RGB LED... controlled via GPIO7", matching the vendor page. A
+  follow-up direct WebFetch of the same page separately confirmed the
+  text "RGB_LED, driven by GPIO7", and also confirmed the board has BOOT
+  and RESET buttons (described as "Download button" and a restart
+  button) without stating a GPIO number for either in the fetched
+  excerpt, and confirmed no VBAT/battery pin is mentioned for this
+  board. Also listed UART0 as GPIO20 (RX) / GPIO21 (TX), matching this
+  board's own pins_arduino.h TX=21/RX=20.
+- https://github.com/arendst/Tasmota/discussions/15443
+  Community discussion specific to this exact board (Wemos C3 mini)
+  primarily about an unrelated RF antenna-matching hardware issue. In
+  passing, describing this board's own flashing procedure: "hold GPIO9
+  down (button) and press and release reset button, then release
+  GPIO9" to enter upload mode - confirms GPIO9 is the physical BOOT
+  button on this specific board, consistent with the standard ESP32-C3
+  strapping-pin convention already reflected in the chip-level
+  esp32c3/board.json pinNotes ("9": "Must be HIGH for normal boot").
+- https://www.espboards.dev/esp32/lolin-c3-mini/
+  Independent third-party board database. WebFetch returned low-signal,
+  garbled diagram text ("GPIO2 220Ω LED GND") suggesting an unrelated
+  simple/indicator LED reference (not a WS2812 RGB LED), and did not
+  confirm or contradict either the GPIO7 RGB LED or GPIO9 button
+  findings. Treated as an inconclusive outlier and not relied on for
+  either finding, consistent with how similar low-signal secondary
+  sources were treated for other boards audited this session (e.g.
+  espboards.dev's conflicting GPIO8 claim for waveshare_esp32_c3_zero
+  was likewise discounted there).
+- pins_arduino.h (local, already in repo) - `#define PIN_RGB_LED 7`
+  wires LED_BUILTIN/RGB_BUILTIN to GPIO7 via the SOC_GPIO_PIN_COUNT+N
+  virtual-pin convention. Used only as corroboration after the vendor
+  and mischianti sources had already independently confirmed GPIO7.
+
+GPIO7 (PIN_RGB_LED) - TAGGED:
+  Onboard WS2812B/NeoPixel-style addressable RGB LED, confirmed by the
+  primary vendor source (wemos.cc) and corroborated by mischianti.org
+  and this board's own firmware macro.
+  capabilities: ["digital_output", "led_neopixel", "pwm_output"]
+  (pwm_output retained since already present on this pin at the
+  chip-level default).
+  Checked against this board's own pins_arduino.h static-const aliases
+  (TX=21, RX=20, SDA=8, SCL=10, SS=5, MOSI=4, MISO=3, SCK=2, plus
+  A0-A5 = 0,1,2,3,4,5) - GPIO7 does not collide with any of them, so no
+  alias-conflict fix was needed for this pin.
+
+GPIO9 - TAGGED (opportunistic section 7a button check, per task
+instructions to check for a button worth flagging even though the
+sweep hit was about the LED):
+  Onboard physical BOOT button, confirmed by a community discussion
+  specific to this exact board (Tasmota discussion #15443) describing
+  the GPIO9 hold-to-flash procedure. Standard ESP32-C3 strapping pin;
+  chip-level pinNotes "Must be HIGH for normal boot" retained as-is
+  (expected/documented for this pin, matching the adafruit_qtpy_esp32c3
+  and waveshare_esp32_c3_zero precedents' treatment of their own GPIO9
+  BOOT buttons in the same chip family).
+  capabilities: ["digital_input", "button"] only.
+  Checked against the same alias list above - GPIO9 is not aliased as
+  SDA/SCL/SS/MOSI/MISO/SCK/TX/RX in this board's pins_arduino.h, so no
+  conflicting boilerplate alias existed to strip.
+
+No alias-conflict bug found on this board (unlike waveshare_esp32_c3_zero,
+which had GPIO9 also aliased as SCL) - this board's pins_arduino.h keeps
+PIN_RGB_LED cleanly separate from all I2C/SPI/UART/analog aliases, and
+never declares a BUTTON alias for GPIO9 at all, so no pins_arduino.h
+edit was needed or made.
+
+Pins considered and NOT changed:
+- GPIO3: this is the pin lolin_c3_pico uses for VBAT/BAT_VOLT_PIN, but
+  this board's own pins_arduino.h does not declare any such alias on
+  GPIO3 (or anywhere else) and no vendor source consulted mentions a
+  battery-sense pin for the C3 Mini. Left as chip-level default
+  capabilities (["analog_input","digital_input","digital_output",
+  "pwm_output"]) with its existing A3 alias untouched.
+- GPIO8 (SDA), GPIO10 (SCL): left as chip-level default plus the
+  parser's automatic i2c_sda/i2c_scl tags from the retained SDA=8/
+  SCL=10 aliases. No dedicated function confirmed on either pin for
+  this board beyond the standard chip-level strapping note on GPIO8
+  ("Must be HIGH or floating on reboot").
+- All other GPIOs (0,1,2,4,5,6,11,20,21): unchanged from the
+  chip-level esp32c3/board.json default. No dedicated-hardware
+  declarations found for any of them in this board's pins_arduino.h,
+  and no vendor documentation surfaced during research suggesting any
+  other dedicated onboard peripheral.
+
+Summary of what was changed:
+- Created new board.json for lolin_c3_mini (none existed before), as a
+  full copy of the esp32c3 chip-level default board.json.
+- GPIO7: capabilities changed to ["digital_output", "led_neopixel",
+  "pwm_output"] - confirmed onboard WS2812B RGB LED.
+- GPIO9: capabilities changed to ["digital_input", "button"] -
+  confirmed onboard BOOT button (opportunistic check).
+- pins_arduino.h: no changes made - no alias conflict was found on
+  either GPIO7 or GPIO9.

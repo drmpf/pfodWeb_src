@@ -1,0 +1,104 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board has no dedicated user/boot pushbutton wired to a normal
+  // GPIO. The only bootloader-entry mechanism is the PROG pin, which
+  // must be shorted to GND *before* power-up/USB-plug-in (a boot-strap
+  // pin sampled once at reset, like BOOTSEL on the official Pico) —
+  // confirmed via nullbitsco/docs bit-c-pro/user_guide_en.md ("There is
+  // no reset or bootloader button on the Bit-C PRO... short the PROG pin
+  // to GND before plugging in the USB cable"). Not a normal
+  // digitalRead()-able input, so no "button" tag applies. No onboard
+  // NeoPixel (WS2812) either — the onboard RGB indicator is 3 discrete
+  // PWM-driven LED channels, not an addressable NeoPixel.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: nullbits "Bit-C PRO" — an RP2040 Pro Micro form-factor board
+  // (drop-in replacement for ATmega32u4 Pro Micro / Elite-C / Bit-C)
+  // with an onboard 3-channel discrete RGB status LED (R=GPIO16,
+  // G=GPIO17, B=GPIO18) and no onboard user button or NeoPixel.
+  //
+  // This board's own pins_arduino.h declares only a single
+  // `#define PIN_LED (18u)` (comment: "Taken from pinout at
+  // https://nullbits.co/static/img/BIt-C_PRO_pinout.png") — i.e. only
+  // the Blue channel of the 3-channel RGB LED is exposed as
+  // PIN_LED/LED_BUILTIN. GPIO16 (Red) and GPIO17 (Green) are NOT
+  // declared as aliases in this board's pins_arduino.h, so per this
+  // audit's established practice (only tag GPIOs the board's own
+  // pins_arduino.h actually exposes) they receive NO chipGpios override
+  // and are out of scope here, even though they are physically part of
+  // the same onboard RGB LED package.
+  //
+  // Sources consulted:
+  // 1. variants/rp2040/rp2040/nullbits_bit_c_pro/pins_arduino.h (this
+  //    repo) — `#define PIN_LED (18u)`; SPI0 MISO/MOSI/SCK/SS = 20/23/22/21,
+  //    SPI1 MISO/MOSI/SCK/SS = 12/11/14/13, Wire0 SDA/SCL = 2/3, Wire1
+  //    SDA/SCL = 4/5, Serial1 TX/RX = 0/1, Serial2 TX/RX = 8/9 — GPIO18
+  //    does NOT collide with any of these declared bus aliases, so the
+  //    "confirmed LED pin also aliased as a bus pin" bug class flagged
+  //    for this board does NOT apply here (checked and ruled out).
+  // 2. official pinout diagram https://nullbits.co/static/img/BIt-C_PRO_pinout.png
+  //    (linked from nullbits.co/bit-c-pro/ and nullbits.co/start/) —
+  //    visually confirms GPIO16/17/18 labeled "RGB - R"/"RGB - G"/
+  //    "RGB - B" respectively (also PWM0A/PWM0B/PWM1A), and confirms
+  //    GPIO20/22/23/21 = MISO/SCK/MOSI/CSn0 (matching this board's SPI0
+  //    aliases) and no separate user-button pin is shown anywhere on the
+  //    diagram.
+  // 3. github.com/nullbitsco/docs blob/main/bit-c-pro/user_guide_en.md
+  //    (official nullbits docs) — quotes verbatim: "The built in RGB LED
+  //    shows power status by default, and can be dimmed to different
+  //    brightnesses using PWM control"; "There is no reset or bootloader
+  //    button on the Bit-C PRO" / bootloader entry is via shorting the
+  //    PROG pin to GND before power-up (boot-strap pin, not a normal
+  //    GPIO button).
+  // 4. raw.githubusercontent.com/raspberrypi/pico-sdk (official,
+  //    upstream) src/boards/include/boards/nullbits_bit_c_pro.h — the
+  //    authoritative vendor-contributed pico-sdk board header for this
+  //    exact board. Quotes verbatim:
+  //      #define BIT_C_PRO_LED_R_PIN 16
+  //      #define BIT_C_PRO_LED_G_PIN 17
+  //      #define BIT_C_PRO_LED_B_PIN 18
+  //      #define PICO_DEFAULT_LED_PIN BIT_C_PRO_LED_B_PIN
+  //      #define PICO_DEFAULT_LED_PIN_INVERTED 1
+  //    This independently CONFIRMS GPIO18 is the default/status LED pin
+  //    (matching this board's PIN_LED) and is wired ACTIVE-LOW
+  //    (PICO_DEFAULT_LED_PIN_INVERTED == 1), i.e. led_low, not led_high.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/nullbits_bit_c_pro/notes.txt
+  "chipGpios": {
+    "18": { "capabilities": ["digital_output", "pwm_output", "led_low"], "note": "PIN_LED / LED_BUILTIN — Blue channel (BIT_C_PRO_LED_B_PIN) of the onboard 3-channel discrete RGB status LED (Red=GPIO16, Green=GPIO17 — not declared in this board's pins_arduino.h, so untagged). Confirmed active-low via the official raspberrypi/pico-sdk board header nullbits_bit_c_pro.h (PICO_DEFAULT_LED_PIN BIT_C_PRO_LED_B_PIN; PICO_DEFAULT_LED_PIN_INVERTED 1). digital_input dropped to match this repo's established led_high/led_low precedent for dedicated onboard LED pins (rpipico GPIO25, adafruit_feather_scorpio GPIO13); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO and the vendor's own docs describe PWM brightness dimming of this LED. No bus-alias collision found on GPIO18 (checked against this board's declared SPI0/SPI1/Wire0/Wire1 aliases — none use GPIO18)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares no analog
+  // aliases of its own (falls through to ../generic_full/common.h),
+  // and this audit found no reason to override that.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

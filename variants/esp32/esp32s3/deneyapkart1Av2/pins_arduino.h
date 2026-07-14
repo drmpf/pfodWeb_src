@@ -29,40 +29,25 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 47;
 static const uint8_t SCL = 21;
 
-static const uint8_t SS = 42;
-static const uint8_t MOSI = 39;
-static const uint8_t MISO = 40;
-static const uint8_t SCK = 41;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK not declared — this whole bus is the
+// onboard camera's data lines (CAMD5/CAMPC/CAMD6/CAMD2 below), not
+// general-purpose (see board.json).
 
-static const uint8_t A0 = 4;
-static const uint8_t A1 = 5;
-static const uint8_t A2 = 6;
-static const uint8_t A3 = 7;
-static const uint8_t A4 = 15;
-static const uint8_t A5 = 16;
-static const uint8_t A6 = 17;
+// pfodWeb NOTE: A0-A6 deliberately NOT declared — dedicated onboard
+// camera pins (see CAMSD/CAMSC/CAMV/CAMH/CAMD9/CAMXC/CAMD8 below)
 static const uint8_t A7 = 18;
 static const uint8_t A8 = 9;
 
-static const uint8_t T0 = 4;
-static const uint8_t T1 = 5;
-static const uint8_t T2 = 6;
-static const uint8_t T3 = 7;
+// pfodWeb NOTE: T0-T3/T7/T8 deliberately NOT declared — same camera pins
 static const uint8_t T4 = 8;
 static const uint8_t T5 = 3;
 static const uint8_t T6 = 10;
-static const uint8_t T7 = 1;
-static const uint8_t T8 = 2;
 
-static const uint8_t D0 = 1;
-static const uint8_t D1 = 2;
+// pfodWeb NOTE: D0/D1/D4-D8 deliberately NOT declared — same camera
+// pins; D16-D19 deliberately NOT declared — dedicated onboard SD card
+// pins (see SDCK/SDMO/SDCS/SDMI below)
 static const uint8_t D2 = 43;
 static const uint8_t D3 = 44;
-static const uint8_t D4 = 42;
-static const uint8_t D5 = 41;
-static const uint8_t D6 = 40;
-static const uint8_t D7 = 39;
-static const uint8_t D8 = 38;
 static const uint8_t D9 = 48;
 static const uint8_t D10 = 47;
 static const uint8_t D11 = 21;
@@ -70,36 +55,16 @@ static const uint8_t D12 = 10;
 static const uint8_t D13 = 3;
 static const uint8_t D14 = 8;
 static const uint8_t D15 = 0;
-static const uint8_t D16 = 13;
-static const uint8_t D17 = 12;
-static const uint8_t D18 = 11;
-static const uint8_t D19 = 14;
 
-static const uint8_t PWM0 = 15;
-static const uint8_t PWM1 = 16;
-static const uint8_t PWM2 = 17;
+// pfodWeb NOTE: PWM0/1/2/4 deliberately NOT declared — same dedicated
+// camera pins (GPIO15/16/17/38); PWM3 (GPIO18) is genuinely free
 static const uint8_t PWM3 = 18;
-static const uint8_t PWM4 = 38;
 
-static const uint8_t CAMSD = 4;
-static const uint8_t CAMSC = 5;
-static const uint8_t CAMD2 = 41;
-static const uint8_t CAMD3 = 2;
-static const uint8_t CAMD4 = 1;
-static const uint8_t CAMD5 = 42;
-static const uint8_t CAMD6 = 40;
-static const uint8_t CAMD7 = 38;
-static const uint8_t CAMD8 = 17;
-static const uint8_t CAMD9 = 15;
-static const uint8_t CAMPC = 39;
-static const uint8_t CAMXC = 16;
-static const uint8_t CAMH = 7;
-static const uint8_t CAMV = 6;
+// pfodWeb NOTE: fixed onboard camera — every CAM* line is dedicated,
+// not general-purpose (see board.json chipGpios override)
 
-static const uint8_t SDMI = 14;
-static const uint8_t SDMO = 12;
-static const uint8_t SDCS = 11;
-static const uint8_t SDCK = 13;
+// pfodWeb NOTE: fixed onboard microSD card — every SD* line is
+// dedicated, not general-purpose (see board.json chipGpios override)
 
 static const uint8_t BAT = 9;
 #define BAT_VOLT_PIN BAT

@@ -1,0 +1,112 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: MakerGo ESP32-C3 SuperMini (small AliExpress-style dev board,
+  // one of many rebrand/clone variants of the common "ESP32-C3 SuperMini"
+  // reference design). Flagged by the discovery sweep for declaring
+  // `#define TX1 0` / `#define RX1 1` (raw-number #defines, not aliases
+  // of existing TX/RX names) and `static const uint8_t BOOT_BUILTIN = 9;
+  // // built-in boot button`, whose inline comment already strongly
+  // suggested a confirmed onboard BOOT button. No board.json override
+  // existed before this audit (used the chip-level esp32c3/board.json
+  // default).
+  //
+  // Sources consulted:
+  //  - https://www.espboards.dev/esp32/esp32-c3-super-mini/ (fetched via
+  //    WebFetch): confirms the "ESP32-C3 SuperMini" reference design has
+  //    an onboard blue user-controllable LED on GPIO8 and a bootloader
+  //    mode button, plus a separate red power-indicator LED (not
+  //    GPIO-controlled).
+  //  - WebSearch summary drawing on mozelectronics.com
+  //    ("ESP32-C3 Super Mini Pinout + Built-in LED Pin"), teachmemicro.com,
+  //    and lastminuteengineers.com: consistently states GPIO8 drives an
+  //    inverted/active-low blue status LED and GPIO9 is the BOOT button,
+  //    and both are strapping pins ("avoid pulling GPIO2, GPIO8, or GPIO9
+  //    low during boot").
+  //  - No MakerGo-branded page was found directly, but the "SuperMini"
+  //    form factor is a widely cloned/rebranded reference design sold
+  //    under many vendor names (MakerGo, generic AliExpress listings,
+  //    etc.) on the same PCB/silkscreen layout, and this board's own
+  //    pins_arduino.h already ships GPIO8=LED_BUILTIN and GPIO9=
+  //    BOOT_BUILTIN (with an explicit "built-in boot button" comment),
+  //    matching every independent source above pin-for-pin.
+  //  - pins_arduino.h (local, already in repo) - `static const uint8_t
+  //    SCL = 9;` duplicated the confirmed GPIO9 BOOT button pin as the
+  //    I2C clock alias; used as corroboration alongside the vendor-
+  //    confirmed GPIO9 BOOT button finding above.
+  //
+  // GPIO9 (BOOT_BUILTIN): CONFIRMED onboard physical BOOT button, per the
+  // sources above and the pre-existing inline comment in this board's own
+  // pins_arduino.h. Standard ESP32-C3 strapping pin (chip-level pinNotes
+  // "Must be HIGH for normal boot" retained as-is, not removed - expected/
+  // documented for this exact pin, matching the adafruit_qtpy_esp32c3,
+  // waveshare_esp32_c3_zero, and dfrobot_beetle_esp32c3 precedents).
+  // Tagged capabilities ["digital_input","button"] only.
+  //
+  // GPIO8 (LED_BUILTIN, opportunistic section 7a check): CONFIRMED
+  // onboard plain (non-addressable) blue LED, per espboards.dev and the
+  // mozelectronics/teachmemicro/lastminuteengineers summary (inverted/
+  // active-low, driven directly - not a WS2812/NeoPixel-style addressable
+  // LED; no PIN_RGB_LED/RGB_BUILTIN/RGB_BRIGHTNESS macros present in this
+  // board's pins_arduino.h). Left at the chip-level default capabilities
+  // (plain digital_output already covers a simple LED) - matching this
+  // repo's existing precedent of NOT adding a special capability tag for
+  // a plain, non-addressable onboard LED (e.g. dfrobot_beetle_esp32c3's
+  // GPIO10 treatment).
+  //
+  // TX1/RX1: `#define TX1 0` / `#define RX1 1` are raw-number #defines,
+  // not aliases of the existing TX/RX static consts (which are GPIO21/20,
+  // the USB-Serial/JTAG-adjacent UART0 pins used for the primary Serial
+  // console). TX1/RX1 point at GPIO0/GPIO1 instead, matching this SoC's
+  // documented secondary UART1 pin option (UART1 is fully remappable via
+  // the GPIO matrix on ESP32-C3, so TX1/RX1 here just document one
+  // commonly-used default routing, not a fixed/dedicated peripheral).
+  // GPIO0 and GPIO1 are already general-purpose ADC-capable pins at the
+  // chip-level default (A0/A1 also alias them) and are not connected to
+  // any onboard fixed hardware - left unchanged, no exclusion needed.
+  //
+  // Alias-conflict check (critical check found repeatedly this session):
+  // this board's own pins_arduino.h declares TX=21, RX=20, SDA=8, SCL=9,
+  // SS=7, MOSI=6, MISO=5, SCK=4. GPIO8 (the LED) does not collide with
+  // any alias other than its own SDA. GPIO9 (the BOOT button), however,
+  // DID collide - it was also declared as SCL, which would have let
+  // build_boards.js silently append an I2C-clock capability on top of
+  // the button-only capability list (that append is independent of
+  // anything set here in board.json). Since GPIO9 is a confirmed
+  // physical BOOT button pin and not a vendor-confirmed general-purpose
+  // I2C header pin, the SCL alias line was deleted outright from
+  // pins_arduino.h (not commented out - the parser is comment-blind).
+  // SDA (GPIO8) was left declared since its pin has no such conflict.
+  //
+  // See boardsDetails/esp32/esp32c3/makergo_c3_supermini/notes.txt for
+  // the full research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

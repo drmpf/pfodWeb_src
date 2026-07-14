@@ -1,0 +1,76 @@
+Board: heltec_wireless_stick (variants/esp32/esp32/heltec_wireless_stick)
+Research date: 2026-07-11
+
+Candidates identified from vendor pins_arduino.h:
+  - LED_BUILTIN / LED / DAC1 / A18 = GPIO25
+  - KEY_BUILTIN = GPIO0
+  - TX = GPIO1, RX = GPIO3 (neither candidate pin conflicts with TX/RX)
+
+Sources consulted:
+
+1. http://community.heltec.cn/t/wireless-stick-gpio25/4886.json
+   Heltec community forum thread "Wireless Stick GPIO25". A user (Xnet111)
+   asks about digitalWrite(LEDPin,HIGH) with LEDPin=25 not visibly lighting
+   an LED. Heltec staff/moderator "shaffer" replies: "Yes, the LED connected
+   to GPIO25 is in the upper right corner of the board." Confirms an onboard
+   LED physically exists at GPIO25, but does not by itself establish
+   polarity (the user's HIGH attempt reportedly wasn't visibly working,
+   possibly because the LED is very small, not because of polarity).
+
+2. https://raw.githubusercontent.com/HelTecAutomation/Heltec_ESP32/1.0.9/examples/Factory_Test/Wireless_Stick_FactoryTest/Wireless_Stick_FactoryTest.ino
+   Official Heltec factory-test firmware for this exact board (non-Lite,
+   non-V3 "Wireless_Stick"), from tag 1.0.9 of the official
+   HelTecAutomation/Heltec_ESP32 Arduino library repo. This is the strongest
+   evidence found:
+     - LED: on LoRa packet receive, code does `digitalWrite(25,HIGH);` to
+       turn the LED on (turns on to indicate an event) -> confirms GPIO25
+       LED is ACTIVE-HIGH.
+     - Button: `attachInterrupt(0,interrupt_GPIO0,FALLING);` attaches a
+       FALLING-edge interrupt directly to GPIO0, and the ISR calls
+       digitalRead(0)==0 to detect the press. This is standard behavior for
+       a physical pushbutton pulled to GND on press (the well-known
+       ESP32/Heltec "PRG" boot button) -> confirms GPIO0 is a real onboard
+       button, not just a boot-strap alias.
+   Note: the current (master branch) Heltec_ESP32 repo no longer ships a
+   non-V3 Wireless_Stick_FactoryTest example (only Wireless_Stick_V3 and
+   Wireless_Stick_Lite variants remain); the file was retrieved from the
+   older 1.0.9 git tag, which is the correct board generation matching this
+   pins_arduino.h (LED_BUILTIN=25, KEY_BUILTIN=0, no GPIO35 LED as used by
+   the V3 revision).
+
+3. https://resource.heltec.cn/download/Wireless_Stick/Wireless_Stick_sch_V2.1.PDF
+   Official Altium schematic PDF (HTIT-WS_V2.1.SchDoc) for this board,
+   fetched and read directly. Confirms GPIO0 is wired as "RX Pin = 0" boot
+   mode config net near U1 (CP2102 USB-serial) boot mode configuration
+   block, and shows an LED1/D2 designator near the ESP32/GPIO25 area,
+   consistent with the community-forum identification of an LED at GPIO25.
+   The raw text extraction from this schematic PDF was too fragmented
+   (component reference designators and pin numbers interleaved without
+   clear net-line-to-designator mapping) to independently derive LED
+   polarity from the schematic alone - the factory-test firmware (source 2)
+   was used as the authoritative polarity confirmation instead.
+
+4. https://resource.heltec.cn/download/Wireless_Stick/Wireless_Stick.pdf
+   Official Heltec pinout diagram PDF - attempted fetch, but content is
+   embedded/rasterized inside the PDF stream and could not be extracted as
+   readable text/diagram by the fetch tool. Not used as direct evidence
+   beyond confirming the resource exists and is the correct official
+   document for this board.
+
+5. https://docs.heltec.org/en/node/esp32/wireless_stick/index.html
+   Official Heltec docs index page for Wireless Stick - page only links out
+   to datasheet/schematic/pinmap downloads (covered by sources above), no
+   inline LED/button GPIO text content itself.
+
+Pins considered and NOT tagged:
+  - None. Both GPIO0 (button) and GPIO25 (LED) had solid, consistent
+    evidence across an independent community-forum confirmation AND the
+    vendor's own official factory-test firmware source code, with no
+    conflicting sources found. No TX/RX conflict (TX=1, RX=3). No
+    best-guess/judgment call was needed - both tags are firmware-confirmed.
+
+Summary of tags applied:
+  - GPIO0 -> ["digital_input","button"] (confirmed onboard PRG button)
+  - GPIO25 -> ["digital_output","led_high","pwm_output"] (confirmed onboard
+    single-color LED, active-high; pwm_output retained because it was
+    already present on this GPIO's capability set)

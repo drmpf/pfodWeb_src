@@ -1,0 +1,213 @@
+Board: sparkfun_thingplusrp2350 (chip bucket: rp2040w)
+Audit date: 2026-07-12
+Part of the brand-new RP2040/RP2350-family dedicated-hardware pin-exclusion +
+button/LED/NeoPixel capability-tagging audit (ESP32/ESP8266 already fully
+audited; RP2040/RP2350 had never had this mechanism applied before).
+
+Starting state: no per-board board.json override existed at
+variants/rp2040/rp2040w/sparkfun_thingplusrp2350/ - the chip-level
+variants/rp2040/rp2040w/board.json's chipGpios is deliberately {} for this
+whole bucket, so every GPIO with an alias in this board's pins_arduino.h (via
+its `#include "../generic/common.h"`) defaulted to full digital_input/
+digital_output/pwm_output through build_boards.js's buildEsp32Board(),
+including the onboard PSRAM chip-select and microSD chip-select pins.
+
+Files read locally first:
+- variants/rp2040/rp2040w/board.json (chip-level defaults; confirms this
+  bucket's connections = ["serial","tcp","http","ble"] and that
+  sparkfun_thingplusrp2350 is documented there as one of three boards
+  [with sparkfun_xrp_controller/_beta] sharing generic/common.h).
+- variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json (schema/comment
+  style precedent - single-purpose output pin left with capabilities
+  ["digital_output","pwm_output"], no legitimate-alias-left-empty example).
+- variants/rp2040/rp2040w/sparkfun_thingplusrp2350/pins_arduino.h (full file,
+  55 lines) - declares:
+    PIN_LED=64u (CYW43-intercepted sentinel, not a real GPIO)
+    PIN_NEOPIXEL=14, NUM_NEOPIXEL=1
+    PIN_SERIAL1_TX=0 / RX=1 (Serial1); PIN_SERIAL2_TX/RX=31 (unused/tied off)
+    PIN_SPI0_MISO=4 / MOSI=3 / SCK=2 / SS=9 ("// CS pin for SD card")
+    PIN_SPI1_* all =31 (SPI1 not present on this board)
+    PIN_WIRE0_SDA=6 / SCL=7 (Qwiic default, per the __WIRE0_DEVICE remap)
+    RP2350_PSRAM_CS=8, RP2350_PSRAM_MAX_SCK_HZ
+    #include "../generic/common.h"
+- variants/rp2040/rp2040w/generic/common.h - declares D0-D22, A0-A2 (26-28),
+  SS/MOSI/MISO/SCK (aliased to the PIN_SPI0_* defines above), SDA/SCL. Its own
+  comment block explains GPIO23/24/25/29 are deliberately NOT declared,
+  assumed CYW43-radio-reserved on Pico-derived boards using this fallback.
+- variants/rp2040/rp2040w/rpipico2w/pins_arduino.h and
+  variants/rp2040/rp2040w/pimoroni_pico_plus_2w/pins_arduino.h - cross-checked
+  as other CYW43-equipped boards in the same bucket for comparison; both are
+  self-contained (don't use common.h) and both omit GPIO23/24/25/29-style
+  WiFi-reserved pins from their own D<n> declarations, consistent with the
+  common.h assumption.
+- variants/esp32/esp32c6/sparkfun_esp32c6_thing_plus/board.json + its
+  boardsDetails/.../notes.txt - same-vendor "Thing Plus" precedent (different
+  chip family). Its microSD SPI pins (IO18 CS/IO19 SCK/IO20 MOSI/IO21 MISO)
+  were left at chip-level general-purpose defaults (not restricted) because
+  they are also broken out to the header for general SPI use - used as the
+  policy precedent for this board's own SPI0 SCK/MOSI/MISO decision below.
+- variants/rp2040/rp2040/wiznet_6300_evb_pico/board.json - precedent for the
+  "capabilities": [] + note-only pattern for genuinely dedicated pins with no
+  legitimate general-capability vocabulary to surface.
+
+Web/primary sources consulted:
+1. https://docs.sparkfun.com/SparkFun_Thing_Plus_RP2350/hardware_overview/
+   Official SparkFun hookup guide hardware-overview page. Confirms:
+   - "The WS2812 Data In pin connects to I/O 14 but we've defined this pin
+     as NEOPIXEL"
+   - "The Qwiic connector is tied to GPIO6 (SDA) and GPIO7 (SCL)"
+   - "The RT9080's EN (Enable) pin is tied to GPIO13" (peripheral 3.3V_SW
+     rail switch - a board-specific-use pin, not silicon-dedicated hardware,
+     so left general purpose / no chipGpios override)
+   - microSD "connects to the RP2350's SPI bus" (singular - the board's only
+     SPI peripheral, SPI_HOWMANY=1)
+   - "The board also includes an 8MB PSRAM IC ... connects to the RP2350
+     over QSPI"
+   - Pinout summary: "The Thing Plus's pair of PTH headers break out a
+     selection of 21 GPIO pins from the RP2350 along with PTH connections to
+     USB voltage (5V), regulated 3.3V, battery voltage, RP2350 reset signal,
+     and the voltage regulator Enable pin" and "...connections to UART, I2C,
+     SPI, 13 GPIO (3 of analog-capable pins) and the WS2812's DATA OUT pin."
+     SPI is explicitly named as its own header-exposed function group,
+     distinct from the plain-GPIO count - this is the basis for treating
+     SPI0 (GPIO2/3/4 = SCK/MOSI/MISO) as genuinely dual-purpose
+     (header-exposed AND shared internally with the microSD socket) rather
+     than SD-card-exclusive.
+2. https://docs.sparkfun.com/SparkFun_Thing_Plus_RP2350/resources/
+   Links to the official schematic PDF and Eagle files; no additional GPIO
+   assignments found on the page text itself.
+3. https://docs.sparkfun.com/SparkFun_Thing_Plus_RP2350/assets/board_files/SparkFun_Thing_Plus_RP2350.pdf
+   (rev v1.0, "Design by: Dryw Wade, Based on design by: Nathan Seidle",
+   dated 6/24/2024). Official schematic, read directly (multimodal PDF read,
+   not the WebFetch text-summarizer which could not parse the binary).
+   Confirmed blocks/findings:
+   - "8MB PSRAM" block: APS6404L-3SQR-ZR QSPI PSRAM IC, CE (chip-select) pin
+     - matches RP2350_PSRAM_CS=8 in pins_arduino.h. Its SCLK/SIO0-3 data
+     lines run on the RP2350's own dedicated silicon QSPI pads (package
+     pins 54-60, shared with the onboard 16MB W25Q128 boot flash) - these
+     are NOT part of the regular GPIO0-29 address space at all, so they
+     never appear as pins_arduino.h aliases and need no chipGpios entry.
+   - "uSD Card Socket" block: MICRO-SD-ATOM connector with an explicit
+     silkscreen/schematic warning: "**WARNING** Do not set SPI pins high
+     while the uSD card is unpowered, Doing so could damage the GPIO pins!"
+     - corroborates that GPIO2/3/4/9 (the whole SPI0 bus) are electrically
+     wired to the SD socket, consistent with pins_arduino.h.
+   - "Raspberry Pi RM2 Radio Module" block: confirms the WiFi/BLE radio is
+     the official packaged "Raspberry Pi RM2 Radio Module" (a CYW43439-based
+     SiP with local pins VDDBAT/VDDIO/SCLK/PICO/POCI/WLON/BTON/IRQ/GPIO0-2),
+     NOT a raw discrete CYW43439-on-board design. This is Raspberry Pi's own
+     drop-in module built specifically to replicate the validated Pico 2 W
+     reference wiring, which is why the chip-bucket board.json
+     (variants/rp2040/rp2040w/board.json) already documents
+     sparkfun_thingplusrp2350 as relying on common.h's existing GPIO23/24/
+     25/29 omission as "the same fix" used for Pico-2W-style boards. The
+     PDF's text layer did not yield legible net-label text for the exact
+     RP2350<->RM2 control-line GPIO numbers (only the RM2 module's own local
+     pin names extracted cleanly, e.g. "WL_ON"/"WL_GPIO0" net labels were
+     found but SCLK/PICO/POCI/CS/BTON/IRQ net labels were not), so this
+     audit relies on the existing common.h precedent + the RM2-replicates-
+     Pico-2W-wiring reasoning rather than an independently re-derived
+     net-to-GPIO table. No GPIO23/24/25/29 chipGpios override was added -
+     they remain absent from the alias set (common.h already omits them),
+     which is the correct end state either way.
+   - "Buttons" block: exactly two buttons, BOOT and RESET (pull-up R12 10k
+     on RESET). RESET ties to the RP2350's RUN pin (hardware reset, not a
+     GPIO). BOOT is the standard RP2040/RP2350-family BOOTSEL-style button,
+     read via the boot ROM rather than a normal digitalRead()-capable GPIO -
+     no "button" capability tag applies (consistent with every other
+     Pico-family board in this repo never tagging BOOTSEL as "button").
+   - "LEDs" block: three fixed indicator LEDs (PWR, CHG, STAT) hardwired to
+     power/battery-charge status circuitry - not user/sketch-controllable
+     GPIOs, no additional led_high/led_low tag applies.
+   - "Thing Plus Pinout" block: confirms a header pin literally labelled
+     "LED_OUT" (the NeoPixel GPIO14's data-out, broken out for chaining
+     additional WS2812 LEDs), and header pin labels including SCK/PICO/POCI/
+     TX/RX/SDA/SCL/GPIO0-5/GPIO16-22/A0-A2/RESET/EN, corroborating the SPI0
+     bus's header exposure claim from the hookup guide text.
+
+Per-pin reasoning / decisions applied to
+variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json:
+
+- GPIO8 (RP2350_PSRAM_CS): EXCLUDED. capabilities set to [] with an
+  explanatory note. Confirmed via pins_arduino.h define + schematic "8MB
+  PSRAM" block (APS6404L). No general-purpose or bus-role capability
+  applies - PSRAM CS is never meant to be user-toggled, and it carries no
+  SS/MOSI/MISO/SCK/SDA/SCL alias in pins_arduino.h so no bus tag would be
+  auto-appended anyway. High confidence.
+
+- GPIO9 (PIN_SPI0_SS): EXCLUDED from general I/O. capabilities set to []
+  with an explanatory note; build_boards.js's unconditional SS-alias match
+  still attaches "spi_ss" on top (this is correct - it IS the SPI chip-
+  select, just not for user-facing digital I/O). Confirmed via
+  pins_arduino.h's own "// CS pin for SD card" comment + schematic uSD
+  Card Socket block + hookup guide's header-pinout list not including this
+  pin. High confidence.
+
+- GPIO14 (PIN_NEOPIXEL): TAGGED. capabilities set to
+  ["digital_output","led_neopixel","pwm_output"] (digital_input dropped).
+  Confirmed via official hookup guide text ("WS2812 Data In pin connects to
+  I/O 14... defined this pin as NEOPIXEL") and pins_arduino.h
+  (NUM_NEOPIXEL=1), matching this repo's existing led_neopixel precedent
+  (e.g. esp32/esp32c61 GPIO8, esp32/esp32c6/sparkfun_esp32c6_thing_plus
+  GPIO23). High confidence.
+
+- GPIO2/3/4 (PIN_SPI0_SCK/MOSI/MISO): NO CHANGE - left at chip-derived
+  general-purpose defaults. Reasoning: the hookup guide explicitly lists
+  "SPI" as its own header-exposed function group alongside UART/I2C/GPIO,
+  separate from the plain-GPIO count, and the schematic's Thing Plus
+  Pinout block shows SCK/PICO/POCI as header pin labels - meaning this
+  single SPI0 bus is genuinely dual-purpose (external device use via the
+  header, shared internally with the microSD socket via its own dedicated
+  CS on GPIO9). This matches the policy already applied to the sibling
+  vendor board sparkfun_esp32c6_thing_plus, whose microSD SPI pins were
+  likewise left general-purpose rather than excluded. build_boards.js's
+  unconditional SCK/MOSI/MISO-alias match still attaches the correct
+  spi_sck/spi_mosi/spi_miso tags regardless. Medium-high confidence (based
+  on hookup-guide wording + schematic header block; the exact physical
+  header pin count/labels could not be independently re-verified pin-by-
+  pin from the PDF's linearized text layer beyond what's summarized here).
+
+- GPIO6/7 (Wire0 SDA/SCL / Qwiic): NO CHANGE NEEDED - already correctly
+  tagged via automatic SDA/SCL alias matching (consts.SDA=6/consts.SCL=7).
+  Confirmed as the Qwiic connector by the hookup guide.
+
+- GPIO13 (RT9080 peripheral-power EN): NO CHANGE. Confirmed via hookup
+  guide as the peripheral 3.3V_SW rail's enable line, but this is a
+  board-specific-use pin (not silicon-dedicated hardware a sketch could
+  damage), consistent with this repo's existing policy of leaving similar
+  peripheral-power-enable pins general-purpose elsewhere (e.g.
+  sparkfun_iotredboard_rp2350's PERIPHERAL_POWER_ENABLE alias). No
+  chipGpios override added.
+
+- GPIO23/24/25/29 (RM2 WiFi/BLE radio control lines): NO CHANGE beyond
+  what already exists - these carry no alias in common.h (deliberately
+  omitted there already), so they are already excluded from the general
+  GPIO pool by the existing shared-fallback mechanism; no board.json entry
+  needed or added. See "sources consulted" item 3 above for the reasoning
+  (RM2 replicates the Pico 2 W reference wiring) and its confidence caveat.
+
+- BOOT/RESET buttons, PWR/CHG/STAT LEDs: NO CHANGE (no "button" or extra
+  "led_*" tag applied) - none of these are general-purpose sketch-readable/
+  writable GPIOs. See schematic findings above.
+
+Discovered but explicitly OUT OF SCOPE for this per-board audit (documented
+in a comment in board.json for visibility, not fixed here): the shared
+variants/rp2040/rp2040w/generic/common.h this board (and sparkfun_
+xrp_controller / sparkfun_xrp_controller_beta) relies on declares D<n>/A<n>/
+SS/MOSI/MISO/SCK/SDA/SCL aliases but no TX/RX aliases, so build_boards.js's
+serial_tx/serial_rx auto-detection (which keys off consts.TX/consts.RX)
+never fires for GPIO0/GPIO1 on this board despite pins_arduino.h defining
+PIN_SERIAL1_TX=0/PIN_SERIAL1_RX=1 - they surface as plain general-purpose
+D0/D1 pins instead. This is a common.h-level gap affecting all three boards
+that share it, not something a single board.json override can or should
+fix in isolation; flagging for a future dedicated pass.
+
+Summary: created variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json
+as a full copy of the rp2040w chip-level default with three chipGpios
+overrides - GPIO8 (PSRAM CS) and GPIO9 (microSD CS) excluded from general
+I/O (capabilities: [], note-only), GPIO14 tagged led_neopixel (onboard
+WS2812). SPI0's SCK/MOSI/MISO (GPIO2/3/4) verified and deliberately left
+general-purpose (genuinely header-exposed, not SD-card-exclusive). No
+button tag applies (BOOTSEL is not a normal GPIO on this family). WiFi-
+radio-reserved GPIOs were already correctly excluded by the pre-existing
+shared common.h mechanism; no new action needed for them here.

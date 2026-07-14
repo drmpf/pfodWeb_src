@@ -27,15 +27,11 @@ static const uint8_t A3 = 8;
 static const uint8_t A4 = 10;
 static const uint8_t A5 = 11;
 
-static const uint8_t D2 = 3;
-static const uint8_t D3 = 38;
-static const uint8_t D5 = 7;
-static const uint8_t D6 = 18;
-static const uint8_t D7 = 9;
+// pfodWeb NOTE: D2/D3/D5/D6/D7/D10-D12 deliberately NOT declared -
+// dedicated GDI display-connector-only signals with no general-purpose
+// alias (GDI_DC/RES/FCS/CS/SDCS/BUSY_TE/INT below). D13 (GPIO21, also
+// GDI_BLK) stays declared since LED_BUILTIN resolves through it below.
 static const uint8_t D9 = 0;
-static const uint8_t D10 = 14;
-static const uint8_t D11 = 13;
-static const uint8_t D12 = 12;
 static const uint8_t D13 = 21;
 static const uint8_t D14 = 47;
 
@@ -43,21 +39,21 @@ static const uint8_t LED_BUILTIN = D13;
 #define BUILTIN_LED LED_BUILTIN  // backward compatibility
 #define LED_BUILTIN LED_BUILTIN  // allow testing #ifdef LED_BUILTIN
 
+// pfodWeb NOTE: T3/T7/T9/T12-T14 deliberately NOT declared - same
+// GDI-connector-only pins as above.
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
-static const uint8_t T3 = 3;
 static const uint8_t T4 = 4;
 static const uint8_t T5 = 5;
 static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
 static const uint8_t T8 = 8;
-static const uint8_t T9 = 9;
 static const uint8_t T10 = 10;
 static const uint8_t T11 = 11;
-static const uint8_t T12 = 12;
-static const uint8_t T13 = 13;
-static const uint8_t T14 = 14;
 
+// pfodWeb NOTE: GDI_SPI_SCLK/MOSI/MISO and GDI_SCL/SDA alias the general
+// SCK/MOSI/MISO/SCL/SDA bus above (kept, multi-drop) - only the
+// display-exclusive signals below (BLK/DC/RES/CS/SDCS/FCS/TCS/INT/
+// BUSY_TE) are excluded (see board.json chipGpios override).
 #define GDI_DISPLAY_FPC_INTERFACE
 #ifdef GDI_DISPLAY_FPC_INTERFACE
 

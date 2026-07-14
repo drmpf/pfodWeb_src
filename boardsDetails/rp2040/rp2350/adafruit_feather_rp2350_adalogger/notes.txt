@@ -1,0 +1,231 @@
+Board: Adafruit Feather RP2350 Adalogger
+Directory: variants/rp2040/rp2350/adafruit_feather_rp2350_adalogger/
+Chip bucket: rp2350 (variants/rp2040/rp2350/board.json chip-level defaults, chipGpios: {})
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel + dedicated-hardware pin-exclusion audit)
+
+SUMMARY
+-------
+Adafruit Feather RP2350 Adalogger: the RP2350-based successor to the
+already-audited Feather RP2040 Adalogger. Onboard microSD card slot for
+data logging (SPI1 bus, GPIO13-19), a plain red status LED (PIN_LED,
+GPIO7), and a single onboard status NeoPixel (GPIO21). Unlike the RP2040
+sibling, this board has NO separate GPIO-readable BOOT/user button —
+GPIO7 here is the LED, not a button (the RP2040 sibling had LED on
+GPIO13 and button on GPIO7; this RP2350 board reassigned GPIO7 to LED
+and defines no button alias anywhere). Created a new board.json with
+chipGpios entries for all 9 confirmed dedicated/special-purpose GPIOs.
+Also fixed one bus-alias-contamination bug in pins_arduino.h identical
+in class to the RP2040 sibling's fix: removed the vendor-default
+`PIN_SPI0_SS (13u)` alias (and its dependent `static const uint8_t SS =
+PIN_SPI0_SS;` line), which on THIS board collides with PIN_CARD_DETECT
+(GPIO13) rather than the LED (the RP2040 sibling's collision was with
+its LED, also GPIO13 there - same arbitrary vendor default number,
+different actual pin role on this newer board).
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h (local file) - authoritative pin
+   definitions: PIN_LED=7, PIN_NEOPIXEL=21 (NUM_NEOPIXEL=1),
+   PIN_CARD_DETECT=13, PIN_SD_CLK=14, PIN_SD_CMD_MOSI=15,
+   PIN_SD_DAT0_MISO=16, PIN_SD_DAT1=17, PIN_SD_DAT2=18,
+   PIN_SD_DAT3_CS=19, PIN_SPI0_MISO=20/MOSI=23/SCK=22 (general header
+   SPI0), PIN_SPI1_*=SD card aliases (SPI1 hardware bus), PIN_WIRE0_SDA=2/
+   SCL=3 (I2C0). No PIN_BUTTON alias defined anywhere in the file.
+
+2. variants/rp2040/rp2350/board.json - chip-level defaults (chipGpios
+   deliberately empty; every aliased GPIO otherwise gets full
+   digital_input/digital_output/pwm_output by default).
+
+3. variants/rp2040/boards.txt - confirmed this variant maps to the real
+   "Adafruit Feather RP2350 Adalogger" product (name=, build.usb_product=
+   "Feather RP2350 Adalogger", build.board=ADAFRUIT_FEATHER_RP2350_ADALOGGER,
+   build.variant=adafruit_feather_rp2350_adalogger, build.chip=rp2350,
+   build.led= (empty, i.e. no LED_BUILTIN macro override via boards.txt -
+   consistent with pins_arduino.h-only PIN_LED usage)).
+
+4. raw.githubusercontent.com/adafruit/circuitpython (main) ports/
+   raspberrypi/boards/adafruit_feather_rp2350_adalogger/mpconfigboard.h
+   and pins.c (official Adafruit CircuitPython board port, fetched via
+   WebFetch). Confirms:
+     - NeoPixel: GPIO21 (single pixel).
+     - SD card interface: SCK=GPIO14, MOSI=GPIO15, MISO=GPIO16, Chip
+       Select=GPIO19, Card Detect=GPIO13, default insertion state=false.
+     - LED exposed as board.LED/D13/IO7 -> GPIO7 (matches this board's
+       pins_arduino.h PIN_LED=7 exactly).
+     - I2C: SDA=GPIO2, SCL=GPIO3. SPI (general header): SCK=GPIO22,
+       MOSI=GPIO23, MISO=GPIO20 - matches this board's own
+       pins_arduino.h aliases exactly.
+   This is the closest available equivalent to an official
+   learn.adafruit.com pinouts guide for this specific product, since no
+   such guide exists yet (see note below) - CircuitPython board ports are
+   authored and maintained directly by Adafruit engineering, making this
+   source directly authoritative.
+
+5. raw.githubusercontent.com/earlephilhower/arduino-pico (master)
+   variants/adafruit_feather_rp2350_adalogger/pins_arduino.h - the
+   upstream arduino-pico core source this repo's local copy of the file
+   was taken from (fetched via WebFetch, diffed against the local file
+   pre-edit: byte-for-byte identical, including the PIN_SPI0_SS=13u
+   collision). Confirms no local drift/corruption before editing.
+
+6. WebSearch across Adafruit's own blog/social-media product
+   announcements ("First of the Bones Rises - RP2350 Adalogger", 2026)
+   and the closely-related, ALREADY-PUBLISHED sibling "Feather RP2350
+   (with HSTX)" board's own official learn.adafruit.com guide
+   (https://learn.adafruit.com/adafruit-feather-rp2350/pinouts and
+   /overview, fetched via WebSearch/WebFetch). Findings:
+     - "GPIO7 is connected to the #7 LED... located above the USB C
+       connector" on the sibling Feather RP2350 (with HSTX) board -
+       same phrasing/role/position as this board's PIN_LED=7, cross-
+       confirming the family convention of GPIO7 = onboard status LED
+       on RP2350 Feathers (a reassignment from the RP2040 family's
+       convention, where GPIO7 was typically the BOOT/user button
+       instead).
+     - "RP2350 boards feature both a Reset button and Bootloader select
+       button" - described as distinct PHYSICAL hardware buttons for
+       entering the UF2 bootloader, separate from any general-purpose
+       GPIO. No source found describing a GPIO-readable "user button"
+       equivalent to the RP2040 Adalogger's PIN_BUTTON/GPIO7 on this
+       RP2350 board - consistent with this board's own pins_arduino.h
+       defining no such alias. Reported as a genuine architecture
+       difference from the RP2040 sibling, not a guess.
+
+7. NOTE ON MISSING OFFICIAL GUIDE: attempted fetches of
+   https://learn.adafruit.com/adafruit-feather-rp2350-adalogger/pinouts
+   and https://learn.adafruit.com/adafruit-feather-rp2350-adalogger both
+   returned HTTP 404 as of this audit (2026-07-13). circuitpython.org's
+   own board download page for this exact board
+   (circuitpython.org/board/adafruit_feather_rp2350_adalogger/) states
+   "The Feather RP2350 Adalogger is coming soon from Adafruit" pending a
+   full learn-guide writeup, and its GitHub-hosted markdown source
+   (github.com/adafruit/circuitpython-org/_board/
+   adafruit_feather_rp2350_adalogger.md) is a stub. This is a genuinely
+   very new (2026) product without a published pinouts guide yet - the
+   CircuitPython board-port source files (source #4 above) are the most
+   authoritative machine-readable substitute available, being authored
+   directly by Adafruit firmware engineering from the same schematic
+   data a learn-guide would eventually document.
+
+8. Sibling precedent already in this repo (read for method, independently
+   re-verified above, not copied): variants/rp2040/rp2040/
+   adafruit_feather_adalogger/board.json and boardsDetails/rp2040/rp2040/
+   adafruit_feather_adalogger/notes.txt. That board's notes.txt itself
+   pre-flagged (2026-07-13, written before this board was audited) that
+   this RP2350 sibling's pins_arduino.h has "PIN_SPI0_SS=13 colliding
+   with PIN_CARD_DETECT=13 there instead of the LED" - independently
+   confirmed true and fixed by this audit.
+
+PER-PIN REASONING
+------------------
+GPIO7 (PIN_LED): digital_output + pwm_output + led_high. Confirmed
+  onboard status LED via CircuitPython's pins.c (board.LED/D13/IO7 ->
+  GPIO7) and WebSearch confirmation of the "#7 LED" naming/role on the
+  closely related sibling Feather RP2350 (with HSTX) board. Assumed
+  active-high per this repo's uniform convention for every other audited
+  RP2040/RP2350 Adafruit Feather PIN_LED (no independent polarity source
+  found specific to this exact board, but every other board in this
+  family/vendor line uses active-high, and there is no signal suggesting
+  otherwise). digital_input dropped to match this repo's established
+  led_high precedent. pwm_output kept since arduino-pico's analogWrite()
+  works on any RP2350 GPIO. No "button" tag: unlike the RP2040 sibling
+  (LED=GPIO13, button=GPIO7, two separate pins), this board's
+  pins_arduino.h defines no PIN_BUTTON or any other button-role alias on
+  GPIO7 or elsewhere - GPIO7 here is LED-only. No GPIO-readable BOOT/user
+  button was found documented for this board at all (see sources #6/#7
+  above) - reported as NO BUTTON rather than guessed.
+
+GPIO13 (PIN_CARD_DETECT): digital_input only. Mechanical card-presence
+  switch on the microSD socket. digital_output/pwm_output dropped since
+  driving this pin as an output could conflict with the socket's own
+  switch state; digital_input retained since reading card presence is
+  safe and useful. Confirmed via CircuitPython's mpconfigboard.h (card
+  detect on GPIO13, default insertion state=false) and this board's own
+  pins_arduino.h, matching this repo's adafruit_feather_adalogger
+  (RP2040 sibling, its GPIO16) and solderparty_rp2350_stamp
+  PIN_CARD_DETECT precedent exactly (same capability set/reasoning).
+  BUG FIX: this GPIO was also the vendor's default (arbitrary, unused)
+  PIN_SPI0_SS alias in pins_arduino.h (`#define PIN_SPI0_SS (13u)` plus
+  `static const uint8_t SS = PIN_SPI0_SS;`), which would have
+  contaminated this confirmed card-detect tag with a spurious spi_ss
+  capability via build_boards.js's unconditional SS-alias auto-append.
+  Removed both lines (grepped the whole file afterward for PIN_SPI0_SS
+  and the SS symbol to confirm no other reference to either remains -
+  only the explanatory pfodWeb NOTE comment now mentions the removed
+  macro by name). This is the exact same bug class as the RP2040
+  sibling's PIN_SPI0_SS=13/PIN_LED=13 collision fix (Adafruit's own
+  Feather RP2040 Adalogger docs confirm this SPI0 header has no fixed
+  dedicated CS pin at all - any GPIO can be software-selected as CS by
+  application code), just landing on a different confirmed-dedicated
+  pin role here (card-detect instead of LED) because this newer board's
+  layout moved things around.
+
+GPIO14/15/16/19 (PIN_SD_CLK/CMD_MOSI/DAT0_MISO/DAT3_CS = PIN_SPI1_SCK/
+  MOSI/MISO/SS): capabilities suppressed to [] (empty). Dedicated
+  microSD card connector SPI1 bus lines, vendor-confirmed via
+  CircuitPython's mpconfigboard.h (SCK=14, MOSI=15, MISO=16, CS=19) and
+  this board's own pins_arduino.h, not general-purpose.
+  build_boards.js's unconditional SPI-role alias matching still attaches
+  the correct spi_sck/spi_mosi/spi_miso/spi_ss tags on top from the
+  PIN_SPI1_* aliases already present in pins_arduino.h - this is
+  intentional and correct (reflects the pins' real SPI role), matching
+  the RP2040-sibling/sparkfun_thingplusrp2040/solderparty_rp2350_stamp
+  precedents. GPIO19's spi_ss auto-tag here is the genuine, correct one
+  (unlike the false GPIO13 PIN_SPI0_SS alias removed above).
+
+GPIO17/18 (PIN_SD_DAT1/PIN_SD_DAT2): capabilities suppressed to [].
+  Dedicated microSD 4-bit-SDIO data lines (unused by this core's default
+  1-bit SPI-mode SD access, but still physically wired to/reserved by
+  the card socket - not safe or meaningful general-purpose I/O). No
+  SPI-role alias exists for these two GPIOs in pins_arduino.h, so no
+  bus-role tag applies either, matching this repo's RP2040-sibling
+  (GPIO21/22 there) and sparkfun_thingplusrp2040 DAT1/DAT2 precedent
+  exactly.
+
+GPIO21 (PIN_NEOPIXEL): digital_output + led_neopixel. Confirmed single
+  onboard WS2812 status NeoPixel (NUM_NEOPIXEL=1, not a chain),
+  output-only data line. Confirmed via this board's own pins_arduino.h
+  and CircuitPython's mpconfigboard.h/pins.c (NeoPixel on GPIO21).
+  digital_input not applicable (output-only data protocol pin), matching
+  this repo's led_neopixel precedent (RP2040 sibling's GPIO17,
+  adafruit_feather_scorpio GPIO4, adafruit_metro GPIO14).
+
+NOT CHANGED / OUT OF SCOPE
+---------------------------
+- GPIO20/22/23 (general-purpose header SPI0 MISO/SCK/MOSI): left at
+  chip-level default (full capability + auto-attached spi_miso/sck/mosi
+  tags). Confirmed genuine header-broken-out pins via CircuitPython's
+  mpconfigboard.h SPI block, matching this board's own pins_arduino.h
+  "SPI" (not "SPI1 for SD card") section labeling.
+- GPIO2/3 (Wire0 SDA/SCL): left at chip-level default. Confirmed
+  general-purpose I2C pins via CircuitPython's mpconfigboard.h and this
+  board's own pins_arduino.h, consistent with every other audited
+  Feather board's I2C treatment in this repo.
+- GPIO0/1 (Serial1 TX/RX): ordinary UART pins, no override needed.
+- GPIO26-29 (A0-A3): chip-level ADC default applies unchanged; no
+  LED/button/NeoPixel/dedicated-hardware alias on these pins.
+- No BOOT/user-button GPIO exists on this board per pins_arduino.h and
+  all sources consulted (see GPIO7 reasoning above) - inputOnlyGpios and
+  chipGpios both left with no button entry; this is a genuine hardware/
+  design difference from the RP2040 sibling, not an oversight.
+- RESET/Bootloader-select buttons: per source #6, these are separate
+  physical hardware buttons on RP2350 boards, not GPIO-readable - out of
+  scope for GPIO capability tagging, consistent with every other
+  RP2040/RP2350 board audited in this repo.
+
+FILES MODIFIED
+--------------
+- variants/rp2040/rp2350/adafruit_feather_rp2350_adalogger/pins_arduino.h:
+  removed `#define PIN_SPI0_SS (13u)` and the dependent
+  `static const uint8_t SS = PIN_SPI0_SS;` line (bus-alias-contamination
+  fix, see GPIO13 reasoning above); added an explanatory pfodWeb NOTE
+  comment in their place. Verified via grep that no other reference to
+  PIN_SPI0_SS or the SS symbol remains in the file.
+- variants/rp2040/rp2350/adafruit_feather_rp2350_adalogger/board.json:
+  created (new file) - full chip-level defaults plus chipGpios entries
+  for GPIO7/13/14/15/16/17/18/19/21.
+- boardsDetails/rp2040/rp2350/adafruit_feather_rp2350_adalogger/notes.txt:
+  this file (created).
+
+Verification: board.json's JSON validity confirmed via a plain
+JSON.parse() after manually stripping `//` comments line-by-line (no
+build_boards.js require() or build run performed, per task instructions).

@@ -1,0 +1,66 @@
+Board: adafruit_sparklemotion_esp32 (chip: esp32)
+Audit: dedicated-hardware pin-exclusion audit (Adafruit Sparkle Motion ESP32)
+
+Flagged declarations in pins_arduino.h:
+  static const uint8_t PIN_NEOPIXEL = 2;
+  #define RGB_BUILTIN    (PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT)
+  static const uint8_t BUTTON = 0;
+(TX1/RX1 alias existing TX/RX - ignored. RGB_BRIGHTNESS is not a pin - ignored.)
+
+Sources consulted:
+  - https://learn.adafruit.com/adafruit-sparkle-motion/pinouts
+  - https://learn.adafruit.com/adafruit-sparkle-motion/overview
+  - https://blog.adafruit.com/2025/01/31/new-guide-adafruit-sparkle-motion-adafruitlearningsystem-adafruit
+    (search-result summary corroborating the pinouts page)
+
+Findings:
+  - GPIO2 (PIN_NEOPIXEL): This is the board's small onboard STATUS NeoPixel,
+    labeled "Neo" on the silkscreen ("Small built-in NeoPixel on pin 2";
+    "acts as a status LED in CircuitPython and is connected to GPIO2").
+    It is NOT one of the pins that drive the external LED-strip outputs.
+    "Adafruit Sparkle Motion" is indeed a NeoPixel-strip CONTROLLER board -
+    it has three dedicated, independently level-shifted (5V) strip-driver
+    output terminal blocks: GPIO21 (SIG1), GPIO22 (SIG2), GPIO19 (SIG3),
+    plus a 4th level-shifted output (GPIO23) broken out on the GPIO pads.
+    Those four strip-driver pins were left untouched (still plain
+    digital_output/pwm_output at chip-default level in this override) since
+    they are ordinary GPIOs from the pfodWeb pin-capability point of view -
+    only PIN_NEOPIXEL (GPIO2), the pin with a *dedicated onboard NeoPixel
+    hard-wired to it*, gets the led_neopixel tag. Decision: KEEP GPIO2,
+    tag ["digital_output", "pwm_output", "led_neopixel"] (dropped
+    analog_input_serial/digital_input from the chip-level default, matching
+    convention used on other led_neopixel pins, e.g.
+    variants/esp32/esp32s3/adafruit_camera_esp32s3/board.json GPIO1 and
+    variants/esp32/esp32s2/um_tinys2/board.json GPIO1).
+
+  - GPIO0 (BUTTON): Confirmed onboard user button - "User button on GPIO 0"
+    (Overview page), "This button can be read as an input in code... It is
+    connected to pin GPIO0. It is available as board.BUTTON in
+    CircuitPython" (Pinouts page). Separate from the reset button used for
+    bootloader entry. Decision: KEEP GPIO0, tag ["digital_input", "button"]
+    (dropped analog_input_serial/digital_output/pwm_output from the
+    chip-level default, matching convention used on other button pins,
+    e.g. adafruit_camera_esp32s3 GPIO0, VALTRACK_V4_VTS_ESP32_C3 GPIO9,
+    Pcbcupid_GLYPH_H2/GLYPH_C6 GPIO9).
+
+Alias-collision check (build_boards.js appends SDA/SCL/SS/MOSI/MISO/SCK/
+TX/RX bus capabilities to any GPIO number matching those aliases,
+independent of chipGpios settings - a bug pattern found on sibling boards
+earlier this session):
+  This board's pins_arduino.h aliases: SDA=14, SCL=13, SS=23, MOSI=9,
+  MISO=10, SCK=18, TX=9, RX=10.
+  Neither GPIO2 nor GPIO0 matches any of these numbers -> no collision,
+  no alias line needed to be deleted for either flagged pin.
+
+Mechanism applied:
+  Created variants/esp32/esp32/adafruit_sparklemotion_esp32/board.json as
+  a full copy of the chip-level default
+  (variants/esp32/esp32/board.json), with only the "0" and "2" entries in
+  chipGpios edited as above. All other chip-level defaults (pwm, dac, adc,
+  inputOnlyGpios, connections, pinNotes, remaining chipGpios) left
+  unchanged. Added a "// pfodWeb NOTE:" header comment citing sources.
+
+Summary: GPIO2 = onboard status NeoPixel (tagged led_neopixel, external
+strip-driver pins GPIO19/21/22/23 are untouched plain GPIOs); GPIO0 =
+onboard user button (tagged button). No alias-bus contamination found for
+either pin.

@@ -1,0 +1,140 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Wemos/LOLIN C3 Pico (chip esp32c3). Flagged by the discovery
+  // sweep for declaring PIN_RGB_LED=7, RGB_BRIGHTNESS,
+  // RGB_BUILTIN_LED_COLOR_ORDER, plus a VBAT=3 / BAT_VOLT_PIN pair not
+  // present on the sibling lolin_c3_mini board. No board.json override
+  // existed before this audit (used the chip-level esp32c3/board.json
+  // default).
+  //
+  // Sources consulted:
+  //  - https://www.wemos.cc/en/latest/c3/c3_pico.html
+  //    Official WEMOS product page (also cited at the top of this board's
+  //    pins_arduino.h). Confirms "1x WS2812 RGB LED" and "1x Battery port
+  //    with 500mA charging", but the page text itself does not give GPIO
+  //    numbers or divider values - it links to the schematic PDF below.
+  //  - https://www.wemos.cc/en/latest/_static/files/sch_c3_pico_v1.0.0.pdf
+  //    Official WEMOS KiCad-exported schematic (single sheet, "File:
+  //    C3_pico.kicad_sch"), fetched and read directly as a PDF image -
+  //    this is the ground-truth schematic, not a marketing rendering or a
+  //    third-party guess. Findings:
+  //      * U3 "WS2812B-0807" (a 4-pin WS2812-style addressable RGB LED
+  //        package): pin DI (data-in) wired to net "IO7", pin VDD to
+  //        +3V3, pin GND to GND, pin DO unconnected. Confirms GPIO7 is a
+  //        genuinely populated onboard NeoPixel data pin, matching this
+  //        board's own pins_arduino.h PIN_RGB_LED=7 macro.
+  //      * U4 "TP4054" (LiPo linear charger IC): VCC from VBUS via R9
+  //        (5.1k), CHRG drives LED1 (red charge-status LED), BAT output
+  //        net labelled "VBAT" feeds P3 (PH2.0 battery connector). The
+  //        VBAT net also feeds a resistor divider: R7 (100k, in series
+  //        from VBAT) to node "AD_BAT", and R10 (100k, shunt from
+  //        AD_BAT to GND), with C9 (100nF) filtering AD_BAT. The AD_BAT
+  //        node is routed through JP1 ("BAT_AD" jumper) to net "IO3".
+  //        Confirms GPIO3 is a genuine battery-voltage-sense pin fed by a
+  //        100K/100K (1:1) resistive divider off the battery rail,
+  //        gated by a jumper (JP1) rather than a permanent hard-wire -
+  //        matching this board's own pins_arduino.h VBAT=3/BAT_VOLT_PIN
+  //        macro. Corrected ADC reference: 3.3V * (100000+100000)/100000
+  //        = 6.6V (only meaningful when JP1 is bridged and a battery is
+  //        connected).
+  //      * Two buttons: SW1 ("SW_3x4x2.5") wired to the EN (chip reset)
+  //        line via R3 (10k pull-up) and C14 (1uF) - a hardware reset
+  //        button, not a GPIO. SW2 ("SW_3x4x2.5") wired alongside R4
+  //        (10k pull-up to 3V3) on a GPIO net; R6 (10k pull-up to 3V3,
+  //        no switch) sits on a separate strapping-pin net. The PDF's
+  //        internal text extraction rendered the two adjacent net labels
+  //        ambiguously (ESP32-C3 strapping pins GPIO2/GPIO8/GPIO9 are all
+  //        visually similar in the extracted text) - resolved using the
+  //        independent source below rather than guessed.
+  //  - https://blog.corrlabs.com/2023/08/lolin-esp32-c3-pico-notes.html
+  //    Independent third-party write-up by an owner of this exact board,
+  //    describing the DFU/flash procedure in the vendor's own button
+  //    silkscreen terms: "Hold on Button 9, Press Button Reset, Release
+  //    Button 9...". This directly identifies the physical pushbutton
+  //    (SW2 in the schematic) as GPIO9, the standard ESP32-C3
+  //    BOOT/download strapping pin, resolving the schematic-text
+  //    ambiguity above. Consistent with the chip-level pinNotes entry
+  //    "9": "Must be HIGH for normal boot" already present below
+  //    (unchanged - expected for this pin).
+  //  - https://mischianti.org/wemos-lolin-esp32-c3-pico-high-resolution-pinout-and-specs/
+  //    Independent third-party pinout reference. Corroborates "RGB_LED,
+  //    driven by GPIO7" and the presence of separate Boot/Reset buttons
+  //    (does not itself give the Boot button's GPIO number - used only
+  //    as corroboration for the RGB LED pin, not as the deciding source
+  //    for the button).
+  //  - Sibling board precedent: variants/esp32/esp32c3/lolin_c3_mini has
+  //    the identical PIN_RGB_LED=7 declaration and no VBAT/battery-port
+  //    hardware (confirmed by its own pins_arduino.h having no VBAT/
+  //    BAT_VOLT_PIN lines) - used only to corroborate that GPIO7's LED
+  //    behaviour is shared across the C3 family, not as evidence for the
+  //    Pico-specific VBAT circuit (which was independently confirmed via
+  //    this board's own schematic above).
+  //
+  // GPIO7 (PIN_RGB_LED) - CONFIRMED onboard WS2812/NeoPixel-style RGB
+  // LED (schematic U3 WS2812B-0807, DI tied to net IO7). Tagged
+  // ["digital_output","led_neopixel","pwm_output"] (pwm_output retained
+  // since already present at the chip-level default for this pin),
+  // matching this repo's existing led_neopixel precedent (e.g.
+  // waveshare_esp32_c3_zero GPIO10, adafruit_qtpy_esp32c3 GPIO2).
+  //
+  // GPIO3 (VBAT / BAT_VOLT_PIN) - CONFIRMED onboard battery-voltage-sense
+  // pin via a 100K/100K (1:1) divider off the LiPo charger's BAT rail
+  // (schematic R7+R10, gated by jumper JP1). Left at chip-level default
+  // capabilities (still a normal, jumper-shared analog/GPIO pin per the
+  // header silkscreen "A3"), with an explanatory "note" documenting the
+  // divider and the corrected effective reference (6.6V), following this
+  // repo's precedent for non-exclusive/jumper-gated battery-sense pins
+  // (e.g. esp32/d32 GPIO35, ttgo-t-oi-plus GPIO2).
+  //
+  // GPIO9 (opportunistic section 7a button check) - CONFIRMED onboard
+  // physical BOOT/download pushbutton (schematic SW2+R4; independently
+  // named "Button 9" in the corrlabs.com owner write-up). Standard
+  // ESP32-C3 strapping pin; chip-level pinNotes "Must be HIGH for normal
+  // boot" retained as-is. Tagged ["digital_input","button"] only, per
+  // this repo's button-pin convention (no analog/output/pwm mixed in).
+  //
+  // Alias-conflict check (critical check per this session's playbook):
+  // this board's own pins_arduino.h declares TX=21, RX=20, SDA=8,
+  // SCL=10, SCK=1, MISO=0, MOSI=4, SS=5. None of these equal 7, 9, or 3 -
+  // no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias collides with the RGB LED
+  // (GPIO7), the button (GPIO9), or the battery-sense pin (GPIO3). No
+  // pins_arduino.h edit was needed for this audit - build_boards.js will
+  // not append any bus capability to these three GPIOs beyond what is
+  // set here.
+  //
+  // See boardsDetails/esp32/esp32c3/lolin_c3_pico/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"],
+            "note": "VBAT / BAT_VOLT_PIN - onboard battery-voltage sense via a 100K/100K (1:1) resistive divider (R7+R10) off the LiPo charger's BAT rail, routed through jumper JP1 (confirmed via official WEMOS C3 Pico schematic, sch_c3_pico_v1.0.0.pdf). Effective corrected reference: 3.3V * (100000+100000)/100000 = 6.6V. Only meaningful when JP1 is bridged and a LiPo battery is connected." },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"],
+            "note": "PIN_RGB_LED - onboard WS2812/NeoPixel-style RGB LED data pin (schematic U3 WS2812B-0807, DI tied to net IO7). See pfodWeb NOTE above." },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"],
+            "note": "Onboard BOOT/download pushbutton (schematic SW2+R4; independently confirmed as \"Button 9\" by a board-owner write-up). Standard ESP32-C3 strapping pin - see pfodWeb NOTE above." },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

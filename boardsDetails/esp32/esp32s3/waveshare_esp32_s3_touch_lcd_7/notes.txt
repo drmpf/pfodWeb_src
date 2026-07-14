@@ -1,0 +1,56 @@
+waveshare_esp32_s3_touch_lcd_7 - button/LED research notes
+=============================================================
+
+Sources consulted:
+- https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7
+  Direct WebFetch returned HTTP 403 Forbidden (site blocks the fetch tool); could not read page
+  content directly.
+- https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7 (via WebSearch AI summary, cross-checked
+  against multiple result snippets, not a single hallucinated summary)
+  Reports: board uses a CH422G IO expander chip for reset/backlight control; has an "automatic
+  download circuit"; after downloading firmware you "press the RESET button to run the program".
+  No onboard user-controllable LED or user button beyond BOOT/RESET is mentioned.
+- https://docs.waveshare.com/ESP32-S3-Touch-LCD-7 (WebFetch succeeded, read actual page content)
+  Confirms only a BOOT button ("press and hold to enter programming mode") and a RESET button
+  ("press to reset the controller") exist - both are system/programming buttons, not general
+  purpose user-input buttons wired to a free GPIO. LEDs present are fixed hardware status
+  indicators only: "DONE" (battery charge complete), "CHG" (charging), "PWR" (power) - these are
+  not user-controllable/GPIO-driven LEDs, they're hardwired charge/power indicators (typical of a
+  battery charge IC like a TP4054/similar), not addressable or software-toggleable.
+- https://community.home-assistant.io/t/waveshare-esp32-s3-7-lcd-touch-screen-using-gpio-pins-that-may-be-pre-assigned/831578
+  (WebFetch succeeded) User discussion about free GPIO for PWM fan control on this exact board;
+  no mention anywhere of an onboard user button or onboard controllable LED. Confirms GPIO
+  pressure is dominated by display/touch/RS485/USB/sensor pins, consistent with this board's
+  existing pin-exclusion list in board.json.
+- WebSearch query: "ESP32-S3-Touch-LCD-7" schematic BOOT button GPIO0 reset LED
+  Multiple snippets converge: BOOT button pulls GPIO0 low to enter serial bootloader (standard
+  ESP32-S3 strapping-pin behavior), RESET button resets the chip (tied to EN, not a GPIO readable
+  by firmware), and "LED indicators" refers only to power/battery-charging status LEDs, not a
+  general purpose LED.
+- Attempted https://web.archive.org/web/2026/https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7
+  Fetch tool cannot access web.archive.org at all (blocked) - no data obtained.
+
+Pins considered and NOT tagged:
+- GPIO0 (BOOT button, pulls GPIO0 low on press): This is the standard ESP32-S3 strapping pin,
+  already excluded from chipGpios in this board's board.json as the dedicated ST7262 LCD "G3"
+  data line (WS_LCD_G3 = GPIO0 in pins_arduino.h), and already carries a pinNotes entry "Must be
+  HIGH for normal boot". Re-adding it as a "button" capability would reverse a pre-existing,
+  clearly-justified exclusion (it drives the display) and would also be dangerous/incorrect since
+  toggling it in firmware could conflict with the boot-strap requirement and the LCD data line.
+  This is a considered, deliberate NO - not a guess, and not a general-purpose user button in the
+  first place (it's a programming-mode entry button, standard on nearly all ESP32 dev boards).
+- RESET button: not connected to any GPIO at all - it drives EN/CHIP_PU (hardware reset), so
+  there is no GPIO to tag even in principle.
+- "PWR"/"CHG"/"DONE" LEDs: confirmed via docs.waveshare.com as fixed battery-charge/power-status
+  indicator LEDs, not connected to a software-controllable GPIO (typical of dedicated charge-IC
+  status pins, hardwired, not part of the ESP32-S3 pin map at all). No GPIO number associated
+  with them anywhere in the sources found. Not tagged - no GPIO to tag, and no evidence they are
+  driven by the MCU at all.
+- No NeoPixel/WS2812 or discrete RGB LED of any kind was found mentioned in any source for this
+  board.
+
+No pins_arduino.h alias (LED_BUILTIN, BUTTON, etc.) exists in this board's pins_arduino.h at all,
+so there was no misleading alias to guard against beyond the ones described above.
+
+Summary: NO CHANGE. No confirmable onboard general-purpose user button or onboard
+software-controllable LED was found for this board. board.json was not modified.

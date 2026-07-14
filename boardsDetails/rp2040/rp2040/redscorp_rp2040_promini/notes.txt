@@ -1,0 +1,151 @@
+Board: redscorp_rp2040_promini ("RedScorp RP2040 Pro Mini")
+Chip bucket: rp2040 (variants/rp2040/rp2040/redscorp_rp2040_promini/)
+Audit date: 2026-07-13
+Part of: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware pin exclusion audit.
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h
+   (variants/rp2040/rp2040/redscorp_rp2040_promini/pins_arduino.h) -
+   top-of-file comment: "RP2040-ProMini board support,
+   URL: https://github.com/red-scorp/RP2040-ProMini, Based on Arduino
+   Nano Connect configuration".
+2. variants/rp2040/rp2040/board.json (chip-level defaults, deliberately
+   empty chipGpios - see rationale in that file).
+3. Precedent file variants/rp2040/rp2040/rpipico/board.json (simple LED
+   tag pattern, BOOTSEL-not-a-GPIO precedent).
+4. Precedent file variants/rp2040/rp2040/arduino_nano_connect/board.json
+   - directly relevant: this board's own pins_arduino.h says it is
+   "Based on Arduino Nano Connect configuration", and that board has the
+   IDENTICAL GPIO6/D13 = LED_BUILTIN = PIN_SPI0_SCK dual-role, already
+   confirmed there as deliberate (not a bug), active-high.
+5. Sibling redscorp_rp2040_eins board: checked for a per-board board.json
+   at variants/rp2040/rp2040/redscorp_rp2040_eins/ - NOT YET WRITTEN at
+   time of this audit (only pre-existing generated designer JSON output
+   exists at pfodWeb_src/designer/boards/rp2040_redscorp_rp2040_eins/,
+   which is a build artifact, not a source). No board.json cross-
+   reference was available; this board's own GPIO numbers were verified
+   independently from its own pins_arduino.h and schematic as instructed
+   (Pro Mini form factor pinout differs from Eins/Uno form factor).
+6. WebSearch: "RedScorp RP2040 Pro Mini github red-scorp" -> located
+   https://github.com/red-scorp/RP2040-ProMini (correct repo, matches
+   the URL already in this board's pins_arduino.h).
+7. WebFetch of https://github.com/red-scorp/RP2040-ProMini/blob/master/README.md
+   - confirms "LED on pin D13" and a "CUT_LED" jumper/cut-point to
+   physically disconnect the LED for power saving; confirms a "BOOTSEL
+   mini button... added in v1.1... for programming convenience"; no
+   NeoPixel/RGB LED mentioned anywhere.
+8. WebFetch of the repo's root README page (github.com/red-scorp/RP2040-ProMini)
+   - returned an inconsistent/hallucinated claim of "LED connected to
+   GPIO26" in one pass; this was NOT trusted (contradicts the pins_arduino.h
+   PIN_LED=D13=GPIO6 alias and the second WebFetch pass, and is
+   unsupported by the actual schematic - see below). Per this audit's
+   "never guess" instruction, the authoritative schematic PDF was
+   downloaded and read directly instead of relying on any AI-summarized
+   web content for the polarity/pin decision.
+9. AUTHORITATIVE SOURCE: doc/RP2040-ProMini.pdf (full KiCad-exported
+   schematic, "RP2040-ProMini-0032" Rev 3.2, dated 2024-01-01, (c) Andriy
+   Golovnya, downloaded from
+   https://github.com/red-scorp/RP2040-ProMini/raw/master/doc/RP2040-ProMini.pdf
+   and read directly via the Read tool; deleted from scratchpad after
+   use). This schematic is the actual basis for every pin decision below.
+
+PER-PIN REASONING
+------------------
+GPIO6 (D13, PIN_LED / LED_BUILTIN, also PIN_SPI0_SCK):
+  Schematic block explicitly labelled "Signalling LED" shows:
+    +3V3 -> D1 (RED LED) -> R1 (5k1 series resistor) -> JP1 ("CUT_LED"
+    jumper, populated by default) -> drain of Q1 (AO3400A, N-channel
+    MOSFET) -> Q1 source -> GND
+  Q1's gate is driven directly by the "D13_SCK" net (GPIO6/D13).
+  An N-channel MOSFET conducts drain-to-source current when its gate is
+  driven HIGH relative to source. Therefore: GPIO6 HIGH -> Q1 turns ON
+  -> current flows from +3V3 through D1/R1/JP1 into Q1's drain, out the
+  source to GND -> LED D1 lights.
+  CONFIRMED ACTIVE-HIGH (digitalWrite(LED_BUILTIN, HIGH) turns the LED
+  on), matching the standard Arduino "LED on pin 13" idiom the README
+  also implicitly assumes.
+  Tagged: ["digital_output", "pwm_output", "led_high"]. digital_input
+  dropped (matches rpipico/board.json and arduino_nano_connect/board.json
+  precedent for a dedicated onboard-LED-driver pin). pwm_output kept
+  (arduino-pico's analogWrite() works on any RP2040 GPIO; PWMing the
+  MOSFET gate dims the LED normally, same reasoning as every other
+  RP2040 board in this family).
+
+  Bus-collision bug-class check (explicitly required by this audit):
+  This board's pins_arduino.h ALSO declares
+  `#define PIN_SPI0_SCK (D13)` - i.e. GPIO6 doubles as the SPI0 clock
+  line. The schematic confirms this exact net ("D13_SCK") is broken out
+  to the physical ProMini-footprint headers (J1-J5) alongside
+  MISO=D12/GPIO4, MOSI=D11/GPIO7, SS=D10/GPIO5 - the classic Arduino
+  ICSP/pin-13 SPI grouping. This is the "confirmed LED pin also aliased
+  as an SPI bus role" pattern this audit specifically watches for - but
+  it is judged NOT a bug to fix by deleting the #define. Rationale:
+    (a) This is the board's only user-facing hardware SPI0 bus, exposed
+        on the primary header - not spare/unused.
+    (b) It is the well-known, universal classic-Arduino-form-factor
+        design where pin 13 always dual-serves as SCK and the onboard
+        LED (visible LED flicker during SPI transfers is expected,
+        documented behaviour on every Uno/Nano/Pro-Mini-shaped board).
+    (c) The directly-analogous arduino_nano_connect/board.json precedent
+        (same vendor lineage per this board's own "Based on Arduino Nano
+        Connect configuration" header comment) already reached the
+        identical conclusion for the identical GPIO6/D13 LED+SCK pairing.
+  No pins_arduino.h edit was made. build_boards.js will auto-append the
+  spi_sck capability on top of digital_output/pwm_output/led_high,
+  matching the real dual-role hardware - this is intended, not a defect.
+
+BOOTSEL button (schematic block "Boot source selection button", S1):
+  Wired directly to the "QSPI_SS" net - the RP2040's internal dedicated
+  QSPI flash chip-select pin (package pins 51-56 region), which is NOT
+  any of the GPIO0-29 pins this board's pins_arduino.h declares Dn
+  aliases for. Mechanically identical to the plain Raspberry Pi Pico's
+  own BOOTSEL button (see rpipico/board.json precedent) - not readable
+  via digitalRead()/any numbered GPIO, so there is no pin to attach a
+  "button" capability to. Out of scope, not a missed tag.
+
+Reset button (schematic block "Reset button", S2):
+  Wired to the RUN/RESET net - a dedicated hard-reset pin, not a
+  readable GPIO. Out of scope, same as every other RP2040 board audited
+  in this family.
+
+QSPI flash (U1 W25Q128JVS SOIC / U4 W25Q128JVEIQ WSON, alternate
+footprints for the same onboard flash - populate one, not both):
+  Wired entirely to the RP2040's dedicated internal QSPI pins
+  (QSPI_SD0-3, QSPI_SCLK, QSPI_SS), which are physically separate from
+  GPIO0-29 and have no corresponding Dn alias in this board's
+  pins_arduino.h. No overlap; nothing to exclude.
+
+Power-good/status LED (schematic ref D2, "RED", near the U3 TPS63060
+buck-boost regulator):
+  Wired directly into the regulator's own feedback/output network
+  (D2/R6/R8/R9/R10 form the buck-boost's voltage-setting/PG network),
+  not connected to any RP2040 GPIO at all. Out of scope for the same
+  "not wired to any GPIO" reason as the Nano RP2040 Connect's NINA-side
+  RGB LED.
+
+NeoPixel/RGB LED: none present on this board (confirmed by both the
+README and the full schematic - only the two RED indicator LEDs D1/D2
+above exist).
+
+Other GPIOs (D0-D1, D3-D12, D14-D29 / analog A0-A3): all plain
+general-purpose header breakouts (J1-J5 connectors), no dedicated
+onboard peripheral wired to any of them beyond the LED/QSPI-flash/
+buttons already covered above. Left at full chip-level default
+capabilities (no chipGpios entry needed) - matches the empty
+chip-level chipGpios philosophy for RP2040 (each board's own aliases
+are the full picture).
+
+SUMMARY
+-------
+One correction applied: GPIO6 (D13, PIN_LED/LED_BUILTIN) tagged
+["digital_output", "pwm_output", "led_high"] (digital_input dropped),
+confirmed active-high directly from the schematic's Q1
+(AO3400A N-channel MOSFET) switch topology. The GPIO6/PIN_SPI0_SCK dual
+alias was investigated as a possible "bus auto-append" bug per this
+audit's standing checklist, but confirmed to be the deliberate, expected
+classic-Arduino pin-13 LED+SCK sharing (directly matching the
+arduino_nano_connect precedent) - no pins_arduino.h changes made. No
+onboard NeoPixel; BOOTSEL/RESET buttons and QSPI flash chip-select are
+wired to non-GPIO RP2040 pins and are out of scope for GPIO-keyed
+capability tagging. All other GPIOs left at chip-level defaults.

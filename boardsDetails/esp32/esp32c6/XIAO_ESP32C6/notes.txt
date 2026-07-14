@@ -1,0 +1,75 @@
+Board: XIAO_ESP32C6 (Seeed Studio XIAO ESP32-C6), chip esp32c6
+Pass: button/LED capability-tagging audit (section 7a of the board-variant-pin-audit
+playbook), 2026-07-12. An earlier dedicated-hardware-exclusion pass had already
+produced this board.json (GPIO3/14 WiFi antenna control lines excluded), but never
+applied button/LED tagging - that is what this pass adds.
+
+Files read first (in full):
+ - variants/esp32/esp32c6/XIAO_ESP32C6/pins_arduino.h
+ - variants/esp32/esp32c6/XIAO_ESP32C6/board.json (existing override)
+
+pins_arduino.h facts:
+ - LED_BUILTIN = GPIO15 (static const uint8_t LED_BUILTIN = 15;)
+ - TX=16, RX=17, SDA=22, SCL=23, SS=21, MOSI=18, MISO=20, SCK=19
+ - A0=0, A1=1, A2=2; D0..D10 Arduino-style digital aliases
+ - No BAT_VOLT_PIN / BAT_VOLT_PIN_EN or any battery-sense define present in this file.
+ - No button-related define present in this file.
+
+Sources consulted (WebSearch/WebFetch):
+ 1. https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/ (Seeed's own wiki,
+    authoritative) - confirms "Light" -> GPIO15 in the pin map; confirms Boot button
+    -> GPIO9 ("Enter Boot Mode"); describes battery voltage monitoring on A0/GPIO0 as
+    requiring the user to manually solder an external 200K resistor to form a 1:2
+    divider ("you'll need to solder a 200k resistor in a 1:2 configuration") - i.e.
+    NOT a stock onboard battery-sense circuit, unlike the XIAO_ESP32C5/XIAO_ESP32S3
+    siblings which have dedicated BAT_VOLT_PIN/BAT_VOLT_PIN_EN defines.
+ 2. https://www.sigmdel.ca/michel/ha/xiao/xiao_esp32c6_intro_en.html ("First Look at
+    the Seeed Studio XIAO ESP32C6", independent detailed technical teardown) -
+    explicitly confirms LED polarity: "the yellow LED will be turned on when I/O pin
+    15 is brought low because of the way the LED is connected", with example code
+    using `ledOn = LOW;`. Also confirms Boot button on GPIO9, pulled high externally,
+    reads LOW when pressed - a strapping/boot-mode button, not a general-purpose user
+    button (no separate general-purpose button documented on this board).
+ 3. https://wiki.seeedstudio.com/xiao_pin_multiplexing_esp32c6/ (Seeed wiki) - checked
+    for supplementary GPIO15/button/battery info; no additional relevant detail beyond
+    the getting-started guide.
+ 4. WebSearch aggregate results (GitHub melastmohican/xiao-esp32c6-blinky,
+    sigmdel/xiao_esp32c6_sketches) corroborate the same active-low LED behavior on
+    GPIO15 independently.
+ 5. WebSearch on "XIAO ESP32C6 battery charging onboard BAT connector" - confirms the
+    board has BAT +/- solder pads and an onboard LiPo charge-management chip (for
+    physically connecting a battery / charging), but this is separate from a GPIO
+    voltage-sense pin - does not contradict the getting-started guide's statement that
+    battery-voltage *reading* requires a manually soldered external divider on A0.
+
+Reasoning / decisions applied:
+ - GPIO15 (LED_BUILTIN): CONFIRMED onboard LED, CONFIRMED active-low by two
+   independent, mutually corroborating sources (Seeed's own getting-started example
+   plus the sigmdel.ca teardown's explicit polarity statement and matching example
+   code). Tagged "led_low". Capabilities changed from
+   ["digital_input","digital_output","pwm_output"] to
+   ["digital_output","pwm_output","led_low"] (digital_input dropped), matching the
+   XIAO_ESP32C5 sibling's established led_low precedent (variants/esp32/esp32c5/
+   XIAO_ESP32C5/board.json GPIO27) for the same LED_BUILTIN role.
+ - Alias-collision check (mandatory per playbook): GPIO15 is not aliased as
+   SDA(22)/SCL(23)/SS(21)/MOSI(18)/MISO(20)/SCK(19)/TX(16)/RX(17) anywhere in this
+   variant's pins_arduino.h. No collision, no alias line needed deletion, no
+   pins_arduino.h edit required.
+ - Battery-sense pin: NOT tagged. This variant's own pins_arduino.h declares no
+   BAT_VOLT_PIN/BAT_VOLT_PIN_EN (unlike XIAO_ESP32C5/XIAO_ESP32S3), and Seeed's own
+   getting-started guide confirms battery-voltage reading on this specific board
+   requires the user to solder an external divider resistor onto A0 - i.e. it is not
+   a stock onboard capability of this variant's hardware today, so nothing to tag.
+ - Button: NOT tagged. GPIO9 is documented only as the Boot/download-mode button
+   (strapping pin, already carries the existing pinNotes entry "Must be HIGH for
+   normal boot"), with no separate general-purpose user button documented anywhere
+   for this product. This matches the same Boot-only/no-general-button conclusion
+   reached for the XIAO_ESP32C5 sibling board (see its board.json pfodWeb NOTE),
+   which is the closest precedent for this board family.
+
+Summary: GPIO15 (LED_BUILTIN) tagged "led_low" (high confidence, two independent
+corroborating sources on polarity); no battery-sense pin tagged (not present in this
+variant's pins_arduino.h, requires DIY mod per vendor docs); no button tagged (Boot
+button only, not general-purpose). No alias collisions found, no pins_arduino.h
+changes needed. board.json edited in place (existing content/comments preserved,
+only additions made).

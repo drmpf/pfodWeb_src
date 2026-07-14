@@ -1,0 +1,75 @@
+pico32 board — onboard button/LED research notes
+==================================================
+
+Board identity confirmed: Arduino-ESP32 board id "pico32" (build.variant=pico32)
+corresponds to Espressif's official "ESP32-PICO-KIT" development board, built
+around the ESP32-PICO-D4 SiP module. This is confirmed by the arduino-esp32
+repo's variants/pico32/pins_arduino.h being byte-for-byte identical to the
+copy in this project (TX=1, RX=3, no LED_BUILTIN/BUTTON aliases defined at
+all), and by third-party board databases (espboards.dev, PlatformIO) listing
+"pico32" as the ESP32 Pico Kit.
+
+Sources consulted:
+1. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/pico32/pins_arduino.h
+   - Confirmed this project's pins_arduino.h matches upstream exactly; no
+     LED_BUILTIN, BUTTON, RGB_BUILTIN, or similar alias macros defined at all.
+2. https://raw.githubusercontent.com/espressif/arduino-esp32/master/boards.txt
+   - "pico32" is a defined board id in boards.txt (variant=pico32); general
+     confirmation this is a real, still-supported board entry, not a typo.
+3. https://www.espboards.dev/esp32/pico32/
+   - Board page for "ESP32 PICO-D4"; pin table shown but no mention of any
+     onboard user LED or button beyond generic strapping-pin notes. The only
+     LED shown in the page is a generic "GPIO2 -> 220ohm -> LED -> GND"
+     tutorial-style diagram, not board-specific hardware documentation —
+     explicitly NOT used as evidence per task rules.
+4. https://docs.platformio.org/en/latest/boards/espressif32/pico32.html
+   - PlatformIO board metadata page; no GPIO/peripheral info, no LED/button
+     mentioned.
+5. https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-pico-kit/user_guide.html
+   - Official Espressif ESP32-PICO-KIT user guide (primary/authoritative
+     source). States: "5V Power On LED (Red): This red LED turns on when
+     power is supplied to the board" — i.e. the only onboard LED is a power
+     indicator hardwired directly to the 5V/3.3V rail, NOT connected to any
+     GPIO, so it cannot be toggled by firmware and is not taggable as a
+     pfodWeb LED capability.
+   - Buttons: "BOOT" (download-mode button, tied to GPIO0 strapping pin,
+     used with EN to enter firmware download mode) and "EN" (reset button,
+     not a general-purpose GPIO — it's chip enable/reset). No separate
+     user-programmable button is documented. This matches the task's
+     description of Pico32 as an older minimalist board with only the
+     generic BOOT/EN pair, which is explicitly out of scope for tagging.
+6. https://dl.espressif.com/dl/schematics/esp32-pico-kit-v4_schematic.pdf
+   (identified via search, not directly parsed — used only to note the
+   schematic exists as the authoritative source referenced by the user
+   guide above; user guide text already gives a clear, unambiguous answer
+   so full schematic parsing was not necessary).
+
+Pins considered and NOT tagged:
+- GPIO2: NOT tagged. This is the generic "default LED pin" quoted by many
+  generic ESP32 tutorial sites (microcontrollerslab.com, linuxhint.com,
+  theorycircuit.com, etc.) for the plain "ESP32 DevKit" board, but none of
+  these are Pico32/ESP32-PICO-KIT-specific documentation, and the official
+  Espressif ESP32-PICO-KIT user guide makes clear the only onboard LED on
+  this specific board is a hardwired power-on indicator, not a GPIO LED.
+  No guess made here — deliberately not tagged since generic-tutorial pin
+  numbers are exactly the kind of unreliable inference the task instructions
+  warn against.
+- GPIO0 (BOOT button): NOT tagged. Confirmed as the standard BOOT/strapping
+  button used for entering firmware download mode together with EN/reset —
+  i.e. exactly the "generic BOOT/EN pair" the task says is out of scope, not
+  a distinct user button. No guess made; this is a confirmed exclusion, not
+  an uncertain one.
+- No candidate GPIO coincided with TX(1)/RX(3), so the TX/RX hard-reserve
+  bug was not a factor in this decision either way.
+
+Board.json status: No board.json exists yet at
+variants/esp32/esp32/pico32/board.json (only the parent chip-level default
+at variants/esp32/esp32/board.json exists). Since no GPIO is being tagged,
+no board.json was created for this board, per task instructions (a
+board.json is only created/copied when there is an actual capability change
+to apply).
+
+Summary: NO onboard user-controllable LED or user button (distinct from the
+generic BOOT/EN pair) could be confirmed via official Espressif
+documentation for the Pico32 (ESP32-PICO-KIT) board. No GPIO was tagged, no
+board.json was created or modified.

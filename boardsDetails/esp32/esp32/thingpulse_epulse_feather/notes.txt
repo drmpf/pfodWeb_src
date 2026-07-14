@@ -1,0 +1,148 @@
+Board: thingpulse_epulse_feather (chip: esp32)
+Audit: dedicated-hardware pin-exclusion pass, ADC-divider correction
+Date: 2026-07-12
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h (already in repo):
+     variants/esp32/esp32/thingpulse_epulse_feather/pins_arduino.h
+   Line 34: `static const uint8_t BATT_MONITOR = 35;  // Note: voltage
+   divider 2.2M/4.7M`. Vendor-authored inline comment naming the divider
+   resistor values directly in the pin-definition source.
+
+2. Official ThingPulse schematic (primary source, downloaded and text-
+   extracted with pdftotext -layout for accurate spatial reading):
+     https://thingpulse.com/wp-content/uploads/2023/01/ePulseFeather_Schematic_20221230.pdf
+   "ePulse Feather", REV 1.0, Company: ThingPulse, Date: 2022-12-30,
+   Drawn By: D. Eichhorn. Two sheets:
+     Sheet 1/2 - MCU / USB-serial / Programming Circuit / Pin Out
+     Sheet 2/2 - LiPo charger, LDO, BATTERY MONITOR block
+
+3. Upstream Arduino-ESP32 core PR that added this exact board variant:
+     https://github.com/espressif/arduino-esp32/pull/9256/files
+   Carries the identical "voltage divider 2.2M/4.7M" comment verbatim,
+   contributed by a ThingPulse-affiliated author - corroborates the
+   pins_arduino.h comment is a vendor fact, not a one-off typo.
+
+4. Independent third-party confirmation that this board's battery-monitor
+   divider ratio is a deliberate, board-specific design choice (differs
+   from the Adafruit HUZZAH32 ESP32 Feather's 1:1 divider):
+     https://github.com/matthias-bs/BresserWeatherSensorTTN/issues/55
+   ("Add define for ePulse Feather VBAT Monitoring Voltage Divider")
+
+ADC DIVIDER FINDING (GPIO35 / BATT_MONITOR / A13)
+--------------------------------------------------
+Schematic sheet 2/2, "BATTERY MONITOR VBAT" block, reads directly (via
+pdftotext -layout, so component adjacency reflects true visual layout):
+
+    BATTERY MONITOR
+         VBAT
+       R12
+       2.2M
+                     D35_BAT_MON
+       R13    C10
+       4.7M   100nF
+       GND
+
+This shows R12 (2.2 megaohm) in series from the battery rail down to the
+ADC node (D35_BAT_MON, i.e. GPIO35), and R13 (4.7 megaohm) from that same
+node to ground, with C10 (100nF) as a filter capacitor across the lower
+leg — a permanent, always-connected two-resistor divider. No solder
+jumper, switch, or other component appears anywhere in this block or
+elsewhere in either schematic sheet that could disconnect the divider
+(unlike some other boards audited this session, e.g. the ESP8266 "oak"
+board's SJ1 solder-jumper-gated divider) — this one is hard-wired.
+
+MATH
+----
+The divider taps between R12 (battery side) and R13 (ground side), so:
+    Vadc = Vbat * R13 / (R12 + R13)
+         = Vbat * 4.7M / (2.2M + 4.7M)
+         = Vbat * 4.7 / 6.9
+         = Vbat * 0.681159...
+
+Inverting to get the external (battery-side) full-scale voltage that
+corresponds to the ESP32's native 3.3V full-scale ADC input:
+    Vbat_fullscale = 3.3 / 0.681159 = 4.8447 V  ->  rounded to 4.84 V
+
+This matches the task's preliminary estimate (3.3 * (2.2+4.7)/4.7 ≈
+4.85V) to within rounding; the schematic-confirmed R12/R13 values and
+divider topology (rather than just the pins_arduino.h comment) were used
+for the final figure, giving 4.84 V.
+
+DECISION: APPLIED BOARD-WIDE
+-----------------------------
+Applied adc.defaultRefVolts = "4.84" to this board's board.json at the
+top-level adc object (overriding the esp32/esp32 chip-level default of
+"3.3"), because:
+  - The divider is permanently wired (schematic-confirmed, no jumper/
+    switch gating it), so it always applies whenever this pin is read.
+  - No other analog-capable pin on this board carries a different or
+    additional divider that would need its own separate scale factor.
+  - This is the first ESP32-family board in this audit pass that needed
+    an ADC-divider correction (ESP32's native ADC is already 3.3V-scale,
+    unlike ESP8266's 1.0V, so this kind of correction is rare here but
+    ThingPulse deliberately added a real divider to extend battery-
+    voltage sensing beyond 3.3V).
+
+GPIO35 CAPABILITY: KEPT
+------------------------
+GPIO35 (BATT_MONITOR / A13) capabilities left as the chip-level default
+(["analog_input", "digital_input"] - input-only per the ESP32's own
+silicon, GPIO34-39 have no output driver). A "note" field was added
+documenting the divider and confirming this is a normal analog input,
+not a dedicated/reserved pin to exclude.
+
+ALIAS-COLLISION CHECK (build_boards.js contamination risk)
+------------------------------------------------------------
+Checked whether GPIO35 is also assigned to any of the SDA/SCL/SS/MOSI/
+MISO/SCK/TX/RX aliases that build_boards.js appends bus capabilities for
+regardless of chipGpios content. This board's pins_arduino.h defines:
+    SDA=23, SCL=22, MOSI=18, MISO=19, SCK=5, SS=-1
+No TX/RX aliases are defined in this file at all. None of these equal
+35, so there is no collision and nothing needed deleting.
+
+OPPORTUNISTIC BUTTON/LED CHECK (section 7a)
+---------------------------------------------
+This board's pins_arduino.h sets `LED_BUILTIN = -1` (explicitly none),
+and no NeoPixel/RGB/status-LED constant appears anywhere in the file.
+Cross-checked against both schematic sheets: no LED component (other
+than the LiPo charger's onboard CHRG indicator LED, which is wired
+directly to the TP4065 charger IC's CHRG pin, not any ESP32 GPIO, so it
+is not a taggable GPIO capability) appears anywhere. LED_BUILTIN=-1 is
+confirmed correct; no LED capability was added.
+
+A physical pushbutton WAS found and confirmed: schematic sheet 1/2,
+"Programming Circuit" block, shows a tactile switch SW1 (part
+SKRKAEE020) wired directly across GPIO0-to-GND, in parallel with the
+transistor (Q1.2, driven by the CH9102F USB-serial chip's RTS line) that
+forms the auto-program circuit's GPIO0/BOOT leg. The RESET leg (Q1.1,
+driven by DTR) has no parallel button — SW1 is the board's only physical
+pushbutton, and it is unambiguously the BOOT/flash-mode button. GPIO0 is
+not broken out to either of the board's pin headers (P1 or U3) and does
+not appear as any alias in pins_arduino.h, so it is only usable as this
+dedicated button, not as a general-purpose pin.
+Applied: GPIO0 chipGpios capabilities changed from the chip-level default
+(["analog_input_serial","digital_input","digital_output","pwm_output"])
+to (["digital_input","button"]), matching this repo's established
+pattern for schematic-confirmed BOOT buttons elsewhere (e.g.
+esp32h2/esp32h2-devkit-lipo, esp32c6/Pcbcupid_GLYPH_C6, esp32s2/
+Bee_Motion).
+
+NOTE ON SIBLING BOARD
+-----------------------
+`thingpulse_epulse_feather_c6` (a different chip, ESP32-C6) was NOT
+assumed to share this hardware and was not touched by this audit - it is
+being audited independently in parallel. A quick check during research
+showed the C6 model uses a MAX17048 I2C fuel-gauge chip for battery
+monitoring instead of a resistor divider, confirming the two boards are
+NOT hardware-identical despite the shared product-line name.
+
+SUMMARY
+-------
+Confirmed via the vendor's own schematic (not just the inline comment) a
+permanent, unswitched 2.2M/4.7M resistor divider on GPIO35 (BATT_MONITOR)
+giving a corrected board-wide ADC full-scale of 4.84V (was 3.3V default);
+also found and tagged a schematic-confirmed BOOT pushbutton on GPIO0; no
+alias-collision contamination risk found for GPIO35; no onboard LED found
+(LED_BUILTIN=-1 confirmed correct).

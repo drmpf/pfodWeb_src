@@ -1,0 +1,85 @@
+esp32-poe-iso - button/LED capability-tagging audit (section 7a)
+==================================================================
+
+Board: Olimex ESP32-PoE-ISO (chip: esp32). This board already had a
+board.json from an earlier dedicated-hardware-exclusion pass (Ethernet
+PHY pins GPIO12/18/23/19/21/22/25/26/27 and microSD SDMMC pins GPIO2/5/
+14/15 already excluded), but that pass never applied button/LED tagging
+to GPIO34 (KEY_BUILTIN). This pass adds only that tagging.
+
+pins_arduino.h (read in full first): KEY_BUILTIN=34, TX=1, RX=3,
+TX1=4/RX1=36, TX2=33/RX2=35, SDA=13, SCL=33-or-16 (PSRAM-dependent).
+SS/MOSI/MISO/SCK are deliberately NOT declared (existing pfodWeb NOTE
+explains MOSI/MISO/SCK match the fixed onboard microSD SDMMC pins).
+BOARD_HAS_1BIT_SDMMC is set.
+
+Sources consulted:
+
+1. https://raw.githubusercontent.com/OLIMEX/ESP32-POE-ISO/master/HARDWARE/ESP32-PoE-ISO-Rev.B/ESP32-PoE-ISO_Rev_B.net
+   Official Olimex open-source-hardware netlist for THIS exact board
+   (Rev.B schematic source file, not a generic/sibling-board guess).
+   Fetched and read directly - primary/authoritative source. Confirms
+   net "/GPI34/BUT1" ties component BUT1 (push button switch) plus
+   pull-up resistors R48 (10k) and R49 (NA/populated per-rev) to pin 6
+   of U9 (the ESP32 module), i.e. GPIO34. Also enumerates all 4 onboard
+   LEDs: PWR1 (red power indicator, anode to +5V via R5), CHRG1 (yellow
+   Li-Po charge indicator, anode to +5V via R8), LNK1 (green Ethernet
+   link, anode to LAN8710A PHY U4 pin 2 via R14), ACT1 (yellow Ethernet
+   activity, anode to LAN8710A PHY U4 pin 3 via R15). None of the 4 LEDs
+   connect to any ESP32 GPIO - all are wired to the +5V rail or directly
+   to the Ethernet PHY chip, not the microcontroller.
+
+2. General web search corroboration (espboards.dev pinout page, Olimex
+   forum topic 7163, search-engine synthesis of Olimex user-manual PDF
+   text) independently states: "GPIO34 is connected to the user button
+   (BUT1) with a 10K pull-up resistor" and "4 on-board status LEDs...
+   not connected to the ESP32 directly and can't be controlled
+   programmatically" - consistent with the netlist findings in (1).
+
+3. Sibling Olimex board esp32-gateway in this same database
+   (boardsDetails/esp32/esp32/esp32-gateway/notes.txt,
+   variants/esp32/esp32/esp32-gateway/board.json) already completed this
+   exact audit step for its own GPIO34/KEY_BUILTIN, confirmed by a
+   vendor pinout diagram ("GPIO34 - user button") and tagged
+   ["digital_input", "button"] there. Used as the precedent for the
+   exact tag value/policy applied here, but the ESP32-PoE-ISO finding
+   itself is independently vendor-confirmed via source (1) above, per
+   this audit's requirement not to assume the sibling-board pattern
+   transfers without independent verification for this specific board.
+
+Reasoning / decisions:
+
+- GPIO34 (KEY_BUILTIN): KEPT, tagged ["digital_input", "button"].
+  Confirmed onboard user pushbutton (BUT1) by the vendor's own schematic
+  netlist for this exact board revision. GPIO34 is input-only on
+  classic ESP32 (no output driver, already listed in inputOnlyGpios), so
+  no digital_output/pwm_output capability was added; the previous plain
+  analog_input was dropped in favour of the button tag, matching the
+  explicit tag policy for this audit and the esp32-gateway precedent.
+
+- LEDs (PWR1/CHRG1/LNK1/ACT1): NOT tagged anywhere. All 4 confirmed by
+  the vendor netlist to be hardwired to +5V or to the LAN8710A Ethernet
+  PHY chip, never to an ESP32 GPIO pin - there is no software-
+  controllable onboard LED on this board to tag.
+
+- Alias-collision check (build_boards.js unconditionally appends
+  spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl capabilities for any
+  GPIO matching this board's own SS/MOSI/MISO/SCK/SDA/SCL consts,
+  regardless of chipGpios): this board's pins_arduino.h does NOT declare
+  SS/MOSI/MISO/SCK at all (already deliberately omitted by the prior
+  audit pass, per the existing pfodWeb NOTE in the file), and SDA=13/
+  SCL=33-or-16 do not match GPIO34. No collision found - no alias lines
+  needed to be deleted for this pass.
+
+- Everything else in board.json (chipGpios exclusions, inputOnlyGpios,
+  pwm/dac/adc blocks) is unchanged from the earlier dedicated-hardware
+  pass; only GPIO34's capabilities array and the header comment were
+  edited, per the "add to it, don't overwrite" instruction.
+
+Summary: Verified via Olimex's own Rev.B schematic netlist that GPIO34
+(KEY_BUILTIN) is a real onboard button (BUT1, 10k pull-up) and that none
+of the board's 4 status LEDs are ESP32-GPIO-controllable. Tagged GPIO34
+["digital_input", "button"] in board.json (replacing the prior
+["analog_input", "digital_input"]). No pins_arduino.h edits needed - no
+SDA/SCL/SS/MOSI/MISO/SCK alias collision existed. High confidence
+(primary vendor schematic source, exact board+revision).

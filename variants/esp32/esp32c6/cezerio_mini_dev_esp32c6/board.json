@@ -1,0 +1,95 @@
+// pfodWeb NOTE: per-board override for the RFtek Electronics "cezerio mini
+// dev ESP32C6" (chip esp32c6), created 2026-07-12 during a dedicated-
+// hardware pin-exclusion audit. Full copy of the chip-level
+// variants/esp32/esp32c6/board.json default, with three changes below.
+// See boardsDetails/esp32/esp32c6/cezerio_mini_dev_esp32c6/notes.txt for
+// the full research trail and sources.
+//
+// GPIO20 (PIN_RGB_LED in this board's pins_arduino.h): CONFIRMED onboard
+// addressable RGB LED. cezerio.com's own product page for this exact SKU
+// ("cezerio mini dev ESP32C6", $5.00) lists "1x addressable RGB LED (2835
+// type)" as onboard hardware. This board's own pins_arduino.h also encodes
+// LED_BUILTIN as SOC_GPIO_PIN_COUNT + PIN_RGB_LED and defines
+// RGB_BUILTIN/RGBLED/RGB_BRIGHTNESS - the ESP32 Arduino core's special
+// "this is a NeoPixel, not a plain LED" pin-number encoding, independently
+// corroborating the NeoPixel/WS2812-class LED. Tagged
+// ["digital_output","led_neopixel","pwm_output"], matching this repo's
+// led_neopixel precedent (waveshare_esp32_c6_zero GPIO8, esp32c6/esp32c6
+// GPIO8, adafruit_qtpy_esp32c3 GPIO2). Alias-collision check: this board's
+// TX/RX/SDA/SCL/SS/MOSI/MISO/SCK are 7/14/23/22/17/19/21/18 - GPIO20 is not
+// among them, no conflicting bus capability gets appended by
+// build_boards.js, no pins_arduino.h edit needed for this pin.
+//
+// GPIO9 (BUT_BUILTIN/BOOT in this board's pins_arduino.h): CONFIRMED
+// onboard user/BOOT button. cezerio.com's product page lists "2 x Button
+// (Boot & Reset)" as onboard hardware for this exact SKU. This is also the
+// ESP32-C6's standard boot-mode strapping pin - the chip-level pinNotes
+// entry "Must be HIGH for normal boot" is expected and was retained
+// unchanged. Tagged ["digital_input","button"] only, per this session's
+// button-pin convention (waveshare_esp32_c6_zero GPIO9, Pcbcupid_GLYPH_C6
+// GPIO9). Alias-collision check: GPIO9 is not TX/RX/SDA/SCL/SS/MOSI/MISO/
+// SCK on this board either - no conflict, no pins_arduino.h edit needed.
+//
+// GPIO4 (MATRIX in this board's original pins_arduino.h): EXCLUDED -
+// removed entirely from chipGpios below, and the MATRIX alias line was
+// deleted from this variant's pins_arduino.h. Reasoning: RFtek/cezerio
+// sells this exact PCB design under two SKUs sharing ONE upstream Arduino
+// variant directory/pins_arduino.h - "cezerio mini dev ESP32C6" ($5, no
+// populated matrix) and "cezerio mini dev matrix ESP32C6" ($8.50, adds a
+// populated 5x5 WS2812B RGB LED matrix, 25 LEDs, described as able to
+// "scroll text, show icons or even display cool animating patterns").
+// Espressif's own upstream PR that added this board (PR #10648, "Add our
+// new development board 'cezerio mini dev ESP32C6'") explicitly names and
+// wires GPIO4 as "MATRIX" - a single, vendor-reserved, always-wired data
+// line dedicated to driving that matrix hardware on the shared PCB design,
+// not a generic breakout pin offered for arbitrary use (unlike e.g.
+// Pcbcupid_GLYPH_C6's optional/solder-bridge-only BAT_MEASURE pin, which
+// was correctly kept). Matches this project's "EXCLUDE if confirmed
+// dedicated onboard display" policy for GPIO4. Alias-collision check:
+// GPIO4 was not aliased as TX/RX/SDA/SCL/SS/MOSI/MISO/SCK either way, so
+// no bus-capability contamination would have occurred regardless - the
+// exclusion here is purely the dedicated-display policy.
+//
+// No IMUSD/IMUSC (or any other IMU alias) appears anywhere in this board's
+// pins_arduino.h, confirming - independently of the sibling
+// cezerio_dev_esp32c6 (non-mini) audit - that this Mini variant has no
+// onboard IMU sensor. No chipGpios change needed for that (nothing to
+// exclude; the chip-level default already has no IMU-tagged pins).
+{
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

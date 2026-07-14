@@ -1,0 +1,108 @@
+Board: esp_c3_m1_i_kit (chip esp32c3) - Ai-Thinker NodeMCU-ESP-C3-M1-I-Kit
+Audit date: 2026-07-12
+Task type: dedicated-hardware pin-exclusion audit (two flagged self-collisions/USB-share
+issues), not the earlier button/LED capability retrofit sweep.
+
+DECLARATIONS AUDITED (from this board's own pins_arduino.h):
+  LED_WARM = 18, LED_COLD = 19   (file's own comment: "also connected to USB D- and D+")
+  LED_RED = 3, LED_GREEN = 4, LED_BLUE = 5   ("RGB LED")
+  TX=21, RX=20, SDA=8, SCL=9, SS=7, MOSI=6, MISO=5, SCK=4 (SCK/MISO collided with
+  LED_GREEN/LED_BLUE - a genuine in-file self-collision, not a shared-common.h issue)
+
+SOURCES CONSULTED:
+1. This file's own header link:
+   https://docs.ai-thinker.com/_media/esp32/docs/nodemcu-esp-c3-m1-i-kit_v1.2.0_specification.pdf
+   -> 404s / redirects to Ai-Thinker's current VitePress documentation homepage (site was
+   migrated off the old dokuwiki `_media` URL scheme at some point after this file was
+   written). Confirmed via direct curl: returns HTTP 200 but a generic SPA shell page, not
+   the PDF. Same result via vdoc.ai-thinker.com mirror (403 Forbidden) and WebFetch (same
+   SPA-homepage result). Dead end for the original exact URL, but see #2/#3 below for a
+   working recovery.
+
+2. Working mirror of the SAME v1.2.0 vendor spec, for the sibling non-"I" SKU:
+   https://supereyes.ru/img/instructions/specification_nodemcu-esp-c3-m1-kit.pdf
+   (16-page genuine PDF, "ESP-C3-M1-Kit Specification V1.2.0", Shenzhen Ai-Thinker
+   Technology Co., Ltd, 2021.10.14). Downloaded and text-extracted via `pdftotext -layout`
+   (poppler-utils, available in the git-bash/mingw64 toolchain on this machine).
+   CONFIRMED DIRECTLY APPLICABLE to our board: section 6 ("Schematic") states verbatim
+   "ESP-C3-M1-Kit and ESP-C3-M1-I-Kit share the same schematic diagram."
+   Findings from this document (Table 6 "Indicator status and key function table" and
+   Table 7 "Pin function definition table"):
+     - "RGB lights are respectively connected to IO3, IO4, IO5 of the development
+       board... correspondingly control the three primary colors of red, green and blue."
+       => CONFIRMS GPIO3/4/5 is a genuine onboard discrete 3-pin RGB LED, matching this
+       board's LED_RED/LED_GREEN/LED_BLUE exactly.
+     - "LED cold light and warm light are respectively connected to IO19 and IO18 of
+       MCU... used for status indication."
+     - Pin table row: "25  3V3   GPIO18,USB_D-" and "26  RX   GPIO19,USB_D+"
+       => CONFIRMS GPIO18=USB_D-, GPIO19=USB_D+ directly from the vendor's own pin
+       function table (not just this board's comment).
+     - No polarity (active-high/active-low, common-anode/common-cathode) information
+       for the RGB LED is stated anywhere in the extracted text. Section 6's schematic
+       (Figure 7) is a raster image with no embedded/extractable text - this environment
+       had no PDF-to-image rendering tool available (checked and confirmed absent:
+       pdftoppm, pdftocairo, pdfimages, ImageMagick `magick`, ghostscript `gs`, `mutool`
+       - only `pdftotext` was present), so the schematic could not be visually inspected.
+
+3. Second independent PDF - Espressif ESP-C3-M1-I MODULE spec (not the Kit board):
+   https://iot-kmutnb.github.io/blogs/esp32/esp32_c3_ai_thinker/esp-c3-m1-i_v1.1.1_spec.pdf
+   Downloaded, text-extracted. This is the bare-module datasheet (no RGB/warm/cold LED
+   content at all - it's a different, narrower document than #2), but its own pin table
+   independently corroborates "IO18 SPICLK GPIO18,USB_D-" / "RX GPIO19,USB_D+" as
+   fixed chip-level pin-mux facts, consistent with #2.
+
+4. WebSearch secondary sources (used to triangulate before finding #2's working mirror):
+   - espboards.dev/esp32/esp32c3m1ikit/ - pin table lists LED_RED/LED_GREEN/LED_BLUE at
+     GPIO3/4/5 and LED_WARM/LED_COLD at GPIO18/19, matching this board's pins_arduino.h
+     exactly. No polarity information given.
+   - device.report/manuals/ai-thinker-nodemcu-esp-c3-m1-kit-specs - same RGB/GPIO facts,
+     paraphrased from the same underlying vendor spec. No polarity information.
+   - A gist for a DIFFERENT, unrelated Ai-Thinker "Kit"-series board (NodeMCU-ESP-S3-12K-
+     Kit, discrete RGB LED on different GPIOs) uses active-high digitalWrite in its
+     example sketch. Noted as weak circumstantial context only (different product, not
+     used as evidence for this board's actual polarity).
+   - docs.ai-thinker.com/en/esp32c3/ (current site) - no board-specific technical content,
+     dead end.
+
+5. Chip-level default: variants/esp32/esp32c3/board.json - its own comment already states
+   "GPIOs 12-17 (flash) and GPIOs 18-19 (USB) are excluded" and its chipGpios map has no
+   entries for 12-19. Confirms GPIO18/19 were ALREADY excluded at the chip level before
+   this audit, independent of and prior to this board-specific investigation.
+
+CONCLUSIONS / WHAT WAS APPLIED:
+
+1. GPIO18/19 (LED_WARM/LED_COLD): CONFIRMED shared with native USB D-/D+ by the vendor's
+   own pin table (source #2, corroborated by #3). The chip-level board.json already
+   excludes GPIO18/19 for exactly this reason. No board.json change was needed or
+   possible for these two pins - documented in this board's new board.json header comment
+   as a rare confirmed case of a real onboard LED whose pin cannot be offered because it
+   is already committed to native USB. NOT tagged, NOT re-added to chipGpios.
+
+2. GPIO3/4/5 (LED_RED/LED_GREEN/LED_BLUE): CONFIRMED genuine onboard discrete RGB LED by
+   the vendor spec (source #2, directly applicable per its own "shares the same schematic
+   diagram" statement). Kept available in the new board.json (chipGpios entries unchanged
+   from the chip-level default's capability lists - analog_input/digital_input/
+   digital_output/pwm_output on GPIO3/4, analog_input_serial/digital_input/
+   digital_output/pwm_output on GPIO5). NOT tagged led_r_high/led_g_high/led_b_high (or
+   the _low variants): despite the RGB LED's existence and exact pin mapping being
+   confirmed with high confidence from a primary vendor document, no source found (PDF
+   text, secondary pinout sites, vendor site) states the drive polarity, and the one
+   available schematic image could not be rendered/inspected in this environment. Per
+   this project's established "never guess LED polarity" policy (see e.g.
+   variants/esp32/esp32c3/sparkfun_pro_micro_esp32c3/board.json for the identical
+   could-not-confirm situation on a sibling ESP32-C3 board), each of GPIO3/4/5 was given
+   an informational "note" field on its chipGpios entry instead of a polarity tag.
+
+3. GPIO4/GPIO5 self-collision with this file's own SCK/MISO aliases: this is a genuine
+   in-file collision (not a shared common.h issue), so fixed by deleting the SCK and MISO
+   declaration lines directly from pins_arduino.h (SS and MOSI kept unchanged; GPIO3 has
+   no equivalent collision - its only other alias is A3, which is expected/harmless).
+   Deletion documented with a plain-English NOTE comment in the file (no literal old
+   declaration text reproduced, per the comment-blind-parser rule).
+
+SUMMARY: GPIO18/19 confirmed already-excluded-at-chip-level for USB D-/D+ sharing (no
+action needed/possible); GPIO3/4/5 confirmed genuine discrete RGB LED and kept available
+but left untagged for polarity (unconfirmed, schematic image unreadable in this
+environment); SCK/MISO self-collision with LED_GREEN/LED_BLUE fixed by deleting those two
+alias lines from pins_arduino.h. New board.json created (full copy of the chip-level
+default plus the above documentation and per-pin notes).

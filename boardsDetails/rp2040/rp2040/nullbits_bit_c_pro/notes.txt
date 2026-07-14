@@ -1,0 +1,135 @@
+Board audit notes: nullbits_bit_c_pro (chip: rp2040)
+Date: 2026-07-13
+Part of the ongoing RP2040/RP2350 family button/LED/NeoPixel + dedicated-hardware
+pin exclusion audit.
+
+BOARD
+-----
+nullbits "Bit-C PRO" — an RP2040-based board in a Pro Micro form factor,
+marketed as a drop-in replacement for ATmega32u4 Pro Micro / Elite-C / the
+original (ATmega32u4) nullbits Bit-C. 4MB flash. Has USB-C, an onboard
+3-channel discrete RGB status LED, and no onboard user/reset button (only a
+PROG strap pin for bootloader entry).
+
+FILES READ
+----------
+- variants/rp2040/rp2040/nullbits_bit_c_pro/pins_arduino.h (this board)
+- variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {} empty)
+- variants/rp2040/rp2040/rpipico/board.json (precedent: simple onboard LED tag)
+- variants/rp2040/rp2040/adafruit_feather_scorpio/board.json + pins_arduino.h
+  (precedent: LED/button/NeoPixel tagging conventions, and the bus-alias-
+  collision fix pattern — GPIO13 LED there was also the vendor default
+  PIN_SPI0_SS, fixed by removing that #define)
+- variants/rp2040/rp2040/generic_full/common.h (included by this board's
+  pins_arduino.h; confirms LED_BUILTIN = PIN_LED indirection, 12-bit ADC,
+  no analog aliases declared by this board so ../generic_full/common.h's
+  A0-A3 = GPIO26-29 apply)
+
+THIS BOARD'S DECLARED PIN ALIASES (pins_arduino.h)
+---------------------------------------------------
+PIN_LED         = 18
+Serial1 TX/RX   = 0 / 1
+Serial2 TX/RX   = 8 / 9
+SPI0 MISO/MOSI/SCK/SS = 20 / 23 / 22 / 21
+SPI1 MISO/MOSI/SCK/SS = 12 / 11 / 14 / 13
+Wire0 SDA/SCL   = 2 / 3
+Wire1 SDA/SCL   = 4 / 5
+
+BUS-ALIAS COLLISION CHECK (the specific bug class flagged for this board)
+---------------------------------------------------------------------------
+Checked GPIO18 (PIN_LED) against every other declared alias above: no
+overlap. GPIO18 is not aliased as SDA/SCL/SS/MOSI/MISO/SCK by this board's
+pins_arduino.h, so build_boards.js's unconditional bus-alias auto-append
+does NOT contaminate the LED tag here. Unlike adafruit_feather_scorpio
+(where GPIO13 LED collided with the vendor default PIN_SPI0_SS and required
+removing that #define), no pins_arduino.h edit was needed for this board.
+
+RESEARCH / SOURCES CONSULTED
+-----------------------------
+1. Official pinout diagram: https://nullbits.co/static/img/BIt-C_PRO_pinout.png
+   (linked from nullbits.co/bit-c-pro/ and nullbits.co/start/), fetched and
+   read as an image directly. Confirms:
+     - GPIO16 = "RGB - R" (PWM0A)
+     - GPIO17 = "RGB - G" (PWM0B)
+     - GPIO18 = "RGB - B" (PWM1A)
+     - GPIO20/22/23/21 = MISO/SCK/MOSI/CSn0 — matches this board's declared
+       SPI0 aliases exactly.
+     - No dedicated user-button pin shown anywhere on the diagram; only a
+       "PROG" pin next to GND labeled "SHORT ON POWER ON FOR BOOTLOADER".
+
+2. github.com/nullbitsco/docs — bit-c-pro/user_guide_en.md (official
+   nullbits documentation). Quotes verbatim:
+     "The built in RGB LED shows power status by default, and can be
+      dimmed to different brightnesses using PWM control."
+     "There is no reset or bootloader button on the Bit-C PRO" — bootloader
+     entry requires shorting the PROG pin to GND *before* plugging in USB
+     (a boot-strap pin sampled at power-up, analogous to BOOTSEL on the
+     official Pico — not a normal digitalRead()-able GPIO button).
+
+3. raw.githubusercontent.com/raspberrypi/pico-sdk (official upstream repo)
+   src/boards/include/boards/nullbits_bit_c_pro.h — the authoritative
+   vendor-contributed pico-sdk board support header for this exact board.
+   Fetched and quoted verbatim (confirmed via direct raw-file fetch, not
+   just search summaries):
+     #define BIT_C_PRO_LED_R_PIN 16
+     #define BIT_C_PRO_LED_G_PIN 17
+     #define BIT_C_PRO_LED_B_PIN 18
+     #define PICO_DEFAULT_LED_PIN BIT_C_PRO_LED_B_PIN
+     #define PICO_DEFAULT_LED_PIN_INVERTED 1
+   This is the strongest source: it independently confirms (a) GPIO18 is
+   the SDK's chosen default/status LED pin, matching this board's own
+   PIN_LED, and (b) the LED is wired ACTIVE-LOW (PICO_DEFAULT_LED_PIN_INVERTED
+   == 1) — i.e. led_low, not led_high.
+
+PER-PIN REASONING
+------------------
+GPIO18 (PIN_LED / LED_BUILTIN):
+  - This is the Blue channel (BIT_C_PRO_LED_B_PIN) of an onboard 3-channel
+    discrete RGB status LED, not a simple single-color LED and not an
+    addressable NeoPixel/WS2812 (all 3 channels are independently
+    PWM-driven GPIOs per the pinout diagram: PWM0A/PWM0B/PWM1A).
+  - Only the Blue channel (GPIO18) is exposed via this board's own
+    pins_arduino.h as PIN_LED; GPIO16 (Red) and GPIO17 (Green) are NOT
+    declared as aliases anywhere in this board's pins_arduino.h. Per this
+    audit's established practice of only tagging GPIOs a board's own
+    pins_arduino.h actually exposes, GPIO16/17 are left OUT OF SCOPE here
+    (no chipGpios entry), even though physically part of the same LED
+    package.
+  - Capabilities applied: ["digital_output", "pwm_output", "led_low"].
+    digital_input dropped to match this repo's established led_high/led_low
+    precedent for dedicated onboard LED pins (rpipico GPIO25,
+    adafruit_feather_scorpio GPIO13). pwm_output retained since
+    arduino-pico's analogWrite() works on any RP2040 GPIO and the vendor's
+    own docs explicitly describe PWM-based brightness dimming of this LED.
+  - Polarity: led_low (active-low), confirmed via official pico-sdk
+    PICO_DEFAULT_LED_PIN_INVERTED == 1 for this exact board (source #3
+    above) — a stronger/more specific source than inference from generic
+    idiom, and NOT the default rpipico-style active-high assumption.
+
+No button found (see source #2 — vendor explicitly states no reset/
+bootloader button exists on this board; PROG is a power-up boot-strap pin,
+out of scope for GPIO-based "button" tagging per this audit's own
+established treatment of BOOTSEL-style pins on rpipico).
+
+No onboard NeoPixel/WS2812 found — the onboard RGB indicator is 3 discrete
+PWM LED channels, not an addressable pixel.
+
+CHANGES APPLIED
+----------------
+Created variants/rp2040/rp2040/nullbits_bit_c_pro/board.json (new file; none
+existed before — board previously fell through to chip-level board.json's
+empty chipGpios, giving GPIO18 an unwarranted full digital_input capability
+alongside the LED tags). Full chip-level defaults copied verbatim from
+variants/rp2040/rp2040/board.json, plus one chipGpios override:
+  "18": { "capabilities": ["digital_output", "pwm_output", "led_low"], ... }
+
+No pins_arduino.h edit was needed (no bus-alias collision found on GPIO18).
+
+SUMMARY
+-------
+Added nullbits_bit_c_pro/board.json tagging GPIO18 (PIN_LED / Blue channel
+of the onboard 3-channel RGB status LED) as digital_output + pwm_output +
+led_low (active-low, confirmed via official raspberrypi/pico-sdk board
+header PICO_DEFAULT_LED_PIN_INVERTED=1). No button or NeoPixel found on
+this board. No bus-alias collision on GPIO18 was found, so pins_arduino.h
+was left unchanged.

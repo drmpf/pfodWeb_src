@@ -1,0 +1,103 @@
+Board: Xteink X4 eReader (xteink_x4), chip esp32c3
+Date: 2026-07-14 — REAL independent verification pass (batch C), superseding
+the 2026-07-14 "documentation backfill" entry below, which cited no external
+URL at all.
+
+=== Independent verification (2026-07-14) ===
+
+Sources consulted:
+- https://learn.adafruit.com/circuitpython-on-the-xteink-x4-ereader/pinouts
+  (Adafruit Learn guide, CircuitPython port for this exact device) — CONFIRMS
+  in detail: power button = GPIO3 (`board.BUTTON`); other 6 buttons (up/down/
+  left/right/confirm/back) via a resistor-ladder ADC on GPIO1/GPIO2
+  (`board.BUTTON_ADC_1`/`_2`); e-paper display SPI: SCK=GPIO8 (`EPD_SCK`),
+  MOSI=GPIO10 (`EPD_MOSI`), CS=GPIO21 (`EPD_CS`), DC=GPIO4 (`EPD_DC`),
+  RST=GPIO5 (`EPD_RST`), BUSY=GPIO6 (`EPD_BUSY`); microSD: CS=GPIO12
+  (`SD_CS`), MISO=GPIO7 (`SD_MISO`), shares SCK/MOSI with the display;
+  battery voltage sensing on GPIO0 (`board.A0`) via a voltage divider;
+  charge/USB detection on GPIO20 (`board.D20`).
+- https://github.com/bigbag/papyrix-reader/blob/main/docs/device-specifications.md
+  (independent open-source firmware project's own hardware-reverse-engineered
+  spec doc, built on the open-x4-sdk community reverse-engineering effort) —
+  CORROBORATES the above: power button GPIO3 active-low with pullup; ADC
+  channel 1 (GPIO1) for back/confirm/left/right, ADC channel 2 (GPIO2) for
+  up/down; SD CS=GPIO12, MISO=GPIO7, MOSI=GPIO10 (shared with display),
+  SCLK=GPIO8 (shared with display). Notes the SSD1677 as the e-paper driver
+  chip (Adafruit's guide doesn't name the driver chip, so this is a useful
+  cross-check on the general hardware description, not a pin-numbering
+  conflict).
+- https://github.com/open-x4-epaper/community-sdk and
+  https://github.com/open-x4-epaper/sample-firmware — background/provenance
+  only; these are the original community reverse-engineering repos both the
+  Adafruit guide and papyrix-reader/Biscuit firmware forks trace back to.
+  Not fetched directly (GitHub directory browsing didn't surface a single
+  canonical pins.h in the search results), but both downstream sources agree
+  with each other's numbers, satisfying the "2+ agreeing independent
+  sources" bar for a board with no official vendor pin datasheet.
+- Multiple GitHub forks of "biscuit" firmware (yattsu, danmartinez78,
+  ohmygaugh-crypto, Z0rlord) — background only, not individually fetched;
+  all describe the same ESP32-C3 SoC / 4.26" 800x480 e-ink / 7-button
+  hardware, consistent with the above.
+
+Per-pin findings:
+- GPIO3 (power button): CONFIRMED by 2 independent sources as a genuine
+  single digital button (active low, pullup). This board's own RX alias is
+  GPIO20, not GPIO3, so no TX/RX conflict blocks tagging. CHANGED: board.json
+  chipGpios["3"] updated from the generic chip-default capability set to
+  `{"capabilities": ["digital_input", "button"]}`, per section 7a's tagging
+  rule (previously confirmed as available but left untagged - this pass
+  completes that tagging now that real corroborating sources exist).
+- GPIO4 (EPD_DC), GPIO5 (EPD_RST), GPIO6 (EPD_BUSY): CONFIRMED excluded -
+  dedicated e-paper display control lines, exact match on both sources.
+- GPIO7 (SD_MISO, shared with EPD MISO), GPIO8 (EPD_SCK, shared with SD
+  SCLK), GPIO10 (EPD_MOSI, shared with SD MOSI), GPIO21 (EPD_CS): CONFIRMED
+  excluded - dedicated shared e-paper/microSD SPI bus, exact match on both
+  sources. (This also confirms the previously-undocumented GPIO10 exclusion
+  that this board's own board.json comment didn't explicitly call out by
+  number before this pass - now spelled out.)
+- GPIO12 (SD_CS): CONFIRMED as the microSD chip-select, matching both
+  sources; already excluded at the ESP32-C3 chip-default level (flash-
+  reserved range) so no board-specific board.json entry was needed.
+- GPIO1, GPIO2: NEW finding this pass - these are a shared resistor-ladder
+  ADC read covering the other 6 physical buttons (not one GPIO per button).
+  This does not fit the section 7a "single button" capability-tag schema
+  (which implies a simple digital on/off read) - tagging either pin
+  "button" would misrepresent the hardware (reading a specific button
+  requires an ADC threshold comparison across a shared ladder, not a plain
+  digital_input read). Left as-is (chip-default analog_input capability
+  set) - correctly falls under the "analog sensor reading" KEEP-available
+  policy already in effect, just now with an accurate reason on record.
+- GPIO0: NEW finding this pass - battery voltage divider reading (board.A0).
+  Falls squarely under the established "battery/voltage monitor" KEEP policy
+  (section 3). No change - already kept at chip-default analog_input
+  capabilities, which is correct.
+- GPIO20 (also this board's RX alias): NEW finding this pass - doubles as a
+  USB/charge-detection digital input per the Adafruit guide. Simple digital
+  sensor pin, consistent with KEEP policy; no capability change indicated
+  beyond what's already present (digital_input/digital_output/pwm_output,
+  matching chip default for a non-ADC-capable ESP32-C3 pin).
+- GPIO9, GPIO11: no vendor documentation found assigning these to any
+  dedicated function on this board; left at chip-default capabilities
+  (already the case) - genuinely general-purpose, not merely unexamined.
+
+Result: existing GPIO4/5/6/7/8/10/21 e-paper+SD exclusion set CONFIRMED via
+2 independent, mutually-corroborating community sources (Adafruit's own
+CircuitPython port + the papyrix-reader project's reverse-engineered device
+spec), both tracing to the open-x4-epaper community-sdk reverse-engineering
+effort (no official Xteink vendor pinout was found to exist publicly).
+GPIO3's power button was additionally CONFIRMED with enough independent
+corroboration to complete the "button" capability tag that the previous pass
+had explicitly flagged as missing. GPIO1/GPIO2 (multi-button ADC ladder),
+GPIO0 (battery divider), and GPIO20 (charge detect) are newly documented
+findings that confirm the current KEEP/analog-default treatment was already
+correct, not changes.
+
+=== 2026-07-14 (earlier, documentation-backfill entry — no external URL was
+cited at the time; restated here for history) ===
+
+Per-pin findings (as originally written): GPIO4/5/6/7/8/21 excluded (e-paper+
+SD); GPIO12 excluded at chip level; GPIO3 (BUTTON) kept available but without
+an explicit "button" tag; GPIO0/1/2/9/11/20 kept at chip-default capabilities;
+GPIO10 excluded relative to the chip-level default but "not explicitly called
+out in the header comment." All of these are now independently confirmed (or,
+for GPIO3, completed with a real tag) by the verification pass above.

@@ -1,0 +1,100 @@
+Board: ViraLink-G1.1 (ESP32) — industrial IoT gateway board contributed to
+the official Arduino-ESP32 core by ViraLink (viralink.io/viralink.ir IoT
+platform company); sibling variant ViraLink-G0.1 also exists upstream.
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\ViraLink-G1.1\
+
+2026-07-14 INDEPENDENT VERIFICATION PASS (batch B of 8)
+========================================================
+Task: confirm or correct the existing RF433/GSM/RS485/Ethernet/Wiegand
+exclusions against REAL external vendor documentation, not just the
+board's own pins_arduino.h (which is all the prior pass had cited).
+
+Sources consulted this pass:
+- https://github.com/espressif/arduino-esp32/pull/9841 — the actual
+  merged PR ("feat(3rd party board): Adding ViraLink IoT Gate Boards",
+  author "armp30", merged into the official Espressif Arduino-ESP32
+  core) that added both ViraLink-G0.1 and ViraLink-G1.1. PR description
+  itself is minimal ("tested on Arduino-esp32 core v3.0.1") with no
+  separate hardware writeup, but the merge itself means the pin
+  definitions were reviewed and accepted by Espressif maintainers as a
+  genuine third-party board contribution — this is the closest thing to
+  an "official GitHub repo" source available for this board, since
+  ViraLink does not appear to publish a separate public schematic.
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/ViraLink-G1.1/pins_arduino.h
+  — fetched fresh this session directly from the upstream repo
+  (independent re-fetch, not just trusting this repo's local copy).
+  Confirmed byte-for-byte equivalent pin assignments to the local copy:
+  RF433 module=GPIO5; RS485 TX=32/RX=35; GSM1 TX=15/RX=34; GSM2 TX=32/
+  RX=35; GSM power=33; I2C SDA=4/SCL=16; EXT1=12/EXT2=13; PCF1_INT=14
+  (I2C GPIO-expander interrupt); Wiegand1 D0=15/D1=34, Wiegand2 D0=39/
+  D1=36; Ethernet EMAC: ETH_CLK_OUT=17, MDIO/MDC=18/23, TXD0/TXD1=19/22,
+  TX_EN=21, RXD0/RXD1=25/26, RX_DV=27; SPI (SS/MOSI/SCK/MISO) = -1
+  (disabled, no SPI header on this board). This independently confirms
+  the local copy is not stale/tampered and matches the authoritative
+  upstream vendor-contributed source exactly.
+- Searched extensively for a public ViraLink product page / schematic /
+  datasheet for a "G1.1" gateway specifically:
+  https://viralink.io (their live device catalogue lists VL-GW-100
+  LoRaWAN gateway and various VL-SN-2xx/VL-AC-3xx/VL-RL-4xx sensor/
+  actuator products, but NO "G1"/"G1.1" model is listed or described),
+  https://github.com/viralinkio (their public GitHub org — repos are
+  MQTT client SDKs (ViraLink-MQTT-Client, Python/TypeScript SDKs) and a
+  fork of Olimex's ESP32-GATEWAY board firmware/Tasmota, but no G1.1
+  hardware repo, schematic, or pin documentation), general web search
+  (no independent schematic, teardown, or third-party review found).
+  DEAD END, recorded honestly: no public schematic or product page
+  exists for this specific "G1.1" gateway model as of this audit — the
+  only available evidence is the manufacturer's own upstream-merged
+  pins_arduino.h (which IS a legitimate first-party source, just not a
+  separately-published schematic/datasheet).
+
+Per-pin findings (re-confirmed):
+- GPIO5 (RF433): EXCLUDED. Matches vendor's own upstream pins_arduino.h
+  (re-fetched fresh this session) — no separate corroboration exists,
+  but this is the manufacturer's own authoritative, Espressif-merged
+  source.
+- GPIO14 (PCF1_INT — I2C GPIO-expander interrupt): EXCLUDED. Same basis.
+- GPIO15, 32, 33, 34, 35 (GSM modem(s) + RS485 + GSM power): EXCLUDED.
+  Same basis. Note: GPIO15 and GPIO34 are also independently referenced
+  as Wiegand1 D0/D1 in the same file — i.e. this pin cluster is
+  documented as shared/multiplexed between the GSM/RS485 subsystem and
+  the Wiegand reader depending on which peripheral is populated on a
+  given gateway SKU; either way it is dedicated, non-general-purpose
+  hardware, so the exclusion is correct regardless of which specific
+  function is actually populated.
+- GPIO18, 19, 21, 22, 23, 25, 26, 27 (Ethernet EMAC/clock): EXCLUDED.
+  Same basis — matches the RMII Ethernet MAC pin set exactly (MDIO/MDC,
+  TXD0/TXD1/TX_EN, RXD0/RXD1/RX_DV, ETH_CLK_OUT).
+- GPIO36, 39 (Wiegand card reader): EXCLUDED. Same basis.
+- GPIO0 (RESET_KEY): kept at generic chip-default capabilities, NOT
+  tagged "button" — matches the established convention across this
+  entire audit (the BOOT/IO0 strapping pin is never tagged as a
+  general-purpose button, since it's a power-on/flash-mode control, and
+  "RESET_KEY" as an alias name alone is not sufficient evidence per this
+  repo's "never guess from alias name" policy — no vendor doc confirms a
+  press-to-use application button separate from the strapping function).
+- GPIO1, 2, 3, 4, 12, 13, 37, 38: KEPT, generic chip-default capabilities
+  — no dedicated-hardware or button/LED evidence found for these in any
+  source consulted.
+- GPIO16 (SCL): correctly absent from this board's chipGpios — but this
+  is NOT a board-specific exclusion; GPIO16 is already excluded at the
+  base esp32/esp32 chip level (PSRAM-reserved range 16-17), independent
+  of this board's I2C bus use of it.
+
+RESULT: All existing findings CONFIRMED against a freshly-re-fetched
+copy of the authoritative upstream (Espressif-merged, manufacturer-
+contributed) pins_arduino.h. No independent secondary source (schematic,
+product page, teardown) could be found beyond that upstream contribution
+itself — this is recorded honestly as a real limitation rather than
+padded with a weak/uncorroborated aggregator citation. No corrections
+were made; board.json's chipGpios content is unchanged.
+
+Summary: GPIO5 (RF433), GPIO14 (I2C expander INT), GPIO15/32-35 (GSM
+modems + RS485 + GSM power), GPIO17-19/21-23/25-27 (Ethernet EMAC/clock),
+and GPIO36/39 (Wiegand card reader) all re-confirmed via a fresh,
+independent re-fetch of the manufacturer's own upstream-merged
+pins_arduino.h in the official espressif/arduino-esp32 repo (PR #9841).
+No separate public schematic/product page exists for this specific model
+as of this audit (dead end, documented above) — no button/LED evidence
+was found anywhere, so none was tagged. All remaining pins keep the
+chip-level default capabilities.

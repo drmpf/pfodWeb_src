@@ -1,0 +1,69 @@
+lolin_s3_mini_pro - button/LED GPIO audit research notes
+==========================================================
+
+Sources consulted:
+
+1. https://www.wemos.cc/en/latest/s3/s3_mini_pro.html
+   Official WEMOS/LOLIN vendor documentation page for S3 MINI PRO. Spec list
+   states verbatim: "3x Button (IO0, IO47, IO48)" and "1x RGB LED (Data: IO8,
+   Power: IO7)" and "1x IR (IO9)". This is the primary/authoritative source
+   used to confirm GPIO assignments.
+
+2. https://github.com/Bits4Bots/Lolin-S3-Mini-Pro
+   Community GitHub repo for this board. Cross-confirms the same pin
+   assignments: Button 1 (Left) GPIO0, Button 2 (Center) GPIO47, Button 3
+   (Right) GPIO48; RGB LED power pin GPIO7, data pin GPIO8, described as a
+   WS2812B-0807 addressable RGB LED (i.e. a NeoPixel-type device, one data
+   line driving the LED). Used as a secondary corroborating source.
+
+3. Cross-checked against the board's own pins_arduino.h
+   (variants/esp32/esp32s3/lolin_s3_mini_pro/pins_arduino.h), which defines
+   BUTTON_LEFT=0, BUTTON_OK=47, BUTTON_RIGHT=48, and RGB_BUILTIN =
+   LED_BUILTIN = 8 + SOC_GPIO_PIN_COUNT (the ESP32 Arduino core's sentinel
+   encoding meaning "this is a NeoPixel wired to physical GPIO8, not a plain
+   digital LED pin"). This numeric encoding independently points at GPIO8
+   for the NeoPixel data line, consistent with the two vendor/community
+   sources above (used only as corroboration, not as the sole basis for
+   tagging, per task instructions).
+
+Pins considered and NOT tagged:
+
+- GPIO7 (RGB LED power-gate/enable for the NeoPixel) - already excluded from
+  chipGpios by a prior pin-exclusion audit pass (see existing NOTE at top of
+  board.json: "excludes GPIO7 (RGB LED power-gate)..."). Per task rules this
+  pre-existing exclusion must not be reversed, so GPIO7 is left untagged and
+  out of scope even though it is confirmed as part of the RGB LED circuit.
+  This is a clean case, not a guess - it's simply out of scope.
+
+- GPIO9 (IR LED) - already excluded from chipGpios by the same prior audit
+  pass ("GPIO9 (IR blaster/receiver)"). Not a button/LED capability this
+  task tags anyway (IR has no tag in the allowed list), so left untagged.
+  Not a guess, just out of scope / no applicable tag.
+
+- GPIO33-36 (dedicated onboard TFT display control lines) - already excluded
+  by the prior audit pass, unrelated to button/LED, left untouched.
+
+No TX/RX conflicts were found: this board's TX=43, RX=44 (from
+pins_arduino.h), and none of the tagged pins (0, 8, 47, 48) coincide with
+those, so no candidate had to be dropped for that reason.
+
+All three confirmed buttons (GPIO0, GPIO47, GPIO48) and the confirmed
+NeoPixel data pin (GPIO8) were tagged with high confidence - both the
+official vendor page and an independent community source agree exactly on
+these GPIO numbers, and the pins_arduino.h sentinel encoding for GPIO8 is
+consistent with them. No best-guess/uncertain judgment calls were made for
+the pins that were tagged.
+
+Summary of changes made:
+
+- GPIO0  -> ["digital_input", "button"]              (BUTTON_LEFT / IO0)
+- GPIO47 -> ["digital_input", "button"]              (BUTTON_OK / IO47)
+- GPIO48 -> ["digital_input", "button"]              (BUTTON_RIGHT / IO48)
+- GPIO8  -> ["digital_output", "led_neopixel", "pwm_output"]
+            (pwm_output retained because it was already present in GPIO8's
+            existing capability set before this edit)
+
+Edited file: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\lolin_s3_mini_pro\board.json
+(existing board.json edited in place; existing pin-exclusion NOTE comment
+at the top was preserved, new NOTE lines appended after it, one per tagged
+GPIO.)

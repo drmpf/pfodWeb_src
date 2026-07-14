@@ -1,0 +1,17 @@
+lopy4 board.json research notes
+================================
+
+Sources consulted:
+- https://docs.pycom.io/datasheets/development/lopy4/ - Official LoPy4 datasheet page. Notes pin defaults (UART1/SPI/I2C) can be changed in software. States "Orient the RGB LED / reset button over the USB connector on any expansion board" - this phrasing describes physical orientation guidance for pairing the module with an expansion/dev board, consistent with the module having its own onboard RGB LED (Pycom modules are bare surface-mount modules; the RGB LED itself is part of the module PCB, while USB/power/physical reset button live on the expansion board).
+- https://github.com/pycom/pycom-micropython-sigfox/tree/master/esp32/boards/LOPY4 - Official Pycom MicroPython/firmware board directory for LOPY4, contains mpconfigboard.h and pins.csv.
+- https://raw.githubusercontent.com/pycom/pycom-micropython-sigfox/master/esp32/boards/LOPY4/mpconfigboard.h - Confirms MICROPY_HW_HB_PIN_NUM (0) = GPIO0 is the heartbeat RGB LED pin for the LOPY4 board specifically (not inferred from GPy). Also MICROPY_HW_SAFE_PIN_NUM (21) = safe-mode/antenna-diversity pin (matches ANT_SELECT=21 already excluded in board.json, unrelated to any button). No discrete user-button pin definition found anywhere in this file.
+- https://raw.githubusercontent.com/pycom/pycom-micropython-sigfox/master/esp32/boards/LOPY4/pins.csv - Confirms GPIO0 = port P2 ("G23,GPIO0,P2"). No RGB LED or button annotation in this pin-mapping file (mapping only); pin identity confirmed instead via mpconfigboard.h.
+- https://raw.githubusercontent.com/pycom/pycom-micropython-sigfox/master/esp32/mods/modled.c - Official Pycom firmware LED driver module (generic, used by all Pycom boards including LOPY4). Confirms the heartbeat LED is driven via the ESP32 RMT peripheral using WS2812/NeoPixel-style bit timing (900ns/300ns high/low periods) and GRB color-byte ordering - i.e. a genuine single-wire addressable WS2812 LED, not a simple digital/PWM single-color LED and not discrete R/G/B GPIOs.
+- Vendor pins_arduino.h (C:\ai\aicode\pfodWeb\variants\esp32\esp32\lopy4\pins_arduino.h) - defines PIN_RGB_LED = GPIO0 with comment "->2812 RGB !!!", and LED_BUILTIN/RGB_BUILTIN aliases pointing at it. Also defines TX=GPIO1, RX=GPIO3 (confirmed GPIO0 does not conflict with TX/RX).
+
+Pins considered but NOT tagged:
+- No onboard user button was found anywhere in the official datasheet or firmware source. mpconfigboard.h defines no button pin; only a reset pin/button which per the datasheet page lives on the expansion board, not the module. This matches the GPy precedent (same Pycom module family). No guess was made here - this is a confirmed absence, not a judgment call.
+- GPIO21 (SAFE_PIN / ANT_SELECT) was already excluded from chipGpios in an earlier pin-audit pass (external antenna switch) - left untouched, not related to button/LED, no action taken.
+
+Summary of changes made:
+- Tagged GPIO0 as ["digital_output", "pwm_output", "led_neopixel"] in board.json (pwm_output retained because it was already present on GPIO0 before this change) - confirmed onboard WS2812 heartbeat RGB LED via official Pycom firmware source (MICROPY_HW_HB_PIN_NUM=0 for LOPY4 board specifically, plus modled.c WS2812 RMT driver) and vendor pins_arduino.h PIN_RGB_LED=0 comment. No TX/RX conflict (TX=1, RX=3). No button tagged - none exists on the module.

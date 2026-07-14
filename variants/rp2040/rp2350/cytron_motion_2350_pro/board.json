@@ -1,0 +1,266 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Cytron Motion 2350 Pro" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — the
+  // motor/button/NeoPixel/USB-host identity pins are handled entirely via
+  // the chipGpios capability overrides below. The 30-pin RP2350A used
+  // here has no input-only GPIOs (same pinout class as RP2040).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) RP2350A chip
+  // bucket; this board has no onboard WiFi/BLE radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family audit, button/LED/NeoPixel tagging
+  // + dedicated-hardware pin exclusion, 2026-07-13):
+  //
+  // Board: Cytron "Motion 2350 Pro" — official Cytron Technologies
+  // robotics/motion-control controller, RP2350A-based (PICO_RP2350A),
+  // built around a 4-channel brushed-DC-motor H-bridge driver (3A
+  // continuous / 5A peak per channel), an 8-channel 5V servo header
+  // (GP0-GP7), an 8-channel flexible "GPIO breakout" header (GP16-GP19,
+  // GP26-GP29, also exposed via 3 "Maker Port" connectors), a native USB
+  // Type-A host connector (for joystick/gamepad/keyboard input), 2 push
+  // buttons, a piezo buzzer with a physical mute switch, a 2-pixel
+  // WS2812 "RGB LED" (NeoPixel), and an optional solder-jumper VIN-sense
+  // divider. This board's own pins_arduino.h declares:
+  //   #define PIN_LED             (2u)     // see finding below — NOT a
+  //                                         // confirmed onboard LED
+  //   #define PIN_NEOPIXEL        (23u)    // NUM_NEOPIXEL=2, PIN_RGB alias
+  //   #define PIN_USB_HOST_DP     (24u)
+  //   #define PIN_USB_HOST_DM     (25u)
+  //   #define PIN_BUZZER          (22u)    // no tagging vocabulary, out of scope
+  //   #define PIN_M1A/M1B/M2A/M2B/M3A/M3B/M4A/M4B  (8u..15u)  // motor driver
+  //   #define PIN_VOLTAGE_MONITOR (29u)    // optional solder-jumper VIN sense
+  // and (per its own "pfodWeb NOTE" comment above the D-alias block)
+  // deliberately omits D8-D15 aliases for the motor pins, while every
+  // other GPIO gets a plain D<n> alias (D0-D7, D16-D29 incl. D24/D25 for
+  // the USB host lines).
+  //
+  // Sources consulted (all independently cross-checked):
+  //   1. Cytron's official pinout diagram (github.com/CytronTechnologies/
+  //      Cytron-MOTION-2350-PRO, images/Pinout_Diagram_MOTION-2350-Pro.png)
+  //      — the authoritative per-GPIO silkscreen/function map, viewed
+  //      directly. Bottom "dedicated hardware" legend explicitly lists
+  //      ONLY: "4x DC MOTOR -> GP8-GP15", "USER BUTTON -> GP20",
+  //      "USER BUTTON -> GP21", "PIEZO BUZZER -> GP22", "RGB LED -> GP23",
+  //      "VIN SENSE -> ADC3" (with the annotation "VIN = VADC/6.1 (Solder
+  //      the jumper to measure VIN)" confirming the divider is NOT
+  //      connected unless the user solders an optional jumper). No other
+  //      single-color/status LED is listed anywhere on the diagram — GP2
+  //      appears only as an ordinary SERVO-header pin (SPI0 SCK / I2C1
+  //      SDA / UART0 CTS / PWM1 A), with no LED marking of any kind.
+  //      The diagram also confirms GP0-GP7 as the flexible "SERVO" header
+  //      (SPI0 + I2C0/I2C1 + UART0 + PWM0-3, all silkscreened as
+  //      alternate functions of the same 8 header pins) and GP16-GP19 +
+  //      GP26-GP29 as the flexible "GPIO" header / 3x "Maker Port"
+  //      breakouts (SPI0/SPI1 + I2C0/I2C1 + UART0/UART1 + PWM + ADC0-3),
+  //      and the USB HOST connector as D+ = GP24 / D- = GP25.
+  //   2. This repo's own variants/rp2040/boards.txt:
+  //      `cytron_motion_2350_pro.build.led=` is EMPTY — i.e. arduino-pico
+  //      does NOT wire up any LED_BUILTIN for this board at all, exactly
+  //      matching the bigtreetech_SKR_Pico precedent's reasoning for
+  //      "no confirmed onboard LED" (a board can declare `#define
+  //      PIN_LED` in pins_arduino.h purely as inherited/template
+  //      boilerplate while boards.txt's build.led= being blank confirms
+  //      it isn't actually surfaced as the Arduino LED_BUILTIN for this
+  //      specific board).
+  //   3. Upstream CircuitPython board definition search results (Cytron's
+  //      own contributed board — adafruit/circuitpython ports/raspberrypi/
+  //      boards/cytron_motion_2350_pro/pins.c): defines board.M1A..M4B
+  //      (GPIO8-15), board.A0-A3/board.VOLTAGE_MONITOR (GPIO26-29),
+  //      board.NEOPIXEL (GPIO23), board.SDA/SCL/MISO/CS/SCK/MOSI (GPIO16-19)
+  //      — but declares NO `board.LED` alias anywhere, independently
+  //      corroborating finding 2 (no confirmed onboard single-LED).
+  //   4. Cytron's official Arduino example firmware (github.com/
+  //      CytronTechnologies/Cytron-MOTION-2350-PRO, examples/arduino/
+  //      button/button.ino — the vendor's own factory demo code):
+  //        pinMode(20, INPUT_PULLUP); pinMode(21, INPUT_PULLUP);
+  //        if (!digitalRead(btn1)) { ... }   // confirms GPIO20/21 are
+  //        active-low pushbuttons using the MCU's internal pull-up (no
+  //        external pull-up resistor), matching the pinout diagram's
+  //        "USER BUTTON" labels exactly.
+  //   5. Cytron's official Arduino buzzer example (examples/arduino/
+  //      buzzer/buzzer.ino): `const int buzzerPin = 22;` driven via
+  //      `tone(buzzerPin, freq, duration)` — confirms GPIO22 or
+  //      PIN_BUZZER matches, but this repo has no "buzzer" capability
+  //      vocabulary (per task scope), so left untagged — matches the
+  //      cytron_maker_pi_rp2040 / cytron_maker_nano_rp2040 /
+  //      cytron_maker_uno_rp2040 precedents exactly (same PIN_BUZZER=22
+  //      convention, all three left untagged for the same reason).
+  //   6. Cytron product page (cytron.io/p-motion-2350-pro) and Adafruit
+  //      product listing (adafruit.com/product/6080): "advanced DC motor
+  //      driver capable of controlling up to 4 brushed DC motors (3A Max
+  //      each channel)", "direct USB host to connect USB joystick or
+  //      gamepad", "2 x RGB LED (Neopixel compatible)", "piezo buzzer
+  //      (with mute switch)" — independently corroborating findings 1/4/5.
+  //
+  // Per-pin findings and disposition:
+  //   GPIO2 (PIN_LED) — INVESTIGATED, NOT tagged. No vendor source (official
+  //     pinout diagram, CircuitPython board definition, or boards.txt
+  //     build.led=) confirms an onboard LED wired to GPIO2 on this
+  //     specific board — GP2 is simply one of the 8 general-purpose SERVO
+  //     header pins (SPI0 SCK / I2C1 SDA / UART0 CTS / PWM1 A alternate
+  //     functions). Per task instructions ("Confirm via real vendor
+  //     documentation — never guess. Report NO CHANGE rather than
+  //     guess."), left at full chip-level default general-purpose
+  //     capabilities — no chipGpios entry added.
+  //   GPIO0/GPIO1/GPIO3-GPIO7 — SERVO header pins (8-channel 5V servo
+  //     ports), also double as SPI0 (GPIO4-7) and Serial1 (GPIO0/1) per
+  //     this board's own pins_arduino.h. A genuine flexible multi-purpose
+  //     expansion header (not committed to one onboard consumer) —
+  //     matches this repo's established aux-header KEEP policy (e.g.
+  //     bigtreetech_SKR_Pico GPIO0/1). The auto-appended spi_ss/spi_mosi/
+  //     spi_miso/spi_sck capabilities on GPIO4-7 (from this board's own
+  //     SS/MOSI/MISO/SCK static-const aliases) are NOT a false-positive
+  //     bus-collision bug here — SPI0 genuinely IS a documented alternate
+  //     use of these same header pins (confirmed by the vendor pinout
+  //     diagram itself showing "SPI0 SDI/SDO/SCK/CSn" printed alongside
+  //     each GP0-GP7 label) — left as-is, no fix needed.
+  //   GPIO8-GPIO15 (PIN_M1A/M1B/M2A/M2B/M3A/M3B/M4A/M4B) — onboard 4-channel
+  //     DC motor H-bridge driver outputs (PWM4A/4B, PWM5A/5B, PWM6A/6B,
+  //     PWM7A/7B per the vendor pinout diagram), confirmed via the
+  //     official product page ("controlling up to 4 brushed DC motors,
+  //     3A Max each channel") and the CircuitPython board.M1A..M4B
+  //     aliases. This board's own pins_arduino.h deliberately gives these
+  //     8 GPIOs NO D-alias (see its own "pfodWeb NOTE" comment), so
+  //     without a chipGpios entry they would not appear as routable pins
+  //     in the Designer's pin picker at all. Per the established
+  //     cytron_maker_pi_rp2040 precedent (identical M1A/M1B/M2A/M2B
+  //     pins on that board): "these are ordinary PWM-capable GPIOs —
+  //     exactly how a sketch is meant to control motor speed/direction:
+  //     digitalWrite/analogWrite on these same pins. No dedicated-hardware
+  //     restriction applies." Unlike a 3D-printer stepper STEP/DIR/EN
+  //     line (which needs precisely-timed pulse sequences and is
+  //     dangerous to drive casually) a DC-motor H-bridge channel just
+  //     needs a plain digital/PWM signal — legitimate general-purpose
+  //     use. Explicit chipGpios entries (full digital_input/digital_output/
+  //     pwm_output capability, plus a descriptive per-channel note) are
+  //     added here — deviating from maker_pi_rp2040's choice of adding no
+  //     entry at all (which, given the missing D-alias, would have left
+  //     these pins entirely invisible in the Designer) — so the Designer's
+  //     pin picker surfaces all 8 motor-driver GPIOs with a clear label of
+  //     which motor/channel each one drives, matching this board's
+  //     stated identity as a real motor-control board (task's own framing,
+  //     matching the bigtreetech_SKR_Pico precedent's informativeness).
+  //   GPIO16/GPIO17 (Wire0 SDA/SCL) and GPIO26/GPIO27 (Wire1 SDA/SCL) —
+  //     part of the flexible "GPIO breakout" header / Maker Port
+  //     connectors (also carry SPI0/SPI1 CSn/SCK/SDI/SDO and UART0/UART1
+  //     alternate functions per the vendor diagram). No dedicated onboard
+  //     I2C sensor/consumer confirmed — matches this repo's established
+  //     KEEP policy for buses without an exclusive onboard consumer (e.g.
+  //     esp32/oroca_edubot). Left at chip-level defaults, no chipGpios
+  //     entry added.
+  //   GPIO18/GPIO19 — plain GPIO-breakout-header pins (SPI0 SCK/SDO,
+  //     I2C1 SDA/SCL, UART0 CTS/RTS per the diagram). No dedicated
+  //     onboard consumer confirmed. Left at chip-level defaults.
+  //   GPIO20/GPIO21 — two onboard user pushbuttons ("USER BUTTON" x2 per
+  //     the vendor pinout diagram), active-low, requiring the MCU's
+  //     internal pull-up — confirmed by Cytron's own official Arduino
+  //     button.ino example (pinMode(20/21, INPUT_PULLUP);
+  //     if (!digitalRead(btn1))). Neither is aliased by name in this
+  //     board's own pins_arduino.h (only plain D20/D21), matching the
+  //     cytron_maker_pi_rp2040/cytron_maker_nano_rp2040 GPIO20(/21)
+  //     precedent exactly. Full digital_input + digital_output +
+  //     pwm_output + button capability set kept (ordinary GPIOs merely
+  //     wired to switches, not dedicated/capacitive-only pins).
+  //   GPIO22 (PIN_BUZZER) — onboard piezo buzzer with a physical mute
+  //     switch, confirmed via the vendor pinout diagram and Cytron's
+  //     official buzzer.ino example (tone()-driven). Left untagged per
+  //     task scope (no "buzzer" capability vocabulary exists in this
+  //     repo yet) — matches the cytron_maker_pi_rp2040 /
+  //     cytron_maker_nano_rp2040 / cytron_maker_uno_rp2040 PIN_BUZZER=22(/8)
+  //     precedents exactly. No chipGpios entry added; this GPIO already
+  //     has a D22 alias so it keeps full chip-level default capabilities.
+  //   GPIO23 (PIN_NEOPIXEL / PIN_RGB) — onboard 2-pixel WS2812 "RGB LED"
+  //     (NeoPixel), output-only, PIO-driven — confirmed by the vendor
+  //     pinout diagram's "RGB LED -> GP23" legend entry, this board's own
+  //     NUM_NEOPIXEL=2, and the product page's "2 x RGB LED (Neopixel
+  //     compatible)" spec. digital_input/pwm_output dropped to match this
+  //     repo's led_neopixel convention (NeoPixel data is bit-banged/
+  //     PIO-driven, not a PWM brightness line) — matches the
+  //     cytron_maker_pi_rp2040 GPIO18 and cytron_maker_nano_rp2040 GPIO11
+  //     precedents exactly (same vendor, same WS2812 wiring convention).
+  //   GPIO24/GPIO25 (PIN_USB_HOST_DP / PIN_USB_HOST_DM) — onboard native
+  //     USB Type-A HOST connector D+/D- differential pair, confirmed via
+  //     the vendor pinout diagram ("USB HOST: D+ -> GP24, D- -> GP25")
+  //     and the product page's "direct USB host to connect USB joystick
+  //     or gamepad" feature. Both have plain D24/D25 aliases in this
+  //     board's own pins_arduino.h, so without this override they would
+  //     be silently exposed as ordinary full-capability digital_input/
+  //     digital_output/pwm_output pins — exactly the bug class this
+  //     audit targets. Fixed here via a chipGpios capabilities:[]
+  //     override: driving these pins as generic digital I/O would
+  //     conflict with the physical USB host connector's D+/D- signalling
+  //     to any attached joystick/gamepad/keyboard, so they are excluded
+  //     from general-purpose use.
+  //   GPIO26/GPIO27 (A0/A1, Wire1 SDA/SCL) — plain GPIO-breakout/Maker
+  //     Port pins, no dedicated onboard consumer. Left at chip-level
+  //     defaults (analog_input via A0/A1 aliases + full digital
+  //     capability), matching this repo's KEEP policy for onboard analog
+  //     breakout pins without an exclusive consumer.
+  //   GPIO28 (A2) — plain GPIO-breakout/Maker Port pin, no dedicated
+  //     onboard consumer. Left at chip-level defaults.
+  //   GPIO29 (A3 / PIN_VOLTAGE_MONITOR) — optional VIN-sense divider,
+  //     confirmed via the vendor pinout diagram's explicit annotation
+  //     "VIN = VADC/6.1 (Solder the jumper to measure VIN)" — i.e. the
+  //     divider is NOT connected by default; a user must manually solder
+  //     a jumper to enable it. Until that mod is done this pin behaves as
+  //     an ordinary GPIO-breakout/Maker-Port pin (also ADC3/PWM6B/UART0
+  //     RX/I2C0 SCL per the diagram). Matches the cytron_maker_pi_rp2040
+  //     PIN_VBATT=29 precedent (also left untouched, same reasoning) —
+  //     left at chip-level defaults (analog_input via the A3 alias), no
+  //     chipGpios entry added.
+  //   BOOT / RST buttons (silkscreened near the USB-C connector, per the
+  //     vendor pinout diagram) — the standard RP2350 BOOTSEL and hardware
+  //     RESET/RUN lines, not numbered user GPIOs (BOOTSEL is read via a
+  //     special QSPI-flash-CS trick, not digitalRead(); RESET is a direct
+  //     hardware reset strap). Out of scope for this repo's GPIO-keyed
+  //     capability tagging — matches the rpipico precedent's identical
+  //     BOOTSEL exclusion reasoning exactly.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/cytron_motion_2350_pro/notes.txt
+  "chipGpios": {
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M1A — DC motor driver 1, channel A (PWM4A). Onboard 4-channel H-bridge motor driver output (3A continuous / 5A peak per channel, per Cytron's product page). Ordinary PWM-capable GPIO — drive directly via digitalWrite/analogWrite to control motor 1, matching Cytron's own dc_motor example code. No D-alias in this board's pins_arduino.h (see its own pfodWeb NOTE comment); added here so the Designer's pin picker surfaces it with a clear identity label." },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M1B — DC motor driver 1, channel B (PWM4B). Same reasoning as GPIO8." },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M2A — DC motor driver 2, channel A (PWM5A). Same reasoning as GPIO8." },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M2B — DC motor driver 2, channel B (PWM5B). Same reasoning as GPIO8." },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M3A — DC motor driver 3, channel A (PWM6A). Same reasoning as GPIO8." },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M3B — DC motor driver 3, channel B (PWM6B). Same reasoning as GPIO8." },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M4A — DC motor driver 4, channel A (PWM7A). Same reasoning as GPIO8." },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_M4B — DC motor driver 4, channel B (PWM7B). Same reasoning as GPIO8." },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Onboard user pushbutton 1 (\"USER BUTTON\" per vendor pinout diagram; unaliased in this board's pins_arduino.h, only plain D20). Active-low with internal pull-up — confirmed via Cytron's official Arduino button.ino example (pinMode(20, INPUT_PULLUP); if (!digitalRead(btn1)))." },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Onboard user pushbutton 2 (\"USER BUTTON\" per vendor pinout diagram; unaliased in this board's pins_arduino.h, only plain D21). Active-low with internal pull-up — confirmed via Cytron's official Arduino button.ino example (pinMode(21, INPUT_PULLUP); if (!digitalRead(btn2)))." },
+    "23": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL / PIN_RGB — onboard 2-pixel WS2812 \"RGB LED\", output-only. Confirmed via the vendor pinout diagram (\"RGB LED -> GP23\"), this board's own NUM_NEOPIXEL=2, and the product page's \"2 x RGB LED (Neopixel compatible)\" spec." },
+    "24": { "capabilities": [], "note": "PIN_USB_HOST_DP — onboard native USB Type-A HOST connector D+ line, confirmed via the vendor pinout diagram (\"USB HOST: D+ -> GP24\") and product page (\"direct USB host to connect USB joystick or gamepad\"). Dedicated hardware, not general purpose — has a D24 alias in this board's pins_arduino.h that would otherwise expose it as an ordinary full-capability digital pin." },
+    "25": { "capabilities": [], "note": "PIN_USB_HOST_DM — onboard native USB Type-A HOST connector D- line. Same reasoning as GPIO24." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040/RP2350 board. GPIO26-29 (A0-A3) already carry
+  // analog_input via their pins_arduino.h aliases; not further restricted
+  // by this audit except where noted above.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

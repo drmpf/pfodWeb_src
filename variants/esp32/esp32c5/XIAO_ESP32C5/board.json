@@ -1,0 +1,95 @@
+// pfodWeb NOTE: GPIO6 (BAT_VOLT_PIN) and GPIO26 (BAT_VOLT_PIN_EN) are
+// Seeed's standard XIAO-series battery-voltage-sense pair (100K/100K
+// divider). Confirmed via Seeed's own wiki
+// (wiki.seeedstudio.com/xiao_esp32c5_getting_started/) that BAT_VOLT_PIN_EN
+// is NOT purely internal/automatic - the official example code explicitly
+// does `pinMode(BAT_VOLT_PIN_EN, OUTPUT); digitalWrite(BAT_VOLT_PIN_EN,
+// HIGH);` before reading BAT_VOLT_PIN with analogReadMilliVolts(). Both
+// pins therefore stay KEEP (not excluded) with a "note" explaining the
+// required usage, unlike a purely-internal power-gate (e.g. the NeoPixel
+// power-gate precedent on other boards).
+// pfodWeb NOTE: GPIO27 (LED_BUILTIN) tagged "led_low" - confirmed
+// active-low onboard User LED ("L LED" / "User Light_Yellow" in the pin
+// map) per the same Seeed wiki page: example code shows
+// `digitalWrite(LED_BUILTIN, LOW); // LED ON`. digital_input dropped to
+// match the XIAO_ESP32S3/XIAO_ESP32S3_Plus sibling boards' established
+// led_low precedent for their own LED_BUILTIN pins.
+// No onboard general-purpose user button exists on this board (only
+// Reset/Boot per Seeed's wiki) - not tagged.
+// No SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias collides with GPIO6, GPIO26 or
+// GPIO27 in this board's pins_arduino.h (SDA=23, SCL=24, SS=7, MOSI=10,
+// MISO=9, SCK=8, TX=11, RX=12) - checked, no alias line needed deletion.
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32C5" -> designer/boards/ESP32C5/ESP32C5.json -> const ESP32C5Data = {...}
+  "boardName": "ESP32C5",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32-C5 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32-C5 has no hardware DAC.
+  "dac": {},
+
+  // ADC: ESP32-C5 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation settable via analogSetAttenuation()
+  // for 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  // ESP32C5: every exposed GPIO is bidirectional — no input-only pins.
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Reference: ESP32-C5 Technical Reference Manual — Strapping Pins.
+  "pinNotes": {
+    "4":  "Must be LOW or floating on reboot",
+    "5":  "Must be LOW or floating on reboot",
+    "6":  "Must be LOW or floating on reboot",
+    "23": "Must be LOW or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32-C5 chip.  GPIOs 16-22
+  // (flash/PSRAM) and GPIOs 13-14 (USB) are excluded.  No DAC on this chip.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "BAT_VOLT_PIN - onboard battery-voltage sense (100K/100K divider, read via analogReadMilliVolts()). GPIO26 (BAT_VOLT_PIN_EN) must be driven HIGH first to enable the divider - see GPIO26 note and pfodWeb NOTE above." },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "26": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "BAT_VOLT_PIN_EN - gate for the BAT_VOLT_PIN (GPIO6) voltage-divider circuit. Must be set OUTPUT and driven HIGH by user code before reading GPIO6 (per Seeed's own example code) - not purely internal/automatic, so kept available rather than excluded. See pfodWeb NOTE above." },
+    "27": { "capabilities": ["digital_output", "pwm_output", "led_low"] },
+    "28": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

@@ -23,8 +23,8 @@ static const uint8_t SDO = 35;
 static const uint8_t SDI = 37;
 static const uint8_t SCK = 36;
 
+// pfodWeb NOTE: A1 (GPIO2) deliberately NOT declared - same as RGB_PWR below.
 static const uint8_t A0 = 1;
-static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
 static const uint8_t A3 = 4;
 static const uint8_t A4 = 5;
@@ -45,7 +45,6 @@ static const uint8_t A18 = 19;
 static const uint8_t A19 = 20;
 
 static const uint8_t T1 = 1;
-static const uint8_t T2 = 2;
 static const uint8_t T3 = 3;
 static const uint8_t T4 = 4;
 static const uint8_t T5 = 5;
@@ -75,6 +74,7 @@ static const uint8_t LED_BUILTIN = RGB_BUILTIN;
 #define BUILTIN_LED LED_BUILTIN  // backward compatibility
 #define LED_BUILTIN LED_BUILTIN  // allow testing #ifdef LED_BUILTIN
 
-static const uint8_t RGB_PWR = 2;
+// pfodWeb NOTE: RGB_PWR (GPIO2) deliberately NOT declared - internal
+// power-gate for the onboard RGB LED, not general-purpose.
 
 #endif /* Pins_Arduino_h */

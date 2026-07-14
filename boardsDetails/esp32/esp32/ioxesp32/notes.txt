@@ -1,0 +1,79 @@
+ioxesp32 board research notes
+==============================
+
+Sources consulted:
+
+1. https://github.com/ArtronShop/IOXESP32
+   Vendor (IOXhop) GitHub repo for the IOXESP32 board. Confirmed board name
+   and that Schematic/Fritzing/Pinout folders exist. README text itself gave
+   no button/LED pin detail (just a general product blurb).
+
+2. https://api.github.com/repos/ArtronShop/IOXESP32/contents/
+   Directory listing of the repo, used to locate the Schematic folder.
+
+3. https://api.github.com/repos/ArtronShop/IOXESP32/contents/Schematic
+   Listed the schematic files: ESPIOX32_Schematic_2020-05-27_02-27-33.jpg
+   and .pdf.
+
+4. https://raw.githubusercontent.com/ArtronShop/IOXESP32/master/Schematic/ESPIOX32_Schematic_2020-05-27_02-27-33.pdf
+   Downloaded and read directly (vendor schematic, EasyEDA export, REV 1.0,
+   dated 2020-03-21, drawn by Sonthaya Nongnuch, company IOXhop). This is
+   the primary evidence source used for tagging decisions:
+     - SW1 (TS-1088C-02026 tactile switch) connects GPIO0 (IO0) to GND,
+       with R1 10K pull-up to VCC and C7 100nF debounce cap. This is a
+       genuine onboard pushbutton on GPIO0, active-low. Matches vendor's
+       own pins_arduino.h alias KEY_BUILTIN = 0 (alias alone was NOT used
+       as evidence - the schematic wiring was the actual confirmation).
+     - SW2 is wired to EN (chip enable/reset), not a GPIO usable by
+       firmware - this is the hardware RESET button, not tagged.
+     - LED1 (19-217/GHC-YR1S2/3T) is wired: IO5 -> R6 (330R) -> LED1 -> GND.
+       GPIO sources current down through the resistor and LED to ground,
+       i.e. active-HIGH (HIGH = on). Matches vendor's own pins_arduino.h
+       alias LED_BUILTIN = 5 (again, alias was corroboration only, not the
+       basis for the tag - the resistor/LED-to-GND wiring is the actual
+       confirmation of both existence and polarity).
+     - LED2 (19-213/Y2C-CQ2R2L/3T(CY)) is wired via R7 (330R) but the
+       schematic shows no GPIO net connected to this branch - it appears
+       to be a fixed power-on indicator LED tied directly to VCC/GND, not
+       driven by any GPIO. This is consistent with pins_arduino.h defining
+       only one LED alias (LED_BUILTIN = 5), with no second LED alias.
+
+5. Local file: C:\ai\aicode\pfodWeb\variants\esp32\esp32\ioxesp32\pins_arduino.h
+   LED_BUILTIN = 5, KEY_BUILTIN = 0, TX = 1, RX = 3. Confirmed neither
+   GPIO0 nor GPIO5 collides with TX/RX, so both are safely taggable.
+
+6. Local file: C:\ai\aicode\pfodWeb\variants\esp32\esp32\board.json (chip-level default)
+   Used as the template to copy for this new board.json, and to confirm
+   GPIO0 and GPIO5 both have existing chipGpios entries (i.e. neither
+   falls inside a chip-level pin-exclusion range), and that GPIO5 already
+   carries pwm_output in the default (so pwm_output is retained per the
+   led_high tagging rule). GPIO0's prior capabilities (analog_input_serial,
+   digital_input, digital_output, pwm_output) were stripped down to
+   exactly ["digital_input","button"] per the button tagging rule.
+
+7. Local file: C:\ai\aicode\pfodWeb\variants\esp32\esp32\espino32\board.json
+   Reviewed as an existing precedent in this repo for a GPIO0 BOOT/program
+   pushbutton being tagged "button" from real vendor documentation (CNX
+   Software article), confirming this is the established convention here
+   for GPIO0 boot-mode-select buttons that are also physically wired as
+   user-pressable buttons.
+
+Pins considered but NOT tagged:
+- LED2 (via R7, 19-213/Y2C-CQ2R2L/3T(CY)): considered, but the schematic
+  shows no GPIO connected to it - it reads as a fixed power/status
+  indicator LED wired straight across VCC/GND, not GPIO-controllable. No
+  guess was made here; this is a straightforward "not a GPIO-tagged
+  capability" case based directly on the schematic showing no GPIO net on
+  that branch, not an uncertain judgment call.
+- SW2 (EN/reset button): considered, but it drives the chip EN
+  (reset) pin, not a GPIO exposed to firmware, so it cannot be a
+  "button" capability on any chipGpios entry. Not a judgment call - EN is
+  not a GPIO.
+- No other candidate button/LED hardware was found on this board.
+
+Summary of what was tagged:
+- board.json created at C:\ai\aicode\pfodWeb\variants\esp32\esp32\ioxesp32\board.json
+  (no prior board.json existed) as a full copy of the chip-level default
+  board.json with GPIO0 -> ["digital_input","button"] and
+  GPIO5 -> ["digital_output","pwm_output","led_high"], plus NOTE comments
+  citing the vendor schematic.

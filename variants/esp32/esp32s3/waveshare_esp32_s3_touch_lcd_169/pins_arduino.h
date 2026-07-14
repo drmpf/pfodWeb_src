@@ -53,36 +53,35 @@
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
-// Def for I2C that shares the IMU I2C pins
-static const uint8_t SDA = 11;
-static const uint8_t SCL = 10;
+// pfodWeb NOTE: SDA/SCL not declared — shared with the onboard touch/
+// RTC/IMU chips per this board's own comment above, not a general
+// expansion port (see board.json).
 
 // Mapping based on the ESP32S3 data sheet - alternate for SPI2
+// pfodWeb NOTE: GPIO33/35/36 (BUZZ/SYS_EN/SYS_OUT above) double as
+// MOSI/SCK here — the vendor's own "GPIO and PSRAM conflict" warning on
+// those 3 pins takes priority, so MOSI/SCK/D13/D14/D16 are not declared
+// (SS/MISO, which don't overlap the buzzer/system pins, are kept).
 static const uint8_t SS = 34;    // FSPICS0
-static const uint8_t MOSI = 35;  // FSPID
 static const uint8_t MISO = 37;  // FSPIQ
-static const uint8_t SCK = 36;   // FSPICLK
 
-// Mapping based on the ESP32S3 data sheet - alternate for OUTPUT
+// pfodWeb NOTE: OUTPUT_IO2/3/17/18 (GPIO2/3/17/18) are kept — unlike
+// this board's touch_lcd_5/5b/7/43/43b siblings, this specific display
+// (ST7789V2, pins 4/5/6/7/8/15) doesn't use GPIO2/3/17/18 for anything.
 static const uint8_t OUTPUT_IO2 = 2;
 static const uint8_t OUTPUT_IO3 = 3;
 static const uint8_t OUTPUT_IO17 = 17;
 static const uint8_t OUTPUT_IO18 = 18;
 
-// Analog capable pins on the header
+// Analog capable pins on the header (pfodWeb NOTE: A3-A6 deliberately
+// NOT declared — dedicated onboard ST7789V2 display pins)
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
-static const uint8_t A3 = 4;
-static const uint8_t A4 = 5;
-static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
 
-// GPIO capable pins on the header
-static const uint8_t D0 = 7;
-static const uint8_t D1 = 6;
-static const uint8_t D2 = 5;
-static const uint8_t D3 = 4;
+// GPIO capable pins on the header (pfodWeb NOTE: D0-D3/D11 deliberately
+// NOT declared — dedicated onboard display/IMU pins; D13/D14/D16 not
+// declared per the buzzer/system-pin note above)
 static const uint8_t D4 = 3;
 static const uint8_t D5 = 2;
 static const uint8_t D6 = 1;
@@ -90,20 +89,13 @@ static const uint8_t D7 = 44;
 static const uint8_t D8 = 43;
 static const uint8_t D9 = 40;
 static const uint8_t D10 = 39;
-static const uint8_t D11 = 38;
 static const uint8_t D12 = 37;
-static const uint8_t D13 = 36;
-static const uint8_t D14 = 35;
 static const uint8_t D15 = 34;
-static const uint8_t D16 = 33;
 
-// Touch input capable pins on the header
+// Touch input capable pins on the header (pfodWeb NOTE: T4-T7
+// deliberately NOT declared — dedicated onboard display pins)
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
 static const uint8_t T3 = 3;
-static const uint8_t T4 = 4;
-static const uint8_t T5 = 5;
-static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
 
 #endif /* Pins_Arduino_h */

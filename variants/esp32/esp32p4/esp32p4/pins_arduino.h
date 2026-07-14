@@ -19,20 +19,17 @@ static const uint8_t MOSI = 32;
 static const uint8_t MISO = 33;
 static const uint8_t SCK = 36;
 
+// pfodWeb NOTE: A2/A3/A8-A11/A13 and T12/T13 deliberately NOT declared -
+// same dedicated onboard Ethernet PHY and ESP32-C6 WiFi companion SDIO/
+// SDMMC pins as the ETH_*/BOARD_SDIO_*/BOARD_SDMMC_* lines below (see
+// board.json chipGpios override).
 static const uint8_t A0 = 16;
 static const uint8_t A1 = 17;
-static const uint8_t A2 = 18;
-static const uint8_t A3 = 19;
 static const uint8_t A4 = 20;
 static const uint8_t A5 = 21;
 static const uint8_t A6 = 22;
 static const uint8_t A7 = 23;
-static const uint8_t A8 = 49;
-static const uint8_t A9 = 50;
-static const uint8_t A10 = 51;
-static const uint8_t A11 = 52;
 static const uint8_t A12 = 53;
-static const uint8_t A13 = 54;
 
 static const uint8_t T0 = 2;
 static const uint8_t T1 = 3;
@@ -46,8 +43,6 @@ static const uint8_t T8 = 10;
 static const uint8_t T9 = 11;
 static const uint8_t T10 = 12;
 static const uint8_t T11 = 13;
-static const uint8_t T12 = 14;
-static const uint8_t T13 = 15;
 
 /* ESP32-P4 EV Function board specific definitions */
 //ETH

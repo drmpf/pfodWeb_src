@@ -39,7 +39,8 @@ static const uint8_t D6 = 9;
 static const uint8_t BLUE_LED_PIN = 7;
 static const uint8_t BTN_PIN = 9;
 static const uint8_t IR_TX_PIN = 3;
-static const uint8_t RGB_LED_PWR_PIN = 19;
+// pfodWeb NOTE: RGB_LED_PWR_PIN (GPIO19) deliberately NOT declared -
+// internal power-gate for the onboard NeoPixel, not general-purpose.
 static const uint8_t RGB_LED_DATA_PIN = 20;
 
 #endif /* Pins_Arduino_h */

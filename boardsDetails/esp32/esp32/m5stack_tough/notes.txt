@@ -1,0 +1,69 @@
+m5stack_tough - onboard button / LED research notes
+=====================================================
+
+Sources consulted:
+
+1. https://docs.m5stack.com/en/core/tough
+   Official M5Stack docs product page for "Tough". Confirms: 2.0" IPS
+   display with a high-sensitivity CAPACITIVE TOUCH PANEL (touch
+   controller CHSC6540, on I2C GPIO21/22, interrupt on GPIO39). No
+   physical A/B/C buttons (unlike M5Stack Core/Fire). No onboard LED
+   (single-color, RGB, or NeoPixel) mentioned anywhere in the spec or
+   pinmap.
+
+2. https://docs.m5stack.com/en/products/sku/K034
+   Official M5Stack SKU/product spec page for Tough. Same conclusion:
+   no physical buttons, no LED; pinmap covers LCD, microSD, capacitive
+   touch, audio, RTC, RS485, HY2.0-4P connectors only.
+
+3. https://github.com/m5stack/M5Core2/issues/100
+   ("No detection of power button press") - confirms the physical power
+   button present on M5Core2/Tough-family hardware is wired only to the
+   AXP192 power-management IC (read via I2C register 0x46, short/long
+   press IRQ via register 0x42), NOT to any ESP32 GPIO pin. There is no
+   direct GPIO line for this button at all.
+
+4. https://community.m5stack.com/topic/5390/m5tough-external-power-button
+   M5Stack community thread specific to Tough confirming the power
+   button wiring is off-GPIO (only accessible via AXP192 I2C / a
+   physical wire tap on the button itself, not a spare GPIO), consistent
+   with #3.
+
+5. https://raw.githubusercontent.com/m5stack/M5Unified/master/src/utility/Power_Class.cpp
+   Official M5Stack M5Unified library source (authoritative, not just an
+   alias name). Searched for board_M5Tough LED pin handling: confirmed
+   NO LED pin is defined/assigned for board_M5Tough anywhere in
+   setLed()/board-specific case statements. By contrast, other boards in
+   the same file DO have explicit LED pins (e.g. M5StickC = GPIO10,
+   M5TimerCam = GPIO2), showing the library authors positively omit an
+   LED entry for Tough rather than it being an oversight in this search.
+
+Pins considered but NOT tagged, and why:
+
+- Power button: exists physically on the enclosure, but it is wired
+  exclusively to the AXP192 PMIC and read via I2C register polling
+  (AXP192 IRQ registers 0x42/0x46) - it has no direct ESP32 GPIO
+  connection at all. There is therefore no chipGpios entry that could
+  represent it; nothing to tag. This is not a judgment call - it is a
+  hardware fact confirmed by two independent sources (M5Core2 GitHub
+  issue + M5Tough community thread). No guess made.
+
+- GPIO39 (capacitive touch panel interrupt, CHSC6540 controller): this
+  is a touch-panel IRQ line, not a discrete "button" GPIO in the
+  digital_input/button sense pfodWeb tags cover (no debounced physical
+  push button; it is a touch-controller interrupt requiring the CHSC6540
+  I2C protocol to interpret). Also, this pin is already excluded from
+  chipGpios per the existing board.json top-of-file NOTE ("GPIO39
+  (touch interrupt)" - falls in a pre-existing chip-level pin-exclusion,
+  so re-adding/tagging it would reverse a prior audit decision, which is
+  out of scope for this task per instructions. Left untagged, no guess
+  made - flagging here for human review only in case a future pfodWeb
+  touch-interrupt tag type is ever introduced.
+
+- No candidate LED GPIO was found at all (single-color, discrete RGB, or
+  NeoPixel) - confirmed absent both in official product docs and in the
+  M5Unified library's own board-specific LED pin table. No guess made.
+
+Summary of action taken: NO CHANGE. board.json was not modified - no
+GPIO met the bar for a confirmable button or LED tag under the required
+vendor-documentation standard.

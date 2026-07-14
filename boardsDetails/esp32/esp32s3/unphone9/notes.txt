@@ -1,0 +1,114 @@
+unphone9 - button/LED capability research notes
+=================================================
+
+Board directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\unphone9
+Confirmed present via: find ../variants/esp32 -iname "*unphone9*" -> only
+esp32s3/unphone9/pins_arduino.h (sibling "unphone8" NOT touched).
+
+pins_arduino.h key facts used below:
+  TX = 43, RX = 44 (hard-reserved by build_boards.js - excluded from
+  candidacy regardless of any other evidence).
+  LED_BUILTIN = 13 (generic Arduino alias only - NOT used as confirming
+  evidence per task rules; used only as a pointer to go verify GPIO13 via
+  real vendor docs, which was then done separately below).
+
+Sources consulted
+------------------
+1. https://www.espboards.dev/esp32/unphone9/
+   Third-party pinout aggregator. Confirmed TX=43/RX=44/SDA=3/SCL=4 etc.
+   match this variant's pins_arduino.h. Did NOT list any button or RGB LED
+   GPIOs (pinout table is generic Arduino aliases only) - not usable as
+   confirming evidence for button/LED identity, used only as a
+   cross-check of the generic pin map.
+
+2. https://www.hackster.io/news/hands-on-with-the-unphone-a-compact-educational-gadget-for-the-internet-of-things-and-more-460add8bc936
+   Hands-on review article. Confirms physically: "a trio of tactile
+   push-button switches marked with square, circle, and triangle symbols"
+   plus "a side panel that provides a software-driven on-off switch,
+   reset button, RGB and infrared LEDs, and a USB Type-C connector."
+   Confirms the board has 3 user pushbuttons + an RGB LED + an IR LED as
+   physical features, but gives no GPIO numbers.
+
+3. https://gitlab.com/hamishcunningham/unphonelibrary
+   (project home - confirmed this is the vendor/maintainer Hamish
+   Cunningham's official unPhone Arduino library repo, referenced by name
+   from the Hackster article and from unphone.net.)
+
+4. https://gitlab.com/hamishcunningham/unphonelibrary/-/raw/main/unPhone.h
+   (fetched full raw text) - THE key source. Contains a
+   "#elif UNPHONE_SPIN >= 9" pindef block (UNPHONE_SPIN defaults to 9,
+   i.e. this is the "unphone9" board's pindef set) with:
+     BUTTON1 = 45   // left button
+     BUTTON2 =  0   // middle button
+     BUTTON3 = 21   // right button
+     LED_RED = 13   (plain GPIO, no |0x40 TCA9555-expander flag)
+     LED_GREEN = 9 | 0x40   (TCA9555 I2C GPIO-expander pin, all spins)
+     LED_BLUE  = 13 | 0x40  (TCA9555 I2C GPIO-expander pin, all spins)
+     IR_LEDS = 12   // the IR LED pins (spin 9+; spin 7 used GPIO13)
+   Also confirms D13 alias = GPIO13 in the same file's fallback D-pin map,
+   consistent with pins_arduino.h.
+
+5. https://gitlab.com/hamishcunningham/unphonelibrary/-/raw/main/unPhone.cpp
+   (fetched full raw text) - confirms USAGE/polarity:
+     unPhoneTCA::pinMode(BUTTON1/2/3, INPUT_PULLUP) and
+     button1()/button2()/button3() return (digitalRead(BUTTONn) == LOW)
+     i.e. active-low buttons.
+     unPhoneTCA::pinMode/digitalWrite/digitalRead internally test
+     `if (pin & 0x40)` to decide whether to route the call over I2C to
+     the TCA9555 expander, or fall through to the native
+     `::pinMode`/`::digitalWrite`/`::digitalRead` Arduino calls. Since
+     BUTTON1/2/3 (45/0/21) and LED_RED (13) do NOT carry the 0x40 flag on
+     spin 9+, they are real, direct ESP32-S3 GPIOs. LED_GREEN/LED_BLUE DO
+     carry 0x40 on every spin, so they are NOT real chip GPIOs - they are
+     bits on the TCA9555 I2C IO-expander chip, invisible to this
+     board.json's chipGpios (which only enumerates actual SoC pins).
+     rgb(uint8_t red, uint8_t green, uint8_t blue) does
+     `red = !red; ...; unPhoneTCA::digitalWrite(LED_RED, red);` with the
+     comment "board logic inverted from 7 onwards" - i.e. passing a
+     nonzero/true value results in a LOW digitalWrite (LED on), and
+     zero/false results in HIGH (LED off). Confirms LED_RED is
+     active-low (LOW = on).
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO9 (LED_GREEN) and GPIO13-as-TCA-pin (LED_BLUE, distinct address
+  space from GPIO13-as-chip-pin used by LED_RED): NOT tagged. Both are
+  wired through the onboard TCA9555 I2C GPIO expander (`pin | 0x40` in
+  the vendor library), not directly to an ESP32-S3 SoC GPIO. This
+  board.json's chipGpios model only represents real chip pins, so there
+  is no possible chipGpios entry for these two color channels. This is
+  not a judgment call - it's a hard structural limit of the framework.
+  Left for human review only in the sense that if a future board.json
+  schema gains support for I2C-expander pins, GPIO9(TCA)/GPIO13(TCA)
+  should be revisited as "led_g_low"/"led_b_low" companions to GPIO13's
+  "led_low" tag (same active-low polarity per the rgb() inversion logic).
+
+- GPIO12 (IR_LEDS, infrared emitter LEDs): considered but deliberately
+  NOT tagged. This is a confirmed real GPIO driving physical LEDs
+  (`unPhoneTCA::digitalWrite(IR_LEDS, on ? HIGH : LOW)` - active-high),
+  but they are invisible infrared emitter LEDs used for IR remote-control
+  transmission, not a visible status/indicator LED. This is a judgment
+  call, not a "no evidence" case: evidence is solid, but it did not seem
+  to fit the intent of the "onboard LED" capability tags (led_high/
+  led_low/led_neopixel/led_r_*), which are for indicator LEDs. Left for
+  human review - if the intent is broader (any GPIO that toggles an
+  LED, regardless of visible/IR), GPIO12 would qualify as "led_high".
+
+- No NeoPixel/WS2812/addressable single-wire RGB LED was found anywhere
+  in the vendor library or docs for unphone9; the RGB LED here is a
+  conventional discrete 3-channel LED (separate R/G/B lines), not
+  addressable.
+
+Tagged
+------
+GPIO0  -> "button"  (BUTTON2, middle button)
+GPIO21 -> "button"  (BUTTON3, right button)
+GPIO45 -> "button"  (BUTTON1, left button)
+GPIO13 -> "led_low" (LED_RED channel of the onboard RGB LED; pwm_output
+           kept because it was already present on GPIO13 in the ESP32-S3
+           chip-level default board.json)
+
+No pre-existing board.json existed for unphone9 before this pass; a new
+one was created as a full copy of the ESP32-S3 chip-level default
+board.json (variants/esp32/esp32s3/board.json) with only the four GPIOs
+above modified, plus the NOTE comments at the top of the file.

@@ -1,0 +1,210 @@
+Board: melopero_cookie_rp2040 ("Melopero Cookie RP2040", Melopero Electronics,
+melopero.com — Italian vendor) — chip family: rp2040
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel audit)
+
+pins_arduino.h identity pins (this board's own file declares only these four
+macros, then falls through to ../generic_full/common.h for the D0-D31 blanket
+fallback and LED_BUILTIN):
+  #define PIN_LED        (21u)
+  #define PIN_SPI0_MISO  (20u)
+  #define PIN_SPI0_MOSI  (19u)
+  #define PIN_SPI0_SCK   (18u)
+  #define PIN_SPI0_SS    (1u)
+  #define PIN_SPI1_MISO  (28u)
+  #define PIN_SPI1_MOSI  (27u)
+  #define PIN_SPI1_SCK   (26u)
+  #define PIN_SPI1_SS    (29u)
+  #define PIN_WIRE0_SDA  (12u)
+  #define PIN_WIRE0_SCL  (13u)
+  #define PIN_WIRE1_SDA  (2u)
+  #define PIN_WIRE1_SCL  (3u)
+  #define PIN_SERIAL1_TX (0u)
+  #define PIN_SERIAL1_RX (1u)
+  (PIN_SERIAL2_TX/RX both = 31u, "not pinned out")
+No PIN_BUTTON, PIN_NEOPIXEL, or similar aliases exist in this board's own
+pins_arduino.h — the buttons, NeoPixel matrix, and NeoPixel/Qwiic power-enable
+pin were all identified from vendor documentation and library source code
+below, not from pins_arduino.h itself.
+
+Sources consulted:
+1. https://www.melopero.com/getting_started_with_melopero_cookie_rp2040_v2.pdf
+   (official Melopero "Getting started with Melopero Cookie RP2040" guide,
+   version 2.0.0, 12 April 2023) — fetched and read directly (PDF, 24 pages).
+   Section 1 "Hardware overview" (page 4) is an annotated board photo that
+   explicitly labels:
+     "Green user LED on pin 21" (bullet list) and "user LED (GPIO 21)"
+       (photo callout, pointing at the small LED next to the "21" silkscreen
+       marking on the board).
+     "Button A (GPIO 10)" (photo callout, pointing at the pushbutton next to
+       the "A" silkscreen letter, beside the NeoPixel matrix).
+     "Button B (GPIO 11)" (photo callout, pointing at the pushbutton next to
+       the "B" silkscreen letter).
+     "Neopixel Matrix (GPIO 17)" (photo callout, pointing at the 5x5 grid).
+     "BOOT" and "RESET" buttons also shown, both dedicated (BOOT enters ROM
+       bootloader, RESET is a hardware reset line) — out of scope, matching
+       ../rpipico/board.json's established BOOTSEL rationale.
+   Section 1.1 "Neopixels (WS2812) matrix display" (page 5) confirms:
+     "Melopero Cookie RP2040 is equipped with a 5x5 neopixels matrix display,
+     which can be accessed through pin GPIO17." — includes a diagram showing
+     pixels 0-24 wired row-major starting at GPIO17.
+   Section 2 "Pinout" (page 6, official pinout diagram/poster) gives a
+   physical-pin / RP2040-GPIO / CircuitPython / Arduino-IDE cross-reference
+   table that independently corroborates every number above:
+     "User LED   32  21  D21  21"
+     "User Button A   14  11  D11  11"
+     "User Button B   13  10  D10  10"
+     "NEOPIXEL MATRIX  28  17  D17  17"
+     "NEOPIXEL / Qwiic POWER  27  16  D16  16 (by default power is enabled
+      (LOW). Set pin GPIO 16 to HIGH to disable it)"
+   (Note: this pinout table's own "User Button A"/"User Button B" row order
+   assigns GPIO11 to "A" and GPIO10 to "B" in the raw text extraction, which
+   is INVERTED relative to the hardware-overview page's photo callouts
+   ("Button A (GPIO 10)", "Button B (GPIO 11)") and relative to the Arduino
+   library source's BUTTON_A/BUTTON_B macro naming in source #2 below. The
+   hardware-overview page and the library source both independently agree
+   with each other (A=10, B=11), so that pairing was treated as authoritative
+   for the per-pin "Button A"/"Button B" labels in board.json; the pinout
+   table's row order is very likely just a table-layout/PDF-extraction
+   artifact. This ambiguity is immaterial to the actual capability tagging
+   applied, since both pins receive the identical capability set regardless
+   of which is "A" and which is "B".)
+2. https://github.com/melopero/Melopero_Cookie_RP2040_Arduino_Library
+   (fetched repo listing + raw source file
+   src/Melopero_Cookie_RP2040.cpp) — actual pico-sdk-based C++ source:
+     ledInit()   -> pinMode(21, OUTPUT)
+     ledOn()     -> digitalWrite(21, HIGH)   -- CONFIRMS LED is active-high
+     ledOff()    -> digitalWrite(21, LOW)
+     ledToggle() -> toggles the pin 21 output state
+     buttonsInit() -> gpio_init(BUTTON_A); gpio_set_dir(BUTTON_A, GPIO_IN);
+                      gpio_init(BUTTON_B); gpio_set_dir(BUTTON_B, GPIO_IN);
+       (no gpio_pull_up()/gpio_pull_down()/gpio_disable_pulls() call
+       anywhere in this function — pad pull state is left at whatever the
+       RP2040 pad reset default is, which per the RP2040 datasheet is
+       pull-down enabled on GPIO pads out of reset)
+     readButton(button) -> return gpio_get(button);  (raw pin level, no
+       inversion/debounce applied in the library itself)
+3. https://raw.githubusercontent.com/melopero/Melopero_Cookie_RP2040/master/MicroPython/examples/main_example.py
+   (official MicroPython demo code shipped in Melopero's own software pack)
+   — contains `if cookie.read_button(BUTTON_A): cookie.clear_screen(...)`,
+   i.e. the demo treats a True/HIGH read as "button is pressed". This CLOSES
+   THE LOOP left open by source #2 (which showed the buttons are read raw
+   with no pull configured, but didn't by itself state which level means
+   "pressed"): HIGH = pressed = active-high, consistent with the button
+   switching to 3V3 when pressed and being held LOW by the RP2040's default
+   pull-down the rest of the time.
+4. https://github.com/melopero/Melopero_Cookie_RP2040 (fetched repo +
+   MicroPython/src directory listing) — cross-checked that the C-level
+   MicroPython binding (cookie_rp2040.cpp) reuses the same underlying
+   library; no additional/conflicting pin information found there.
+
+Per-pin reasoning:
+
+GPIO10 (Button A):
+  Onboard pushbutton, active-high (reads HIGH when pressed).
+  capabilities: ["digital_input", "digital_output", "pwm_output", "button"]
+  Confirmed by source #1 (hardware-overview photo caption "Button A (GPIO
+  10)") and sources #2+#3 (library source shows plain GPIO_IN with no pull
+  configured; official example code treats a HIGH/True read as "pressed").
+  Full digital_input/digital_output/pwm_output capability retained — this is
+  an ordinary GPIO wired to a switch to 3V3, not a dedicated/capacitive-only
+  pin, matching this repo's vccgnd_yd_rp2040 PIN_USRKEY and
+  adafruit_feather_scorpio PIN_BUTTON precedents (both keep the full
+  capability set on ordinary pushbutton GPIOs).
+  No bus-alias collision: GPIO10 does not appear in this board's SPI0/SPI1/
+  Wire0/Wire1/Serial1 alias list, so no build_boards.js bus-capability
+  auto-append applies.
+
+GPIO11 (Button B):
+  Same confirmation, reasoning, and capability set as GPIO10/Button A above
+  (source #1's "Button B (GPIO 11)" caption; sources #2+#3's shared
+  buttonsInit()/readButton() code path and example interpretation).
+  No bus-alias collision (GPIO11 is not aliased to any SPI/Wire/Serial pin
+  on this board either).
+
+GPIO16 (NEOPIXEL / Qwiic POWER):
+  NO CHANGE — left at the chip-level default full general-purpose capability
+  set (no chipGpios override).
+  Reasoning: source #1's official pinout table documents this pin as a
+  power-enable line for the Qwiic connector and NeoPixel matrix supply rail
+  ("by default power is enabled (LOW). Set pin GPIO 16 to HIGH to disable
+  it"), but it is still an ordinary bidirectional GPIO from the RP2040's
+  point of view — the vendor's own Arduino/MicroPython libraries expose no
+  dedicated accessor function for it at all (no powerEnable()/powerDisable()
+  found in source #2's library), meaning application code would simply
+  pinMode(16, OUTPUT)/digitalWrite(16, ...) it like any other digital_output
+  pin if it wanted to manage the power rail. This is not a fixed/dedicated
+  LED, button, or NeoPixel-data pin, so no capability override or special
+  tag applies, consistent with this audit's treatment of similar
+  vendor-documented-but-still-general-purpose pins (e.g.
+  adafruit_feather_scorpio's GPIO16-23 NEOPIXEL0-7 header, left untagged
+  despite documented NeoPixel-adjacent naming).
+  No bus-alias collision: GPIO16 does not appear in this board's SPI0/SPI1/
+  Wire0/Wire1/Serial1 alias list either.
+
+GPIO17 (NeoPixel Matrix data line):
+  Onboard 5x5 (25-pixel) WS2812 addressable RGB matrix display, output-only
+  data line, row-major pixel wiring starting at this pin.
+  capabilities: ["digital_output", "led_neopixel"]
+  Confirmed by source #1 (hardware-overview "Neopixel Matrix (GPIO 17)"
+  caption, and section 1.1's dedicated matrix diagram/description naming
+  GPIO17 as the access pin for the full 5x5 display).
+  digital_input/pwm_output omitted, matching this repo's established
+  NeoPixel-tagging vocabulary (vccgnd_yd_rp2040 GPIO23, adafruit_feather_
+  scorpio GPIO4, waveshare_rp2040_zero GPIO16 precedents) — pwm_output is
+  not meaningful for a bit-serial/PIO-driven WS2812 data line.
+  No bus-alias collision: GPIO17 does not appear in this board's SPI0/SPI1/
+  Wire0/Wire1/Serial1 alias list.
+
+GPIO21 (PIN_LED / User LED):
+  Onboard single green status LED, active-high.
+  capabilities: ["digital_output", "pwm_output", "led_high"]
+  Confirmed independently by source #1 (hardware-overview bullet "Green
+  user LED on pin 21") and source #2 (library source's ledOn()/ledOff()
+  functions call digitalWrite(21, HIGH) / digitalWrite(21, LOW)
+  respectively — an unambiguous, code-level active-high confirmation).
+  digital_input dropped to match this repo's established led_high precedent
+  for dedicated onboard LED pins (rpipico, wiznet_5500_evb_pico,
+  vccgnd_yd_rp2040, adafruit_feather_scorpio); pwm_output kept since
+  arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness
+  dimming.
+  Bus-alias collision check (per this audit's known "confirmed pin also
+  aliased to a bus role" bug class, see adafruit_feather_scorpio precedent):
+  this board's pins_arduino.h declares SPI0 (MISO 20u/MOSI 19u/SCK 18u/
+  SS 1u), SPI1 (MISO 28u/MOSI 27u/SCK 26u/SS 29u), and Wire0/Wire1
+  (SDA 12u/SCL 13u, SDA 2u/SCL 3u) — none of these values is 21, and this
+  board's pins_arduino.h includes ../generic_full/common.h (not the plain
+  ../generic/common.h), which was also checked and does not declare any
+  additional bus role on GPIO21. CONCLUSION: no collision exists; GPIO21 is
+  not aliased to any SPI/I2C bus role, so no pins_arduino.h edit was needed
+  (unlike the adafruit_feather_scorpio GPIO13/PIN_SPI0_SS precedent that
+  prompted this check).
+
+Result: board.json created at
+  variants/rp2040/rp2040/melopero_cookie_rp2040/board.json
+as a full per-board file (chip-level rp2040/board.json fields copied
+verbatim) with chipGpios overrides for GPIO10 (Button A, active-high, full
+GPIO + button tag), GPIO11 (Button B, active-high, full GPIO + button tag),
+GPIO17 (NeoPixel 5x5 matrix data line, output-only), and GPIO21 (user LED,
+active-high, no bus-alias collision found). GPIO16 (NeoPixel/Qwiic power
+rail enable) received NO CHANGE — confirmed vendor-documented power-control
+purpose but still an ordinary general-purpose GPIO with no dedicated
+library accessor, so left at the chip-level default full capability set,
+same treatment as adafruit_feather_scorpio's documented-but-general-purpose
+GPIO16-23 header precedent.
+
+JSON validity: verified via a manual `//`-comment-stripped JSON.parse() in
+node (no build_boards.js require(), per task instructions) — parses cleanly,
+chipGpios keys confirmed as ["10","11","17","21"].
+
+Summary: Confirmed and tagged all four identity pins found in this board's
+official documentation and library source (Button A GPIO10 active-high,
+Button B GPIO11 active-high, NeoPixel 5x5 matrix data GPIO17 output-only,
+user LED GPIO21 active-high) via Melopero's own official "Getting started"
+PDF guide (hardware-overview page + pinout diagram) cross-referenced against
+the Arduino library's actual pico-sdk source code (ledOn/ledOff digitalWrite
+calls, buttonsInit/readButton gpio_* calls) and the official MicroPython
+example's button-press interpretation. Explicitly identified but left GPIO16
+(NeoPixel/Qwiic power-enable line) UNCHANGED as general-purpose GPIO, since
+it has no dedicated library accessor despite being vendor-documented as a
+power-control pin. No bus-alias collision found on GPIO21 or any other
+tagged pin, so no pins_arduino.h edit was required for this board.

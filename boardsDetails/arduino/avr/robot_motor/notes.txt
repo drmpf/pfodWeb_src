@@ -1,0 +1,185 @@
+POST-REVIEW CORRECTION (2026-07-14, same day, follow-up pass)
+----------------------------------------------------------------
+User noticed this board showed zero pwm_output tags anywhere and asked
+why. Root cause: this board's own pins_arduino.h (a bespoke,
+non-#include-based header, unlike every other AVR variant which inherits
+digitalPinHasPWM via its #include chain) never defined the
+digitalPinHasPWM macro at all. build_boards.js's buildPwmPredicate()
+silently falls back to "no pin has PWM" whenever the macro is absent —
+so despite this file's own digital_pin_to_timer_PGM table confirming
+D3/D5/D6/D9/D10/D11/D13 are genuinely wired to hardware timers (TIMER0A/B,
+TIMER1A/B, TIMER3A, TIMER4A/D — identical set to the Leonardo variant,
+same chip), none of them were ever tagged pwm_output. Same bug found on
+the sibling robot_control board; confirmed via a targeted include-chain
+check that every other AVR board correctly inherits the macro and was
+unaffected. Fix: added `#define digitalPinHasPWM(p) ((p)==3||(p)==5||
+(p)==6||(p)==9||(p)==10||(p)==11||(p)==13)` to this file (verbatim copy
+of Leonardo's own macro), no board.json changes needed. Of this board's
+kept-available pins, D3 and D13 now correctly show pwm_output
+(D5/D6/D9/D10/D11 are already excluded as dedicated motor-driver/mux
+pins regardless of PWM capability, so unaffected). Verified via node
+build_boards.js (0 errors) and a direct dump of the generated pin list.
+
+Arduino Robot — Motor board (robot_motor) — pin audit notes
+=============================================================
+Date: 2026-07-14
+Chip: ATmega32U4, bespoke pins_arduino.h (NOT shared with Leonardo/Micro).
+
+SOURCES CONSULTED
+-----------------
+1. variants/arduino/avr/robot_motor/pins_arduino.h (this board's own file) —
+   primary source. Contains named aliases (MUX_IN, MUXA/B/C/I, TRIM,
+   SENSE_A, SENSE_B, IN_A1/IN_A2, IN_B1/IN_B2, TK1-TK4) plus a register-
+   mapping comment table cross-referencing D<n>/A<n>/PORTx.
+
+2. https://github.com/arduino/docs-content/blob/main/content/retired/05.archived-libraries/Robot/Robot.md
+   — archived official Arduino docs. Confirmed Motor board component list:
+   "Control motor speed and direction", "Monitor current consumption per
+   motor", "read the state of the 5 floor sensors (also known as line
+   detection sensors)", "Access ... I/O pins", "Control an I2C port",
+   "Read 4 TinkerKit inputs". This is the source for treating SENSE_A/
+   SENSE_B as per-motor current monitors (KEEP) and for confirming the
+   floor/line sensors are read via this board, not the Control board (see
+   the cross-board note in boardsDetails/.../robot_control/notes.txt).
+
+3. https://github.com/arduino-libraries/Robot_Motor (official successor
+   library, fetched via raw.githubusercontent.com,
+   src/ArduinoRobotMotorBoard.cpp and its header):
+   - `begin()`: `uint8_t MuxPins[]={MUXA,MUXB,MUXC}; this->IRs.begin(
+     MuxPins,MUX_IN,3); pinMode(MUXI,INPUT); digitalWrite(MUXI,LOW);` —
+     CONFIRMS MUXA/MUXB/MUXC + MUX_IN are the address/input lines for the
+     onboard IR floor-sensor-array mux (3-bit address = up to 8 channels,
+     5 used for the 5 physical sensors, matches doc source 2's "5 floor
+     sensors"). MUXI is set up immediately adjacent to this block as a
+     floating input, but is not referenced anywhere else in the fetched
+     source — its exact role (spare 4th mux control/inhibit line vs.
+     genuinely unused pin) could not be confirmed.
+   - Motor PWM control: `analogWrite(IN_A1,speedR); analogWrite(IN_A2,0);`
+     and `analogWrite(IN_B1,speedL); analogWrite(IN_B2,0);` (plus an
+     all-255 braking case) — CONFIRMS IN_A1/IN_A2 drive the right motor
+     and IN_B1/IN_B2 drive the left motor via the onboard H-bridge.
+   - `int value=analogRead(TRIM);` — CONFIRMS TRIM is a plain analogRead,
+     a motor-trim adjustment potentiometer.
+   - Header (ArduinoRobotMotorBoard.h): defines `B_TK1`..`B_TK4` "for
+     communication purpose" mapping to `TK1`..`TK4` → `A0,A1,A6,A11` —
+     CONFIRMS TK1-TK4 are the board's 4 general TinkerKit input
+     connectors (matches doc source 2's "Read 4 TinkerKit inputs"), NOT
+     encoder or sensor-specific pins as might be guessed from the "TK"
+     abbreviation alone.
+   - SENSE_A/SENSE_B were NOT found referenced by name in the specific
+     .cpp/.h files fetched this session (they may be read via a more
+     generic analogRead-by-index code path not captured in the fetched
+     excerpts) — their function is taken from doc source 2's explicit
+     "Monitor current consumption per motor" feature description instead,
+     combined with their naming and register-table position (A4/A5,
+     alongside the motor-driver block).
+
+4. RobotIRremote example (see robot_control/notes.txt source 6) confirms
+   the IR remote receiver accessory referenced in the task brief is wired
+   to a Control-board TinkerKit pin (TKD2), not a dedicated Motor-board
+   pin — no separate IR-receiver-specific alias exists in this board's own
+   pins_arduino.h, and none was found in the Robot_Motor library source
+   either. No action needed on this board for that feature.
+
+PER-PIN REASONING
+------------------
+D0 (RX), D1 (TX) — Serial1 to the Control board via the 10-pin inter-board
+  connector. Auto-reserved as serial_rx/serial_tx; no chipGpios entry
+  needed or possible.
+
+D2 (SDA), D3 (SCL) — general I2C bus (doc source 2: "Control an I2C
+  port"). No dedicated/isolated onboard I2C consumer found in any source
+  examined. NO CHANGE (KEEP).
+
+D4 (TK3, alias of A6) — CONFIRMED (source 3 header) one of the 4 general
+  TinkerKit input connectors (B_TK3). NO CHANGE.
+
+D5 (IN_A2) — CONFIRMED (source 3, analogWrite(IN_A2,...)) H-bridge motor
+  driver input, right motor. EXCLUDED (capabilities: []).
+
+D6 (IN_A1, alias of A7) — CONFIRMED H-bridge motor driver input, right
+  motor. EXCLUDED.
+
+D7 (MUXA) — CONFIRMED (source 3, `this->IRs.begin(MuxPins,MUX_IN,3)`)
+  address line for the fixed onboard 5-way IR floor line-sensor mux.
+  Not usable as a standalone general-purpose pin without also driving
+  MUXB/MUXC and reading MUX_IN in the same protocol; dedicated to the
+  fixed sensor array (not a general connector, unlike the Control board's
+  TinkerKit mux — see the cross-board note in robot_control/notes.txt).
+  EXCLUDED.
+
+D8 (MUXB) — CONFIRMED same IR floor-sensor mux address line as MUXA.
+  EXCLUDED.
+
+D9 (IN_B2) — CONFIRMED H-bridge motor driver input, left motor. EXCLUDED.
+
+D10 (IN_B1) — CONFIRMED H-bridge motor driver input, left motor. EXCLUDED.
+
+D11 (MUXC) — CONFIRMED same IR floor-sensor mux address line as MUXA/
+  MUXB. EXCLUDED.
+
+D12 (TK4, alias of A11) — CONFIRMED (source 3 header) one of the 4
+  general TinkerKit input connectors (B_TK4). NO CHANGE.
+
+D13 (MUXI) — Declared and initialized (pinMode(INPUT); digitalWrite(LOW))
+  immediately next to the IR-sensor mux init code in the same begin()
+  function, suggesting a possible relationship to that mux subsystem, but
+  it is configured as a floating input (not driven as an output) and is
+  not referenced anywhere else in the fetched library source. Genuinely
+  UNCERTAIN whether this is a real 4th mux control/inhibit line tied to
+  the sensor array (which would warrant exclusion, matching MUXA/B/C) or
+  an unused/spare pin left in a safe state (which would warrant keeping
+  it available). No independent schematic was found to resolve this.
+  LEFT AS NO CHANGE (available) per the "never guess without evidence"
+  policy — a wrong exclusion has no user recourse, while a wrongly-kept
+  pin is just one the user must avoid if the (undocumented) sensor
+  behavior turns out to depend on it.
+
+D14 (MISO), D15 (SCK), D16 (MOSI) — standard SPI bus. Unlike the Control
+  board, no onboard SPI peripheral (no LCD, no SD card — this board has
+  neither per doc source 2's feature list) was found consuming this bus
+  in any source examined. Left available as a general-purpose bus per the
+  playbook's "no documented exclusive onboard consumer" KEEP policy.
+  NO CHANGE (all three).
+
+D17 (SS) — same TXLED0/TXLED1/RXLED0/RXLED1 active-low USB-activity-
+  indicator macros as this board's TX_RX_LED_INIT block, byte-for-byte
+  identical to plain Leonardo/Micro and to the Control board. Unlike the
+  Control board's file, this board's own pins_arduino.h does NOT declare
+  a distinct "LED1"/"RX_Led" alias for it — it is only referenced via the
+  generic RXLED0/RXLED1 macros. No board-specific evidence found that it
+  is used as a general user-controllable LED beyond the standard USB
+  core's activity indicator. LEFT UNTAGGED (NO CHANGE), consistent with
+  the existing leonardo/micro precedent and with the Control board's
+  equivalent pin.
+
+A0 (TK1, D18), A1 (TK2, D19) — CONFIRMED (source 3 header) general
+  TinkerKit input connectors (B_TK1, B_TK2). NO CHANGE.
+
+A2 (MUX_IN, D20) — CONFIRMED (source 3) the shared analog input for the
+  IR floor-sensor mux; only meaningful in combination with the MUXA/B/C
+  address lines (see D7/D8/D11 above), and dedicated to the fixed onboard
+  sensor array — reading it alone (without also cycling the address
+  lines) does not "behave as advertised" as a normal analog_input.
+  EXCLUDED.
+
+A3 (TRIM, D21) — CONFIRMED (source 3, `analogRead(TRIM)`) plain
+  potentiometer read, motor-speed trim adjustment. Matches the pin-audit
+  playbook's explicit "knob" KEEP example. NO CHANGE.
+
+A4 (SENSE_A, D22), A5 (SENSE_B, D23) — per doc source 2 ("Monitor current
+  consumption per motor"), these are the per-motor (right/left) current-
+  sense analog readings. Matches the playbook's explicit "current/
+  voltage/battery monitors" KEEP example verbatim. NO CHANGE (both).
+
+SUMMARY
+-------
+8 pins excluded (capabilities: []): D5 (IN_A2), D6 (IN_A1), D7 (MUXA), D8
+(MUXB), D9 (IN_B2), D10 (IN_B1), D11 (MUXC), A2/D20 (MUX_IN) — the motor-
+driver H-bridge inputs and the fixed onboard IR floor-sensor-array mux.
+All other pins (I2C bus, TK1-4 TinkerKit connectors, TRIM knob, SENSE_A/B
+current monitors, D13 MUXI, D14-17 SPI bus, D17 RXLED) left as NO CHANGE —
+no confirmed button/LED tag applied to any pin on this board; D13 (MUXI)
+specifically left undocumented due to genuinely insufficient evidence
+either way, and D17 follows the existing leonardo/micro/robot_control
+precedent of leaving the RXLED pin untagged.

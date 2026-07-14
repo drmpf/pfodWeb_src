@@ -16,9 +16,7 @@
  *     "connection": {
  *       "grouping":       "Serial"|"BLE"|"WiFi",      // ConnectionGroupingEnum
  *       "availablePorts": ["Serial", ...],            // for Serial; [] otherwise
- *       "defaultPort":    "Serial",                   // for Serial; "" otherwise
- *       "defaultBaud":    9600,                       // for Serial; 0 otherwise
- *       "supportedBauds": [300, ..., 115200]          // required, even for non-serial ([])
+ *       "defaultPort":    "Serial"                    // for Serial; "" otherwise
  *     },
  *     "pins": [
  *       { "name": "D0", "label": "D0 (RX)", "capabilities": ["serial_rx", ...] }
@@ -65,7 +63,7 @@ const BoardLoader = (() => {
   }
 
   /// Validate the connections block at the boundary.  Shape:
-  ///   { serial: { availablePorts, defaultPort, defaultBaud, supportedBauds },
+  ///   { serial: { availablePorts, defaultPort },
   ///     ble?:   {}, tcp?: {}, http?: {} }
   /// The presence of a key indicates that transport is supported; the
   /// value carries per-transport config (only serial has real config
@@ -82,8 +80,6 @@ const BoardLoader = (() => {
     }
     if (!Array.isArray(ser.availablePorts)) throw new Error('[BoardLoader] connections.serial.availablePorts must be an array');
     if (typeof ser.defaultPort !== 'string') throw new Error('[BoardLoader] connections.serial.defaultPort must be a string');
-    if (typeof ser.defaultBaud !== 'number') throw new Error('[BoardLoader] connections.serial.defaultBaud must be a number');
-    if (!Array.isArray(ser.supportedBauds)) throw new Error('[BoardLoader] connections.serial.supportedBauds must be an array');
   }
 
   /// Public entry point.  Given a board-data object (parsed from JSON

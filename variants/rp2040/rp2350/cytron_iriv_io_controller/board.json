@@ -1,0 +1,220 @@
+// pfodWeb NOTE (RP2040/RP2350 family audit, button/LED/NeoPixel tagging +
+// dedicated-hardware pin exclusion, 2026-07-13):
+//
+// Board: Cytron "IRIV IO Controller" (IRIV-IOC) - official Cytron
+// Technologies "IR4.0 Industrial I/O Controller" product. RP2350A-based,
+// DIN-rail-mountable industrial I/O expander with an onboard W5500
+// Ethernet controller, isolated RS485, 11 isolated digital inputs, 4
+// isolated digital outputs, 2 analog inputs, a PCF85063A RTC, a
+// programmable button/LED and a passive buzzer. This is NOT a general
+// hobbyist dev board - nearly every GPIO is committed to a specific
+// terminal-block/onboard-peripheral role by design (that IS the product).
+//
+// Source consulted (primary, authoritative): Cytron's own official
+// "IRIV IO Controller Datasheet Rev 1.0, July 2024" (PDF, mirrored at
+// electrokit.com/upload/quick/96/2c/0543_IRIV-IO-Controller-Datasheet.pdf),
+// which includes an exact GPIO pin-mapping table (section 5.1) and a full
+// block diagram (section 4) showing every GPIO's electrical role. This
+// single source independently confirms every finding below - quoted
+// inline per pin. Corroborated by:
+//   - cytron.io product page (p-iriv-io-controller) and CNX Software's
+//     coverage (cnx-software.com/2024/09/13) - matching feature list.
+//   - github.com/CytronTechnologies/Cytron-IRIV-IO-Controller,
+//     examples/circuitpython/modbus_io_expander/source/lib/iriv_ioc_hal.py
+//     - confirms `led = digitalio.DigitalInOut(board.LED)`,
+//     `led.direction = OUTPUT`, `led.value = 0` (initialized off),
+//     confirming active-high polarity for the USR LED (GPIO29); also
+//     confirms DI0-DI10 configured as `Direction.INPUT` and DO0-DO3 as
+//     `Direction.OUTPUT` with `value = 0` (off) initial state, matching
+//     the datasheet's "active high" spec for both.
+//
+// Per-pin findings and disposition:
+//
+//   GPIO0-10 (PIN_DI0..PIN_DI10) - 11 isolated digital inputs (datasheet
+//     section 5.2.4 / block diagram: each GPIO feeds through an opto-
+//     isolator from the terminal-block DI0-DI10 signals, active-high, up
+//     to 50V, 3750Vrms isolation). Electrically one-directional: the
+//     GPIO only ever senses the isolator's phototransistor output: it
+//     is not wired to drive anything externally, and attempting
+//     digitalWrite/analogWrite would only fight the phototransistor -
+//     same reasoning as this repo's existing wiznet_55rp20_evb_pico
+//     GPIO18 (VBUS-sense-divider) precedent. Tagged digital_input ONLY
+//     (digital_output/pwm_output dropped) via chipGpios overrides below.
+//   GPIO12-15 (PIN_DO0..PIN_DO3) - 4 isolated digital outputs (datasheet
+//     section 5.2.5: "controlled directly from the Raspberry Pi GPIO",
+//     driving a solid-state relay, active-high, up to 50V/500mA, dry
+//     contact). Per this repo's established playbook policy ("Relay
+//     outputs... a relay is a simple digital on/off actuator, and
+//     controlling it from pfodWeb IS the point of using such a board with
+//     pfodWeb - do not exclude"), these are LEFT AT THE CHIP-LEVEL
+//     DEFAULT full digital_input/digital_output/pwm_output capability -
+//     no chipGpios entry added, matching the cytron_maker_pi_rp2040 motor/
+//     servo-pin precedent (downstream relay hardware doesn't change what
+//     the GPIO itself can safely do).
+//   GPIO26/27 (PIN_AN0/PIN_AN1, aliased A0/A1) - 2 non-isolated analog
+//     inputs (datasheet section 5.2.3: "AGND is shared with system GND"),
+//     switch-selectable voltage (0-10.56V) or current (0-42.58mA) mode via
+//     an onboard resistor-divider/shunt ahead of the real 0-3.3V RP2350
+//     ADC pin. Left at chip-level default (analog_input + digital_input +
+//     digital_output + pwm_output all remain, matching the alias-derived
+//     default) - this is ordinary sketch-facing analog input, exactly the
+//     board's intended use. NOT re-scaled: "adc.defaultRefVolts" stays
+//     "3.3" (the real voltage the RP2350 silicon ADC pin itself sees)
+//     since the terminal's dual voltage/current mode can't be represented
+//     by a single linear full-scale-voltage constant the way a simple
+//     fixed resistor-divider board can (see e.g. d1_mini's corrected
+//     defaultRefVolts) - a sketch must apply its own scaling based on the
+//     physical DIP-switch mode selected. Documented here for a future
+//     reviewer rather than guessed at.
+//   GPIO28 (PIN_BUTTON) - confirmed via datasheet section 3.1 table row 2
+//     verbatim: "User Button - User programmable button. Connected to
+//     GPIO28 (active low)." Tagged ["digital_input","button"] only (no
+//     analog_input/digital_output/pwm_output), per this repo's standard
+//     button-tagging exclusion rule. Note: this board's own
+//     pins_arduino.h also aliases this same GPIO as "A2" (ADC-capable-pin
+//     boilerplate inherited from the generic RP2350A core, which declares
+//     A0-A3 for all 4 ADC-capable GPIOs regardless of a specific board's
+//     real analog wiring) - the explicit chipGpios override below fully
+//     replaces the alias-derived capability set, so no spurious
+//     analog_input leaks through despite the A2 alias still being present
+//     in pins_arduino.h.
+//   GPIO29 (PIN_LED) - confirmed via datasheet section 3.1 table row 6:
+//     "USR - User programmable LED. Controlled by GPIO29." Active-high
+//     polarity confirmed via Cytron's own official CircuitPython HAL
+//     example (iriv_ioc_hal.py): `led.value = 0` on init (off), implying
+//     `led.value = 1` turns it on. Tagged
+//     ["digital_output","pwm_output","led_high"] (digital_input dropped),
+//     matching the cytron_maker_nano_rp2040 GPIO2 / rpipico GPIO25
+//     precedent for a single dedicated status LED (pwm_output kept since
+//     arduino-pico's analogWrite() works on any RP2350 GPIO, enabling
+//     brightness dimming). Same boilerplate "A3" alias note as GPIO28
+//     above - fully superseded by the explicit override.
+//   PIN_BUZZER (GPIO11) - passive buzzer (datasheet: "1x passive buzzer...
+//     able to play variable frequency tone or melody. Controlled by
+//     GPIO11"). Left untagged per task scope - no buzzer capability
+//     vocabulary exists in this codebase yet, matching the
+//     cytron_maker_pi_rp2040/cytron_maker_nano_rp2040 PIN_BUZZER
+//     precedent. No chipGpios entry added (chip-level default kept).
+//   GPIO16/17 (I2C0 SDA/SCL) - wired to the onboard PCF85063A RTC (I2C
+//     address 0x51, datasheet section 3.2). Per this repo's established
+//     KEEP policy for I2C buses ("General-purpose I2C/SPI buses without a
+//     documented exclusive onboard consumer, even if only one device
+//     happens to be attached in the reference design - I2C especially is
+//     inherently multi-drop"), LEFT UNCHANGED at chip-level default - the
+//     RTC being present doesn't preclude a sketch adding further I2C
+//     devices on the same bus at a different address.
+//   GPIO18 (PIN_W5500_INT) and GPIO23 (PIN_W5500_RST/RESET) - W5500
+//     Ethernet controller interrupt and reset lines (datasheet block
+//     diagram, section 4). This board's own pins_arduino.h already
+//     declares NEITHER of these two GPIOs as a static-const alias of any
+//     kind (no D18/D23, unlike the SPI bus GPIOs below which still need
+//     SS/MOSI/MISO/SCK for the SPI peripheral itself to function) - per
+//     this repo's `allGpios` parser mechanics, a GPIO absent from both
+//     pins_arduino.h aliases AND a chipGpios key never appears in the
+//     generated pin list at all. Confirmed already fully excluded by the
+//     existing pins_arduino.h design (see its own inline comment on the
+//     line above the D-pin block); no chipGpios entry added since there
+//     is nothing to override and adding an entry would only make these
+//     internal-only lines newly visible for no benefit (an Ethernet-
+//     library-internal INT/RESET line has no legitimate pfodWeb sketch
+//     use, unlike wiznet_5100s_evb_pico's case where the underlying file
+//     already exposed them as ordinary D-pins and had to be overridden).
+//   GPIO19/20/21/22 (PIN_W5500_MOSI/MISO/CS/SCK, = SPI0 MOSI/MISO/SS/SCK)
+//     - dedicated onboard SPI bus to the W5500 Ethernet controller
+//     (datasheet section 5.3: SPI up to 80MHz). These GPIOs ARE still
+//     aliased (as SS/MOSI/MISO/SCK, required for the SPI peripheral
+//     itself), so they would otherwise get full chip-level default
+//     digital_input/digital_output/pwm_output capability alongside their
+//     auto-appended spi_mosi/spi_miso/spi_ss/spi_sck role. Overridden to
+//     "capabilities": [] below - exact precedent match to
+//     wiznet_5100s_evb_pico's GPIO16/17/18/19 treatment - leaving only the
+//     genuine SPI-bus-role tag (auto-appended by build_boards.js from this
+//     board's own SS/MOSI/MISO/SCK aliases, independent of chipGpios).
+//   GPIO24/25 (PIN_SERIAL2_TX/RX) - isolated RS485 transceiver UART1
+//     (datasheet section 5.2.2: "mapped to the UART1 (Tx: GPIO24,
+//     Rx: GPIO25)... isolated from the system and other interfaces...
+//     automatic direction control"). The terminal block only exposes the
+//     RS485 A/B/G differential signals, never raw GPIO24/25 - these two
+//     GPIOs have no legitimate general-purpose use outside driving the
+//     onboard isolated RS485 transceiver via Serial2, matching this
+//     repo's "communication bus wired exclusively to a specific onboard/
+//     always-attached chip" exclusion policy (same category as the W5500
+//     SPI bus above). This board's own pins_arduino.h aliases these as
+//     plain D24/D25 (not literal "TX"/"RX"), so build_boards.js's
+//     automatic serial_tx/serial_rx detection does NOT fire on its own -
+//     without an override they would show as ordinary full-capability
+//     digital pins. Fixed via the documented `forcedRole` mechanism
+//     (chipGpios capabilities containing "serial_tx"/"serial_rx" forces
+//     the same single-role treatment as a literal TX/RX alias) - exactly
+//     the use case called out in build_boards.js's own comment ("needed
+//     for chips... whose vendor pins_arduino.h files don't consistently
+//     alias the UART pins as literal TX/RX names").
+//
+// Full findings/sources trail:
+// boardsDetails/rp2040/rp2350/cytron_iriv_io_controller/notes.txt
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI. Overridden by
+  // the matching `<id>.name=` entry in a sibling-or-ancestor boards.txt
+  // when one is present (matched via `<id>.build.variant=` against this
+  // variant's directory name) - for this board that's "Cytron IRIV IO
+  // Controller" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board - see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins beyond what the
+  // chipGpios overrides below already fully express.
+  "inputOnlyGpios": [],
+
+  // Default transports - Serial (USB-C) only. The onboard W5500 Ethernet
+  // controller is a library-level add-on the user's own sketch drives
+  // directly (same as every other WIZnet-Ethernet RP2040/RP2350 board in
+  // this repo, e.g. wiznet_5100s_evb_pico) - it doesn't change how
+  // pfodWeb itself connects to the board.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input"], "note": "DI0 - isolated digital input (up to 50V, active high, 3750Vrms isolation via onboard optocoupler). Input-only: driving this pin would fight the isolator's phototransistor. See datasheet section 5.2.4 / block diagram." },
+    "1":  { "capabilities": ["digital_input"], "note": "DI1 - isolated digital input, same reasoning as DI0." },
+    "2":  { "capabilities": ["digital_input"], "note": "DI2 - isolated digital input, same reasoning as DI0." },
+    "3":  { "capabilities": ["digital_input"], "note": "DI3 - isolated digital input, same reasoning as DI0." },
+    "4":  { "capabilities": ["digital_input"], "note": "DI4 - isolated digital input, same reasoning as DI0." },
+    "5":  { "capabilities": ["digital_input"], "note": "DI5 - isolated digital input, same reasoning as DI0." },
+    "6":  { "capabilities": ["digital_input"], "note": "DI6 - isolated digital input, same reasoning as DI0." },
+    "7":  { "capabilities": ["digital_input"], "note": "DI7 - isolated digital input, same reasoning as DI0." },
+    "8":  { "capabilities": ["digital_input"], "note": "DI8 - isolated digital input, same reasoning as DI0." },
+    "9":  { "capabilities": ["digital_input"], "note": "DI9 - isolated digital input, same reasoning as DI0." },
+    "10": { "capabilities": ["digital_input"], "note": "DI10 - isolated digital input, same reasoning as DI0." },
+    "19": { "capabilities": [], "note": "SPI0 MOSI - dedicated onboard link to the W5500 Ethernet controller. Not available for general digital/PWM use; see datasheet section 4/5.1 pin-mapping table." },
+    "20": { "capabilities": [], "note": "SPI0 MISO - dedicated onboard link to the W5500 Ethernet controller. Not available for general digital/PWM use; see datasheet section 4/5.1 pin-mapping table." },
+    "21": { "capabilities": [], "note": "SPI0 SS/CSn - dedicated onboard chip-select to the W5500 Ethernet controller. Not available for general digital/PWM use; see datasheet section 4/5.1 pin-mapping table." },
+    "22": { "capabilities": [], "note": "SPI0 SCK - dedicated onboard clock line to the W5500 Ethernet controller. Not available for general digital/PWM use; see datasheet section 4/5.1 pin-mapping table." },
+    "24": { "capabilities": ["serial_tx"], "note": "UART1 TX - dedicated onboard isolated RS485 transceiver (automatic direction control, isolated from system and other interfaces). Only the RS485 A/B/G differential signal is exposed on the terminal block, never this raw GPIO. See datasheet section 5.2.2." },
+    "25": { "capabilities": ["serial_rx"], "note": "UART1 RX - dedicated onboard isolated RS485 transceiver, same reasoning as GPIO24." },
+    "28": { "capabilities": ["digital_input", "button"], "note": "User programmable button, active low (datasheet section 3.1: \"Connected to GPIO28 (active low)\"). This GPIO is also boilerplate-aliased \"A2\" in pins_arduino.h (generic RP2350A ADC-pin declaration, not a real analog wiring on this board) - superseded by this override." },
+    "29": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "USR - user programmable LED, active high (datasheet section 3.1: \"Controlled by GPIO29\"; polarity confirmed via Cytron's official CircuitPython HAL example initializing led.value = 0 = off). Also boilerplate-aliased \"A3\" in pins_arduino.h - superseded by this override." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's 12-bit ADC (0-4095), ~3.3V reference at the silicon pin
+  // itself. AN0/AN1 (GPIO26/27) present a switch-selectable 0-10.56V or
+  // 0-42.58mA full-scale range at the terminal block via onboard signal
+  // conditioning ahead of the ADC pin (datasheet section 5.2.3) - not
+  // represented here since a single linear defaultRefVolts constant can't
+  // capture a mode-switchable dual voltage/current range; a sketch must
+  // apply its own scaling based on the physical DIP-switch mode selected.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

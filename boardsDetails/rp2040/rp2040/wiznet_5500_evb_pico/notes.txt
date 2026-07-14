@@ -1,0 +1,148 @@
+Board: WIZnet "W5500-EVB-Pico" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/wiznet_5500_evb_pico/
+Audit date: 2026-07-12
+
+SUMMARY
+-------
+Applied dedicated-hardware pin exclusion for the onboard W5500 Ethernet
+chip's SPI bus + reset/interrupt lines (GPIO16-21). No button/LED tagging
+applied - board has no onboard button, and its only LED is the standard
+Pico GPIO25 LED, which is common to every RP2040 board and out of scope
+for this Ethernet-hardware-only audit. Created board.json (this board
+previously had none - zero differentiation from a plain Pico).
+
+SOURCES CONSULTED
+------------------
+1. docs.wiznet.io/Product/Chip/Ethernet/W5500/w5500-evb-pico (WIZnet's
+   own official documentation - authoritative). States verbatim:
+   "GPIO16, GPIO17, GPIO18, GPIO19, GPIO20, GPIO21 are connected to W5500
+   inside the board... GPIO16-GPIO19 are used for SPI0 communication...
+   GPIO20 is routed to the reset signal... GPIO21 is routed to the
+   interrupt signal... If you are using the Ethernet function, these
+   pins cannot be used for any other purpose."
+   Exact per-signal table from the same page:
+     MISO -> GPIO16 (input)
+     CS   -> GPIO17 (output)
+     SCK  -> GPIO18 (output)
+     MOSI -> GPIO19 (output)
+     RESET -> GPIO20 (output)
+     INTERRUPT -> GPIO21 (input)
+   Also confirmed: only one onboard LED, "GPIO25 Connected to user LED"
+   (the standard Pico LED). No onboard user button documented.
+2. WebSearch cross-reference: Zephyr RTOS w5500_evb_pico board docs
+   (github.com/zephyrproject-rtos/zephyr, boards/wiznet/w5500_evb_pico)
+   and NuttX w5500-evb-pico board docs (nuttx.apache.org) - both
+   independently state the identical GPIO16-21 SPI0/RSTn/INTn mapping,
+   corroborating the WIZnet page.
+3. Local codebase: this board's own pins_arduino.h
+   (variants/rp2040/rp2040/wiznet_5500_evb_pico/pins_arduino.h) is a
+   single line, `#include "../generic/pins_arduino.h"` - no board-
+   specific pin declarations at all. The included generic file
+   (variants/rp2040/rp2040/generic/pins_arduino.h) declares SPI0 as
+   MISO=16/SS=17/SCK=18/MOSI=19 - this happens to match the real W5500
+   wiring exactly (SPI0 is genuinely the bus the chip uses), so no
+   pins_arduino.h edit was required; the generic file's boilerplate SPI0
+   aliases are, for this one board, actually correct/meaningful rather
+   than a false-positive "SPI0 header pins" default. GPIO20/21 have no
+   boilerplate function alias in the generic file (only fallback D20/D21
+   GPIO-number aliases from generic/common.h), so they needed no alias
+   changes either - only chipGpios capability corrections.
+4. Chip-level default: variants/rp2040/rp2040/board.json (chipGpios: {}
+   - deliberately empty per its own comment, since RP2040 boards vary
+   too much for a chip-wide GPIO map).
+5. Schema/style precedent: variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json
+   (per-board chipGpios override + "no legitimate general-purpose role"
+   empty-capabilities pattern).
+6. pfodWeb_src/build_boards.js (read to confirm parser behavior):
+   - buildEsp32Board() (used for the "rp2040" family too) builds each
+     GPIO's base capability set from chipGpios when present (empty
+     capabilities array => empty base set, skips the default digital_
+     input/output/pwm_output derivation), THEN unconditionally appends
+     spi_ss/spi_mosi/spi_miso/spi_sck for whichever single GPIO matches
+     the board's own SS/MOSI/MISO/SCK globals, and i2c_sda/i2c_scl
+     similarly for SDA/SCL (~line 677-703). This auto-append cannot be
+     suppressed via chipGpios - it fires regardless.
+   - Verified this behavior against several existing ESP32 W5500-based
+     boards already in this database (yb_esp32s3_eth, lilygo_t_eth_lite,
+     m5stack_poe_cam, Edgebox-ESP-100) which use the equivalent ESP32
+     pattern (there, achieved by omitting the dedicated GPIOs from the
+     chip-level chipGpios copy entirely, since ESP32's default already
+     has a full listing to prune from - not applicable to RP2040's
+     empty-default scheme, so this board's chipGpios entries were
+     written the RP2040 way per the task's stated schema instead:
+     empty "capabilities": [] + explanatory "note").
+
+PER-PIN REASONING
+------------------
+GPIO16 (W5500 MISO / SPI0 RX): chipGpios "capabilities": [] strips the
+  default digital_input/digital_output/pwm_output. build_boards.js's
+  SPI0-MISO auto-append (this board's generic pins_arduino.h SPI0 MISO
+  alias resolves to GPIO16) still fires unconditionally, giving a final
+  capability list of exactly ["spi_miso"]. Correct - MISO is an SPI
+  bus role, and the Designer's picker will show it as bus-only, not a
+  generic digital pin.
+
+GPIO17 (W5500 CS/SS / SPI0 chip-select): same treatment. Final
+  capabilities: ["spi_ss"] only, via auto-append from this board's
+  SPI0 SS alias.
+
+GPIO18 (W5500 SCK / SPI0 clock): same treatment. Final capabilities:
+  ["spi_sck"] only.
+
+GPIO19 (W5500 MOSI / SPI0 TX): same treatment. Final capabilities:
+  ["spi_mosi"] only.
+
+GPIO20 (W5500 RSTn, active-low reset, RP2040 GPIO output to the chip):
+  no SS/MOSI/MISO/SCK/SDA/SCL alias collision on this GPIO (not part of
+  the SPI0 boilerplate group), so the auto-append rules never touch it.
+  chipGpios "capabilities": [] leaves it with NO capabilities at all
+  (note only) - it is entirely chip-driven (the Ethernet library holds
+  it as an output and toggles it during W5500 init/reset); offering it
+  as a general digital_output would let a Designer sketch fight the
+  library for control (e.g. holding reset asserted permanently, taking
+  the Ethernet link down).
+
+GPIO21 (W5500 INTn, interrupt output from the chip, RP2040 GPIO input):
+  same treatment - no bus-role alias collision, "capabilities": []
+  leaves it with no capabilities (note only). It's an input the
+  Ethernet library reads internally; not something a Designer sketch
+  should also be driving/reading as a generic pin, since doing so could
+  race with the library's own interrupt handling.
+
+GPIO25 (standard Pico onboard LED, PIN_LED / LED_BUILTIN): left
+  UNCHANGED - confirmed by the same WIZnet documentation page as the
+  only LED on this board and nothing else. This is the same LED every
+  other Pico-form-factor RP2040 board in this database has via the
+  shared generic/pins_arduino.h PIN_LED=25 default, and none of those
+  sibling boards (including the plain rpipico) have been LED-tagged
+  yet either (confirmed via boardsDetails/rp2040 being empty prior to
+  this audit, and rpipico/wiznet_5100s_evb_pico both lacking a
+  board.json). Tagging it here alone would be inconsistent with the
+  rest of the still-unaudited RP2040 family and is out of scope for a
+  per-board Ethernet-hardware audit - left for a future dedicated
+  LED/button sweep across all Pico-form-factor RP2040 boards.
+
+No onboard user button - confirmed absent by the WIZnet documentation
+  page (no button listed at all). No button tagging applied.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax by extracting and
+  running build_boards.js's own stripJsonComments() against it and
+  confirming JSON.parse() succeeds and produces the expected chipGpios
+  shape. No build script was executed (per task instructions).
+- All 9 fields from build_boards.js's REQUIRED_BOARD_FIELDS list are
+  present: boardName, displayName, family, inputOnlyGpios, connections,
+  pinNotes, chipGpios, pwm, dac, adc.
+- pwm/dac/adc/family/connections/pinNotes/inputOnlyGpios/boardName/
+  displayName values reproduce the chip-level
+  variants/rp2040/rp2040/board.json defaults verbatim except for the
+  added chipGpios entries, per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (new file)
+- Created: boardsDetails/rp2040/rp2040/wiznet_5500_evb_pico/notes.txt (this file)
+- pins_arduino.h: NOT modified (its inherited generic SPI0 aliases
+  already happen to match the real W5500 wiring exactly, so no edit
+  was needed there).

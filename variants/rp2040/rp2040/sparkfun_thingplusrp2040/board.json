@@ -1,0 +1,140 @@
+// Output filename and BoardLoader data-variable name:
+//   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+//
+// pfodWeb NOTE (button/LED/NeoPixel + dedicated-hardware pin-exclusion
+// audit, 2026-07-13):
+//
+// Board: SparkFun Thing Plus - RP2040 (plain, non-WiFi RP2040; the
+// WiFi-equipped sibling is the RP2350-based variants/rp2040/rp2040w/
+// sparkfun_thingplusrp2350 already audited on 2026-07-12). Confirmed via
+// boards.txt (`sparkfun_thingplusrp2040.name=SparkFun Thing Plus RP2040`,
+// `build.usb_product="Thing Plus RP2040"`, `build.board=SPARKFUN_THINGPLUS_RP2040`)
+// that this directory is the genuine Thing Plus RP2040, despite this
+// board's own pins_arduino.h citing a "ProMicroRP2040_Graphical_Datasheet.pdf"
+// source comment (that citation appears to be a copy/paste carried over
+// from arduino-pico upstream and does not match this board's actual
+// pin functions confirmed below - not corrected here per task scope,
+// pins_arduino.h left untouched).
+//
+// No board.json override existed before this audit. This board declares
+// its own D0-D22/A0-A2/MOSI/MISO/SCK/SDA/SCL aliases directly (does not
+// include ../generic/common.h), so without a per-board override every
+// aliased GPIO defaults to full digital_input/digital_output/pwm_output
+// via build_boards.js's buildEsp32Board() - including six GPIOs
+// dedicated internally to the onboard microSD card slot, which is not
+// safe or meaningful for a sketch to twiddle as plain digital I/O.
+//
+// Sources consulted:
+//  - This board's own pins_arduino.h (variants/rp2040/rp2040/
+//    sparkfun_thingplusrp2040/pins_arduino.h): `PIN_LED (25u)`,
+//    `PIN_NEOPIXEL (8u)` / `NUM_NEOPIXEL (1)`, `PIN_SPI1_MISO (12u)` /
+//    `PIN_SPI1_MOSI (15u)` / `PIN_SPI1_SCK (14u)` / `PIN_SPI1_SS (9u)`.
+//    Authoritative - this is the actual arduino-pico board-support
+//    source the generated sketches compile against.
+//  - variants/rp2040/boards.txt (`sparkfun_thingplusrp2040.*` block):
+//    confirms this variant maps to the real "SparkFun Thing Plus RP2040"
+//    product (name=, build.usb_product=, build.board=).
+//  - https://learn.sparkfun.com/tutorials/rp2040-thing-plus-hookup-guide/all
+//    and .../hardware-overview - Official SparkFun hookup guide.
+//    Verbatim: "The µSD card slot is connected to the following
+//    dedicated GPIO: GPIO 09: DATA3/CS, GPIO 10: DATA2, GPIO 11: DATA1,
+//    GPIO 12: DATA0/CIPO (or Peripheral's SDO), GPIO 14: CLK/SCK,
+//    GPIO 15: CMD/COPI (or Peripheral's SDI)." Also: "30x 3.3V
+//    user-programmable high-speed IO (only 18 are broken out on the
+//    board)" - the 12 GPIOs NOT broken out are exactly GPIO6/7 (I2C1
+//    Qwiic + fuel-gauge SCL tie), GPIO8 (WS2812), GPIO9/10/11/12/14/15
+//    (µSD, all six explicitly called "dedicated"), GPIO23 (tied SCL,
+//    no pins_arduino.h alias at all so already excluded automatically),
+//    GPIO24 (MAX17048 fuel-gauge alert, likewise no pins_arduino.h
+//    alias), GPIO25 (status LED) - confirming all six µSD GPIOs are
+//    internal/dedicated, not header-broken-out shared pins (unlike the
+//    RP2350 sibling's SPI0, which IS shared with the header).
+//    Status LED: "The blue, 25 LED is typically used as a test or
+//    status LED... connected to GPIO 25." NeoPixel: "WS2812 RGB LED:
+//    Connected to GPIO 8; controlled with a 24-bit (GRB) data signal."
+//    Buttons: "BOOT Button: Forces BOOTSEL mode when held during USB
+//    connection" / "RESET Button: Connected to reset pin" - both
+//    hardware-only, not normal GPIOs, matching every other RP2040
+//    board's BOOTSEL/RESET pair - out of scope for GPIO tagging.
+//  - MicroPython example on the same hookup guide page for the status
+//    LED: `led.value(1)` turns it on - confirms active-high polarity
+//    (Pin.value(1) drives the pin HIGH).
+//  - Closely related sibling boards already audited in this repo:
+//    variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json (same
+//    product line, SPI0-vs-SD-sharing precedent) and variants/rp2040/
+//    rp2040/sparkfun_promicrorp2040/board.json (same
+//    "ProMicroRP2040_Graphical_Datasheet.pdf" source citation quirk,
+//    confirms that citation is a red herring shared across multiple
+//    distinct SparkFun boards' pins_arduino.h comments, not evidence
+//    this board is actually a Pro Micro).
+//
+// GPIO8 (PIN_NEOPIXEL): CONFIRMED onboard WS2812 addressable RGB LED
+// data line, vendor-documented and confirmed in pins_arduino.h
+// (NUM_NEOPIXEL=1). Tagged ["digital_output","led_neopixel","pwm_output"],
+// matching this repo's existing led_neopixel precedent (sibling
+// sparkfun_thingplusrp2350 GPIO14, sparkfun_promicrorp2040 GPIO25).
+// digital_input dropped - the pin is committed to driving the LED, not
+// general-purpose input.
+//
+// GPIO9/10/11/12/14/15 (PIN_SPI1_SS/D10/D11/PIN_SPI1_MISO/PIN_SPI1_SCK/
+// PIN_SPI1_MOSI): CONFIRMED onboard microSD card slot's six dedicated
+// signal lines (CS/DATA3, DATA2, DATA1, DATA0-CIPO, CLK-SCK,
+// CMD-COPI), vendor-documented as "dedicated GPIO" and explicitly
+// excluded from this board's 18 header-broken-out pins (see sources
+// above) - unlike the RP2350 sibling board, where the microSD's SPI0
+// bus is also broken out to the header and left general-purpose, this
+// board's SD-dedicated SPI1 bus is NOT header-broken-out at all, so all
+// six GPIOs get capabilities suppressed (empty), not just the CS pin.
+// build_boards.js's unconditional SS/MISO/SCK/MOSI-alias match still
+// attaches the correct spi_ss/spi_miso/spi_sck/spi_mosi bus-role tags
+// on top of GPIO9/12/14/15 (that vocabulary isn't part of chipGpios'
+// CAP_ORDER, so it can't be suppressed and shouldn't be - it correctly
+// reflects the pins' real SPI role); GPIO10/11 (DATA2/DATA1) have no
+// SPI-role alias at all in pins_arduino.h (plain D10/D11 only), so they
+// simply get no capabilities and no bus-role tag.
+//
+// GPIO25 (PIN_LED): CONFIRMED onboard blue status/debug LED, vendor-
+// documented ("The blue, 25 LED is typically used as a test or status
+// LED... connected to GPIO 25") and confirmed in pins_arduino.h. Tagged
+// ["digital_output","pwm_output","led_high"] - active-high confirmed via
+// the hookup guide's own MicroPython example (`led.value(1)` to turn
+// on). digital_input dropped to match this repo's established led_high
+// precedent for dedicated onboard LED pins (rpipico, wiznet_5500_evb_pico,
+// vccgnd_yd_rp2040, etc.).
+//
+// GPIO6/7 (Wire1 SDA/SCL): confirmed Qwiic I2C1 connector pins (also
+// shared internally with the MAX17048 fuel gauge on the same bus) -
+// already correctly tagged via automatic SDA/SCL alias matching, no
+// override needed, matching the identical RP2350-sibling precedent for
+// its own Qwiic pins.
+//
+// Not investigated further (out of scope for this per-board audit,
+// no pins_arduino.h alias exists so no capability leak is possible):
+// GPIO23 (tied SCL half of the I2C1 pair) and GPIO24 (MAX17048 fuel
+// gauge ALERT pin) - neither has any D<n>/bus alias in this board's own
+// pins_arduino.h, so build_boards.js's alias-driven capability grant
+// never fires for them regardless of chip-level defaults.
+//
+// See boardsDetails/rp2040/rp2040/sparkfun_thingplusrp2040/notes.txt
+// for the full research trail.
+{
+  "boardName": "RP2040",
+  "displayName": "Raspberry Pi Pico (RP2040)",
+  "family": "rp2040",
+  "inputOnlyGpios": [],
+  "connections": ["serial"],
+  "pinNotes": {},
+  "chipGpios": {
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "PIN_NEOPIXEL - onboard WS2812 addressable RGB LED data line (NUM_NEOPIXEL=1). Confirmed via SparkFun's official RP2040 Thing Plus Hookup Guide (\"WS2812 RGB LED: Connected to GPIO 8\") and this board's own pins_arduino.h." },
+    "9":  { "capabilities": [], "note": "PIN_SPI1_SS - onboard microSD card slot CS/DATA3 line. Vendor-documented as one of six \"dedicated GPIO\" for the µSD slot, NOT among the board's 18 header-broken-out pins (docs.sparkfun.com hardware-overview). build_boards.js's automatic SS-alias match still attaches spi_ss on top." },
+    "10": { "capabilities": [], "note": "D10 - onboard microSD card slot DATA2 line. Vendor-documented dedicated µSD GPIO, not header-broken-out. No SPI-role alias in pins_arduino.h, so no bus-role tag applies either." },
+    "11": { "capabilities": [], "note": "D11 - onboard microSD card slot DATA1 line. Vendor-documented dedicated µSD GPIO, not header-broken-out. No SPI-role alias in pins_arduino.h, so no bus-role tag applies either." },
+    "12": { "capabilities": [], "note": "PIN_SPI1_MISO - onboard microSD card slot DATA0/CIPO line. Vendor-documented dedicated µSD GPIO, not header-broken-out. build_boards.js's automatic MISO-alias match still attaches spi_miso on top." },
+    "14": { "capabilities": [], "note": "PIN_SPI1_SCK - onboard microSD card slot CLK/SCK line. Vendor-documented dedicated µSD GPIO, not header-broken-out. build_boards.js's automatic SCK-alias match still attaches spi_sck on top." },
+    "15": { "capabilities": [], "note": "PIN_SPI1_MOSI - onboard microSD card slot CMD/COPI line. Vendor-documented dedicated µSD GPIO, not header-broken-out. build_boards.js's automatic MOSI-alias match still attaches spi_mosi on top." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED - onboard blue status/debug LED, active-high. Confirmed via SparkFun's official RP2040 Thing Plus Hookup Guide (\"The blue, 25 LED is typically used as a test or status LED... connected to GPIO 25\"; MicroPython example uses led.value(1) to turn it on) and this board's own pins_arduino.h." }
+  },
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

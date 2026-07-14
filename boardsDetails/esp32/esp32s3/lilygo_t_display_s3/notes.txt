@@ -1,0 +1,78 @@
+lilygo_t_display_s3 - button/LED research notes
+=================================================
+
+Sources consulted
+------------------
+https://github.com/Xinyuan-LilyGO/T-Display-S3
+  Official vendor repo. Fetched top-level content (README render via WebFetch tool).
+  Confirms two buttons: BOOT button and RST button used for manual flash-mode entry
+  (hold BOOT, press RST). Also documents two onboard status LEDs unrelated to user
+  GPIO control: a red battery-charging LED, and a green "V3V" power-indicator LED
+  driven by GPIO15 (power/backlight rail enable, not a general user LED).
+
+https://deepwiki.com/Xinyuan-LilyGO/T-Display-S3/5.1-pin-mapping
+  DeepWiki-generated pin mapping page sourced from the official repo. Explicitly
+  lists PIN_BUTTON_1 = GPIO0 ("BOOT Button... used for boot mode selection and as
+  user input") and PIN_BUTTON_2 = GPIO14 ("General purpose user button"). States
+  no dedicated LED GPIO pins are documented other than GPIO38 LCD backlight.
+
+https://devices.esphome.io/devices/lilygo-tdisplay-s3/
+  ESPHome device page/config for this exact board. Confirms Button 1 = GPIO0
+  (inverted: true → active-low) and Button 2 = GPIO14 (inverted: true →
+  active-low). Backlight/light component on GPIO38 (LEDC PWM) - display
+  backlight only, not a status LED.
+
+https://www.espboards.dev/esp32/lilygo-t-display-s3/
+  Third-party pinout reference page. Confirms IO14 labeled "BUTTON" / INPUT.
+  Confirms IO38 labeled "LCD_BL" (LCD backlight), not a standalone LED.
+
+WebSearch query "LilyGO T-Display-S3 schematic onboard LED GPIO"
+  Surfaced the "green LED on the board" / GPIO15 detail: "When the pin is
+  pulled high, 3.3 volts is given to the display and the green LED on the
+  board" and "In USB mode, the green indicator light stays on. In battery
+  power mode, GPIO15 lights up when high and turns off when low." This LED
+  is wired in parallel with the display power/backlight enable line, i.e.
+  it is a power-rail indicator, not an independently user-controllable LED.
+
+Pins considered but NOT tagged
+-------------------------------
+GPIO15 (V3V / green power-indicator LED, per vendor docs above):
+  NOT TAGGED. Two independent reasons:
+  1) It is functionally a shared power/backlight-rail indicator (turns on
+     whenever the 3V3 display rail is enabled), not a discrete
+     user-addressable LED — it does not cleanly match the led_high/led_low
+     capability semantics (no independent digitalWrite control separate
+     from powering the screen).
+  2) GPIO15 has NO existing chipGpios entry in this board's board.json - it
+     was already removed by the earlier per-board pin-exclusion audit
+     (grouped with the ST7789 TFT power/control lines, even though the
+     exclusion-note text at the top of board.json only explicitly lists
+     5,6,7,8,9,38,39,40,41,42,45,46,47,48 and 16,21 - GPIO15 exclusion
+     appears to be part of that same TFT/display-power group but is not
+     individually named in the note). Per task rules, pins already excluded
+     via chip-level exclusion must NOT be re-added even if a plausible LED
+     use is found. Flagging here for human review in case GPIO15 should be
+     reconsidered as a possible led_high tag if the exclusion is revisited.
+  This is a documented judgment call to leave untagged, not a "no evidence
+  found" case - evidence exists but the pin is out of scope per the
+  pre-existing exclusion and per the "shared/not independent" ambiguity.
+
+GPIO38 (LCD_BL / backlight PWM): NOT considered for LED tagging - this is
+  the display backlight, already excluded from chipGpios by the prior
+  pin-exclusion audit as a dedicated TFT control line. Not a user LED.
+
+Red battery-charging LED: NOT tagged - this is a hardwired charge-status
+  LED driven directly by the battery-charge IC, not connected to any GPIO
+  at all (no software control possible). No candidate pin exists for it.
+
+RST (reset) button: NOT tagged - this is the chip EN/reset line, not a
+  GPIO readable by firmware, so it cannot be a "button" capability tag.
+
+Tagged
+------
+GPIO0  -> ["digital_input","button"]  (BOOT button, also general user
+          input per vendor pin-mapping docs; active-low)
+GPIO14 -> ["digital_input","button"]  (dedicated general-purpose user
+          "Key" button; active-low)
+Both had existing chipGpios entries (not excluded by the prior pin audit)
+and are not the board's TX(43)/RX(44) pins, so no TX/RX conflict.

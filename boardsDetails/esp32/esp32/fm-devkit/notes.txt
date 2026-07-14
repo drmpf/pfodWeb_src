@@ -1,0 +1,178 @@
+Board: fm-devkit (chip: esp32) - "ESP32 FM DevKit"
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\fm-devkit\
+Audit date: 2026-07-12
+Task: button/LED capability-tagging audit (playbook section 7a). A board.json
+      override already existed on this board from an earlier dedicated-
+      hardware-exclusion pass (excludes GPIO2/22/25/26 - the onboard I2S DAC
+      bus) - that pass never applied button/LED tagging, which is what this
+      audit adds.
+
+FILE REVIEWED
+-------------
+variants/esp32/esp32/fm-devkit/pins_arduino.h (46 lines, read in full).
+Declares: TX=1, RX=3, LED_BUILTIN=5 (plus the standard BUILTIN_LED/
+LED_BUILTIN #define compatibility macros), SW1=4/SW2=18/SW3=19/SW4=21,
+D0-D10 GPIO aliases (34/35/32/33/27/14/12/13/15/23/0), SDA=16/SCL=17 ("2k2
+hardware pull-ups"), SCK/MISO/MOSI/SS all -1 (unused, no SPI defined). A
+comment already documents the I2S DAC pins (GPIO2/25/26/22) as deliberately
+NOT declared in this file (excluded by the prior audit pass).
+Also read esp32_board_variants/variants/fm-devkit/pins_arduino.h (the
+un-excluded source copy, still containing the I2S_MCLK/LRCLK/SCLK/DOUT
+declarations) - confirms the deployed variants/ copy is the same file minus
+the I2S DAC lines, consistent with the prior pass's own comment.
+
+SOURCES CONSULTED
+------------------
+1. WebSearch "FM-DevKit ESP32 board" / "FM DevKit ESP32 I2S DAC SW1 SW2 SW3
+   SW4 board" - surfaced the board's actual designer/vendor repo:
+   https://github.com/dragon-engineer/esp32_fmdevkit ("ESP32 Development
+   Board for FM broadcasting. Complete DA Audio processing."). Also
+   surfaced PlatformIO's "ESP32 FM DevKit" board-database page (generic
+   MCU/build config only, no LED/button/schematic detail) and
+   espboards.dev (404 on the specific page fetched).
+
+2. https://raw.githubusercontent.com/dragon-engineer/esp32_fmdevkit/master/README.md
+   PRIMARY EVIDENCE for pin identity. Fetched the full raw README verbatim.
+   Key facts:
+   - Feature list: "4 User buttons", "1 Status LED (Red) and 1 User LED
+     (Blue)".
+   - Pinout table (verbatim rows):
+     "SW1 | SW1 | 4 | Button Switch 1 (ESC) Input"
+     "SW2 | SW2 | 18 | Button Switch 2 (OK) Input"
+     "SW3 | SW3 | 19 | Button Switch 3 (Down) Input"
+     "SW4 | SW4 | 21 | Button Switch 4 (Up) Input"
+     "LED2 | LED_BUILTIN | 5 | Blue built-in LED"
+   - Matches this board's pins_arduino.h exactly (SW1-4 GPIOs, LED_BUILTIN
+     GPIO). No polarity (active-high/low) stated anywhere in this file for
+     the LED. No pull-direction stated for the buttons beyond "Input".
+   - Final note: "this is just a pre-release of an unofficial ESP32
+     development board mostly distributed on Ebay" - i.e. no formal vendor
+     schematic/datasheet is expected to exist publicly.
+
+3. https://api.github.com/repos/dragon-engineer/esp32_fmdevkit/git/trees/master?recursive=1
+   Full repository file listing. Confirmed: no .sch/.kicad/.pdf schematic
+   files exist anywhere in the repo - "board/esp32/variants/" (the intended
+   home for a copy of pins_arduino.h) is even empty on GitHub. Only
+   README.md, LICENSE, and example_firmware/FMDevKit_BluetoothAudio/ (the
+   default Arduino sketch) exist. This is a firmware-only repo with no
+   hardware design files - confirms no schematic evidence is obtainable for
+   this board from any primary source.
+
+4. https://raw.githubusercontent.com/dragon-engineer/esp32_fmdevkit/master/example_firmware/FMDevKit_BluetoothAudio/FMDevKit_BluetoothAudio.ino
+   Official example firmware, read for LED/button GPIO handling (quoted
+   verbatim, not paraphrased):
+     pinMode(LED_BUILTIN, OUTPUT); // Blue built-in LED
+     digitalWrite(LED_BUILTIN, HIGH);
+     pinMode(SW1, INPUT);
+     pinMode(SW2, INPUT);
+     pinMode(SW3, INPUT);
+     pinMode(SW4, INPUT);
+     attachInterrupt((SW1), sw1_callback, FALLING); // Register all input callback
+     attachInterrupt((SW2), sw2_callback, FALLING);
+     attachInterrupt((SW3), sw3_callback, FALLING);
+     attachInterrupt((SW4), sw4_callback, FALLING);
+   ...and later, in the main loop's async LED handler:
+     if (btConnectionParams.conn_stat.state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
+       // btLedBlinkState toggles true/false on a 300ms/150ms cycle
+     } else {
+       ...
+       btLedBlinkState = false;
+       ...
+     }
+     digitalWrite(LED_BUILTIN, btLedBlinkState);
+   BUTTONS: pinMode(SWn, INPUT) (plain INPUT, not INPUT_PULLUP) combined
+   with attachInterrupt(..., FALLING) is decisive: a FALLING edge on a pin
+   with no internally-enabled pull-up only makes sense if the board
+   provides its own external/onboard pull-up and the button pulls the pin
+   to GND on press - i.e. genuine active-low hardware buttons. Combined
+   with source #2's explicit "Button Switch N ... Input" pinout-table rows,
+   this is solid, board-specific, vendor-authored confirmation (not an
+   alias-name guess).
+   LED: digitalWrite(LED_BUILTIN, ...) is genuinely used to drive a
+   Bluetooth-connection-status indicator, confirming this is a real,
+   actively-driven LED (not dead/unused code). However the polarity
+   evidence is circumstantial, not explicit: HIGH is written once at boot
+   (before Bluetooth is even started - a transient initial value, not
+   necessarily "off"), and LOW is the steady value while disconnected
+   (btLedBlinkState fixed false in the disconnected branch). While a LOW-
+   when-idle / blinking-when-active UX pattern is plausible for an
+   active-high LED, this is an inference about UX intent, not an explicit
+   on/off-semantic statement (contrast with e.g. this repo's
+   espresso_lite_v2 precedent, which had a named boolean library function
+   explicitly mapping "on" to a specific level). No comment in the source
+   states which level lights the LED. Per the playbook's "never guess"
+   policy, this evidence was judged insufficient to tag led_high/led_low.
+
+FINDINGS AND DECISIONS
+-----------------------
+GPIO4/18/19/21 (SW1/SW2/SW3/SW4): CONFIRMED onboard pushbuttons via the
+  vendor's own README pinout table ("Button Switch N ... Input") and
+  independently corroborated by the vendor's own example firmware
+  (INPUT + FALLING-interrupt pattern implying an onboard pull-up and
+  active-low press). Tagged ["digital_input", "button"] in board.json's
+  chipGpios entries for all four pins (analog_input_serial dropped from
+  GPIO4, digital_output/pwm_output dropped from all four), matching this
+  repo's button-tag exclusion rule/precedent (widora-air, intorobot-fig,
+  espresso_lite_v1: a confirmed dedicated button is not also offered as a
+  general-purpose output/PWM/analog pin in the Designer).
+
+GPIO5 (LED_BUILTIN): role CONFIRMED (genuine onboard "Blue User LED"/LED2,
+  per the vendor's own README and actively used in the vendor's own
+  firmware), polarity NOT CONFIRMED (no schematic exists anywhere for this
+  board - the vendor repo is firmware-only with an empty hardware-files
+  directory - and no source states active-high/active-low explicitly; the
+  firmware's digitalWrite pattern is suggestive of active-high but not an
+  explicit statement). Per the playbook's "never guess" rule and this
+  repo's own intorobot-fig precedent (confirmed role, unconfirmed polarity
+  -> pinNotes documentation only, no capability tag), NO led_high/led_low
+  tag was applied. chipGpios["5"] capabilities left unchanged
+  (["digital_input","digital_output","pwm_output"], same as the chip-level
+  default - GPIO5 has no ADC channel on ESP32 silicon so analog_input was
+  never present). A pinNotes["5"] entry was appended (preserving the
+  existing "Must be HIGH or floating on reboot" strapping-pin text)
+  documenting the confirmed LED identity and the unconfirmed-polarity
+  evidence gap, so a Designer user sees the context instead of a silent
+  plain GPIO.
+
+Alias-collision check (CRITICAL step per playbook): this board's own
+  pins_arduino.h declares TX=1, RX=3, SDA=16, SCL=17, and SCK/MISO/MOSI/SS
+  all = -1 (explicitly unused/undefined - no SPI bus is wired on this
+  board). None of these equal 4, 5, 18, 19, or 21 - none of the four
+  tagged button pins or the LED pin collide with any bus-role alias, so
+  build_boards.js's unconditional i2c_sda/i2c_scl/spi_*/serial capability
+  appends cannot silently contaminate any of the tagged pins. No line in
+  pins_arduino.h needed deletion - there is no colliding boilerplate alias
+  to remove.
+
+MECHANISM APPLIED
+-------------------
+Edited variants/esp32/esp32/fm-devkit/board.json in place (existing
+top-of-file comment and content preserved, new "pfodWeb NOTE" block
+appended above the opening brace):
+  1. chipGpios["4"], ["18"], ["19"], ["21"] capabilities changed to
+     ["digital_input", "button"], each with a "note" field naming the
+     silkscreen label (SW1 ESC / SW2 OK / SW3 Down / SW4 Up).
+  2. pinNotes["5"] text appended (existing strapping-pin note preserved)
+     documenting the confirmed LED identity and unconfirmed polarity.
+  3. chipGpios["5"] left unchanged (no led_high/led_low tag applied).
+No pins_arduino.h edit was made (no alias collision found - nothing to
+delete). No build commands were run.
+
+SUMMARY
+-------
+GPIO4/18/19/21 (SW1-4): CONFIRMED onboard pushbuttons via vendor README +
+  vendor firmware (INPUT + FALLING interrupt pattern). Tagged
+  ["digital_input","button"] each.
+GPIO5 (LED_BUILTIN): CONFIRMED as a genuine onboard "Blue User LED" (LED2)
+  via the vendor's own README and actively-used in the vendor's own
+  firmware, but polarity is NOT CONFIRMED by any available source (this is
+  an unofficial, firmware-only-documented eBay board with no schematic
+  anywhere). Confidence: LED existence - high. LED polarity - insufficient
+  evidence, no tag applied (honest evidence gap, not a guess). No
+  led_high/led_low capability was applied; a documenting pinNotes entry was
+  added instead, per this repo's intorobot-fig precedent for
+  confirmed-role/unconfirmed-polarity findings.
+No alias collisions found on GPIO4/5/18/19/21 against TX/RX/SDA/SCL/SS/
+MOSI/MISO/SCK - no pins_arduino.h edit was needed.
+
+[2026-07-12] Applied section 7a button/LED capability-tagging retrofit.

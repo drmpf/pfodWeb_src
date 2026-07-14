@@ -16,16 +16,11 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 8;
 static const uint8_t SCL = 9;
 
-// I2S for onboard MAX98357A only
-static const uint8_t I2S_BCLK = 5;
-static const uint8_t I2S_LRCLK = 6;
-static const uint8_t I2S_DOUT = 7;
+// pfodWeb NOTE: I2S_BCLK/LRCLK/DOUT (GPIO5/6/7) deliberately NOT declared
+// - dedicated onboard MAX98357A I2S amplifier bus (see vendor comment).
 
-// SPI for onboard microSD only
-static const uint8_t SS = 10;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK (GPIO10/11/12/13) deliberately NOT
+// declared - dedicated onboard microSD card SPI bus (see vendor comment).
 
 // SPI2 for public usage
 static const uint8_t SS2 = 38;
@@ -39,7 +34,8 @@ static const uint8_t A2 = 3;
 static const uint8_t A3 = 4;
 static const uint8_t A4 = 8;
 static const uint8_t A5 = 9;
-static const uint8_t A6 = 10;
+// pfodWeb NOTE: A6 (GPIO10) deliberately NOT declared - same dedicated
+// microSD SPI bus as above.
 static const uint8_t A7 = 14;
 static const uint8_t A8 = 15;
 static const uint8_t A9 = 16;
@@ -52,7 +48,7 @@ static const uint8_t T3 = 3;
 static const uint8_t T4 = 4;
 static const uint8_t T8 = 8;
 static const uint8_t T9 = 9;
-static const uint8_t T10 = 10;
+// pfodWeb NOTE: T10 (GPIO10) deliberately NOT declared - same as A6 above.
 static const uint8_t T14 = 14;
 
 #define PIN_DAC_MUTE 47  // only if solder bridge "DAC_MUTE" is closed

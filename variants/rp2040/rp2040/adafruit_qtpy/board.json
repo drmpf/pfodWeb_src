@@ -1,0 +1,151 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // GPIO21 (BUTTON, see chipGpios below) is a genuine bidirectional GPIO
+  // read via the standard CircuitPython board.BUTTON / Zephyr-style
+  // gpio-keys pattern (confirmed active-low with the RP2040's internal
+  // pull-up, matching every other Adafruit RP2040 BOOT-button board
+  // already audited in this repo, e.g. adafruit_itsybitsy GPIO13) — not a
+  // dedicated QSPI-flash-CS BOOTSEL silicon trick like the plain
+  // Raspberry Pi Pico — so it is handled entirely via the chipGpios
+  // "button" tag (full capability set retained), not via inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Adafruit "QT Py RP2040" (product #4900) — a tiny-form-factor
+  // Adafruit board with an onboard single status NeoPixel (data GPIO12,
+  // separate power-gate GPIO11) and a BOOT button (GPIO21, no dedicated
+  // status LED beyond the NeoPixel — this board's own pins_arduino.h
+  // marks PIN_LED as the "not pinned out" sentinel value 31u).
+  //
+  // Sources consulted:
+  // 1. This board's own pins_arduino.h (variants/rp2040/rp2040/
+  //    adafruit_qtpy/pins_arduino.h) — declares PIN_NEOPIXEL=12,
+  //    NEOPIXEL_POWER=11, PIN_LED=31 ("not pinned out" sentinel, matching
+  //    PIN_SPI0_SS's same 31u convention on this board — GPIO31 does not
+  //    physically exist, PINS_COUNT=30 caps real GPIOs at 0-29). D11 is
+  //    already deliberately NOT declared (pre-existing pfodWeb NOTE at
+  //    top of the file, from an earlier session) confirming GPIO11 is
+  //    the NeoPixel power gate, not broken out to a castellated pad.
+  // 2. learn.adafruit.com/adafruit-qt-py-2040/pinouts (official Adafruit
+  //    guide) — states "The button towards the middle of the board is
+  //    the boot select (BOOT) button, which is used to enter the
+  //    bootloader... This button is also usable as an input in code, on
+  //    pin board.BUTTON."; describes the onboard NeoPixel with a
+  //    "controllable power pin to allow for ultra-low-power usage".
+  // 3. raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/adafruit_qtpy_rp2040/pins.c — verbatim
+  //    line: "{ MP_ROM_QSTR(MP_QSTR_BUTTON), MP_ROM_PTR(&pin_GPIO21) },"
+  //    — confirms BOOT button is GPIO21 (this board's own pins_arduino.h
+  //    declares no PIN_BUTTON alias for it, exactly like the
+  //    adafruit_itsybitsy GPIO13 precedent). Also independently
+  //    corroborates NEOPIXEL=GPIO12 and NEOPIXEL_POWER=GPIO11 (matching
+  //    this board's pins_arduino.h #defines exactly).
+  // 4. raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+  //    boards/adafruit/qt_py_rp2040/adafruit_qt_py_rp2040.dts — confirms
+  //    a "neopixel-power-gpio" hog on GPIO11 (ACTIVE_HIGH, "hooked up to
+  //    a GPIO pin rather than a positive voltage rail to save on power")
+  //    and a ws2812 node on GPIO12 (ACTIVE_HIGH, chain length 1). Notes
+  //    the WS2812 driver is deliberately placed on PIO1 to avoid
+  //    conflicting with the GPIO11 power-enable hog. No gpio_keys/button
+  //    node present in this particular upstream Zephyr board file, but
+  //    CircuitPython's pins.c (source 3) directly confirms GPIO21 as the
+  //    physical BOOT button pin.
+  // 5. WebSearch aggregate (multiple Adafruit Learn/forum sources,
+  //    consistent with the qtpy_esp32/itsybitsy_rp2040 precedents already
+  //    in this repo) — confirms the standard Adafruit Arduino NeoPixel
+  //    boilerplate is required on this board:
+  //      #if defined(NEOPIXEL_POWER)
+  //        pinMode(NEOPIXEL_POWER, OUTPUT);
+  //        digitalWrite(NEOPIXEL_POWER, HIGH);
+  //      #endif
+  //    i.e. the power gate is driven MANUALLY by sketch code, not
+  //    automatically by the Arduino core.
+  //
+  // GPIO12 (PIN_NEOPIXEL, aliased as D12): CONFIRMED onboard single
+  // status NeoPixel (WS2812) data line, output-only (sources 1, 2, 3, 4
+  // above). Tagged ["digital_output","led_neopixel"], matching this
+  // repo's adafruit_itsybitsy GPIO17 / adafruit_feather_scorpio GPIO4
+  // precedent (no digital_input/pwm_output — NeoPixel protocol timing is
+  // driven via the RP2040 PIO peripheral, not analogWrite/digitalRead).
+  // Checked against this board's own primary bus aliases (MOSI=3,
+  // MISO=4, SCK=6, SDA=24, SCL=25, SS=31/not-pinned-out) — no collision,
+  // no pins_arduino.h edit needed.
+  //
+  // GPIO11 (NEOPIXEL_POWER): CONFIRMED internal-only NeoPixel power-gate
+  // line, manually driven HIGH by sketch code per Adafruit's own standard
+  // Arduino boilerplate (source 5), NOT automatically driven by the
+  // Arduino core — same "manual gate" pattern as adafruit_qtpy_esp32
+  // GPIO8 and adafruit_itsybitsy GPIO16. This board's own pins_arduino.h
+  // already deliberately omits a D11 alias for this GPIO (pre-existing
+  // pfodWeb NOTE at the top of the file), so under the RP2040 "empty
+  // chip-level chipGpios, GPIO needs an alias (or an explicit chipGpios
+  // entry) to appear at all" mechanism, GPIO11 simply does not surface as
+  // a pin — matching this repo's repo-wide NEOPIXEL_POWER exclusion
+  // precedent (adafruit_qtpy_esp32, adafruit_qtpy_esp32s2/s3,
+  // adafruit_itsybitsy_esp32, adafruit_itsybitsy_rp2040 GPIO16). No
+  // chipGpios entry added.
+  //
+  // GPIO21 (BOOT button): CONFIRMED genuine physical pushbutton, usable
+  // as a general input when application code is running (sources 2 + 3
+  // above). This GPIO has NO alias at all in this board's own
+  // pins_arduino.h (no PIN_BUTTON define exists in the file as shipped by
+  // arduino-pico) — added as a brand-new chipGpios entry (GPIO number, no
+  // alias name), the same mechanism used for adafruit_itsybitsy GPIO13.
+  // Raw pin number 21 is still directly usable via pinMode(21,...)/
+  // digitalRead(21) on arduino-pico (RP2040 Arduino pin numbers equal raw
+  // GPIO numbers; no D-pin remapping like ESP8266). Full digital_input/
+  // digital_output/pwm_output capability retained (ordinary GPIO wired to
+  // a switch to GND with internal pull-up, not a dedicated/capacitive-
+  // only pin), matching the adafruit_itsybitsy GPIO13 / adafruit_
+  // feather_scorpio GPIO7 precedent. Checked against this board's primary
+  // bus aliases (MOSI=3, MISO=4, SCK=6, SDA=24, SCL=25, SS=31) and
+  // secondary Wire1/StemmaQT aliases (SDA1=22, SCL1=23) — GPIO21 matches
+  // none of them, no collision, no pins_arduino.h edit needed.
+  //
+  // PIN_LED (sentinel 31u, "LEDs not pinned out"): No physical status LED
+  // exists on this board beyond the NeoPixel — confirmed by this board's
+  // own pins_arduino.h comment ("// LEDs not pinned out") and the
+  // Adafruit Learn guide, which describes only the NeoPixel as the
+  // onboard indicator. GPIO31 does not physically exist (PINS_COUNT=30
+  // caps real GPIOs at 0-29), so no chipGpios entry is possible or
+  // needed.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_qtpy/notes.txt
+  "chipGpios": {
+    "12": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard single status NeoPixel (WS2812), output-only data line. Power is separately gated by GPIO11 (NEOPIXEL_POWER, must be driven HIGH by sketch code — not exposed as a pin, see pins_arduino.h). Confirmed via Adafruit's own pinouts guide, CircuitPython's pins.c (NEOPIXEL -> pin_GPIO12), and Zephyr's adafruit_qt_py_rp2040.dts onboard ws2812 node (gpio0 pin 12)." },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "BOOT button — onboard bootloader-select pushbutton, also usable as a general input when application code is running. Not aliased in this board's pins_arduino.h (no PIN_BUTTON define shipped by arduino-pico for this board) — added directly as a chipGpios entry; raw pin number 21 is still usable via pinMode()/digitalRead() on arduino-pico. Confirmed via CircuitPython's pins.c for this board (MP_QSTR_BUTTON -> pin_GPIO21) and Adafruit's own pinouts guide (\"This button is also usable as an input in code, on pin board.BUTTON\")." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares A0-A3 =
+  // GPIO29/28/27/26 (NUM_ANALOG_INPUTS = 4), matching the chip-level
+  // default — this audit found no reason to override it.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

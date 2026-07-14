@@ -1,0 +1,170 @@
+pfodWeb board research notes
+Board variant directory: variants/esp8266/esp8266/thing/ (pins_arduino.h, LED_BUILTIN 5)
+Shared by THREE boards.txt entries (all with build.variant=thing):
+  - blynk.name    = SparkFun Blynk Board
+  - thing.name    = SparkFun ESP8266 Thing
+  - thingdev.name = SparkFun ESP8266 Thing Dev
+
+Date researched: 2026-07-11
+
+=== Sources consulted ===
+
+1) SparkFun ESP8266 Thing Hookup Guide
+   https://learn.sparkfun.com/tutorials/esp8266-thing-hookup-guide/all
+   https://learn.sparkfun.com/tutorials/esp8266-thing-hookup-guide/example-sketch-ap-web-server
+   Findings:
+   - No onboard pushbutton documented anywhere on this board (only a
+     reset button, not GPIO-connected). GPIO0 is described purely as a
+     general I/O pin with the usual ESP8266 boot-strapping caveat.
+   - GPIO5 ("This pin is also tied to the on-board LED", labeled
+     "Thing's onboard, green LED" in example code) is ACTIVE-HIGH:
+     AP Web Server example: `digitalWrite(LED_PIN, val);` with status
+     text `"LED is now " + (val)?"on":"off"` -> val=1 (HIGH) = LED on.
+   - ADC: "A 10-bit ADC with a maximum voltage of 1V." No mention of
+     an onboard divider resistor network. Matches native ESP8266 ADC
+     range with no extension.
+
+2) SparkFun ESP8266 Thing Development Board Hookup Guide
+   https://learn.sparkfun.com/tutorials/esp8266-thing-development-board-hookup-guide/all
+   https://learn.sparkfun.com/tutorials/esp8266-thing-development-board-hookup-guide/example-sketch-web-server
+   Findings:
+   - No onboard pushbutton documented (again, only a reset button).
+   - GPIO5 is tied to the onboard LED (same pin number as plain Thing)
+     but is ACTIVE-LOW on this board: `initHardware()` sets
+     `digitalWrite(LED_PIN, HIGH);` (LED starts OFF), and the web
+     server example reports status via
+     `"LED is now " + (val)?"off":"on"` -> val=1 (HIGH) = LED off,
+     val=0 (LOW) = LED on. This is the OPPOSITE polarity from the
+     plain Thing board on the same GPIO number.
+   - ADC: also explicitly "10-bit ADC with a maximum voltage of 1V."
+     No divider mentioned. Consistent with plain Thing.
+
+3) SparkFun Blynk Board Project Guide / Overview
+   https://learn.sparkfun.com/tutorials/blynk-board-project-guide/blynk-board-overview
+   https://learn.sparkfun.com/tutorials/blynk-board-project-guide/all?print=1
+   Findings:
+   - This board DOES have a genuine onboard pushbutton, wired to
+     GPIO0 ("Input; connected to on-board button."). Neither the
+     plain Thing nor the Thing Dev has this button. Exact pull-up/
+     pull-down direction was not reliably confirmed from the fetched
+     text (one pass suggested pull-down, but the page's pin table did
+     not state it explicitly next to pin 0, and other pages describe
+     an "internal pull-down resistor" only for pin 15/16, not pin 0)
+     — moot for tagging purposes since the other two boards lack the
+     button entirely.
+   - Pin 5: "Output; connected to on-board LED" (described elsewhere
+     as the "tiny, blue" LED, as opposed to the "green" LED wording
+     used for the Thing/Thing Dev). Polarity not explicitly stated in
+     the fetched pages; Project 1 text implies HIGH/on turns it on,
+     but this was not found as an unambiguous verbatim statement.
+   - ADC: page only describes the ADC's general purpose; no voltage
+     range or divider spec found in the fetched content.
+
+=== Agreement / discrepancy analysis ===
+
+BUTTON (GPIO0):
+  DIFFERS across the three products. Only the Blynk Board has a
+  documented onboard pushbutton. The plain Thing and Thing Dev have
+  no GPIO-connected button at all (reset button only, not exposed as
+  a GPIO). Tagging GPIO0 as a button in this shared board.json would
+  incorrectly imply a physical button exists on the Thing and Thing
+  Dev boards, which it does not.
+  -> DO NOT TAG. This is a case for a future per-board override file
+     (e.g. splitting a blynk-specific override) rather than tagging
+     the shared thing/board.json.
+
+LED (GPIO5):
+  Present on all three boards at the same GPIO (5), but CONFIRMED
+  ACTIVE-HIGH on the plain Thing and CONFIRMED ACTIVE-LOW on the
+  Thing Dev via their respective AP/web-server example sketches
+  (opposite ternary logic on the same `val` variable written to the
+  same pin). The Blynk Board's polarity could not be confirmed either
+  way from the fetched pages. Since two of the three boards actively
+  and verifiably disagree on polarity, tagging led_high or led_low on
+  this shared file would be wrong for at least one product.
+  -> DO NOT TAG. Needs per-board override (thing=led_high,
+     thingdev=led_low, blynk=unconfirmed) if this is worth splitting
+     out later.
+
+ADC (A0 / GPIO17 synthetic slot):
+  Both the plain Thing and Thing Dev guides explicitly and
+  consistently state a native "10-bit ADC with a maximum voltage of
+  1V" with no mention of an onboard voltage-divider resistor network.
+  The Blynk Board guide did not contradict this (no divider mentioned
+  either, though also no explicit voltage spec was found). This
+  agrees with the existing inherited chip-level default of
+  defaultRefVolts "1.0" already set in
+  variants/esp8266/esp8266/board.json.
+  -> NO CHANGE NEEDED — value already correct/inherited.
+
+=== Summary of what changed ===
+
+NO CHANGE to variants/esp8266/esp8266/thing/pins_arduino.h or
+variants/esp8266/esp8266/board.json. Button and LED hardware
+genuinely differ between the three SparkFun products that share this
+pins_arduino.h/build.variant=thing, so no capability tags were added
+(would have incorrectly applied one product's hardware to the
+others). ADC already correctly inherits defaultRefVolts "1.0" from
+the esp8266 chip-level board.json and all three products' available
+documentation is consistent with that native (non-divided) range.
+
+Flagged for human review: this shared "thing" variant probably wants
+splitting into three per-board override files (or a blynk-specific
+override) so the Blynk Board's onboard button (GPIO0) and its LED
+polarity, plus the Thing Dev's inverted LED polarity, can be tagged
+correctly without misapplying them to the other two products.
+
+=== 2026-07-12: Full dedicated-hardware sweep (post button/LED/ADC pass) ===
+
+Sources consulted:
+  - variants/esp8266/esp8266/thing/pins_arduino.h (full re-read, 39 lines)
+  - variants/esp8266/esp8266/generic/common.h (included file, full read,
+    to check for any #if/#else duplicate-declaration hazard reachable
+    from this variant)
+  - Directory listing of variants/esp8266/esp8266/thing/ confirmed no
+    board.json override file exists there (pins_arduino.h only).
+  - Directory listing of boardsDetails/esp8266/esp8266/thing/ confirmed
+    only this notes.txt exists.
+  - Prior section of this file (2026-07-11 research pass, button/LED/
+    ADC) re-read in full before starting.
+
+Reasoning:
+  - pins_arduino.h contents: PIN_WIRE_SDA/PIN_WIRE_SCL (I2C bus pins,
+    generic peripheral wiring, not dedicated single-purpose hardware),
+    LED_BUILTIN 5 (already addressed in the prior pass; left untagged
+    due to confirmed opposing polarity between Thing and Thing Dev on
+    the same GPIO), and #include "../generic/common.h". No other
+    declarations present.
+  - Checked specifically for the itead/espectro/espresso_lite_v1-style
+    bug: a #if/#ifdef ... #else ... #endif structure that declares the
+    same pin name twice with different values, where the parser could
+    pick up an unintended duplicate. pins_arduino.h contains NO
+    #if/#ifdef/#else/#endif structure whatsoever — it is a flat,
+    unconditional list of defines. This bug pattern is structurally
+    impossible in this file.
+  - Also checked the included common.h for the same hazard, since it
+    is pulled into every board that uses this variant. It contains two
+    conditional blocks (#ifndef PIN_A0 / #endif and #ifdef LED_BUILTIN
+    / #endif), but neither has an #else branch and neither re-declares
+    an already-declared name under a different value — no duplicate-
+    declaration risk. (This file is generic chip-level boilerplate
+    shared by many boards, outside the scope of this board-specific
+    audit; noted only to rule out the duplicate-declaration bug.)
+  - No board.json override exists for "thing", so there is no
+    capability-tag file to audit/modify for correctness either.
+  - Re-confirmed the multi-vendor conservatism from the 2026-07-11
+    pass still applies: SDA/SCL are standard I2C pins present
+    identically on all three SparkFun products (Blynk Board/Thing/
+    ThingDev) sharing this file, but they are generic bus pins, not
+    "dedicated hardware" in the sense this audit targets (no
+    universal fixed single-purpose peripheral to exclude/tag).
+
+Summary: NO CHANGE. Full-file re-read confirms zero non-boilerplate
+declarations beyond what the prior pass already reviewed (LED/ADC/
+button). No #if/#else duplicate-declaration bug exists in this file
+(no conditional branching present at all in pins_arduino.h; common.h's
+two conditional blocks are single-branch and pose no duplication
+risk). No board.json override exists to audit. Nothing new to
+exclude; the established multi-vendor conservatism (don't tag
+anything that diverges across Blynk Board/Thing/ThingDev) remains
+correct and unchanged.

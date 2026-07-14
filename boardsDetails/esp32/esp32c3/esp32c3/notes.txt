@@ -1,0 +1,97 @@
+Board: esp32c3/esp32c3 ("ESP32C3 Dev Module" - boards.txt id "esp32c3", build.variant=esp32c3)
+Chip: ESP32-C3
+Audit type: dedicated-hardware pin-exclusion audit (PIN_RGB_LED / GPIO8 flagged by discovery sweep),
+            plus button/LED capability retrofit and the SDA/SCL/SPI alias-collision check.
+
+FLAGGED CONTENT (variants/esp32/esp32c3/esp32c3/pins_arduino.h):
+  #define PIN_RGB_LED 8
+  #define RGB_BRIGHTNESS 64
+  static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
+  ...
+  static const uint8_t SDA = 8;   (collides with PIN_RGB_LED)
+  static const uint8_t SCL = 9;
+
+QUESTION: does GPIO8 have a real, populated onboard NeoPixel on the actual physical board(s)
+this generic Arduino IDE entry represents, or is this defensive/unverified boilerplate?
+
+SOURCES CONSULTED:
+1. github.com/espressif/arduino-esp32 - variants/esp32c3/pins_arduino.h (upstream master, fetched
+   directly). Byte-for-byte matches this repo's local copy (same PIN_RGB_LED=8, RGB_BRIGHTNESS=64,
+   TX=21/RX=20, SDA=8/SCL=9, SS=7/MOSI=6/MISO=5/SCK=4, A0-A5=0-5). Confirms our copy isn't stale.
+   No board-identity comment in the file itself.
+2. variants/esp32/boards.txt (this repo's copy): "esp32c3.name=ESP32C3 Dev Module",
+   "esp32c3.build.variant=esp32c3". No separate "DevKitM-1"/"DevKitC-02"-named board entry exists
+   anywhere in boards.txt for this chip - "ESP32C3 Dev Module" is the ONLY Arduino IDE entry that
+   maps to this variant directory. Confirms this is Arduino IDE's single generic/catch-all ESP32-C3
+   entry (matches the task's framing of a "very commonly selected" board).
+3. docs.espressif.com ESP-IDF Programming Guide, "ESP32-C3-DevKitM-1" user guide (multiple versions
+   v4.3-v5.2): confirms ESP32-C3-DevKitM-1 has an onboard addressable RGB LED (WS2812) driven by
+   GPIO8, and that GPIO2/GPIO8/GPIO9 are strapping pins on the ESP32-C3FN4 chip (matches this file's
+   own pinNotes for GPIO2/8/9 in board.json).
+4. esp32.co.uk "ESP32-C3-DevKitC-02 Pinout & GPIO Reference": confirms DevKitC-02 (Espressif's other
+   official ESP32-C3 reference board, WROOM-02 module vs DevKitM-1's MINI-1 module) ALSO has a single
+   addressable WS2812-style RGB LED on GPIO8, powered from 3.3V - same pin, same LED type as
+   DevKitM-1. No difference between the two official boards' LED wiring.
+5. github.com/espressif/arduino-esp32 issue #7914, "Proper LED_BUILTIN for CORE-ESP32 (ESP32C3)
+   board": real counter-example. A user's third-party "CORE-ESP32" board, selected via this same
+   generic "ESP32C3 Dev Module" profile (no dedicated entry exists for their board either), has its
+   actual LED(s) on GPIO12/GPIO13 - LED_BUILTIN pointing at the RGB-LED virtual pin (GPIO8-derived)
+   was useless for them. Confirms the generic entry is also genuinely used as a fallback for
+   unrelated non-Espressif hardware where the GPIO8 NeoPixel assumption does NOT hold.
+6. Cross-referenced SDA=8 across this repo's own variants/esp32/esp32c3/ tree (13+ sibling board
+   directories: dfrobot_beetle_esp32c3, deneyapkartg, codecell, weact_studio_esp32c3,
+   Bee_Motion_Mini, waveshare_esp32_c3_zero, heltec_wireless_mini_shell, esp_c3_m1_i_kit,
+   esp32c3-devkit-lipo, makergo_c3_supermini, lolin_c3_pico, m5stack_stamp_c3,
+   nologo_esp32c3_super_mini all declare identical "static const uint8_t SDA = 8;"). Notably
+   lolin_c3_mini and lolin_c3_pico declare SDA=8 too but PIN_RGB_LED=7 (a DIFFERENT pin) - proving
+   SDA=8 travels as unmodified Arduino-core boilerplate independent of each board's actual LED
+   location, not a per-board-verified I2C wiring choice. Treated as Espressif's arbitrary default
+   Wire pin assignment for the ESP32-C3 chip, not evidence of a real onboard I2C device at GPIO8.
+
+REASONING / DECISION:
+- Both of Espressif's own official ESP32-C3 reference boards (DevKitM-1 and DevKitC-02) - which
+  this generic "ESP32C3 Dev Module" entry is the sole Arduino IDE profile for, since neither has
+  its own dedicated boards.txt entry - are vendor-confirmed (Espressif's own docs/schematics) to
+  have a real, populated WS2812 NeoPixel at GPIO8. This is solid, direct evidence for the entry's
+  primary/intended hardware.
+- The counter-evidence (GitHub issue #7914) shows this same generic entry is ALSO used as a
+  fallback for unrelated third-party boards without their own profile, where the GPIO8 LED
+  assumption is wrong. This is an inherent, unavoidable limitation of any single-entry generic
+  catch-all (true of every "Dev Module"/"Generic" board entry in this whole variants tree) rather
+  than evidence disproving the LED's existence on the entry's actual named reference hardware.
+- DECISION: tag GPIO8 with "led_neopixel" (+ pwm_output, matching chip-level default and the
+  existing repo convention for LED-tagged pins - "digital_output","pwm_output","led_neopixel",
+  digital_input excluded per the established LED-tag exclusivity policy). Documented the
+  catch-all ambiguity explicitly in board.json's pfodWeb NOTE and here, rather than omitting it.
+- SDA/SCL alias collision (new check this session): pins_arduino.h aliases GPIO8 as both
+  PIN_RGB_LED and the default Wire SDA pin. build_boards.js unconditionally appends "i2c_sda" to
+  whatever GPIO equals the file's SDA alias, regardless of chipGpios content - this would have
+  silently produced capabilities ["digital_output","pwm_output","led_neopixel","i2c_sda"] on
+  GPIO8, contaminating the LED-exclusive tag with a bus capability that can't coexist with a
+  pin that's electrically committed to driving an addressable LED. Per source #6 above, SDA=8 is
+  confirmed boilerplate (identical across boards with a differently-located or absent LED), not a
+  vendor-confirmed real I2C device at GPIO8 on THIS board's reference hardware - so it was safe to
+  remove. Changed this board's local pins_arduino.h copy's "static const uint8_t SDA = 8;" to
+  "= -1;" (matches the existing "-1 = no default Wire pin" convention already used elsewhere in
+  this repo, e.g. variants/esp32/esp32c3/xteink_x4/pins_arduino.h). SCL=9 was left unchanged since
+  GPIO9 doesn't collide with GPIO8/PIN_RGB_LED. Users can still bit-bang/reassign I2C to any other
+  pin via Wire.begin(sda, scl) with explicit pin numbers - only the DEFAULT pin choice was removed.
+- No onboard button found anywhere in this file (no BUTTON/BOOT-style alias declared) - nothing to
+  tag there.
+- ADC defaultRefVolts (3.3V, 12-bit/4095) and inputOnlyGpios ([], correct - every ESP32-C3 exposed
+  GPIO is bidirectional) already correct at chip-level default; not board-specific in a way that
+  would differ for this generic reference entry, left unchanged.
+- pinNotes for GPIO2/8/9 (strapping pin warnings) already correct per Espressif's own TRM/DevKitM-1
+  guide; carried through unchanged into the new board.json.
+
+CONFIDENCE: Medium-high for the LED tag (direct vendor confirmation for both eponymous official
+reference boards; caveat explicitly documented for the catch-all-fallback-usage minority case).
+High for the SDA=8 removal (clear boilerplate pattern across sibling boards, zero functional loss
+since Wire pins are always software-reassignable on ESP32).
+
+SUMMARY: Created board.json (full copy of chip-level esp32c3 default) tagging GPIO8
+["digital_output","pwm_output","led_neopixel"], confirmed via Espressif's own DevKitM-1/DevKitC-02
+docs, with an explicit caveat noted for third-party boards using this same generic profile. Edited
+pins_arduino.h to change SDA from 8 to -1, removing a boilerplate default-Wire-pin alias that would
+otherwise have silently contaminated the LED-exclusive capability list with "i2c_sda" via
+build_boards.js's unconditional alias-based capability append.

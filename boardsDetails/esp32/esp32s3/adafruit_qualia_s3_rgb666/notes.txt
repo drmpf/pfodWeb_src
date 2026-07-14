@@ -1,0 +1,73 @@
+Board: adafruit_qualia_s3_rgb666 (Adafruit Qualia ESP32-S3 RGB666), chip esp32s3
+Date: 2026-07-14 (documentation backfill 2026-07-14, corrected same day after a
+flagged comment/data discrepancy review)
+
+Sources consulted:
+- learn.adafruit.com/adafruit-qualia-esp32-s3-for-rgb666-displays/pinouts
+  (official Adafruit pinout guide, fetched directly 2026-07-14) — confirms
+  the exact SPI pin mapping (SCK=Arduino 5, MISO=Arduino 6, MOSI=Arduino 7,
+  CS=Arduino 15) and that the board's 3 physical buttons are: a hardware
+  Reset button (EN/RST line, not a GPIO), and UP/DN buttons both
+  "connected to the IO expander" — a PCA9554A I2C IO-expander on the
+  shared I2C/STEMMA bus, NOT wired to any ESP32-S3 GPIO directly.
+- The board.json's own "per-board override" comment (original audit pass,
+  date unknown) — used for the dedicated-hardware exclusion list and the
+  SDA/SCL/TX/RX pin groupings.
+
+CORRECTION (2026-07-14): the original board.json comment (and the first
+version of this notes.txt) wrongly described GPIO5/6 as "onboard up/down
+buttons" — this was a copy-paste error, since the same original comment
+sentence also correctly called GPIO6 "MISO". Confirmed via the official
+Adafruit pinout guide above: GPIO5/6 are genuinely just the SCK/MISO SPI
+lines (general-purpose, not part of the dedicated TFT bus), and the
+real UP/DN buttons are NOT GPIO-addressable at all — they sit behind the
+PCA9554A I2C expander on GPIO8/18, matching this repo's established
+"hardware behind an I2C/IO-expander is not GPIO-addressable, leave
+untagged" precedent (e.g. arduino_nesso_n1's expander-based buttons).
+No chipGpios capability data was ever wrong — GPIO5/6 were already
+correctly left untagged as plain SPI pins in both board.json and this
+notes.txt's original per-pin table. Only the identification of individual
+pins in the notes below has been corrected against the pinout guide;
+several were mixed up in the original writeup (SDA/SS were swapped,
+MISO/TX were swapped) — this revision fixes those.
+
+Per-pin findings (dedicated-hardware exclusions per board.json's own
+"per-board override" comment, general-purpose pin identities confirmed
+against the Adafruit pinout guide):
+- Excluded (dedicated hardware, capabilities: [] / entry removed
+  entirely from the chip-level default): GPIO0,1,2,3,4,7 (TFT
+  SCK/CS/RESET/touch IRQ/backlight/MOSI); GPIO9,10,11,12,13,14,21,38,
+  39,40,41,42,45,46,47,48 (the full RGB666 R/G/B/PCLK/DE/HSYNC/VSYNC
+  parallel data bus).
+- GPIO5 (SCK) — kept, standard capabilities
+  ["analog_input","digital_input","digital_output","pwm_output"].
+  General-purpose SPI clock line, not part of the dedicated TFT bus.
+- GPIO6 (MISO) — kept, same standard capabilities. General-purpose SPI
+  data-in line, not part of the dedicated TFT bus.
+- GPIO8 (SDA) — kept, standard capabilities. General I2C data line —
+  also the bus the PCA9554A button/backlight expander sits on, but I2C
+  is inherently multi-drop so this stays available (matches this
+  project's established KEEP policy for shared I2C buses).
+- GPIO15 (SS/CS) — kept, standard `analog_input_serial` capability set.
+  General-purpose SPI chip-select, not part of the dedicated TFT bus.
+- GPIO16 (TX) — kept, standard `analog_input_serial` capability set.
+- GPIO17 (RX) — kept, standard `analog_input_serial` capability set.
+- GPIO18 (SCL) — kept, standard `analog_input_serial` capability set.
+  General I2C clock line, same reasoning as GPIO8/SDA.
+- GPIO43/44 — kept, standard capabilities. Not individually named in
+  the board.json's own comment; these are the ESP32-S3's default
+  USB-Serial/JTAG UART0 pins, present at this fixed location on every
+  ESP32-S3 regardless of board — left at default capability like any
+  other unremarkable kept pin.
+- No GPIO on this board was tagged button/led_* in chipGpios — correctly
+  so: the board's real UP/DN buttons are I2C-expander-based, not GPIO
+  pins, and no LED was identified anywhere in the override comment.
+
+Summary: Board-specific override removes all TFT/touch and RGB666
+data-bus pins from the chip-level default map. The board's 3 physical
+buttons (Reset, UP, DN) are correctly untagged — Reset is a hardware
+EN/RST line and UP/DN sit behind a PCA9554A I2C expander, none are
+directly GPIO-addressable. No LEDs identified. This notes.txt corrects
+a mislabeling in the original board.json comment (GPIO5/6 mistakenly
+called "buttons" instead of SCK/MISO) and several pin-identity mix-ups
+in this file's own first draft (SDA/SS and MISO/TX had been swapped).

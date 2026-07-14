@@ -1,0 +1,109 @@
+Board: wiznet_5500_evb_pico2 (WIZnet W5500-EVB-Pico2, chip: rp2350)
+Audit date: 2026-07-12
+
+SUMMARY: Added a per-board board.json creating chipGpios overrides for the
+six GPIOs dedicated to the onboard WIZnet W5500 Ethernet controller
+(SPI0 bus + RESET + INT), removing their default general-purpose
+digital_input/digital_output/pwm_output capabilities, and tagged the
+onboard user LED (GPIO25) as led_high. No onboard button exists on this
+board, so nothing was tagged "button".
+
+SOURCES CONSULTED
+- variants/rp2040/rp2350/board.json (chip-level defaults: chipGpios: {}
+  deliberately empty; pwm/dac/adc/family values copied verbatim).
+- variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json (schema/
+  comment-style precedent for a per-board chipGpios override in this
+  family).
+- variants/rp2040/rp2040/rpipico/board.json (same-family precedent for
+  tagging GPIO25/PIN_LED as led_high on a plain Pico; confirms the
+  established convention this board follows for its own GPIO25).
+- This board's own variants/rp2040/rp2350/wiznet_5500_evb_pico2/pins_arduino.h
+  (just `#define PICO_RP2350A 1` + `#include "../generic/pins_arduino.h"`
+  - confirms the board ships NO board-specific pin aliases at all before
+  this audit, i.e. zero differentiation from a plain Pico 2).
+- variants/rp2040/rp2350/generic/pins_arduino.h and its included
+  ../generic/common.h (resolves PIN_SPI0_MISO/MOSI/SCK/SS =
+  GPIO16/19/18/17, PIN_LED = GPIO25, and the SS/MOSI/MISO/SCK aliases
+  build_boards.js's buildEsp32Board() auto-tags with spi_ss/spi_mosi/
+  spi_miso/spi_sck regardless of any chipGpios override).
+- pfodWeb_src/build_boards.js buildEsp32Board() (read in full) - confirmed
+  the RP2040/RP2350 override mechanism: a chipGpios entry's "capabilities"
+  array is used verbatim (via CAP_ORDER filtering) in place of the default
+  input/output/pwm derivation; an empty capabilities array plus a "note"
+  is the correct way to fully exclude a GPIO with no legitimate
+  general-purpose role, while the SPI-bus-role tag (spi_ss/spi_mosi/
+  spi_miso/spi_sck) is appended unconditionally afterward whenever the
+  GPIO number matches the pins_arduino.h SS/MOSI/MISO/SCK alias, so it
+  still shows up correctly labelled even with capabilities: [].
+- WebSearch + WebFetch: https://docs.wiznet.io/Product/Chip/Ethernet/W5500/w5500-evb-pico2
+  (WIZnet's own board documentation).
+- WebFetch: https://docs.zephyrproject.org/latest/boards/wiznet/w5500_evb_pico2/doc/index.html
+  (Zephyr RTOS board-support doc; independently corroborates the WIZnet
+  page's pin map).
+- WebSearch: Raspberry Pi Pico 2 (RP2350) datasheet / GPIO25 LED
+  discussion - confirms plain (non-W) Pico 2's GPIO25 drives the onboard
+  LED via the same simple circuit as the classic Pico (active-high),
+  and that the "GPIO25 shared with wireless SPI CS" caveat is specific
+  to the Pico 2 W variant and does not apply to this plain Pico
+  2-pinout-compatible board.
+
+PER-PIN REASONING
+- GPIO16 (MISO): Dedicated SPI0 MISO to the onboard W5500. Both WIZnet's
+  own doc and the Zephyr board doc agree: "the W5500 is routed to the
+  SPI0 (P16-P19)... If you are using the Ethernet function, these pins
+  cannot be used for any other purpose." chipGpios: { "16": {
+  "capabilities": [], "note": ... } } - the empty capabilities array
+  drops the default digital_input/digital_output/pwm_output; the
+  "spi_miso" role tag is still auto-attached by build_boards.js because
+  GPIO16 == pins_arduino.h's MISO alias (PIN_SPI0_MISO).
+- GPIO17 (CS/SS): Same reasoning, SPI0 chip-select. capabilities: [];
+  "spi_ss" auto-attached via the SS alias (PIN_SPI0_SS).
+- GPIO18 (SCK): Same reasoning, SPI0 clock. capabilities: []; "spi_sck"
+  auto-attached via the SCK alias (PIN_SPI0_SCK).
+- GPIO19 (MOSI): Same reasoning, SPI0 MOSI. capabilities: []; "spi_mosi"
+  auto-attached via the MOSI alias (PIN_SPI0_MOSI).
+- GPIO20 (RESET): W5500 reset line, per both sources: "the reset...
+  signal for the W5500 routed to P20." No pins_arduino.h alias exists
+  for this pin at all (it is not SS/MOSI/MISO/SCK/SDA/SCL), so no
+  automatic role tag applies either - capabilities: [] with a note-only
+  explanation, matching the "no legitimate hardware alias worth
+  surfacing" case described in the task brief.
+- GPIO21 (INT): W5500 interrupt line, per both sources: "...interrupt
+  signal for the W5500 routed to P21." Same treatment as GPIO20:
+  capabilities: [], note-only.
+- GPIO25 (PIN_LED/LED_BUILTIN): Confirmed by both WIZnet's doc ("GPIO 25
+  is connected to the on-board LED") and the Zephyr doc as the plain
+  onboard user LED, explicitly NOT among the W5500-dedicated pins.
+  Tagged ["digital_output", "pwm_output", "led_high"] to match this
+  project's already-established precedent for the identical GPIO25 LED
+  on the plain Pico/Pico 2 (variants/rp2040/rp2040/rpipico/board.json);
+  active-high polarity confirmed via the official Raspberry Pi Pico 2
+  datasheet discussion (same simple resistor-LED circuit as the classic
+  Pico). digital_input dropped (matches rpipico precedent); pwm_output
+  kept since arduino-pico's analogWrite() works on any RP2040/RP2350
+  GPIO.
+- No onboard button: WIZnet's documentation lists only the LED, the
+  W5500 SPI/RESET/INT pins, and the standard RP2350 BOOTSEL button
+  (which, like the plain Pico, is wired into the QSPI flash CS line via
+  the SDK's special bootsel-sampling trick, not a numbered GPIO, so
+  there is no pin to attach a "button" capability to - out of scope for
+  GPIO-keyed tagging, consistent with variants/rp2040/rp2040/rpipico/board.json's
+  reasoning for the same non-GPIO BOOTSEL button). No general-purpose
+  pushbutton is mentioned anywhere in WIZnet's or Zephyr's documentation
+  for this board - left untagged rather than guessed.
+
+NOT CHANGED / OUT OF SCOPE
+- "connections" left as the chip-level default ["serial"]. This board's
+  Ethernet connectivity comes from an external SPI-attached W5500 chip
+  (not an on-chip WiFi/BT radio like the "rp2040w" bucket's cyw43
+  boards), and whether/how this project's "tcp"/"http" connections
+  values should be extended to cover SPI-Ethernet-shield-style boards
+  was not part of this GPIO-focused audit brief - flagged here rather
+  than guessed at.
+- GPIO4/5 (PIN_WIRE0_SDA/SCL) and GPIO26/27 (PIN_WIRE1_SDA/SCL) are
+  general-purpose I2C-capable header pins on this board (not W5500-
+  dedicated) and were left at their default auto-derived capabilities.
+
+FILES WRITTEN
+- variants/rp2040/rp2350/wiznet_5500_evb_pico2/board.json (new file)
+- boardsDetails/rp2040/rp2350/wiznet_5500_evb_pico2/notes.txt (this file)

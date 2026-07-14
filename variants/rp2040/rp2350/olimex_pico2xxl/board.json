@@ -1,0 +1,70 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Olimex RP2350-PICO2-XXL",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's pins_arduino.h declares no button-alias #define, and the
+  // physical BOOT button on the board is NOT a normal GPIO — confirmed via
+  // the official OLIMEX/RP2350-PICO2-XXL KiCad schematic (Rev.C,
+  // HARDWARE/RP2350-PICO2-XXL-Rev.C/RP2350-PICO2-XXL_Rev_C.kicad_sch): the
+  // "BOOTSEL#" schematic label sits on the same net as "QSPI_CSn" (the
+  // QSPI/flash chip-select line), i.e. the classic RP2040/RP2350
+  // BOOTSEL-via-flash-CS trick, not a numbered GPIO pin — same reasoning
+  // already established for rpipico2 (see its board.json). The RESET
+  // button (RST1) likewise ties to the chip's RUN (reset) pin, not a GPIO.
+  // Since this repo's capability tagging is keyed by GPIO number, neither
+  // button has a pin to attach a "button" capability to — out of scope,
+  // not a missed tag.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED / LED_BUILTIN) is this board's onboard status LED
+  // ("LED1", silkscreen "STAT"/status LED per Olimex product page).
+  // Confirmed via the official OLIMEX/RP2350-PICO2-XXL KiCad schematic
+  // (Rev.C): LED1 (OLIMEX_Diodes:LED, value "LED/GREEN/0603") has its
+  // bus_alias entry "GPIO25\User_Led", and its circuit traces as
+  // GPIO25 -> R15 (2.2k series resistor) -> LED1 anode/cathode -> GND
+  // (LED1's second pin ties directly to a GND symbol, #PWR020) — i.e.
+  // driving GPIO25 HIGH sources current through R15 into the LED to
+  // ground, so GPIO25 HIGH = LED on (active-high), matching the same
+  // active-high pattern as the rpipico2/plain Pico 2 sibling in this
+  // chip bucket. No SPI/I2C/Serial alias collision on GPIO25 in this
+  // board's own pins_arduino.h (PIN_SERIAL1/2, PIN_SPI0/1, PIN_WIRE0/1
+  // occupy GPIO0,1,8,9,12-19,26,27 — GPIO25 is untouched), so no
+  // build_boards.js bus-capability contamination is possible here.
+  // digital_input dropped to match this repo's established led_high/
+  // led_low precedent for dedicated onboard LED pins. pwm_output kept
+  // since arduino-pico's analogWrite() works on any RP2040/RP2350 GPIO.
+  // No onboard NeoPixel/WS2812 found anywhere in the schematic or vendor
+  // documentation (Olimex product page, GitHub README, user manual) —
+  // this board has only the single green status LED plus BOOT/RESET
+  // buttons (both non-GPIO, see inputOnlyGpios note above).
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED1 — onboard green status LED, active-high, confirmed via official OLIMEX/RP2350-PICO2-XXL KiCad schematic (Rev.C): GPIO25 -> R15 (2.2k) -> LED1 -> GND" }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 12-bit ADC, same as chip-level default. This board's shared
+  // rp2040/rp2350/generic/common.h fallback only declares A0-A2
+  // (GPIO26-28); NUM_ANALOG_INPUTS in that shared header is 3, matching.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

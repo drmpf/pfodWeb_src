@@ -1,0 +1,73 @@
+Board: makergo_c3_supermini (chip: esp32c3)
+Audit: dedicated-hardware pin-exclusion audit, 2026-07-12
+
+Flagged by discovery sweep for:
+  #define TX1 0
+  #define RX1 1
+  static const uint8_t BOOT_BUILTIN = 9;  // built-in boot button
+
+Sources consulted:
+ - https://www.espboards.dev/esp32/esp32-c3-super-mini/ (WebFetch)
+   Confirms the "ESP32-C3 SuperMini" reference design has an onboard
+   blue user-controllable LED on GPIO8, a separate non-GPIO red power
+   indicator LED, and a bootloader mode button.
+ - WebSearch summary drawing on mozelectronics.com ("ESP32-C3 Super
+   Mini Pinout + Built-in LED Pin"), teachmemicro.com, and
+   lastminuteengineers.com: consistently GPIO8 = inverted/active-low
+   blue status LED, GPIO9 = BOOT button; both are documented strapping
+   pins ("avoid pulling GPIO2, GPIO8, or GPIO9 low during boot").
+ - No page mentioning "MakerGo" by name was found directly. The
+   "SuperMini" form factor is a widely cloned/rebranded reference
+   design sold under many vendor names (MakerGo included) on the same
+   PCB/silkscreen layout. This board's own pins_arduino.h already
+   ships GPIO8=LED_BUILTIN and GPIO9=BOOT_BUILTIN with an explicit
+   "built-in boot button" comment, matching every independent source
+   above pin-for-pin - treated as sufficient (light) verification per
+   task instructions.
+ - pins_arduino.h (local, already in repo): `static const uint8_t
+   SCL = 9;` duplicated the confirmed GPIO9 BOOT button pin as the I2C
+   clock alias - used as corroboration alongside the vendor-confirmed
+   GPIO9 BOOT button finding.
+
+Reasoning / actions taken:
+ 1. GPIO9 (BOOT_BUILTIN): confirmed onboard physical BOOT button.
+    board.json (new override, full copy of chip-level esp32c3/board.json
+    default) sets chipGpios["9"].capabilities = ["digital_input","button"]
+    exactly, per policy. Chip-level pinNotes["9"] ("Must be HIGH for
+    normal boot") retained as-is - expected/documented for this exact
+    strapping pin, matching adafruit_qtpy_esp32c3, waveshare_esp32_c3_zero,
+    and dfrobot_beetle_esp32c3 precedents.
+ 2. Alias-conflict check (critical, recurring this session): GPIO9 was
+    ALSO declared `static const uint8_t SCL = 9;` in pins_arduino.h.
+    This is generic boilerplate (the default Arduino-ESP32-C3 Wire pin
+    mapping), not a vendor-confirmed dedicated I2C pin on this board -
+    it collides with the confirmed BOOT button and would have let
+    build_boards.js silently append an I2C-clock capability on top of
+    the intended button-only tag list. The `static const uint8_t
+    SCL = 9;` line was deleted outright from pins_arduino.h (not
+    commented out - the parser is comment-blind). SDA (GPIO8) was left
+    declared since its pin (the LED) has no such conflict flagged.
+ 3. GPIO8 (LED_BUILTIN, opportunistic section 7a check): confirmed
+    onboard plain (non-addressable) blue LED per the sources above -
+    not a WS2812/NeoPixel-style addressable LED (no PIN_RGB_LED/
+    RGB_BUILTIN/RGB_BRIGHTNESS macros present). Left at the chip-level
+    default capabilities (plain digital_output already covers a simple
+    LED) - matching this repo's precedent of not adding a special
+    capability tag for a plain onboard LED (e.g. dfrobot_beetle_esp32c3
+    GPIO10 treatment). No board.json change needed beyond the default.
+ 4. TX1/RX1 (`#define TX1 0` / `#define RX1 1`): raw-number #defines,
+    not aliases of the existing TX/RX static consts (GPIO21/20, the
+    primary UART0/USB-Serial-JTOG-adjacent console pins). TX1/RX1 point
+    at GPIO0/GPIO1, documenting one commonly-used default routing for
+    the SoC's fully GPIO-matrix-remappable UART1 - not a fixed/dedicated
+    peripheral, and not connected to any onboard fixed hardware. GPIO0/1
+    remain general-purpose (also aliased as A0/A1) at the chip-level
+    default - no exclusion needed.
+
+Summary: GPIO9 confirmed as the onboard BOOT button and tagged
+["digital_input","button"]; its spurious SCL=9 alias (boilerplate,
+colliding with the confirmed button) was deleted from pins_arduino.h;
+GPIO8's onboard plain LED was verified and left at chip defaults;
+TX1/RX1 were verified as harmless UART1 pin-routing #defines requiring
+no action. New board.json override created as a full copy of the
+esp32c3 chip-level default with only GPIO9's capabilities changed.

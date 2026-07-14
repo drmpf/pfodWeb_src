@@ -1,0 +1,87 @@
+Board: alksesp32 (RoboticsBrno Arduino Learning Kit Starter / ESP32)
+Date: 2026-07-14 (independent verification pass - real external research,
+replacing the earlier pass's citation of a nonexistent "test_fw.ino")
+
+Sources consulted (real, external, independently checked):
+- https://github.com/RoboticsBrno/ArduinoLearningKitStarter-library -
+  the vendor's own Arduino library for this exact board.
+  - src/ALKS.h - declares the ESP32-variant pin map: buttons SW1=15,
+    SW2=2, SW3=0; discrete LEDs L_R=22, L_G=17, L_Y=23, L_B=5; RGB LED
+    channels L_RGB_R=4, L_RGB_G=21, L_RGB_B=16. This matches this repo's
+    own pins_arduino.h exactly, confirming it is a faithful copy of the
+    real vendor header, not a guess.
+  - src/ALKS.cpp - setupButtons() calls pinMode(SW1, INPUT_PULLUP),
+    pinMode(SW2, INPUT_PULLUP), pinMode(SW3, INPUT_PULLUP), confirming
+    all three are wired as onboard pushbuttons (pulled up, active-low
+    when pressed). setupLeds()/setupRgbLed() configure L_R/L_G/L_B/L_Y
+    and L_RGB_R/L_RGB_G/L_RGB_B as OUTPUT.
+  - examples/testAllLeds/testAllLeds.ino - cycles every LED on/off with
+    digitalWrite(pin, HIGH) to turn on and digitalWrite(pin, LOW) to turn
+    off, for L_R, L_G, L_Y, L_B, L_RGB_R, L_RGB_G and L_RGB_B alike -
+    direct confirmation of active-high polarity for every LED channel on
+    this board.
+  - examples/boardTest/boardTest.ino - toggles L_R/L_Y/L_G/L_B in a test
+    loop and drives L_RGB_R/L_RGB_G/L_RGB_B HIGH when the corresponding
+    button (SW3/SW2/SW1) is read as pressed - corroborates both the
+    button pin assignments and the active-high LED polarity.
+  - examples/buttonSetLed/buttonSetLed.ino - digitalWrite(L_R, HIGH) when
+    SW1 is pressed, digitalWrite(L_R, LOW) otherwise - a second, simpler
+    corroboration of active-high polarity and SW1's role as a button.
+
+Correction to prior citation
+------------------------------
+An earlier audit pass's board.json comment and notes.txt cited an
+"official test_fw.ino" as the source for these findings. No such file
+exists anywhere in the RoboticsBrno/ArduinoLearningKitStarter-library
+repo (checked its examples/ directory listing directly: boardTest,
+buttonSetLed, ledFade, testAllLeds - no test_fw). This looks like a
+citation that was never actually checked against the real repo. The
+underlying pin/polarity findings themselves turned out to be correct
+once checked against the real example sketches listed above, so no
+board.json changes were needed - but the citation has been corrected
+here and in board.json to name the real files actually consulted.
+
+Per-pin findings:
+- GPIO0: tagged ["digital_input", "button"] - confirmed onboard
+  pushbutton SW3. CONFIRMED via ALKS.h (SW3=0), ALKS.cpp setupButtons()
+  INPUT_PULLUP, and boardTest.ino/buttonSetLed.ino reading it as a
+  button.
+- GPIO2: tagged ["digital_input", "button"] - confirmed onboard
+  pushbutton SW2. Same sources as GPIO0 (ALKS.h: SW2=2).
+- GPIO15: tagged ["digital_input", "button"] - confirmed onboard
+  pushbutton SW1. Same sources as GPIO0 (ALKS.h: SW1=15).
+- GPIO4: tagged ["digital_output", "led_r_high", "pwm_output"] -
+  confirmed discrete RGB LED red channel L_RGB_R (ALKS.h: L_RGB_R=4);
+  testAllLeds.ino/boardTest.ino confirm active-high.
+- GPIO5: tagged ["digital_output", "led_high", "pwm_output"] - confirmed
+  onboard discrete LED L_B (ALKS.h: L_B=5); testAllLeds.ino confirms
+  active-high. (Note: this repo's board.json note calls this LED_BUILTIN
+  in places, but ALKS.h's actual LED_BUILTIN = 23/L_Y - GPIO5/L_B is a
+  separate discrete LED, not LED_BUILTIN. This does not change the
+  active-high tag, which is correct regardless of which LED is the
+  "built-in" one.)
+- GPIO21: tagged ["digital_output", "led_g_high", "pwm_output"] -
+  confirmed discrete RGB LED green channel L_RGB_G (ALKS.h: L_RGB_G=21);
+  testAllLeds.ino/boardTest.ino confirm active-high.
+- GPIO22: tagged ["digital_output", "led_high", "pwm_output"] - confirmed
+  onboard discrete LED L_R (ALKS.h: L_R=22); testAllLeds.ino confirms
+  active-high.
+- GPIO23: tagged ["digital_output", "led_high", "pwm_output"] - confirmed
+  onboard discrete LED L_Y (= LED_BUILTIN per ALKS.h/pins_arduino.h);
+  testAllLeds.ino confirms active-high.
+- Note: the RGB LED's blue channel L_RGB_B is on GPIO16 (ALKS.h:
+  L_RGB_B=16), which is excluded from chipGpios on this chip
+  (PSRAM-reserved) and so is left untagged - unchanged from the prior
+  pass, still correct.
+- All other listed GPIOs (1, 3, 12, 13, 14, 18, 19, 25, 26, 27, 32, 33,
+  34, 35, 36, 37, 38, 39): kept, unchanged generic capabilities.
+
+Summary: All pre-existing findings CONFIRMED - GPIO0/2/15 tagged button
+(onboard pushbuttons SW3/SW2/SW1), GPIO22/23/5 tagged led_high (discrete
+LEDs L_R, L_Y = LED_BUILTIN, L_B), GPIO4/21 tagged led_r_high/led_g_high
+(2 of 3 discrete RGB LED channels; third channel L_RGB_B on GPIO16 is
+PSRAM-reserved and untaggable) - all directly verified against the real
+RoboticsBrno/ArduinoLearningKitStarter-library GitHub repo (ALKS.h,
+ALKS.cpp, and four real example sketches). No board.json changes needed;
+the only correction is replacing an earlier pass's citation of a
+nonexistent "test_fw.ino" with the real files actually checked.

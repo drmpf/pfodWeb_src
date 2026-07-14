@@ -1,0 +1,124 @@
+Board: Cytron Maker Uno RP2040 (chip: rp2040)
+Directory: variants\rp2040\rp2040\cytron_maker_uno_rp2040\
+Audit date: 2026-07-12 (RP2040/RP2350 family button/LED/NeoPixel + dedicated-hardware
+pin-exclusion audit, part of the ongoing wave that already covered ESP32/ESP8266).
+
+PINS DECLARED IN THIS BOARD'S pins_arduino.h
+  PIN_LED             = 3   (also LED_BUILTIN via ../generic/common.h)
+  PIN_NEOPIXEL        = 25  (NUM_NEOPIXEL = 2, PIN_RGB alias of PIN_NEOPIXEL)
+  PIN_BUZZER          = 8
+  PIN_BUTTON          = 2
+Rest of file: standard Serial1 (GPIO0/1), SPI0 (GPIO10-13), Wire0 (GPIO20/21),
+Wire1 (GPIO26/27), then #include "../generic/common.h" (blanket D0-D22 fallback,
+A0-A2 = GPIO26-28, no GPIO23/24/25/29 declared there — matches the official Pico
+26-GPIO/3-ADC pinout; GPIO25 is separately declared as PIN_NEOPIXEL/PIN_RGB by
+this board's own file, not by the shared fallback).
+
+WHY AN OVERRIDE IS NEEDED
+../board.json (chip-level rp2040 default) has chipGpios: {} deliberately empty —
+per that file's own comment, RP2040/RP2350 third-party boards vary too much for
+a uniform chip-level GPIO map, so every aliased GPIO (any #define found in
+pins_arduino.h, directly or via the shared common.h) gets the full
+digital_input/digital_output/pwm_output capability set by default. Without a
+per-board override, GPIO2 (button), GPIO3 (LED) and GPIO25 (NeoPixel) would each
+be offered in the Designer as plain bidirectional GPIO pins, which is misleading
+since they're wired to dedicated onboard components.
+
+SOURCES CONSULTED
+1. Zephyr Project official board documentation for this exact board:
+   https://docs.zephyrproject.org/latest/boards/cytron/maker_uno_rp2040/doc/index.html
+   - GPIO2 listed as "User button", default pin mux "GPIO pull-up".
+   - GPIO3 listed as "(Alias led0)" in the Arduino headers table.
+   - "The RGB LEDs are connected to GPIO25, and its pin mux setting is PIO0."
+   - Hardware spec section: "2 RGB LEDs (Neopixels)" — matches NUM_NEOPIXEL=2 in
+     this board's own pins_arduino.h exactly (independent cross-check).
+   - LED driver compatible string "worldsemi,ws2812-rpi_pico-pio" confirms WS2812
+     (NeoPixel-compatible) protocol.
+
+2. Zephyr's board devicetree source (derived from Cytron's official schematic),
+   fetched at zephyr/boards/cytron/maker_uno_rp2040/maker_uno_rp2040.dts on the
+   zephyrproject-rtos/zephyr GitHub repo main branch — the authoritative
+   electrical-polarity source:
+     leds { led0: led_gp3 { gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>; }; };
+     gpio_keys { sw0: user_button { gpios = <&gpio0 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; }; };
+   -> GPIO3 LED confirmed active-high.
+   -> GPIO2 button confirmed active-low with an internal pull-up (button pulls the
+      line LOW when pressed, per the same devicetree convention used across every
+      other Zephyr RP2040 board doc already cited in this codebase's other
+      RP2040 board.json audits).
+
+3. Cytron's own official Arduino example code (vendor-authoritative, independent
+   of Zephyr):
+   https://github.com/CytronTechnologies/Cytron-MAKER-UNO-RP2040/blob/main/Example_Code/Arduino/Button/Button.ino
+   - `pinMode(btn1, INPUT_PULLUP);` on GPIO2 (btn1) — button reads LOW when
+     pressed, HIGH when released. Independently corroborates the Zephyr dts
+     active-low/pull-up polarity from the vendor's own sample sketch.
+
+4. Cytron product page (https://www.cytron.io/p-maker-uno-rp2040) and Tom's
+   Hardware review — both describe the board as having onboard user LEDs, a
+   programmable piezo buzzer, and onboard push button(s), consistent with the
+   pins_arduino.h aliases (general corroboration, not the primary polarity
+   source — that's the Zephyr dts above).
+
+PER-PIN REASONING / DISPOSITION
+  GPIO2 (PIN_BUTTON):
+    capabilities: ["digital_input", "button"]
+    Reasoning: onboard user pushbutton, confirmed active-low with internal
+    pull-up by both the Zephyr devicetree (authoritative schematic-derived
+    source) and Cytron's own INPUT_PULLUP example code. digital_output/
+    pwm_output dropped since it's not a general-purpose output pin — matches
+    the established button-tagging precedent already used elsewhere in this
+    repo (e.g. esp8266/wiolink GPIO0, esp8266/ESPDuino GPIO0).
+
+  GPIO3 (PIN_LED / LED_BUILTIN):
+    capabilities: ["digital_output", "pwm_output", "led_high"]
+    Reasoning: onboard user LED, confirmed active-high by the Zephyr
+    devicetree (GPIO_ACTIVE_HIGH). digital_input dropped (dedicated LED
+    pin, not a general input); pwm_output kept because arduino-pico's
+    analogWrite() works on any RP2040 GPIO, enabling LED brightness
+    dimming — matches the rpipico/board.json GPIO25 led_high precedent
+    exactly in structure.
+
+  GPIO25 (PIN_NEOPIXEL / PIN_RGB):
+    capabilities: ["digital_output", "led_neopixel"]
+    Reasoning: onboard 2-pixel WS2812-compatible NeoPixel data line
+    (NUM_NEOPIXEL=2 in this board's pins_arduino.h, independently matched by
+    Zephyr's own "2 RGB LEDs (Neopixels)" hardware spec), output-only,
+    driven via PIO0 (bit-banged/PIO protocol, not a simple digital level).
+    digital_input dropped (output-only data line). pwm_output omitted per
+    this repo's led_neopixel convention/task instructions (NeoPixel data
+    pins are PIO/bit-banged protocol pins, not PWM-dimmable single LEDs) —
+    matches the majority of this repo's existing led_neopixel precedents
+    (e.g. esp8266/wifinfo GPIO14 style decision to treat NeoPixel as its
+    own category; where a sibling repo precedent like
+    sparkfun_thingplusrp2350 GPIO14 keeps pwm_output, that's because that
+    pin doubles as a separate header LED_OUT pin — no such dual role exists
+    for this board's GPIO25).
+
+  GPIO8 (PIN_BUZZER): OUT OF SCOPE per task instructions — no tagging
+    vocabulary exists in this codebase for buzzers. No chipGpios entry
+    added; GPIO8 keeps the chip-level default full
+    digital_input/digital_output/pwm_output capability set (unchanged,
+    correct as-is since it genuinely is a plain PWM-driven GPIO from the
+    Designer's point of view, just happens to be wired to an onboard
+    piezo buzzer rather than a header pin).
+
+  All other declared aliases (Serial1 GPIO0/1, SPI0 GPIO10-13, Wire0
+  GPIO20/21, Wire1 GPIO26/27, generic/common.h D0-D22 fallback, A0-A2 =
+  GPIO26-28): no dedicated-hardware conflicts found for this board via
+  the sources above; left at chip-level defaults, no chipGpios entries
+  added. (Bus-role capabilities such as spi_mosi/spi_miso/etc. are
+  auto-appended by build_boards.js from the SPI/Wire pin aliases
+  regardless of chipGpios, per the wiznet_5500_evb_pico/board.json
+  precedent's documented behavior — not something this audit needed to
+  hand-add.)
+
+SUMMARY
+Created variants\rp2040\rp2040\cytron_maker_uno_rp2040\board.json (full
+per-board override file) tagging GPIO2 as button (active-low/pull-up),
+GPIO3 as led_high (active-high onboard LED, pwm-dimmable), and GPIO25 as
+led_neopixel (2-pixel WS2812, output-only, no pwm_output) — all three
+confirmed via Zephyr's official board docs + devicetree source (schematic-
+derived) and cross-corroborated by Cytron's own vendor example code.
+PIN_BUZZER (GPIO8) left untouched as genuinely out of scope (no buzzer
+vocabulary in this repo). No build commands were run.

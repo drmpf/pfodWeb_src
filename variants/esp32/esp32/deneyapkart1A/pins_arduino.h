@@ -24,47 +24,27 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 4;
 static const uint8_t SCL = 15;
 
-static const uint8_t SS = 21;
-static const uint8_t MOSI = 5;
-static const uint8_t MISO = 18;
-static const uint8_t SCK = 19;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK not declared - same GPIO21/5/18/19 as
+// CAMD5/CAMPC/CAMD6/CAMD2 below, the onboard camera's data bus.
 
-static const uint8_t A0 = 36;
-static const uint8_t A1 = 39;
-static const uint8_t A2 = 34;
-static const uint8_t A3 = 35;
-static const uint8_t A4 = 32;
-static const uint8_t A5 = 33;
+// pfodWeb NOTE: A0-A5 deliberately NOT declared - all fall on dedicated
+// onboard camera pins (see CAMSD/CAMXC/CAMD8/CAMD9/CAMV/CAMH below).
 
-static const uint8_t T0 = 32;
-static const uint8_t T1 = 33;
-static const uint8_t T2 = 27;
-static const uint8_t T3 = 14;
-static const uint8_t T4 = 12;
+// pfodWeb NOTE: T0-T4 deliberately NOT declared - dedicated onboard
+// camera (CAMXC/CAMSD) and microSD (SDCK/SDMO/SDCS) pins.
 static const uint8_t T5 = 13;
 
-static const uint8_t D0 = 23;
-static const uint8_t D1 = 22;
+// pfodWeb NOTE: D0/D1/D4-D7/D9/D13-D15 deliberately NOT declared -
+// dedicated onboard camera and microSD pins (see below).
 static const uint8_t D2 = 1;
 static const uint8_t D3 = 3;
-static const uint8_t D4 = 21;
-static const uint8_t D5 = 19;
-static const uint8_t D6 = 18;
-static const uint8_t D7 = 5;
 static const uint8_t D8 = 0;
-static const uint8_t D9 = 2;
 static const uint8_t D10 = 4;
 static const uint8_t D11 = 15;
 static const uint8_t D12 = 13;
-static const uint8_t D13 = 12;
-static const uint8_t D14 = 14;
-static const uint8_t D15 = 27;
 
-static const uint8_t DAC1 = 25;
-static const uint8_t DAC2 = 26;
-
-static const uint8_t PWM0 = 23;
-static const uint8_t PWM1 = 22;
+// pfodWeb NOTE: DAC1/DAC2 and PWM0/PWM1 deliberately NOT declared - same
+// dedicated onboard camera pins as CAMSC/CAMD7/CAMD4/CAMD3 below.
 
 static const uint8_t CAMSD = 33;
 static const uint8_t CAMSC = 25;
@@ -81,9 +61,7 @@ static const uint8_t CAMXC = 32;
 static const uint8_t CAMH = 39;
 static const uint8_t CAMV = 36;
 
-static const uint8_t SDMI = 2;
-static const uint8_t SDMO = 14;
-static const uint8_t SDCS = 12;
-static const uint8_t SDCK = 27;
+// pfodWeb NOTE: SDMI/SDMO/SDCS/SDCK (GPIO2/14/12/27) deliberately NOT
+// declared - dedicated onboard microSD card SPI bus, not general-purpose.
 
 #endif /* Pins_Arduino_h */

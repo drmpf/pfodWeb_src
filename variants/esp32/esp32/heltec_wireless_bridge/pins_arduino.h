@@ -13,19 +13,17 @@ static const uint8_t KEY_BUILTIN = 0;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 18;
-static const uint8_t MOSI = 27;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 5;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK (GPIO18/27/19/5) deliberately NOT
+// declared - this board's entire purpose is a LoRa wireless bridge, and
+// there's no other plausible SPI consumer, so this bus is treated as
+// dedicated to the onboard LoRa radio (same reasoning as tbeam/
+// sparkfun_lora_gateway). RST_LoRa/DIO0/DIO1/DIO2 (GPIO14/26/35/34)
+// deliberately NOT declared - explicit LoRa radio control lines.
 
 static const uint8_t Vext = 21;
 static const uint8_t LED = 25;
 static const uint8_t BLE_LED = 25;
 static const uint8_t WIFI_LED = 23;
 static const uint8_t LoRa_LED = 22;
-static const uint8_t RST_LoRa = 14;
-static const uint8_t DIO0 = 26;
-static const uint8_t DIO1 = 35;
-static const uint8_t DIO2 = 34;
 
 #endif /* Pins_Arduino_h */

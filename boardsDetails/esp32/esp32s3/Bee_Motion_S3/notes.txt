@@ -1,0 +1,75 @@
+Board: Bee Motion S3 (ESP32-S3 Dev Module variant) — Smart Bee Designs
+Date: 2026-07-14 (real independent re-verification pass; supersedes the
+prior "documentation backfill" pass, which cited only board.json's own
+comment and no external URLs)
+
+Sources consulted (real, external, independently fetched this pass):
+- https://github.com/espressif/arduino-esp32/blob/master/variants/Bee_Motion_S3/pins_arduino.h
+  Official Espressif arduino-esp32 upstream variant file (the canonical,
+  merged, first-party board-support definition for this product). Declares:
+    static const uint8_t BOOT_BTN = 0;
+    static const uint8_t LDO2 = 34;
+    static const uint8_t RGB_PWR = 34;
+    static const uint8_t RGB_DATA = 40;
+    static const uint8_t PIR = 4;
+    static const uint8_t LIGHT = 3;
+    #define RGB_BUILTIN LED_BUILTIN   (wired to the Arduino rgbLedWrite() API)
+  This repo's local pins_arduino.h deliberately omits the LDO2/RGB_PWR
+  declaration (see its own pfodWeb NOTE) but otherwise matches, including
+  PIR=4 and LIGHT=3.
+- https://www.crowdsupply.com/smart-bee-designs/bee-motion-s3
+  Vendor's own Crowd Supply campaign page. Confirms "PIR sensor, light
+  sensor, RGB LED, 2 LDOs, LiPo charging circuitry, battery voltage
+  monitoring" as onboard features; "fully open source ... documentation
+  can be found on the GitHub."
+- https://www.hackster.io/news/smart-bee-design-s-bee-motion-s3-is-a-neat-all-in-one-iot-motion-sensor-with-stemma-qt-expansion-4746dbad31ec
+  Independent product coverage, corroborates PIR sensor + STEMMA QT
+  expansion + RGB LED as onboard features.
+- https://www.cnx-software.com/2022/12/09/bee-motion-s3-esp32-s3-board-pir-motion-sensor/
+  Independent review of the board (crowdfunding coverage).
+- https://www.espboards.dev/esp32/bee-motion-s3/
+  Third-party pinout aggregator; independently lists BOOT_BTN=GPIO0,
+  RGB_DATA=GPIO40, LDO2/RGB_PWR=GPIO34, PIR=GPIO4, LIGHT=GPIO3 - matches
+  the official Espressif upstream file exactly.
+- https://www.tindie.com/products/smartbee/bee-motion-s3-esp32-pir-motion-sensor/
+  Vendor's Tindie storefront listing, same feature set.
+
+Per-pin findings:
+- GPIO0: capabilities [digital_input, button] - tagged "button".
+  CONFIRMED via the official Espressif upstream pins_arduino.h naming it
+  BOOT_BTN, independently corroborated by espboards.dev's pinout table.
+  pinNotes: "Must be HIGH for normal boot" (standard strapping-pin note,
+  unchanged).
+- GPIO1-GPIO10: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag. Includes PIR (GPIO4) and LIGHT (GPIO3)
+  sensor lines, which stay generic analog/digital inputs - no dedicated
+  "sensor" capability tag exists in this repo's vocabulary (button/LED
+  only), so this is correct as-is.
+- GPIO11-GPIO18: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag. Unchanged.
+- GPIO21: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag. Unchanged.
+- GPIO34: excluded (no chipGpios entry) - internal power-control line.
+  CONFIRMED via the official Espressif upstream pins_arduino.h and
+  espboards.dev, both of which independently name this exact GPIO as
+  LDO2/RGB_PWR (internal power-gate), not general-purpose.
+- GPIO38, GPIO39: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag. Unchanged.
+- GPIO40: capabilities [digital_output, pwm_output, led_neopixel] - tagged
+  "led_neopixel". CONFIRMED via the official Espressif upstream
+  pins_arduino.h (RGB_DATA=40, wired to RGB_BUILTIN/rgbLedWrite()),
+  independently corroborated by espboards.dev, Crowd Supply, Hackster.io,
+  and Tindie all listing an onboard RGB LED as a feature.
+- GPIO41-GPIO48: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag. pinNotes on GPIO3/45/46: "Must be LOW or floating on
+  reboot" (standard strapping-pin notes, unchanged).
+
+Summary: All three pre-existing findings (GPIO0 button, GPIO40 NeoPixel,
+GPIO34 excluded as LDO2/RGB_PWR) are CONFIRMED by real, independent vendor
+and third-party sources — the official Espressif arduino-esp32 upstream
+variant file (first-party, merged board-support definition), the vendor's
+own Crowd Supply/Tindie listings, and independent coverage (Hackster.io,
+CNX Software, espboards.dev). No corrections were needed; board.json's
+top-of-file comment and this notes.txt were both updated with the real
+citations above. Identical tagging pattern to the sibling Bee_Data_Logger
+board, independently re-confirmed rather than assumed identical.

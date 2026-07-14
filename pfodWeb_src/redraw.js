@@ -210,10 +210,36 @@ function _buildCanvasFontStyle(bold, italic, sizePx) {
 }
 
 /**
+ * Decode pfod escape sequences in a text segment.  Shared by every pfod-text
+ * renderer (dwg canvas labels/values here in redraw.js, DOM-based buttons/
+ * labels/prompts in pfodButtonRenderer.js's pfodSetFormattedText).  Defined
+ * here because redraw.js loads before pfodButtonRenderer.js in the bundle.
+ * &amp; is decoded last so &amp;lt; produces &lt; (literal) not < (tag opener).
+ *
+ * @param {string} str
+ * @returns {string}
+ */
+function decodeEscapes(str) {
+    if (!str || str.indexOf('&') === -1) return str;
+    return str
+        .replace(/&#96;/g,  '`')
+        .replace(/&#123;/g, '{')
+        .replace(/&#124;/g, '|')
+        .replace(/&#125;/g, '}')
+        .replace(/&#126;/g, '~')
+        .replace(/&lt;/g,   '<')
+        .replace(/&#92;/g,  '\\')
+        .replace(/&amp;/g,  '&');
+}
+
+/**
  * Parse pfod inline format tags from text and return a flat array of styled segments.
  * Segment shape: {text, bold, italic, underline, deltaSize, color}
  * Tags: <b> <i> <u> <+N> <-N> colour-name/hex/index tags; </tag> closes matching open tag.
  * Unrecognised tags are left as literal text.  Open tags auto-terminate at end of string.
+ * Text within each segment has pfod escape sequences (&#96; &#123; &#124; &#125;
+ * &#126; &lt; &#92; &amp;) decoded — dwg labels/text-displays are automatically
+ * escaped by the pfodDevice, so this must be reversed before drawing on the canvas.
  *
  * @param {string} rawText
  * @param {{bold?:boolean, italic?:boolean, underline?:boolean}} [baseStyle]
@@ -264,7 +290,7 @@ function parsePfodInlineSegments(rawText, baseStyle) {
                 if (stack[j].tag === name) { found = j; break; }
             }
             if (found !== -1) {
-                const txt = rawText.substring(segStart, i);
+                const txt = decodeEscapes(rawText.substring(segStart, i));
                 if (txt) segs.push(Object.assign({ text: txt }, currentStyle()));
                 segStart = close + 1;
                 stack.splice(found);
@@ -272,7 +298,7 @@ function parsePfodInlineSegments(rawText, baseStyle) {
         } else {
             const parsed = parseTag(inner);
             if (parsed !== null) {
-                const txt = rawText.substring(segStart, i);
+                const txt = decodeEscapes(rawText.substring(segStart, i));
                 if (txt) segs.push(Object.assign({ text: txt }, currentStyle()));
                 segStart = close + 1;
                 parsed.tag = inner;
@@ -282,7 +308,7 @@ function parsePfodInlineSegments(rawText, baseStyle) {
         i = close + 1;
     }
 
-    const tail = rawText.substring(segStart);
+    const tail = decodeEscapes(rawText.substring(segStart));
     if (tail) segs.push(Object.assign({ text: tail }, currentStyle()));
     return segs;
 }

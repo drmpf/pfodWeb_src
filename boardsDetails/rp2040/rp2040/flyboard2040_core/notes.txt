@@ -1,0 +1,57 @@
+Board audit notes: flyboard2040_core (chip: rp2040)
+Board: "DeRuiLab FlyBoard2040Core"
+Date: 2026-07-13
+
+SOURCES CONSULTED
+-----------------
+1. Local repo files (primary evidence):
+   - variants/rp2040/rp2040/flyboard2040_core/pins_arduino.h (this board's own declarations)
+   - variants/rp2040/rp2040/generic/common.h (shared D0-D22/A0-A2/SS/MOSI/MISO/SCK/SDA/SCL fallback aliases, included via "../generic/common.h")
+   - variants/rp2040/rp2040/board.json (chip-level defaults; chipGpios: {} means every GPIO with any alias gets full digital_input/digital_output/pwm_output by default)
+   - variants/rp2040/boards.txt lines ~14192-14439 (flyboard2040_core.* entries: vendor "DeRuiLab", vid 0x2e8a, usb_product "FlyBoard2040Core", build.chip=rp2040, no WiFi/BLE-specific onboard-radio indication beyond the standard arduino-pico template menu options every rp2040 board gets)
+   - Precedent files read in full: variants/rp2040/rp2040/rpipico/board.json (LED tagging precedent) and variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (dedicated-hardware SPI exclusion precedent)
+
+2. WebSearch queries run (multiple rounds):
+   - "DeRuiLab FlyBoard2040Core RP2040 flight controller"
+   - "FlyBoard2040 Core pins_arduino.h github arduino-pico"
+   - ""FlyBoard2040" OR "Fly Board 2040" DeRuiLab"
+   - ""FlyBoard2040" 3D printer"
+   - "DeRuiLab company RP2040"
+   - "arduino-pico pull request "FlyBoard2040" add board"
+   - ""FlyBoard2040" flight controller drone RP2040 IMU gyro"
+   - ""FlyBoard2040" aliexpress OR taobao OR store buy"
+   - "德瑞 FlyBoard2040 RP2040" (Chinese-language search, in case DeRuiLab is a Chinese vendor)
+   - ""FlyBoard2040" OR "Fly Board 2040" review specs LED GPIO25"
+   - "arduino-pico boards.txt "DeRuiLab" comment"
+   - ""flyboard2040_core" github"
+
+3. WebFetch:
+   - https://github.com/earlephilhower/arduino-pico/tree/master/variants/flyboard2040_core (directory listing only - no README)
+   - https://raw.githubusercontent.com/earlephilhower/arduino-pico/master/variants/flyboard2040_core/pins_arduino.h (raw file - confirmed byte-identical content to the local copy already in this repo; no extra comments/metadata beyond what's already known)
+
+RESULT OF RESEARCH
+-------------------
+No vendor website, product page, datasheet, schematic, store listing (AliExpress/Taobao), or third-party review for "DeRuiLab" or "FlyBoard2040/FlyBoard2040 Core" could be found anywhere. The board's only public trace is its pins_arduino.h contribution merged into earlephilhower/arduino-pico. (An unrelated "Fly-SB2040" 3D-printer CAN toolboard from a different vendor/brand - Mellow/BigTreeTech-style "FLY" 3D-printer boards - surfaced in searches and was discounted as a different product from a different company; not related to this RP2040 dev board.)
+
+Despite the drone-suggestive "Fly" name and "Core" suffix (often used for compact main-boards in a modular product family), no evidence of an onboard IMU/gyro/accelerometer or any other dedicated sensor chip was found anywhere - not on the vendor side (no vendor site exists that could be found) and not in the board's own pins_arduino.h (which groups all bus pins under plain generic "// Serial" / "// SPI" / "// Wire" comments, with no distinguishing labels like "IMU"/"gyro"/"sensor" the way a genuine dedicated-hardware board would typically be documented, c.f. how a real sensor-equipped board's silkscreen/vendor docs usually name the chip).
+
+PER-PIN REASONING
+-----------------
+GPIO0/1 (Serial1 TX/RX), GPIO8/9 (Serial2 TX/RX): generic UART aliases, no dedication evidence found. NO CHANGE - left as chip-level default (digital_input/digital_output/pwm_output via chipGpios:{} fallback).
+
+GPIO2/3/4/5 (SPI0 SCK/MOSI/MISO/SS), GPIO10/11/12/13 (SPI1 SCK/MOSI/MISO/SS), GPIO14/15 (Wire1 SDA/SCL), GPIO16/17 (Wire0 SDA/SCL): generic peripheral-bus aliases. No vendor documentation of any kind exists for this board (unlike the wiznet_5500_evb_pico precedent, where WIZnet's own official docs explicitly named GPIO16-21 as dedicated to an onboard W5500 chip). Per this audit's "confirm via real vendor documentation, never guess" rule, NO dedicated-hardware exclusion is applied here. These remain ordinary general-purpose bus-capable GPIOs at the chip-level default. If vendor documentation for this specific board surfaces later showing an onboard IMU/sensor wired to any of these pins, this board.json should be revisited.
+
+GPIO25 (PIN_LED / LED_BUILTIN): this board's own pins_arduino.h explicitly groups GPIO25 under a distinct "// LEDs" comment section (separate from the Serial/SPI/Wire sections), confirming vendor intent as an onboard LED indicator pin - this matches the standard RP2040/Pico-form-factor onboard-LED-on-GPIO25 pattern already independently vendor-confirmed active-high on two other boards in this repo (rpipico via the official Raspberry Pi Pico datasheet; wiznet_5500_evb_pico via WIZnet's own docs), with zero known active-low exceptions to date for a Pico-footprint GPIO25 LED in this codebase. No DeRuiLab-specific vendor documentation could be found to independently confirm polarity for THIS board, but no evidence of a deviating (active-low or repurposed) circuit was found either. Tagged led_high on this evidence balance (own header's explicit LED grouping + unbroken convention across every other Pico-footprint board audited so far), with this caveat explicitly recorded in board.json's own inline comment. digital_input dropped to match the established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO.
+
+No onboard button found or suggested anywhere (no button-related alias in pins_arduino.h, no vendor docs to check). No onboard NeoPixel found or suggested anywhere. NO CHANGE for both.
+
+CHANGES APPLIED
+---------------
+Created variants/rp2040/rp2040/flyboard2040_core/board.json (new file - did not exist before this audit):
+  - Full copy of chip-level variants/rp2040/rp2040/board.json fields (boardName, family, connections, pwm, dac, adc, etc. - all unchanged from chip defaults).
+  - chipGpios override for GPIO25 only: {"capabilities": ["digital_output", "pwm_output", "led_high"]}.
+  - No pins_arduino.h edit was needed (no button/LED/NeoPixel pin found colliding with an SDA/SCL/SS/MOSI/MISO/SCK alias - GPIO25 has no bus alias, so no build_boards.js bus-capability-contamination bug applies here).
+
+SUMMARY
+-------
+FlyBoard2040Core is best characterized as a generic RP2040 breakout/dev board with a drone-suggestive product name and no independently confirmable onboard IMU/sensor hardware (no vendor documentation exists publicly for this obscure board) - only the standard Pico-footprint GPIO25 onboard LED was tagged (led_high, inferred by convention + own header evidence, not independently vendor-confirmed for this specific board); all SPI0/SPI1/Wire0/Wire1/Serial1/Serial2 pins are left as general-purpose (chip-level default), since no dedicated-hardware exclusion could be justified by any evidence found.

@@ -12,12 +12,6 @@
   // the build script derives them from the PIN_A0 / PIN_A<n> pattern.
   "family": "avr",
 
-  "defaultBaud": 115200,
-  "supportedBauds": [
-    300, 600, 1200, 2400, 4800, 9600, 14400, 19200,
-    28800, 38400, 57600, 115200
-  ],
-
   "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
   "dac": {},
   // ADC: ATmega32U4 has a 10-bit ADC (0–1023).  Default reference is
@@ -29,5 +23,66 @@
   "connections": ["serial"],
 
   "pinNotes": {},
-  "chipGpios": {}
+
+  // Pin-audit findings (2026-07-14), sourced from the board's own
+  // pins_arduino.h aliases plus the official arduino-libraries/Robot_Control
+  // source (ArduinoRobot.cpp, Sensors.cpp, keyboard.cpp, SdCard.cpp) and the
+  // archived docs.arduino.cc Robot library reference. Full research trail:
+  // boardsDetails/arduino/avr/robot_control/notes.txt.
+  //
+  // EXCLUDED (dedicated onboard hardware, capabilities: []):
+  //   D5  BUZZ     — onboard piezo speaker (pinMode(BUZZ, OUTPUT) in the
+  //                  library's piezo init block).
+  //   D7  RST_LCD  — reset line for the onboard 160x120 color LCD.
+  //   D8  CARD_CS  — SPI chip-select for the onboard SD card slot
+  //                  (confirmed in SdCard.cpp's chip-select init).
+  //   D9  LCD_CS   — SPI chip-select for the onboard LCD.
+  //   D10 DC_LCD   — data/command select line for the onboard LCD.
+  //   D14 MISO, D15 SCK, D16 MOSI — the SPI bus is used exclusively by the
+  //                  onboard LCD and SD card (each via its own *_CS pin
+  //                  above); no general-purpose SPI header was found on
+  //                  this board, so the shared bus lines are dedicated too.
+  //
+  // KEPT available, deliberately left undocumented here (no chipGpios
+  // entry — full default capabilities), per findings recorded in notes.txt:
+  //   D2/D3 SDA/SCL — general I2C bus (official docs list "3 I2C
+  //                  connectors"; the onboard compass is just one device
+  //                  on this shared, expandable bus, not an isolated one).
+  //   D4, D6(MUXA/TKD4), D11(MUXB), D12(MUXC/TKD5), D13(MUXD) — the
+  //                  "//TK sensors" mux (confirmed via ArduinoRobot.cpp:
+  //                  `Multiplexer::begin(MuxPins, MUX_IN, 4)`) reads the 8
+  //                  general-purpose M0-M7 TinkerKit expansion connectors,
+  //                  NOT a fixed onboard sensor — genuine user expansion,
+  //                  left available.
+  //   A0 KEY       — NOT a discrete digital button: confirmed (keyboard.cpp)
+  //                  to be a single analogRead() decoded against 5 fixed
+  //                  voltage-ladder ranges for a 5-way switch pad. Doesn't
+  //                  fit this schema's single-pin "button" tag (active-hi/
+  //                  lo semantics), so left as plain analog_input rather
+  //                  than mistagged.
+  //   A1-A4 (TKD0-TKD3) — general TinkerKit digital-input expansion
+  //                  connectors (also the documented attachment point for
+  //                  an optional plug-in IR remote receiver accessory per
+  //                  arduino-libraries/RobotIRremote's example, which wires
+  //                  RECV_PIN to TKD2 — still a user accessory, not fixed
+  //                  hardware).
+  //   A5 POT       — onboard potentiometer knob, a plain analogRead(POT) —
+  //                  matches the "current/voltage/battery/knob" KEEP
+  //                  example in the pin-audit playbook, left available.
+  //   D17 (SS / "LED1" = RX_Led) — same RXLED0/RXLED1 active-low USB-
+  //                  activity-indicator convention already present on
+  //                  plain Leonardo/Micro (see leonardo/board.json), which
+  //                  intentionally leaves this pin untagged. No board-
+  //                  specific evidence found to diverge from that
+  //                  precedent, so left untagged here too for consistency.
+  "chipGpios": {
+    "5":  { "capabilities": [], "note": "BUZZ - onboard piezo speaker/buzzer output. Dedicated actuator, not general purpose." },
+    "7":  { "capabilities": [], "note": "RST_LCD - reset line for the onboard 160x120 color LCD. Dedicated display control line." },
+    "8":  { "capabilities": [], "note": "CARD_CS - SPI chip-select for the onboard SD card slot. Dedicated." },
+    "9":  { "capabilities": [], "note": "LCD_CS - SPI chip-select for the onboard LCD. Dedicated." },
+    "10": { "capabilities": [], "note": "DC_LCD - data/command select line for the onboard LCD. Dedicated." },
+    "14": { "capabilities": [], "note": "MISO - SPI bus shared exclusively by the onboard LCD and SD card; no general-purpose SPI header on this board. Dedicated." },
+    "15": { "capabilities": [], "note": "SCK - same shared LCD+SD SPI bus as MISO/MOSI. Dedicated." },
+    "16": { "capabilities": [], "note": "MOSI - same shared LCD+SD SPI bus as MISO/SCK. Dedicated." }
+  }
 }

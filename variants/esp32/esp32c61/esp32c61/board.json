@@ -1,0 +1,85 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Espressif's own generic "ESP32C61 Dev Module" entry, which
+  // represents the official ESP32-C61-DevKitC-1 reference board. No
+  // board.json override existed before this audit (used the chip-level
+  // esp32c61/board.json default). Flagged by the discovery sweep for
+  // having PIN_RGB_LED 8 / RGB_BRIGHTNESS 64 / WIRE1_PIN_DEFINED with
+  // SDA1=6, SCL1=7 declared in pins_arduino.h but never individually
+  // reviewed. ESP32-C61 is a newer (2025-era, WiFi 6 focused) chip than
+  // C3/C5/C6, so it was researched independently rather than assuming
+  // the same conclusion as those sibling audits.
+  //
+  // Sources consulted:
+  //  - https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c61/esp32-c61-devkitc-1/user_guide.html
+  //    Official Espressif esp-dev-kits documentation for the
+  //    ESP32-C61-DevKitC-1 (fetched 2026-07-12). States: "RGB LED:
+  //    Addressable RGB LED, driven by GPIO8." Also states "GPIO7, GPIO8,
+  //    and GPIO9 are strapping pins of the ESP32-C61 chip."
+  //  - Same page's pin-function table: GPIO6 = "MTDO, GPIO6, LP_GPIO6,
+  //    FSPICLK"; GPIO7 = "GPIO7, FSPID" - general-purpose multi-function
+  //    header pins with no onboard peripheral wired to them beyond the
+  //    chip's own low-power/JTAG/SPI pin muxing. This matches this
+  //    variant's own pins_arduino.h comment "LP I2C Pins are fixed on
+  //    ESP32-C61" (SDA1=6/SCL1=7) - the LP_I2C location is fixed by the
+  //    chip's pin muxing (silicon constraint), not evidence of an
+  //    onboard I2C device wired to those pins on the dev board.
+  //
+  // GPIO8 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard addressable RGB
+  // LED, directly stated by Espressif's own official user guide for this
+  // exact reference board (same primary-source pattern used to confirm
+  // this on the sibling ESP32-C6-DevKitC-1). High confidence for this
+  // generic Dev Module entry specifically. Checked this variant's
+  // pins_arduino.h alias list - TX=11, RX=10, SDA=23, SCL=22, SS=25,
+  // MOSI=26, MISO=27, SCK=28 - GPIO8 is not aliased as any of those, so
+  // no conflicting boilerplate bus alias to strip for this pin.
+  // pinNotes "8": "Must be HIGH or floating on reboot" retained as-is -
+  // documented strapping behavior for this pin per the user guide.
+  // Tagged capabilities ["digital_output","led_neopixel","pwm_output"].
+  //
+  // GPIO6/GPIO7 (SDA1/SCL1, second/LP I2C bus): KEEP as general-purpose.
+  // No onboard peripheral documented at either pin on this reference
+  // board - just the chip's fixed LP_I2C pin-mux location. Left
+  // unchanged from chip-level defaults (GPIO6/GPIO7 both:
+  // digital_input+digital_output+pwm_output).
+  //
+  // See boardsDetails/esp32/esp32c61/esp32c61/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C61",
+  "displayName": "ESP32-C61 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "26": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "27": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "28": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "29": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

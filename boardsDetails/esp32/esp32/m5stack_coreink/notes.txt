@@ -1,0 +1,93 @@
+m5stack_coreink - onboard button/LED research notes
+=====================================================
+
+SOURCES CONSULTED
+-----------------
+https://docs.m5stack.com/en/core/coreink
+  - Product page. Confirms onboard "Green LED x 1" and gives GPIO map:
+    GPIO37=Dial Up, GPIO38=Dial Middle, GPIO39=Dial Down, GPIO5=User
+    Button, GPIO10=LED control. Also lists exposed general-purpose pins
+    (G25,G26,G36,G23,G34,G18,G21,G22,G14,G13).
+
+https://docs.m5stack.com/en/arduino/m5coreink/button
+  - CoreInk Arduino Button API page. Confirms button objects exposed by
+    the M5Unified-based API: M5.BtnA/BtnB/BtnC, M5.BtnPWR (Power
+    button), M5.BtnEXT (External/User button). Confirms a distinct
+    "Power button" object exists in software, separate from BtnEXT.
+
+https://docs.m5stack.com/en/arduino/m5coreink/led
+  - CoreInk Arduino LED API page. Confirms LED is controlled via
+    M5.Power.setLed(value) (Power_Class in M5Unified). Did not state
+    GPIO number or polarity directly on this page.
+
+https://github.com/m5stack/M5Core-Ink (repo root)
+  - Confirmed repo exists, general description of CoreInk (ESP32-PICO-D4
+    based E-ink board). No pin details on this page itself.
+
+https://raw.githubusercontent.com/m5stack/M5Core-Ink/master/src/utility/config.h
+  - Library source, ground truth for pin macros. Verbatim confirmed:
+      #define BUTTON_UP_PIN   37
+      #define BUTTON_DOWN_PIN 39
+      #define BUTTON_MID_PIN  38
+      #define BUTTON_EXT_PIN  5
+      #define BUTTON_PWR_PIN  27
+      #define LED_EXT_PIN     10
+      #define POWER_HOLD_PIN  12
+    (POWER_HOLD_PIN=12 matches the board's pre-existing pin-exclusion
+    note for GPIO12, corroborating the source's accuracy.)
+
+https://raw.githubusercontent.com/m5stack/M5Core-Ink/master/src/M5CoreInk.h
+  - Library header. Confirmed Button object constructors, all using
+    invert/active-level = true (active-low, standard M5Stack Button
+    class semantics - pressed reads LOW with internal pull-up):
+      Button BtnUP   = Button(BUTTON_UP_PIN, true, DEBOUNCE_MS);
+      Button BtnDOWN = Button(BUTTON_DOWN_PIN, true, DEBOUNCE_MS);
+      Button BtnMID  = Button(BUTTON_MID_PIN, true, DEBOUNCE_MS);
+      Button BtnEXT  = Button(BUTTON_EXT_PIN, true, DEBOUNCE_MS);
+      Button BtnPWR  = Button(BUTTON_PWR_PIN, true, DEBOUNCE_MS);
+
+https://raw.githubusercontent.com/m5stack/M5Core-Ink/master/src/M5CoreInk.cpp
+  - Library source. Confirms update() polls BtnUP/BtnDOWN/BtnMID/
+    BtnEXT/BtnPWR each loop, and begin() calls pinMode(LED_EXT_PIN,
+    OUTPUT).
+
+https://raw.githubusercontent.com/m5stack/M5Core-Ink/master/examples/Basics/RTC_Clock/RTC_Clock.ino
+  - Example sketch. Verbatim:
+      // Green LED - indicates ESP32 is running
+      digitalWrite(LED_EXT_PIN, LOW);
+    Confirms LED is ACTIVE-LOW (LOW = on/lit, used to indicate the
+    ESP32 is running).
+
+https://raw.githubusercontent.com/m5stack/M5Core-Ink/master/examples/Advanced/MultiTask/MultiTask.ino
+  - Example sketch, second independent occurrence of
+    digitalWrite(LED_EXT_PIN, LOW) during setup, consistent with the
+    RTC_Clock example.
+
+GPIOs CONSIDERED BUT NOT TAGGED
+--------------------------------
+GPIO10 (LED_EXT_PIN, onboard green status LED) - NOT TAGGED.
+  Confirmed identity and active-low polarity (see sources above), so
+  this IS a genuine confirmable onboard LED. However GPIO10 falls
+  inside the ESP32 chip-level pin-exclusion range GPIO6-11 (integrated
+  flash pins - see ../../board.json comment: "GPIOs 6-11 (flash) ...
+  excluded — not user-accessible on modules with integrated
+  flash/PSRAM"). GPIO10 has NO chipGpios entry in either the chip-level
+  board.json or this board's board.json. Per task rules, re-adding an
+  excluded pin to apply a capability tag is out of scope for this task
+  (would reverse a pre-existing chip-level exclusion). This is NOT a
+  guess - the LED identity/polarity is solidly confirmed; it is simply
+  left untagged because the pin is unavailable on this chip package.
+  Flagged here for human review in case the exclusion should be
+  reconsidered specifically for this pin on this board.
+
+No other candidate GPIOs were considered and rejected - all five
+confirmed button pins (5, 27, 37, 38, 39) had existing chipGpios
+entries and none coincide with TX(GPIO1)/RX(GPIO3), so all were
+tagged.
+
+SUMMARY OF CHANGES MADE
+------------------------
+Tagged GPIO5, GPIO27, GPIO37, GPIO38, GPIO39 as ["digital_input",
+"button"] in board.json (User button, Power button, and 3-way Dial
+switch Up/Middle/Down respectively). GPIO10 (status LED) confirmed but
+left untagged due to chip-level flash-pin exclusion (see above).

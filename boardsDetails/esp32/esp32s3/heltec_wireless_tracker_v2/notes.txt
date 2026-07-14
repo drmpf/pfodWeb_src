@@ -1,0 +1,104 @@
+Board: heltec_wireless_tracker_v2 (variants/esp32/esp32s3/heltec_wireless_tracker_v2)
+Task: confirm onboard user button and/or onboard LED (single-color or NeoPixel/RGB), tag GPIOs accordingly.
+Date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+1. https://docs.heltec.org/en/node/esp32/wireless_tracker/index.html
+   Official Heltec docs landing page for Wireless Tracker family; did not contain
+   inline pinout details but linked to the Pin Map resource used below.
+
+2. https://resource.heltec.cn/download/Wireless_Tracker_V2/Wireless_Tracker_v2_Datasheet/Wireless%20Tracker%20v2.pdf
+   Official V2 datasheet PDF. Attempted text extraction failed (binary/compressed,
+   no pdftoppm/poppler available in this environment to render pages); not usable
+   as a direct source, superseded by the Pin Map image (source 4) which gave a
+   clean, authoritative answer instead.
+
+3. https://heltec.org/project/wireless-tracker-v2/
+   Official V2 product page; confirmed board uses ESP32-S3FN8 + SX1262 + UC6580
+   GNSS, and linked to the Pin Map image used below. No inline pinout text.
+
+4. https://resource.heltec.cn/download/Wireless_Tracker_V2/Pin_Map/Tracker_v2.3.png
+   ("HT-Tracker_V2 Pin map", official Heltec vendor pinout diagram) - downloaded
+   and viewed directly. THIS IS THE PRIMARY CONFIRMING SOURCE. Clearly labels:
+     - GPIO0  = "USER_SW" (with pull-up arrow) -> onboard user button.
+     - GPIO18 = "LED_Write_Ctrl" (chained via U1RXD/ADC2_CH7/CLK_OUT3) -> onboard
+       status LED control pin.
+     - GPIO21 = "TFT_LED_K" -> TFT display backlight cathode control, NOT a
+       general-purpose/status LED (see "NOT TAGGED" section below).
+     - GPIO48 has no special label at all on this diagram (blank/unconnected) -
+       i.e. NOT wired to any LED or NeoPixel on the real V2 hardware.
+     - GPIO43/GPIO44 confirmed as U0TXD/U0RXD, matching pins_arduino.h TX=43,
+       RX=44 (used for the TX/RX hard-reservation check).
+
+5. https://raw.githubusercontent.com/meshtastic/firmware/master/variants/esp32s3/heltec_wireless_tracker_v2/variant.h
+   Board-specific (not generic) meshtastic firmware variant file, fetched raw via
+   curl. Corroborating source. Defines:
+     - #define BUTTON_PIN 0        (matches USER_SW on pin map)
+     - #define LED_POWER 18        (matches LED_Write_Ctrl on pin map)
+     - No RGB_BUILTIN / NEOPIXEL / WS2812 definitions anywhere in this file -
+       corroborates that this board has no onboard NeoPixel.
+
+6. https://raw.githubusercontent.com/meshtastic/firmware/master/src/main.cpp
+   Checked how LED_POWER is driven: digitalWrite(LED_POWER, LED_STATE_ON) in
+   setup() and in a power-safety blink routine.
+
+7. https://raw.githubusercontent.com/meshtastic/firmware/master/src/configuration.h
+   Confirmed default polarity: "#ifndef LED_STATE_ON / #define LED_STATE_ON 1"
+   (i.e. active-HIGH) with LED_STATE_OFF = LED_STATE_ON ^ 1. The Tracker V2
+   variant.h does not override LED_STATE_ON, so default HIGH=on polarity
+   applies -> tagged "led_high".
+
+8. https://raw.githubusercontent.com/meshtastic/firmware/master/variants/esp32s3/heltec_v3/variant.h
+   Checked a sibling Heltec board's variant.h for comparison/pattern-matching
+   (LED_POWER usage style); no RGB/NeoPixel definitions there either, consistent
+   with Heltec's simple single-LED-pin pattern rather than addressable RGB.
+
+9. WebSearch query "Heltec Wireless Tracker V2 pinout GPIO48 RGB LED button" -
+   general web search; summarized result claimed GPIO0=USER_SW (V1.1 doc) and
+   correctly flagged GPIO48 as a generic chip crystal/XTAL-adjacent pin rather
+   than an RGB pin on this design - used only as a lead, not relied upon alone;
+   verified independently via the vendor Pin Map (source 4) instead.
+
+WHAT WAS NOT TAGGED, AND WHY
+-----------------------------
+- GPIO48 (LED_BUILTIN / RGB_BUILTIN in pins_arduino.h, defined as
+  "SOC_GPIO_PIN_COUNT + 48" with a comment about a "board design bug" /
+  low-voltage workaround): NOT TAGGED. Investigation showed this exact
+  comment/pattern is generic ESP32-S3 Arduino-core boilerplate (the default
+  "ESP32-S3 Dev Module" template that this board's board.json displayName
+  already references), not board-specific wiring. The official Heltec vendor
+  Pin Map (source 4) shows GPIO48 with no LED/RGB/NeoPixel label at all, and
+  meshtastic's board-specific variant.h (source 5) defines no RGB/NeoPixel pin
+  for this board. Conclusion: no confirmable NeoPixel/RGB LED on real V2
+  hardware. This is a definite "no", not a judgment call - multiple
+  independent confirming sources agree GPIO48 is unconnected/generic.
+
+- GPIO21 (TFT_LED_K on the vendor Pin Map): considered but NOT TAGGED as a
+  general LED capability. This is the backlight cathode control for the
+  onboard ST7735 TFT display, i.e. a dedicated display-peripheral pin, not a
+  standalone user/status LED comparable to the button/LED capability tags
+  this task targets. It was already present (untouched) in chipGpios from the
+  earlier pin-exclusion audit pass, which is left as-is per task scope (only
+  modifying the specific button/LED GPIOs). Flagging for human review in case
+  a future task wants a "backlight" style capability tag for it - no such tag
+  currently exists in the allowed list.
+
+- GPIO0 was confirmed to also carry the note "Must be HIGH for normal boot"
+  in board.json pinNotes (BOOT-strapping pin). This is normal/expected for
+  ESP32 BOOT/PRG-style user buttons (GPIO0 low during reset = download mode)
+  and is not a conflict - button tagging proceeded as normal.
+
+- TX/RX conflict check: pins_arduino.h declares TX=43, RX=44 (confirmed via
+  grep of "static const uint8_t TX *=" / "RX *="). Neither GPIO0 nor GPIO18
+  coincides with TX/RX, so no TX/RX hard-reservation conflict for either
+  tagged pin.
+
+WHAT WAS TAGGED
+----------------
+- GPIO0  -> ["digital_input","button"]   (onboard USER_SW, confirmed vendor Pin Map + meshtastic BUTTON_PIN 0)
+- GPIO18 -> ["digital_output","led_high","pwm_output"]  (onboard LED_Write_Ctrl status LED, active-HIGH; pwm_output retained because it was already present on this pin's existing capability set. Confirmed vendor Pin Map + meshtastic LED_POWER 18 / default LED_STATE_ON=1.)
+
+No judgment-call/best-guess tags were made - both tags above are backed by an
+official Heltec vendor pinout diagram plus an independent, board-specific
+firmware source agreeing on pin number and (for the LED) polarity.

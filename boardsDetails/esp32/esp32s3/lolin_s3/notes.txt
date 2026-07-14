@@ -1,0 +1,69 @@
+Board: lolin_s3 (variant dir: variants/esp32/esp32s3/lolin_s3)
+Researched: 2026-07-11
+
+Sources consulted:
+- https://www.wemos.cc/en/latest/s3/s3.html
+  Official WEMOS product page for the "S3" (non-mini, non-pro) board. Lists
+  hyperlinks to the schematic/dimension PDFs and datasheet. Features list
+  (2x USB-C, 16MB flash, 8MB PSRAM, 31x IO, LOLIN I2C port) does NOT
+  explicitly call out onboard button/LED count in prose, unlike the S3 MINI
+  PRO page.
+- https://www.wemos.cc/en/latest/_static/files/sch_s3_v1.0.0.pdf
+  Official vendor schematic (KiCad export, S3.kicad_sch, Rev 1/1). Read
+  directly (PDF renders as a real schematic drawing, not garbled text).
+  Confirmed two relevant circuits:
+    1. SW2 (package SW_3x4x2.5, a real physical momentary pushbutton)
+       is wired directly between net "I00" (GPIO0) and GND. This is
+       the classic BOOT/flash-button but is a genuine physical switch on
+       GPIO0 (separate from SW1/EN which is the reset button).
+    2. U5 (WS2812B-3535, a WS2812/NeoPixel-compatible addressable RGB
+       LED chip) has its DI (data-in) pin wired to net "I038" (GPIO38).
+       VDD/GND are power-only. This matches the pins_arduino.h encoding
+       "LED_BUILTIN = 38 + SOC_GPIO_PIN_COUNT" and "RGB_BUILTIN", which is
+       the standard Arduino-ESP32 convention for a single-data-pin
+       addressable RGB LED driven via rgbLedWrite()/neopixelWrite().
+- https://mischianti.org/wemos-lolin-s3-esp32-s3-high-resolution-pinout-datasheet-and-specs/
+  Secondary pinout reference; corroborated "Addressable RGB LED, driven by
+  GPIO48" for a DIFFERENT board (this figure conflicts with our own
+  schematic reading and is suspected to be a copy/paste error from another
+  LOLIN S3 variant on that site) and separately listed LED_BUILTIN=38.
+  Not used as primary evidence — schematic PDF (above) took precedence as
+  it is the authoritative vendor source.
+- https://www.espboards.dev/esp32/lolin-s3/
+  Secondary pinout aggregator. Confirmed GPIO38 = LED_BUILTIN with PWM
+  capability; page text was partially garbled ("GPIO2220ΩLEDGND") and not
+  relied upon for any decision.
+- Existing repo precedent: variants/esp32/esp32s3/lolin_s3_mini_pro/board.json
+  already tags GPIO0 as ["digital_input","button"] and GPIO8 as
+  ["digital_output","led_neopixel","pwm_output"] for the sibling S3 MINI
+  PRO board, citing wemos.cc docs text directly ("3x Button (IO0, IO47,
+  IO48)", "1x RGB LED (Data: IO8, Power: IO7)"). Used only as a formatting/
+  precedent reference, not as evidence for the "lolin_s3" (non-mini) board
+  itself — the "lolin_s3" board's own schematic was used for its evidence.
+
+TX/RX conflict check:
+- board's pins_arduino.h: TX = 43, RX = 44. Neither GPIO0 nor GPIO38
+  coincides with TX/RX, so no TX/RX silent-discard issue applies to either
+  tag.
+
+Pins considered but NOT tagged:
+- GPIO48: mischianti.org's page for this exact board mentioned "Addressable
+  RGB LED, driven by GPIO48" in one auto-generated summary. I did NOT tag
+  this — the official wemos.cc schematic (sch_s3_v1.0.0.pdf) clearly shows
+  the WS2812B-3535 DI pin wired to net I038 (GPIO38), not GPIO48. This is a
+  deliberate NO-GUESS decision: the primary vendor schematic is trusted
+  over a secondary aggregator's possibly-copied/incorrect text, so GPIO48
+  was left untouched entirely. Flagging for human review only in case my
+  schematic reading is somehow mistaken.
+- Reset button (SW1, wired to EN/CHIP_PU, not a GPIO): not a GPIO-connected
+  button at all (EN/CHIP_PU is the chip enable/reset line, not a
+  general-purpose IO), so it is out of scope for capability tagging by
+  definition. No judgment call needed here - it simply cannot be tagged.
+
+Summary of changes made:
+- Created variants/esp32/esp32s3/lolin_s3/board.json (none existed before)
+  as a full copy of the esp32s3 chip-level default board.json, with GPIO0
+  capabilities changed to ["digital_input","button"] and GPIO38
+  capabilities changed to ["digital_output","led_neopixel","pwm_output"].
+  Two NOTE comments added at the top of the file documenting both tags and
+  their schematic sources.

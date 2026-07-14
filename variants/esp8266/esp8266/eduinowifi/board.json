@@ -1,0 +1,83 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  "boardName": "ESP8266",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by this repo's variants/esp8266/boards.txt entry
+  // (eduinowifi.name=Schirmilabs Eduino WiFi) when present.
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // pfodWeb NOTE: This board's own schematic (eduino_wifi_rev3.sch/.pdf,
+  // https://github.com/schirmilabs/Eduino-WiFi/blob/master/hardware/eduino_wifi_rev3.pdf)
+  // was checked directly. No onboard user button was found - the only
+  // switch (SW1) is wired into the RESET/DTR/RTS auto-program circuit
+  // (with transistors T1/T2, resistors R6/R8/R12-R14/R17/R18), i.e. a
+  // non-GPIO RESET button, not a GPIO-readable user button. GPIO0 has
+  // only the standard 10K boot-mode pull-up (R12), no pushbutton.
+  // No onboard LED was found wired to any ESP8266 GPIO either - despite
+  // this board's pins_arduino.h defining `#define LED_BUILTIN 2` (boilerplate
+  // inherited from the generic ESP-12E default), the schematic shows GPIO2
+  // only connects to a 10K boot-mode pull-up (R13) and the IOL pin header,
+  // with no LED nearby. The board's 5 onboard LEDs (LED1-LED5) are all
+  // driven by other ICs, not ESP8266 GPIOs: LED4/LED5 are the two
+  // overcurrent-indicator LEDs on the TPS2041BD/TPS2051BD power-distribution
+  // switches (confirmed independently by jpralves.net: "Overcurrent display
+  // via two red LEDs"), and LED1/LED2/LED3 are power/USB-status LEDs near
+  // the PIC16F1455 USB-serial bridge and 5V/3.3V regulators.
+  // See notes.txt for full source list. chipGpios left unchanged from the
+  // chip-level default as a result (no button/LED capability tags added).
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. No onboard user button on this board (checked against the vendor schematic - see notes.txt) - only a non-GPIO RESET button (SW1) is present",
+    "2":  "Must be HIGH at boot. No onboard LED confirmed on this GPIO - the pins_arduino.h LED_BUILTIN=2 alias has no corresponding hardware LED on this board (checked against the vendor schematic - see notes.txt); this board's status/overcurrent LEDs are driven by the TPS2041BD/TPS2051BD power-switch ICs and the PIC16F1455 USB-serial bridge, not by the ESP8266",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. This board has an on-board resistor-divider (R15=220K series, R16=100K to GND, per the vendor schematic) giving A0 a 0-3.2V range instead of the bare chip's native 0-1.0V - see adc note below"
+  },
+
+  // Full usable-GPIO map for the chip — unchanged from the chip-level
+  // default (variants/esp8266/esp8266/board.json). No button/LED capability
+  // tags were added — see pinNotes above and notes.txt for why.
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  // ESP8266's analogWrite() PWM defaults to a 10-bit range (0-1023),
+  // unlike AVR/ESP32's 8-bit (0-255) default.
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  // No hardware DAC on ESP8266.
+  "dac": {},
+
+  // pfodWeb NOTE: adc.defaultRefVolts changed from "1.0" (chip-level default)
+  // to "3.2" - confirmed directly from this board's own vendor schematic
+  // (eduino_wifi_rev3.pdf/.sch, https://github.com/schirmilabs/Eduino-WiFi
+  // /blob/master/hardware/eduino_wifi_rev3.pdf): a resistor divider R15
+  // (220K, in series on the external A0 line) / R16 (100K, to GND) sits
+  // ahead of the ESP12 module's native ADC pin. 1.0V (native full-scale)
+  // * (220k+100k)/100k = 3.2V, which exactly matches the vendor's own
+  // published spec: schirmilabs.de ("1 Analogeingang (3.2V max.
+  // Eingangsspannung)") and espboards.dev ("1 analog input (3.2V maximum
+  // input voltage)"). Same divider ratio/math as the WeMos D1 family
+  // (see ../d1/board.json) but independently confirmed here via this
+  // board's own schematic rather than third-party marketing copy.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.2" }
+}

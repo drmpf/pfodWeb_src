@@ -1,0 +1,94 @@
+// pfodWeb NOTE: WIZnet W5100S-EVB-Pico. This board's own pins_arduino.h
+// is just `#include "../generic/pins_arduino.h"` (plain Pico pinout,
+// GPIO0-22 + GPIO26-28 general purpose, SPI0 on 16/17/18/19), so without
+// this file every GPIO would be offered as innocuous general-purpose
+// digital/PWM, including the six GPIOs that are actually hardwired
+// on-board to the W5100S Ethernet controller.
+//
+// Confirmed via WIZnet's own official documentation
+// (https://docs.wiznet.io/Product/Chip/Ethernet/W5100S/w5100s-evb-pico),
+// which publishes the exact GPIO map, and corroborated by an independent
+// hands-on review (goughlui.com, Oct 2022: "GP16 through GP21 are used
+// by the Ethernet controller"):
+//   GPIO16 - MISO  (SPI0, W5100S -> RP2040)
+//   GPIO17 - CSn   (SPI0 chip-select, RP2040 -> W5100S)
+//   GPIO18 - SCLK  (SPI0 clock, RP2040 -> W5100S)
+//   GPIO19 - MOSI  (SPI0, RP2040 -> W5100S)
+//   GPIO20 - RSTn  (reset line, RP2040 -> W5100S, driven by the sketch/
+//            library at boot to hardware-reset the chip)
+//   GPIO21 - INTn  (interrupt line, W5100S -> RP2040; not used by the
+//            stock Arduino Ethernet library by default, but genuinely
+//            wired as a GPIO-level input)
+// WIZnet's own doc text: "These pins enable SPI communication with
+// W5100S to use Ethernet function. If you are using the Ethernet
+// function, these pins cannot be used for any other purpose."
+//
+// GPIO25 (PIN_LED / LED_BUILTIN) - same onboard-LED circuit as the plain
+// Raspberry Pi Pico (this board's pins_arduino.h is the unmodified
+// generic Pico file, and WIZnet markets this board as hardware/pinout
+// compatible with the official Pico). Tagged below (2026-07-12
+// consistency pass) to match the already-confirmed active-high result on
+// variants/rp2040/rp2040/rpipico/board.json, rather than leaving it
+// deferred - the evidence (identical unmodified stock LED circuit) is
+// already established. No WIZnet-specific onboard LED or button exists
+// beyond the stock Pico LED and BOOTSEL (confirmed absent from both the
+// official WIZnet doc's GPIO table and the independent review above).
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases; the six Ethernet-dedicated GPIOs are handled below
+  // via explicit chipGpios entries instead (some, like RSTn, are
+  // output-only but that is expressed via their capabilities list, not
+  // this input-only mechanism).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.  The W5100S is a wired-Ethernet
+  // add-on requiring its own library/driver, not a chip-level radio like
+  // ESP32/ESP8266 WiFi/BLE, so it doesn't change this chip-level default.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // Restrict the six GPIOs hardwired to the onboard W5100S so they are
+  // no longer offered as general-purpose digital_input/digital_output/
+  // pwm_output alongside their real function.  For GPIO16/17/18/19,
+  // "capabilities": [] deliberately drops the default alias-derived
+  // digital_input/digital_output/pwm_output — the buildEsp32Board()
+  // parser still appends the genuine spi_miso/spi_ss/spi_sck/spi_mosi
+  // role afterwards (unconditionally, from this board's own
+  // pins_arduino.h SPI0 aliases), so the end result is exactly one
+  // capability per pin: its real SPI0 bus role.
+  "chipGpios": {
+    "16": { "capabilities": [], "note": "SPI0 MISO — dedicated onboard link to the W5100S Ethernet controller (data in from chip). Not available for general digital/PWM use; see docs.wiznet.io GPIO map." },
+    "17": { "capabilities": [], "note": "SPI0 CSn — dedicated onboard chip-select to the W5100S Ethernet controller. Not available for general digital/PWM use; see docs.wiznet.io GPIO map." },
+    "18": { "capabilities": [], "note": "SPI0 SCLK — dedicated onboard clock line to the W5100S Ethernet controller. Not available for general digital/PWM use; see docs.wiznet.io GPIO map." },
+    "19": { "capabilities": [], "note": "SPI0 MOSI — dedicated onboard link to the W5100S Ethernet controller (data out to chip). Not available for general digital/PWM use; see docs.wiznet.io GPIO map." },
+    "20": { "capabilities": ["digital_output"], "note": "RSTn — dedicated onboard reset line to the W5100S Ethernet controller, driven by the sketch/library at boot. Output-only (digital_input/pwm_output dropped); repurposing it while using Ethernet will reset the chip. See docs.wiznet.io GPIO map." },
+    "21": { "capabilities": ["digital_input"], "note": "INTn — dedicated onboard interrupt line from the W5100S Ethernet controller. Input-only (digital_output/pwm_output dropped) since it is chip-driven; not used by the stock Arduino Ethernet library by default. See docs.wiznet.io GPIO map." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Connected to user LED. Standard unmodified Pico LED circuit, confirmed active-high per the rpipico precedent." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12). None of these overlap the Ethernet GPIOs.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

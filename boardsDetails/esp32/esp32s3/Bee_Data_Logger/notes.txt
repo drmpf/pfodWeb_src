@@ -1,0 +1,75 @@
+Board: Bee Data Logger (ESP32-S3 Dev Module variant) — Smart Bee Designs
+Date: 2026-07-14 (real independent re-verification pass; supersedes the
+prior "documentation backfill" pass, which cited only board.json's own
+comment and no external URLs)
+
+Sources consulted (real, external, independently fetched this pass):
+- https://github.com/espressif/arduino-esp32/blob/master/variants/Bee_Data_Logger/pins_arduino.h
+  Official Espressif arduino-esp32 upstream variant file (the canonical,
+  merged, first-party board-support definition for this product — Smart
+  Bee Designs' own pin naming, upstreamed into Espressif's official
+  Arduino core). Declares:
+    static const uint8_t BOOT_BTN = 0;
+    static const uint8_t LDO2 = 34;
+    static const uint8_t RGB_PWR = 34;
+    static const uint8_t RGB_DATA = 40;
+    #define RGB_BUILTIN LED_BUILTIN   (wired to the Arduino rgbLedWrite() API)
+  This repo's local pins_arduino.h deliberately omits the LDO2/RGB_PWR
+  declaration (see its own pfodWeb NOTE) but otherwise matches.
+- https://www.hackster.io/news/smart-bee-design-s-bee-data-logger-is-a-compact-low-power-board-built-atop-espressif-s-esp32-s3-59786f1bdeb6
+  Independent product-launch coverage. Confirms ESP32-S3-MINI-1 module,
+  DS3231 RTC, microSD, dual STEMMA QT/Qwiic connectors, "two 600mA LDOs",
+  LiPo charging with on/off switch and voltage monitoring, USB-C.
+- https://www.cnx-software.com/2023/07/07/bee-data-logger-esp32-s3-board-rtc-microsd-slot-qwiic-connectors-for-sensors/
+  Independent review. Explicitly states the board has "Boot and Reset
+  buttons" as a physical feature (does not itself give GPIO numbers, but
+  corroborates a real onboard BOOT pushbutton exists on this board).
+- https://github.com/strid3r21/Bee-Data-Logger
+  Vendor's own hardware repo (schematics, 3D models, power-consumption
+  data) — confirms the product line and hosts the schematic (schematic
+  images not machine-readable this pass, but repo structure and README
+  confirm "RGB LED" as a listed feature).
+- https://github.com/strid3r21/BeeDataLogger-Arduino-Helper
+  Vendor's own Arduino helper library. Exposes application-level
+  functions setLDO2Power(), setPixelPower(), setPixelColor() — direct
+  software confirmation that LDO2/RGB_PWR (GPIO34) and the NeoPixel data
+  line (GPIO40) are real, distinct, software-controlled hardware features
+  on this board, not vestigial or guessed pin names.
+
+Per-pin findings:
+- GPIO0: capabilities [digital_input, button] - tagged "button".
+  CONFIRMED via the official Espressif upstream pins_arduino.h naming it
+  BOOT_BTN, independently corroborated by CNX Software's "Boot and Reset
+  buttons" feature description. pinNotes: "Must be HIGH for normal boot"
+  (standard strapping-pin note, unchanged).
+- GPIO1-GPIO10: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag. Unchanged.
+- GPIO11-GPIO18: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag. Unchanged.
+- GPIO21: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag. Unchanged.
+- GPIO34: excluded (no chipGpios entry) - internal power-control line.
+  CONFIRMED via the official Espressif upstream pins_arduino.h, which
+  declares this exact GPIO as both LDO2 and RGB_PWR (a named internal
+  power-gate for the LDO regulator/NeoPixel supply), and via the helper
+  library's setLDO2Power() function. Correctly excluded as not
+  general-purpose.
+- GPIO38, GPIO39: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag. Unchanged.
+- GPIO40: capabilities [digital_output, pwm_output, led_neopixel] - tagged
+  "led_neopixel". CONFIRMED via the official Espressif upstream
+  pins_arduino.h (RGB_DATA=40, wired to RGB_BUILTIN/rgbLedWrite()),
+  independently corroborated by Hackster.io, CNX Software, and the
+  vendor's own helper library's setPixelColor()/setPixelPower() functions.
+- GPIO41-GPIO48: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag. pinNotes on GPIO3/45/46: "Must be LOW or floating on
+  reboot" (standard strapping-pin notes, unchanged).
+
+Summary: All three pre-existing findings (GPIO0 button, GPIO40 NeoPixel,
+GPIO34 excluded as LDO2/RGB_PWR) are CONFIRMED by real, independent vendor
+and third-party sources — the official Espressif arduino-esp32 upstream
+variant file (first-party, merged board-support definition), independent
+product coverage (Hackster.io, CNX Software), and the vendor's own Arduino
+helper library source code. No corrections were needed; board.json's
+top-of-file comment and this notes.txt were both updated with the real
+citations above.

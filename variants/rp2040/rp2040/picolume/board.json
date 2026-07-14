@@ -1,0 +1,119 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases beyond the ordinary D0-D22 numeric fallback (see
+  // ../generic/common.h). See chipGpios below for GPIO3 (confirmed
+  // onboard button via real hardware research, not a vendor alias name).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: "PicoLume Transceiver" (arduino-pico core, added in release
+  // 5.5.1 via PR #3378: "Add PicoLume Transceiver board (RP2040, 2MB
+  // flash)"). This variant's own pins_arduino.h is deliberately generic
+  // (PIN_LED=25, standard SPI0/SPI1/Wire0/Wire1 aliases only, no
+  // PIN_NEOPIXEL/PIN_BUTTON aliases) — unlike most third-party boards in
+  // this repo, arduino-pico's own variant file gave no hardware-specific
+  // clues, so this required external product research rather than just
+  // reading the header (see boardsDetails notes.txt for the full trail).
+  //
+  // picolume.com identifies the "PicoLume" product family as a wireless
+  // LED prop controller for synchronized light shows built around RFM69
+  // radio comms, consisting of a RECEIVER board (mounted in/on a prop,
+  // drives external addressable LED strips) and a REMOTE/transmitter
+  // board (handheld, triggers shows). Both physical PCB designs are
+  // openly published as KiCad projects at github.com/picolume/hardware
+  // (series-prop/receiver-v0.1.0 and series-prop/remote-v0.1.0) and both
+  // share an identical core: RP2040 (U3) + W25Q16JVS 2MB flash (U2) +
+  // RFM69HCW radio (U4) — matching PR #3378's "RP2040, 2MB flash" and
+  // the "Transceiver" name (RFM69HCW is itself a radio transceiver chip).
+  // This confirms the single "picolume" Arduino board ID is a shared
+  // firmware target for BOTH physical products, not just one.
+  //
+  // Production KiCad netlists (production/netlist.ipc) for both boards
+  // were downloaded and directly grepped for exact component-to-GPIO
+  // connections (authoritative — bypasses any lossy/incomplete marketing
+  // copy on picolume.com, which loosely and incorrectly describes the
+  // status LED as "WS2812B" when the BOM shows it is a plain 2-lead LED):
+  //
+  // - GPIO25: on BOTH receiver-v0.1.0 and remote-v0.1.0, U3 pin37
+  //   (GPIO25) connects through R8 (10K) to net "NET-(D1-A)" i.e. D1's
+  //   anode; D1's cathode ties to GND. D1 is a plain 0603 "LED" component
+  //   (BOM value "LED", LCSC C2286 — NOT an addressable WS2812B) on both
+  //   boards. GPIO25 HIGH -> current through R8 into D1 anode -> D1
+  //   cathode -> GND -> LED on. Confirmed active-high on both physical
+  //   designs. No SPI/I2C alias collision (GPIO25 is not PIN_SPI*/PIN_WIRE*
+  //   in this board's pins_arduino.h).
+  // - GPIO3: on BOTH receiver-v0.1.0 (SW3) and remote-v0.1.0 (SW3), U3
+  //   pin5 (GPIO3) connects directly to one leg of a tactile pushbutton
+  //   (SW_Tactile_SPST_NO), the other leg to GND. No external pull-up
+  //   resistor on this net on either board (relies on the RP2040's
+  //   internal pull-up, enabled by firmware, same pattern as this repo's
+  //   adafruit_feather_scorpio PIN_BUTTON/GPIO7 precedent). Consistent
+  //   across both independent PCB designs sharing this Arduino target.
+  //   No SPI/I2C alias collision.
+  // - GPIO15: INVESTIGATED BUT DELIBERATELY LEFT UNTAGGED. On
+  //   receiver-v0.1.0, GPIO15 (U3 pin18) is wired to a fourth tactile
+  //   button (SW4). On remote-v0.1.0, the SAME GPIO15 (U3 pin18) is
+  //   instead wired to D2, a WS2812B-2020 addressable NeoPixel LED. Since
+  //   one Arduino board ID here covers both physically-different designs
+  //   with CONTRADICTORY uses of this pin (button vs. NeoPixel data
+  //   line), no single capability tag would be correct for both — this
+  //   is a genuine conflict, not an oversight, so GPIO15 keeps the
+  //   chip-level default full capability set.
+  // - SW1 (both boards) ties to /RUN (the RP2040's hardware run/reset
+  //   line, not a numbered GPIO) — a hardware reset button, out of scope
+  //   for GPIO-keyed capability tagging (same rationale as every other
+  //   RP2040 board's RUN/RESET line in this repo).
+  // - SW2 (both boards) ties through R1 to /QSPI_SS (the RP2040's
+  //   dedicated QSPI flash chip-select line, pin 56, not a numbered
+  //   GPIO) — a BOOTSEL-style button read via the same tri-state QSPI-CS
+  //   trick as the official Pico's BOOTSEL, not digitalRead(). Out of
+  //   scope for the same reason as ../rpipico/board.json's BOOTSEL
+  //   exclusion.
+  // - GPIO16-21: used by the RFM69HCW radio (U4) on both boards — GPIO16-
+  //   19 are this board's own declared PIN_SPI0_MISO/SS/SCK/MOSI aliases
+  //   (radio's SPI bus, matches pins_arduino.h exactly), GPIO20/21 are
+  //   the radio's extra control lines (reset/IRQ). Not buttons or LEDs,
+  //   so no capability retagging applies regardless of on-board radio use
+  //   (this repo does not have a "reserved for onboard radio" capability
+  //   vocabulary — SPI-bus pins already get spi_* auto-appended by
+  //   build_boards.js from the existing PIN_SPI0_* aliases).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/picolume/notes.txt
+  "chipGpios": {
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Onboard tactile pushbutton (SW3 on both receiver-v0.1.0 and remote-v0.1.0 hardware), GPIO3 to GND, no external pull-up (relies on RP2040 internal pull-up). Confirmed via github.com/picolume/hardware production KiCad netlists (production/netlist.ipc) for both physical PicoLume board designs — consistent GPIO assignment on both. Full digital_input/digital_output/pwm_output capability retained (ordinary GPIO wired to a switch to GND, not a dedicated/capacitive-only pin), matching this repo's adafruit_feather_scorpio PIN_BUTTON/GPIO7 precedent." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED (D1 on both receiver-v0.1.0 and remote-v0.1.0 hardware — a plain 2-lead LED, NOT the WS2812B loosely implied by picolume.com marketing copy), active-high (GPIO25 -> R8 -> LED anode -> cathode -> GND). Confirmed via github.com/picolume/hardware production KiCad netlists (production/netlist.ipc) for both physical PicoLume board designs — identical GPIO25/R8/D1 wiring on both. digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins (rpipico, adafruit_feather_scorpio, wiznet_5500_evb_pico); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as every other RP2040/RP2350 board (this board's
+  // pins_arduino.h declares no board-specific analog aliases beyond the
+  // shared generic/common.h defaults).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

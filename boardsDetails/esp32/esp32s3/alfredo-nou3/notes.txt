@@ -1,0 +1,181 @@
+alfredo-nou3 (Alfredo NoU3, ESP32-S3 FRC/robotics controller board) - dedicated-
+hardware pin-exclusion audit + opportunistic button/LED tagging
+=============================================================================
+
+Why flagged
+------------
+A discovery sweep flagged this board's pins_arduino.h for containing
+"non-boilerplate" content, but the only matches were USB_VID/USB_PID/
+USB_MANUFACTURER/USB_PRODUCT/USB_SERIAL - a false positive (not pins at
+all). Confirmed by reading the full file myself (28 lines): besides the
+USB macros it only has `#define LED_BUILTIN 45` / `BUILTIN_LED`, a dead
+(already vendor-commented-out) TX(39)/RX(40)/TX1/RX1 block, and
+SDA/SCL/SS/MOSI/MISO/SCK all set to -1 (disabled). No board.json override
+existed and no prior review had been done, so this was also treated as an
+opportunistic full review per the task brief.
+
+Sources consulted
+-------------------
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/alfredo-nou3/pins_arduino.h
+  Fetched the current upstream vendor file directly - byte-for-byte
+  identical to the local copy in this repo (confirms our copy is not
+  stale/modified from upstream before this session's edits).
+
+https://alfredo-nou3.readthedocs.io/hardware_documentation.html
+  Official Alfredo Systems hardware docs (Overview / Motor Control /
+  Servos and GPIO / IMUs / Buttons / Qwiic Connector / Power Management
+  sections). Confirms: two onboard IMUs (MMC5983MA magnetometer, LSM6DSOX
+  gyro/accel); RESET and BOOT buttons (functional description only, no
+  GPIO numbers given); Qwiic connector "Uses GPIO 33 for SDA and GPIO 34
+  for SCL"; servo headers S1-S4 = GPIO4/5/6/7, G8/G9 = GPIO8/9 (need a
+  solder-bridge jumper to power); up to 8 DC motor ports (M1-M8) plus 6
+  encoder ports (E2-E7), described only functionally (voltage/current
+  ratings, JST-SH connector pinout) with no GPIO numbers given and no
+  mention of octal vs quad PSRAM/flash.
+
+https://github.com/AlfredoSystems/Alfredo-NoU3 (src/Alfredo_NoU3.h,
+src/Alfredo_NoU3.cpp - fetched raw via githubusercontent.com)
+  Official first-party Arduino library for this exact board. This was the
+  decisive source for GPIO-level confirmation:
+    - `const int RSL_PIN = 45;` (Robot Signal Light - standard FRC status-
+      light terminology) plus RSL_PWM_RES/RSL_PWM_FREQ/RSL_CHANNEL.
+      NoU_Agent::updateServiceLight() drives it via ledcWrite(RSL_PIN,
+      dutyLED): LIGHT_OFF -> dutyLED=1 (near-zero), LIGHT_ON and
+      LIGHT_DISABLED -> dutyLED=(1<<RSL_PWM_RES)-1 (max). Higher PWM duty
+      = brighter = the state literally named "ON"/enabled-indicating,
+      confirming GPIO45 (= LED_BUILTIN) is an active-HIGH plain PWM LED,
+      not a NeoPixel (no rmtInit/WS2812 protocol anywhere in the source -
+      just ledcAttachChannel/ledcWrite, ordinary PWM).
+    - `const int PIN_I2C_SDA_QWIIC = 33;` / `PIN_I2C_SCL_QWIIC = 34;`,
+      used in `Wire.begin(PIN_I2C_SDA_QWIIC, PIN_I2C_SCL_QWIIC, 400000)` -
+      confirms the Qwiic connector pins from the hardware docs at the
+      code level, and proves GPIO33/34 are ordinary, functioning GPIOs on
+      this specific module (shipped, sold hardware actively using them
+      for live I2C traffic - if they were actually consumed internally by
+      octal flash/PSRAM, as the chip-level board.json assumes for ESP32-S3
+      boards in general, the board could not work at all).
+    - `const int PIN_I2C_SDA_IMU = 35;` / `PIN_I2C_SCL_IMU = 36;`, used in
+      a SEPARATE `Wire1.begin(PIN_I2C_SDA_IMU, PIN_I2C_SCL_IMU, 400000)` -
+      this second bus is wired exclusively to the two onboard IMU chips
+      (LSM6DSOX read via this project's Alfredo_NoU3_LSM6.*, MMC5983MA via
+      Alfredo_NoU3_MMC5.*) plus the onboard PCA9685-family motor/servo PWM
+      driver (`pca9685.setupSingleDevice(Wire1, 0x40)` in
+      Alfredo_NoU3_PCA9.*) - i.e. a dedicated internal peripheral bus, not
+      a general-purpose second I2C header.
+    - No motor (M1-M8) or encoder (E2-E7) GPIO constants exist anywhere in
+      the library - motor/servo signals go out entirely through the PCA9
+      chip over the Wire1 bus above (ledcAttachChannel/ledcWrite calls in
+      the library are for RSL and the S1-S4/G8-G9 servo headers only, both
+      already accounted for).
+    - No BOOT/RESET/button GPIO constant exists anywhere in the library.
+
+https://github.com/AlfredoSystems/NoU3-Hardware (NoU3.kicad_sch - fetched
+raw, text-searched as a KiCad S-expression schematic)
+  Official hardware/schematic repo. Located two onboard LED symbols
+  (D5 "LED_Blue", D6 "LED_green") near a "LED_MISC" global label, but
+  tracing exact net-level wiring from raw schematic text proved too
+  unreliable to use as a polarity source on its own - the firmware-level
+  confirmation above (RSL_PIN=45, LIGHT_OFF vs LIGHT_ON duty values) is
+  the source actually relied on for the led_high tag, being an
+  unambiguous, first-party, code-level statement of behavior. The
+  schematic search did, however, corroborate that GPIO45 wiring is not
+  a NeoPixel/addressable protocol (only two single-color LED symbols
+  exist in the entire hardware repo, no WS2812-type IC).
+
+Pins tagged / changed
+------------------------
+GPIO45 -> ["digital_output", "pwm_output", "led_high"]  (was plain
+  digital_input/digital_output/pwm_output at the chip-level default).
+  RSL / "User LED", confirmed active-high via Alfredo_NoU3.cpp
+  updateServiceLight() as described above. digital_input dropped,
+  matching this repo's convention for other confirmed dedicated LED pins
+  (e.g. um_feathers3 GPIO13, Nebula_S3 GPIO45).
+
+GPIO33 -> added (absent from the chip-level esp32s3 default) with
+  ["digital_input", "digital_output", "pwm_output"] plus an informational
+  "note" describing it as the onboard Qwiic connector SDA. Not tagged
+  with any special capability (i2c_sda is only ever auto-applied by
+  build_boards.js when pins_arduino.h's own SDA alias resolves to this
+  GPIO, which it doesn't here - SDA=-1 in the vendor file - so a note is
+  the only available way to surface this). Follows this repo's "generic
+  exposed connector = KEEP available, note only" policy (same policy
+  already applied to the STEMMA QT connector on adafruit_qtpy_esp32c3 and
+  the PIR sensor pin on Bee_Motion_Mini).
+
+GPIO34 -> added, same treatment as GPIO33, for Qwiic SCL.
+
+GPIO35/GPIO36 (internal Wire1 bus wired exclusively to the onboard IMUs
+  and PCA9 motor/servo driver) -> left EXCLUDED. Already absent from the
+  chip-level esp32s3/board.json default (falls in its documented
+  GPIO33-37 "octal flash/PSRAM" exclusion range), so no override entry was
+  added for them - deliberately NOT mirroring the GPIO33/34 treatment,
+  per this repo's precedent of excluding a bus wired exclusively to
+  onboard-only chips (see variants/esp32/esp32s3/Nebula_S3/board.json,
+  which excludes its own SDA1/SCL1 IMU-only bus for the identical reason).
+
+GPIO37 -> left at the chip-level default (excluded/absent). No mention
+  anywhere in the hardware docs or library source; no evidence found to
+  justify re-adding it, unlike 33/34/35/36 which are all explicitly named
+  by the vendor's own code.
+
+pins_arduino.h -> deleted the dead, vendor-commented-out TX(39)/RX(40)/
+  TX1/RX1 block. This project's build_boards.js ESP32 parser regex
+  (`static\s+(?:const|constexpr)\s+uint8_t\s+(\w+)\s*=\s*...`) is
+  comment-blind - it matches the disabled declaration text as a plain
+  substring regardless of the leading "//" - so despite the vendor never
+  wiring a real UART1 to these pins (confirmed identical to current
+  upstream - the vendor's own file has them commented out too), the local
+  build was silently turning GPIO39/GPIO40 into dedicated serial-only pins
+  (losing their normal digital_input/digital_output/pwm_output
+  capabilities). Verified the fix directly by running the actual parser
+  regex against the file before and after the edit: before, it captured
+  {TX: 39, RX: 40}; after, it captures {} (empty - and SDA/SCL/SS/MOSI/
+  MISO/SCK never matched the regex at all in either version, since their
+  `= -1;` value doesn't match the regex's digit-only or bare-identifier
+  alternatives - so those six aliases were never a collision risk in the
+  first place, confirmed by direct regex testing, not just inspection).
+  The explanatory comment left in pins_arduino.h deliberately avoids
+  reproducing the literal disabled-declaration syntax, since doing so
+  would re-trigger the same comment-blind regex.
+
+Pins considered and NOT changed
+----------------------------------
+GPIO0 (BOOT strapping pin) / EN (hardware RESET, not a GPIO at all): the
+  hardware docs describe a physical RESET button and a physical BOOT
+  button, but neither the vendor's pins_arduino.h nor its Arduino library
+  exposes either as a sketch-readable "button" GPIO constant - BOOT is the
+  same universal GPIO0 flash-strapping pin every ESP32-S3 board has
+  (already carries the chip-level "Must be HIGH for normal boot"
+  pinNote), and RESET is wired to EN, not a general-purpose pin at all. No
+  guess was made; left untagged, consistent with this repo's precedent
+  for reset-only buttons without vendor confirmation of software
+  readability (see lilygo_t_display notes.txt).
+
+GPIO4-9 (S1-S4 / G8-G9 servo headers): plain PWM-capable GPIO breakouts on
+  a header, not exclusively wired to one function (G8/G9 even need a
+  manual solder-bridge to receive servo power at all) - left at the
+  chip-level default with no note, matching this repo's practice of not
+  annotating generic multi-purpose header pins that remain fully usable
+  as ordinary GPIO.
+
+M1-M8 (motor) / E2-E7 (encoder) ports: not wired to any direct ESP32-S3
+  GPIO - driven entirely through the onboard PCA9 (PCA9685-family) I2C
+  PWM driver chip on the Wire1 bus (GPIO35/36, already excluded above).
+  No separate GPIO exclusion needed since no pin alias for these exists
+  anywhere in pins_arduino.h or the vendor library.
+
+Summary
+--------
+Created variants/esp32/esp32s3/alfredo-nou3/board.json (none existed
+before) as a full copy of the chip-level esp32s3/board.json default,
+tagging GPIO45 as the confirmed active-high RSL/User LED (led_high), and
+re-adding GPIO33/GPIO34 (excluded at the chip level under a general
+octal-PSRAM assumption that vendor firmware proves does not hold for this
+specific board) as the board's Qwiic I2C connector, KEEP-available with an
+informational note. Edited pins_arduino.h to delete a dead, vendor-
+disabled TX/RX declaration block that this repo's comment-blind ESP32
+parser regex would otherwise have mis-read as real pin assignments,
+verified via direct regex simulation before/after. GPIO35/36 (internal
+IMU-only I2C bus) and GPIO37 remain excluded, consistent with this
+repo's precedent for onboard-chip-only buses (Nebula_S3). No build
+commands were run per task instructions.

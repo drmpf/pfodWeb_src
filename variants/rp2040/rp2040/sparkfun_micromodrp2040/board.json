@@ -1,0 +1,110 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "SparkFun MicroMod RP2040" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 button/LED/NeoPixel audit, 2026-07-12):
+  //
+  // Board: SparkFun "MicroMod RP2040 Processor" (a MicroMod-form-factor
+  // processor board, not the similarly-named "Pro Micro RP2040" — the two
+  // are different SparkFun products). This board's own pins_arduino.h
+  // declares:
+  //   #define PIN_LED        (25u)
+  //   #define PIN_NEOPIXEL   (31)
+  //   #define NUM_NEOPIXEL   (0)
+  // then falls through to ../generic/common.h, whose shared D0-D22/A0-A2
+  // fallback deliberately excludes GPIO23-25/29 (see that file's own
+  // comment block) — so without a chipGpios override GPIO25 would not
+  // appear as a pin in the Designer at all, silently hiding the onboard
+  // LED. GPIO31 is never referenced by any `static const uint8_t` alias
+  // anywhere in this board's pins_arduino.h or common.h (PIN_LED,
+  // PIN_NEOPIXEL, PIN_WIRE1_SDA and PIN_WIRE1_SCL are all bare #defines,
+  // which this repo's build_boards.js parser intentionally does NOT
+  // harvest as routable-pin aliases — only `static const uint8_t X = ...;`
+  // declarations are, per parseEsp32Consts()'s own comment: "unrelated
+  // numeric defines... are never mistaken for a GPIO"). So GPIO31
+  // already does not appear anywhere in the generated Designer pin list
+  // for this board, with no override needed to keep it that way.
+  //
+  // GPIO25 / PIN_LED (STAT LED) - CONFIRMED, tagged below:
+  // SparkFun's own MicroMod RP2040 Processor Board Hookup Guide
+  // (learn.sparkfun.com/tutorials/micromod-rp2040-processor-board-hookup-guide)
+  // states verbatim: "A STAT LED is added to the top side of the board.
+  // This is useful debugging or as a status indicator. This is connected
+  // to GPIO25." Polarity confirmed directly from SparkFun's official
+  // Eagle CAD schematic (github.com/sparkfun/MicroMod_Processor-RP2040,
+  // Hardware/MicroMod-RP2040-ProcessorBoard.sch): net "LED_BUILTIN/G10"
+  // ties RP2040 pin GPIO25 to resistor R1 (1k, pin 2); R1 pin 1 ties to
+  // LED D2 (SparkFun-LED LED-BLUE, 0603) anode; D2 cathode ties directly
+  // to GND (part GND3). I.e. GPIO25 -> R1(1k) -> D2 anode -> D2 cathode ->
+  // GND — GPIO25 driven HIGH sources current through the LED and turns it
+  // on, confirming active-high. digital_input dropped and pwm_output kept
+  // to match this repo's established dedicated-onboard-LED precedent
+  // (rpipico/board.json GPIO25, wiznet_5500_evb_pico/board.json GPIO25).
+  //
+  // GPIO31 / PIN_NEOPIXEL - CONFIRMED NOT PRESENT, no chipGpios entry
+  // added (deliberately, see below):
+  // `NUM_NEOPIXEL (0)` in this board's own pins_arduino.h already states
+  // zero NeoPixels are populated. Cross-checked against SparkFun's
+  // hookup guide (no mention of any NeoPixel/addressable RGB LED
+  // anywhere in the document) and the official schematic above (no
+  // NEOPIXEL/WS2812 net or component of any kind present; the RP2040 IC
+  // symbol itself only exposes pins GPIO0-GPIO25 plus the ADC/QSPI
+  // pins - no GPIO31 pin exists in the symbol, consistent with RP2040
+  // silicon only having GPIO0-29). Contrast with SparkFun's separate
+  // "Pro Micro RP2040" product, which genuinely does have an onboard
+  // WS2812 addressable LED on GPIO25 - confirming this pins_arduino.h
+  // file's "Changes to match ... MicroMod_General_Pinout" comment was
+  // adapted from the Pro Micro RP2040 variant's file but the NeoPixel
+  // hardware itself was correctly NOT carried over (NUM_NEOPIXEL 0),
+  // just the dangling PIN_NEOPIXEL/PIN_WIRE1_SDA/PIN_WIRE1_SCL sentinel
+  // #defines (all three point at the same non-existent "31" placeholder
+  // GPIO - not a real RP2040 pin, and not wired to anything on this
+  // board). No chipGpios entry is added for GPIO31: since no
+  // `static const uint8_t` alias resolves to 31 anywhere in this board's
+  // headers, build_boards.js's parser never adds GPIO31 to the pin list
+  // in the first place (see parser rationale above) - adding an entry
+  // here would be the one thing that could wrongly introduce a
+  // nonexistent "GPIO31" pin into the Designer, so it is left untouched.
+  //
+  // No onboard general-purpose button beyond the standard Pico-style
+  // BOOTSEL (not a normal GPIO, out of scope - same precedent as every
+  // other RP2040 board in this repo) - confirmed no separate button
+  // exists via the same hookup guide and schematic (no button component
+  // beyond the BOOTSEL switch on the schematic's RP2040 sheet).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/sparkfun_micromodrp2040/notes.txt
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / STAT LED - onboard user LED, confirmed active-high via SparkFun's official MicroMod-RP2040-ProcessorBoard.sch schematic (GPIO25 -> R1 1k -> D2 LED anode -> cathode -> GND)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

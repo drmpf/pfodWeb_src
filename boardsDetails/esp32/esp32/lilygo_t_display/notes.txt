@@ -1,0 +1,66 @@
+lilygo_t_display (classic ESP32 TTGO T-Display, NOT the S3 variant) - button/LED tagging research notes
+=========================================================================================================
+
+Sources consulted
+------------------
+https://github.com/Xinyuan-LilyGO/TTGO-T-Display
+  Official vendor repo for this exact board. README pinout table lists "BUTTON1" = GPIO35 and
+  "BUTTON2" = GPIO0. No onboard general-purpose LED listed; only TFT_BL (GPIO4, display backlight).
+
+https://raw.githubusercontent.com/Xinyuan-LilyGO/TTGO-T-Display/master/README.MD
+  Fetched directly to confirm README pinout table content (same as above): BUTTON1=GPIO35,
+  BUTTON2=GPIO0, TFT_BL=GPIO4 (backlight, not a status LED). No LED mentioned.
+
+https://raw.githubusercontent.com/Xinyuan-LilyGO/TTGO-T-Display/master/TFT_eSPI/examples/FactoryTest/FactoryTest.ino
+  Official vendor example sketch, ships in the same repo. Confirms in code:
+    #define BUTTON_1 35   (Button2 library; short press = show battery voltage; long press =
+                            deep sleep with esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0), i.e.
+                            active-low / wakes on LOW level = pressed)
+    #define BUTTON_2 0    (Button2 library; short press = start WiFi scan; standard BOOT/IO0
+                            button, active-low)
+    #define TFT_BL 4      (display backlight control pin, pinMode/digitalWrite OUTPUT - this is
+                            a dedicated display peripheral pin, not a discrete user LED)
+    #define ADC_EN 14     (battery ADC enable pin, unrelated to button/LED)
+  This is treated as the strongest confirming source since it is vendor first-party code, not an
+  inferred alias name.
+
+https://www.paleotechnologist.net/?p=4689
+  Third-party TTGO T-Display write-up. Confirms BUTTON1=GPIO35, BUTTON2=GPIO0, I2C_SDA=GPIO21,
+  I2C_SCL=GPIO22, ADC_IN=GPIO34, TFT_BL=GPIO4. Also independently discusses a historical GPIO22
+  onboard LED (see below) and states it was later "removed from the hardware" on the boards the
+  author tested, restoring SCL=22 to work normally.
+
+Pins considered but NOT tagged, and why
+-----------------------------------------
+GPIO22 (possible historical LED): One third-party source (paleotechnologist.net, about an older/
+  different TTGO variant board definition folder named "ttgo-t1") describes an "onboard LED...
+  placed on GPIO pin 22" that conflicted with I2C SCL, and states this LED was subsequently
+  "removed from the hardware" on production boards, after which SCL=22 worked normally with no
+  LED interference. This variant's own pins_arduino.h (variants/esp32/esp32/lilygo_t_display/
+  pins_arduino.h) does NOT define any LED_BUILTIN, NEOPIXEL, or LED alias at all, and uses
+  GPIO22 as plain SCL. No vendor documentation, official repo README, or the official
+  FactoryTest.ino example sketch mentions any onboard general-purpose LED for the current/shipped
+  version of this board. Given the evidence points to the LED having been removed from production
+  hardware and no first-party source confirms its current presence, I made NO GUESS and did NOT
+  tag GPIO22. This is a case where a human reviewer may want to double check against a specific
+  physical unit/PCB revision, since older revisions reportedly did carry this LED.
+
+GPIO4 (TFT_BL, display backlight): Confirmed via vendor's own FactoryTest.ino as the TFT display
+  backlight control pin, driven digitally (HIGH/LOW) to turn the screen backlight on/off. This is
+  a dedicated display peripheral control line, not a general-purpose user-controllable status LED
+  in the sense the button/LED capability tags are meant for, so it was NOT tagged as led_high/
+  led_low. (It is also not referenced by name in this variant's pins_arduino.h at all - only
+  present in the vendor's separate TFT_eSPI example sketch/schematic - so there was no existing
+  alias pointing at it in this board's own pin file.) No guess was made; this is a deliberate
+  exclusion based on the pin's confirmed real function as a backlight driver, not a status LED.
+
+Pins tagged
+------------
+GPIO0  -> ["digital_input", "button"]   (BUTTON_2 / LEFT_BUTTON, confirmed via vendor
+                                          FactoryTest.ino and pins_arduino.h LEFT_BUTTON=0 alias)
+GPIO35 -> ["digital_input", "button"]   (BUTTON_1 / RIGHT_BUTTON, confirmed via vendor
+                                          FactoryTest.ino and pins_arduino.h RIGHT_BUTTON=35 alias)
+
+Neither GPIO0 nor GPIO35 collides with this board's TX(1)/RX(3) pins, so no TX/RX-conflict
+exclusion applies. No onboard general-purpose LED (single-color, NeoPixel, or discrete RGB) was
+confirmably present on the current/shipped hardware, so no LED capability was tagged.

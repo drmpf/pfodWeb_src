@@ -1,0 +1,147 @@
+wifi_kit_8 (Heltec WiFi Kit 8, ESP8266 + SSD1306 OLED) - research notes
+Date: 2026-07-11
+
+Existing board.json state before this pass:
+- chipGpios had no button/led_* tags on any pin.
+- pins_arduino.h comment: "Board doesen't have a builtin LED" / "#define LED_BUILTIN 0"
+  is commented out (disabled) — strong first-party signal there is no user LED.
+- adc.defaultRefVolts was "1.0" (bare native ESP8266 ADC, no divider assumed).
+
+URLs consulted:
+
+1. https://heltec.org/project/wifi-kit-8/
+   Official vendor product page. Setup/library instructions and display usage only;
+   no button/LED/ADC divider detail in the fetched text. Points to an external
+   pinout reference: http://stefanfrings.de/esp8266/#wifikit8
+
+2. https://robotzero.one/heltec-wifi-kit-8/
+   Third-party guide. No onboard button/LED/ADC info in fetched content; also
+   references the same stefanfrings.de page for detailed pin info.
+
+3. https://homeding.github.io/boards/wifikit8.htm
+   Community board-support-package docs (HomeDing project). States:
+   - Onboard "PRG" button connects to D3 (GPIO0 in this board's pins_arduino.h
+     numbering), "pulls D3 down and can be used with a digital input" — matches
+     the pre-existing pinNotes["0"] "Commonly wired to a FLASH/BOOT button" text.
+   - "No usable LED is available for user applications. The only LED present is
+     orange and is connected to the MIC73831 charging circuit" — i.e. a
+     battery-charge-status LED wired to the charger IC, not GPIO-driven/user
+     controllable. Confirms the pins_arduino.h "no builtin LED" comment.
+   - No ADC/A0 voltage-divider information given.
+
+4. http://stefanfrings.de/esp8266/#wifikit8
+   Independent German technical pinout page, cited by both heltec.org and
+   robotzero.one as the detailed pin reference for this exact board. States:
+   - "Die beiden Taster ziehen die Leitungen RESET und GPIO0 direkt ohne
+     Schutzwiderstände auf LOW" = "The two buttons pull the RESET and GPIO0
+     lines directly to LOW without protective resistors" — confirms two
+     buttons: one on RESET (chip reset pin, not a GPIO — not taggable) and
+     one on GPIO0 (the PRG/flash button, matches homeding.github.io).
+   - "Analoger Eingang für 0 bis 3,2 V weil mit Spannungsteiler 220 kOhm +
+     100 kOhm" = "Analog input for 0 to 3.2V because of a voltage divider
+     using 220k + 100k resistors". This is the key finding: the board DOES
+     have an ADC divider, contrary to the pre-existing board.json value of
+     "1.0" (bare/no divider). Ratio (220k+100k)/100k = 3.2, so native
+     1.0V * 3.2 = 3.2V full-scale — matches the stated 3.2V figure exactly.
+     Same 220k/100k divider network already confirmed this session on
+     several sibling ESP8266 boards (d1_mini, nodemcu, d1, oak, espino,
+     eduinowifi), all using "3.2" (not "3.3") for defaultRefVolts.
+
+5. https://resource.heltec.cn/download/WiFi_Kit_8/WiFi%20Kit8.pdf
+   Official vendor PDF. Fetched text was corrupted/compressed by the PDF
+   extraction and yielded no usable button/LED/ADC detail — not usable as
+   a source; not relied upon.
+
+6. https://resource.heltec.cn/download/WiFi_Kit_8/WIFI_Kit_8_Pinout_Diagram.pdf
+   Official vendor PDF pinout diagram. Same extraction problem as above —
+   image-heavy/compressed, no usable text extracted. Not relied upon.
+
+Considered but not changed:
+- GPIO0 is not this board's TX/RX pin (TX=GPIO1, RX=GPIO3 per pins_arduino.h
+  and board.json), so the "button" tag on GPIO0 is not at risk of being
+  discarded by build_boards.js's TX/RX reservation.
+- No LED capability tag added anywhere: the only physical LED on the board
+  is a battery-charge indicator wired to the MIC73831 charge-management IC,
+  not to any GPIO, so it has no digital_output/led_* capability to tag.
+- RESET line (also pulled LOW by a button, per stefanfrings.de) is the
+  chip's physical reset pin, not a GPIO in chipGpios, so not tagged.
+- Did not touch GPIO16 (OLED_RST) — out of scope, already handled by the
+  existing per-board override note in board.json.
+
+Summary: TAGGED GPIO0 as button (onboard PRG pushbutton, active-low,
+confirmed via homeding.github.io + stefanfrings.de). No LED tag added (no
+user-controllable LED exists — confirmed via pins_arduino.h + homeding.github.io).
+The pre-existing 1.0V ADC value was INCORRECT and has been corrected to
+3.2V (220k/100k voltage divider confirmed via stefanfrings.de), matching
+the pattern already found on sibling ESP8266 boards this session.
+
+---
+
+[2026-07-12] Dedicated-hardware pin-exclusion audit (broader sweep beyond
+the earlier button/LED/ADC pass above)
+
+Trigger: a fresh discovery sweep flagged this board for `#define WIFI_Kit_8
+true` plus D1/D2/D3/D6/D7/D8/TX/RX numbering aliases in pins_arduino.h —
+ordinary board-numbering convenience, not dedicated hardware by itself, but
+the board was queued for a full sweep to confirm nothing else was missed,
+in particular whether the "Kit 8" has an onboard OLED and, if so, whether
+its bus pins are documented/excluded correctly.
+
+Sources consulted:
+
+1. http://stefanfrings.de/esp8266/#wifikit8 (WebFetch, re-verified this pass)
+   Confirms the board has "a winzy small 0,91" OLED Display... 128x32
+   pixels... SSD1306... connected via I2C." Gives TWO hardware revisions:
+   - Version A: SCL=GPIO5, SDA=GPIO4, display RST=GPIO16
+   - Version B: SCL=GPIO14, SDA=GPIO2, display RST=GPIO4
+   Also re-confirms the two buttons (RESET pin + GPIO0) and the 220k+100k
+   ADC divider (already handled in the earlier pass above).
+
+2. WebSearch "Heltec WiFi Kit 8 ESP8266 SSD1306 OLED SDA SCL GPIO4 GPIO5
+   pinout" — corroborates SDA=GPIO4, SCL=GPIO5, I2C address 0x3c, and a
+   public U8g2 init example using reset=16, clock=5(SCL), data=4(SDA).
+
+Match to this repo's pins_arduino.h: PIN_WIRE_SDA=(4), PIN_WIRE_SCL=(5),
+and OLED_RST/D0 (GPIO16) already deliberately omitted from the file per
+the earlier pass's own comment. This confirms the repo's variant matches
+stefanfrings.de's "Version A" pinout exactly — no Version-B mismatch to
+worry about.
+
+Findings / actions this pass:
+
+- OLED confirmed present (SSD1306, 128x32, I2C, address 0x3c), and its
+  SDA/SCL lines (GPIO4/GPIO5) are the SAME general-purpose I2C bus pins
+  exposed to sketches (PIN_WIRE_SDA/PIN_WIRE_SCL) — not a separate/private
+  bus. Per this session's established precedent (board d-duino-32, which
+  has the identical situation), policy is KEEP, not exclude: the bus is
+  multi-drop and other I2C devices can still share it. Added informational
+  pinNotes entries on GPIO4 and GPIO5 in board.json documenting the OLED
+  occupies that bus (previously undocumented in board.json — the earlier
+  pass had only handled the display's separate GPIO16 RST line, not the
+  SDA/SCL bus notes). No capability/chipGpios changes needed: build_boards.js
+  auto-applies i2c_sda/i2c_scl tags to GPIO4/5 from the PIN_WIRE_SDA/SCL
+  consts regardless of board.json chipGpios content.
+- Alias-collision check (per this session's recurring failure mode):
+  verified GPIO0 (tagged "button" in the earlier pass) is NOT also aliased
+  as SDA/SCL/SS/MOSI/MISO/SCK anywhere in pins_arduino.h. SDA=GPIO4 and
+  SCL=GPIO5 only; this file defines no SPI pins at all. GPIO0's only other
+  alias is "D3" (board pin-numbering convenience, not a function-alias in
+  build_boards.js's ALIAS_PRIORITY list), so it does not affect capability
+  tagging. NO CONFLICT FOUND — GPIO0's button capability list is clean.
+- WIFI_Kit_8 boolean define and the D1/D2/D3/D6/D7/D8/TX/RX aliases in
+  pins_arduino.h were reviewed and confirmed to be ordinary board-numbering
+  convenience only, matching the trigger note's expectation — no new
+  dedicated hardware found beyond the OLED (already known) and the
+  button/ADC divider (already handled in the earlier pass).
+- No lines were deleted from pins_arduino.h this pass (nothing warranted
+  exclusion); only board.json pinNotes were added, plus explanatory
+  comments in board.json (no original declaration text quoted/commented
+  out per this session's comment-writing rule).
+
+Summary: OLED confirmed on GPIO4(SDA)/GPIO5(SCL), same bus as general I2C
+— KEPT (not excluded) with a new informational pinNotes entry added on
+each pin, matching the d-duino-32 precedent. GPIO0 button checked and
+confirmed to have NO alias contamination with any I2C/SPI function pin.
+No other dedicated hardware found; all other pins_arduino.h aliases are
+routine board-numbering convenience. board.json updated; pins_arduino.h
+unchanged.

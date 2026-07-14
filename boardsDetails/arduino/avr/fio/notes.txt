@@ -1,0 +1,55 @@
+Board: Arduino Fio (avr/fio, split off avr/eightanaloginputs)
+Date: 2026-07-14
+
+Reason for split: Arduino Fio runs at 3.3V/8MHz, unlike its former
+"eightanaloginputs" directory siblings (Nano/Mini/BT), which run
+5V/16MHz ("pro" is itself a genuine 3.3V/5V user-selectable menu board
+in the real Arduino IDE boards.txt, with no single fixed voltage at
+all — left alone, still sharing eightanaloginputs/standard's board.json
+via the ancestor-fallback mechanism, since neither a 3.3V nor 5.0V
+default would be correct for it). A single shared board.json cannot
+correctly state one ADC reference voltage for groups that actually
+differ, so a new self-contained variant directory was created:
+pins_arduino.h is a one-line #include of
+../eightanaloginputs/pins_arduino.h (identical 8-analog-input ATmega328P
+pin map), with its own board.json overriding adc.defaultRefVolts to
+3.3V. boards.txt's fio.build.variant was repointed from
+"eightanaloginputs" to "fio".
+
+Sources consulted:
+- WebSearch summaries (DXARTS UW tutorial, SparkFun Fio v3 hookup guide,
+  PinoutGuide.com, docs.arduino.cc retired Fio page) — confirmed 3.3V/
+  8MHz operation and that the XBee socket's DOUT/DIN wire to the
+  ATmega328's normal RXI/TXO (D0/D1), and CTS connects to the XBee
+  module's own #CTS/DIO7 pad — but none gave a definitive answer on
+  whether CTS reaches an ATmega328 GPIO.
+- Official "Arduino-Fio-v22" schematic (S. Kobayashi / SparkFun, based
+  on the original LilyPad Arduino v1.6 design by L. Buechley/N. Seidle),
+  fetched directly as a PDF and read: this is the authoritative source
+  that resolved the CTS/SLEEP_RQ ambiguity above — see below.
+
+Per-pin findings:
+- D13 (PIN_SPI_SCK / LED_BUILTIN) — confirmed onboard status LED,
+  active-high, via direct schematic trace: D13/SCK -> R1 (1k) -> red LED
+  (D1) -> GND, the classic Arduino sourcing circuit. Same classic pin-13
+  LED+SCK dual role as the standard/eightanaloginputs-family boards —
+  not a bug. Tagged ["digital_output","pwm_output","led_high"].
+- D0/D1 (RXI/TXO) — already excluded from general use by the existing
+  parser mechanism (serial_rx/serial_tx), also confirmed as the XBee
+  socket's DOUT/DIN lines by the schematic. No additional chipGpios entry
+  needed.
+- XBee socket CTS and SLEEP_RQ — confirmed via direct schematic
+  inspection to be broken out to SEPARATE, unpopulated 2-pin jumper pads
+  (labeled JP8 "CTS" and JP9 "SLEEP_RQ" in the schematic), NOT factory-
+  wired to any ATmega328 digital pin. No exclusion needed — these are
+  optional user-wire points, not dedicated GPIOs.
+- XBee's own "ON" (DIO9) and "RSSI" (PWM0) status LEDs are wired
+  entirely on the XBee module side (through its own resistors/LEDs to
+  GND) — not ATmega328 pins, out of scope.
+
+Summary: Arduino Fio — split from "eightanaloginputs" for correct 3.3V
+ADC reference voltage; D13 onboard LED confirmed via direct schematic
+inspection and tagged active-high; confirmed via the same schematic that
+the XBee socket's CTS/SLEEP_RQ lines are NOT wired to any AVR GPIO by
+default (unpopulated jumper pads only), so no additional exclusion
+applies.

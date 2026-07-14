@@ -1,0 +1,85 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "L'atelier d'Arnoz DudesCab" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. boards.txt confirms plain USB-C
+  // (no onboard WiFi radio) — this is the "Dude's Cab" virtual-pinball
+  // cabinet I/O controller, not a WiFi-equipped board.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, 2026-07-13):
+  //
+  // Board: "DudesCab" = L'atelier d'Arnoz's "Dude's Cab" — a commercial
+  // virtual-pinball-cabinet I/O controller board (NOT sim-racing, despite
+  // the "Cab" name suggesting a cockpit/sim rig at first glance) built
+  // around an overclocked RP2040. Confirmed via the vendor's own product
+  // page (shop.arnoz.com/en/dude-s-cab/131-dude-s-cab-v1.html) and the
+  // official English user guide PDF (dude.arnoz.com/dude_Cab_English_guide.pdf).
+  // Vendor-documented features: 32 button inputs (5 of them "ultra-low
+  // latency"), a 6-pin plunger input, a built-in accelerometer (for
+  // nudge/tilt sensing), and up to 128 DOF (Direct Output Framework)
+  // outputs via a daisy-chained expansion-board system — i.e. this
+  // board reaches its I/O count through onboard/expansion I/O-expander
+  // and MOSFET-driver hardware, not by exposing 32+128 raw RP2040 GPIOs
+  // directly (RP2040 only has ~26 usable GPIOs total).
+  //
+  // This board's own pins_arduino.h is a hand-edited file (not a bare
+  // `#include "../generic/pins_arduino.h"` passthrough like some other
+  // third-party boards in this repo) declaring only PIN_LED(25) plus the
+  // standard SPI0/SPI1/Wire0/Wire1 bus aliases, then falling through to
+  // ../generic/common.h for D0-D22/A0-A2. However its header comment
+  // ("Pin definitions taken from: datasheets.raspberrypi.org/pico/pico-
+  // datasheet.pdf") is identical boilerplate to the reference Pico's own
+  // pins_arduino.h, suggesting PIN_LED=25 may simply be an inherited
+  // template default rather than a value re-verified against this
+  // specific custom PCB's actual schematic.
+  //
+  // NO CHANGE applied. Extensive WebSearch/WebFetch research (vendor
+  // shop page, ManualsLib-hosted user manual, official PDF guide) turned
+  // up rich feature-level marketing/user documentation but NO published
+  // GPIO-level pinout, schematic, or pin-mapping table for this board —
+  // the manual documents configuration via Arnoz's own PC "Configurator"
+  // software, not hardware pin assignments. Per this audit's standing
+  // rule (report NO CHANGE rather than guess), GPIO25/PIN_LED is left
+  // untagged: unlike the reference Pico (rpipico/board.json) or the
+  // WIZnet W5500-EVB-Pico (both confirmed via official vendor docs
+  // stating "GPIO25 connected to user LED"), no equivalent statement
+  // exists for this custom third-party PCB, and given the board's
+  // documented use of addressable/MX-adapter button LEDs and an
+  // expansion-board DOF-output architecture, GPIO25 driving a simple
+  // discrete status LED on THIS specific PCB is plausible but not
+  // confirmed. No button, accelerometer, or DOF-output GPIO assignments
+  // could be sourced at all — consistent with those being reached via
+  // onboard I/O-expander/driver chips rather than raw GPIOs.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/DudesCab/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h fallback
+  // (NUM_ANALOG_INPUTS = 3, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

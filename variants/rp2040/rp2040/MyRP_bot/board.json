@@ -1,0 +1,100 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "MyMakers RP2040" (variants/rp2040/boards.txt: MyRP_bot.name=MyMakers RP2040).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, 2026-07-13):
+  //
+  // Board: "MyMakers RP2040" (variant id "MyRP_bot"), chip RP2040.
+  // Investigated via WebSearch/WebFetch: this board was added to the
+  // earlephilhower/arduino-pico core by a community contributor
+  // (GitHub user nui4328) via PRs #2680/#2687/#2692, merged as commit
+  // 06e3ef9 (2024-12-17). The contributor's own PR description states
+  // the board "is developed for use in studying the creation and
+  // programming of small robot controllers" for students, "distributed
+  // in public places" — i.e. a non-commercial, community-distributed
+  // educational board, not a product sold by a vendor with a datasheet.
+  // The arduino-pico maintainer himself declined to treat it as a
+  // mainstream board precisely because it is "custom, non-commercial
+  // ... not broadly available."
+  //
+  // No datasheet, schematic, product page, store listing, or company
+  // website could be found for "MyMakers" / "MyRP_bot" via WebSearch
+  // (searched board name, pinout, schematic, Kickstarter/store/social
+  // presence — nothing beyond the arduino-pico PR itself turned up).
+  // The only "documentation" is this board's own pins_arduino.h, whose
+  // sole hardware comment is the bare label "// LEDs" above
+  // `#define PIN_LED (25u)` — no polarity, no button, no motor/NeoPixel
+  // pin is documented anywhere.
+  //
+  // GPIO25 (PIN_LED) — NOT tagged as led_high/led_low here. GPIO25 is
+  // the conventional Pico onboard-LED GPIO on the official Raspberry Pi
+  // Pico reference design (confirmed active-high there — see
+  // rpipico/board.json), but this board's own SPI0 pin mapping
+  // (MISO=GPIO12, MOSI=GPIO3, SCK=GPIO2, SS=GPIO13) already diverges
+  // from the official Pico's reference pinout, proving this is not a
+  // verbatim reference-design clone — so the LED circuit's polarity
+  // cannot be safely assumed to match the stock Pico's either. Per this
+  // audit's rule (confirm via real vendor documentation, never guess
+  // polarity from the alias/name alone), this is left untagged: NO
+  // CHANGE, reported honestly rather than guessed. See
+  // boardsDetails/rp2040/rp2040/MyRP_bot/notes.txt for the full trail.
+  //
+  // GPIO30/GPIO31 (non-existent on real RP2040 silicon, which tops out
+  // at GPIO29) observation: this board's pins_arduino.h sets
+  // PIN_SERIAL1_TX=30, PIN_SERIAL2_TX=30, PIN_SERIAL2_RX=30,
+  // PIN_SPI1_MOSI=30, PIN_SPI1_SCK=31 — all pointing at out-of-range
+  // GPIO numbers, and PIN_SPI1_MISO=12 duplicates PIN_SPI0_MISO=12.
+  // Traced through pfodWeb_src/build_boards.js's buildEsp32Board() /
+  // parseEsp32Consts(): only `static const uint8_t NAME = <value>;`
+  // declarations are captured as pin aliases feeding allGpios/
+  // aliasesByGpio, and the SS/MOSI/MISO/SCK/SDA/SCL capability lookups
+  // resolve exclusively through this family's shared
+  // variants/rp2040/rp2040/generic/common.h, which only assigns
+  // `SS/MOSI/MISO/SCK` from this board's PIN_SPI0_* macros and
+  // `SDA/SCL` from PIN_WIRE0_* — PIN_SPI1_*/PIN_WIRE1_*/PIN_SERIAL1_*/
+  // PIN_SERIAL2_* raw #define macros are never referenced by any
+  // static-const alias, so they never enter the parser's alias map at
+  // all. Confirmed no phantom GPIO30/GPIO31 pin is generated, and
+  // GPIO4/GPIO5 (aliased only via the unused WIRE1/SPI1 macros) fall
+  // back to plain D4/D5 general-purpose digital pins with no spurious
+  // spi_*/i2c_* capability. This looks like a copy-paste artifact in
+  // the contributor's pins_arduino.h (SPI1/UART1/UART2 left pointing at
+  // the arduino-pico convention's out-of-range 30/31 sentinel for an
+  // unimplemented/unwired peripheral) with zero effect on the generated
+  // board data — no chipGpios fix is needed for it.
+  //
+  // Net result: no chipGpios entries — NO CHANGE, full findings in
+  // boardsDetails/rp2040/rp2040/MyRP_bot/notes.txt.
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's generic/common.h (shared with
+  // rpipico etc.) declares NUM_ANALOG_INPUTS = 3 / ADC_RESOLUTION = 12,
+  // matching the chip-level default.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

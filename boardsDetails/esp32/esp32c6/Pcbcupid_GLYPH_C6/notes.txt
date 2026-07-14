@@ -1,0 +1,169 @@
+Pcbcupid GLYPH C6 (chip: esp32c6) - dedicated-hardware pin-exclusion audit + opportunistic button/LED tag
+==========================================================================================================
+
+Flagged declarations in pins_arduino.h (the reason this board was queued):
+  static const uint8_t BAT_MEASURE = 0;
+  #define BAT_VOLT_PIN BAT_MEASURE
+  #define MSR          BAT_MEASURE
+
+Sources consulted (WebSearch + WebFetch):
+
+1. https://learn.pcbcupid.com/documentation/modules/glyph/glyph-esp32c6/glyph-esp32-c6-power-management
+   Vendor "Power Management" doc page. States: "To monitor battery voltage,
+   short the msr pads behind the board." Confirms the MSR/BAT_MEASURE
+   function is OPTIONAL and requires a physical solder-pad bridge on the
+   back of the board - by default the divider circuit is not connected at
+   all and GPIO0 behaves as a plain pin. Does not give resistor values.
+
+2. https://forum.pcbcupid.com/t/glyph-c6-battery-measurement-issue/585
+   Official PCB Cupid support forum thread specifically about this pin.
+   Confirmed the literal string "200k:200k divider" appears in a code
+   comment quoted in the thread (verified with a second, narrower fetch
+   asking for verbatim resistor-value text only, to guard against the
+   summarizing model inventing a plausible-sounding number - it did not,
+   the exact "200k:200k" text is really there). This is a 1:2 divider:
+   Vadc = Vbat / 2, i.e. approx Vbat = analogRead/4095 * 3.3V * 2. Also
+   documents a known real-world ESP32 ADC nonlinearity issue: one user
+   measured 3.93V actual vs 2.985V raw-computed, needing an empirical
+   ~1.14x calibration factor - noted in the board.json note as a caveat,
+   not baked into the formula as a hard constant since it's user-specific/
+   per-unit calibration, not a fixed hardware ratio.
+   Also states PCB Cupid's own future-revision plan to replace this
+   divider+ESP32-ADC approach with a dedicated I2C LiPo fuel-gauge chip,
+   confirming this is a known-imprecise, "good enough for rough monitoring"
+   circuit by the vendor's own admission - reinforces KEEP (not exclude)
+   since it's explicitly a general "read the battery" convenience feature,
+   matching this project's own battery/voltage-monitor keep policy, not a
+   piece of dedicated hardware requiring the pin's exclusion.
+
+3. https://learn.pcbcupid.com/boards/glyph-c6/pinouts
+   Vendor pinout reference. GPIO0/A0 listed generically as "Analog I/O pin
+   0" with no special callout distinguishing it from A1-A3 on this page -
+   consistent with finding #1 that the divider is only present when MSR is
+   bridged (the pinout diagram describes the pin's un-bridged default
+   state). Also gave the full pin-by-pin reference used to sanity-check
+   this board's pins_arduino.h against the vendor's own numbering (TX=16/
+   RX=17, SCK/MOSI/MISO=21/22/23, SDA/SCL=4/5 all match).
+
+4. https://learn.pcbcupid.com/boards/glyph-c6/overview
+   Vendor overview page. Confirms "On-board LED (Connected to GPIO14)" and
+   "High Quality Reset and Bootloader button for easy access" - motivated
+   the opportunistic section 7a button/LED check below.
+
+5. https://learn.pcbcupid.com/boards/examples/blink-led/
+   Vendor's own Blink example page (shared across the C3/C6/H2 Glyph
+   family, board-specific pin only). Uses the generic Arduino Blink.ino
+   "digitalWrite(led, HIGH); // turn the LED on" comment. Treated as WEAK
+   evidence only (it's boilerplate Arduino wording, not schematic-derived)
+   - superseded by source #6 below for the actual polarity决定.
+
+6. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/pcbcupid/glyph_c6/glyph_c6_hpcore.dts
+   Official Zephyr RTOS board definition for this exact board (maintained
+   in-tree, schematic-derived, not boilerplate). Fetched twice with
+   different prompts to cross-check for fetch-summarization drift; both
+   fetches agreed. Verbatim node content obtained:
+     leds: leds {
+         compatible = "gpio-leds";
+         red_led: led_0 {
+             gpios = <&gpio0 14 GPIO_ACTIVE_LOW>;
+             label = "User LED0";
+         };
+     };
+     buttons {
+         compatible = "gpio-keys";
+         button0: button_0 {
+             gpios = <&gpio0 9 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+             label = "Boot";
+             zephyr,code = <INPUT_KEY_0>;
+         };
+     };
+   This is authoritative, board-specific, GPIO-level, and polarity-level
+   evidence - overrides the weaker generic-Arduino-comment signal from
+   source #5 (LED is confirmed ACTIVE-LOW, not active-high as the generic
+   Blink.ino wording would suggest in isolation).
+
+7. https://github.com/espressif/arduino-esp32/pull/10671
+   The actual PR that added this board's Arduino core variant files
+   (title: "feat (Variants) Added custom boards variants GLYPH C3, GLYPHC6
+   & GLYPHH2 by pcbcupid"). Fetched to check for any PR-description/review
+   commentary on BAT_MEASURE - found none; the PR body only mentions the
+   boards have "onboard LiPo/Li-ion charging circuit" in general terms. No
+   conflicting information, just confirms this is a vendor-submitted,
+   legitimate upstream variant (not a third-party guess at the pinout).
+
+Cross-checked but not separately cited above: shop.pcbcupid.com/product/gd002/
+and tindie.com listing (came up in search, general marketing copy, nothing
+GPIO-specific beyond what's already covered).
+
+Pins considered but NOT tagged, and why:
+ - GPIO8/GPIO15: pre-existing chip-level pinNotes only (boot-strap/log
+   pins), no vendor evidence of any button/LED/dedicated-hardware use
+   beyond the standard ESP32-C6 silicon strapping behavior already
+   documented at the chip level. Left unchanged.
+ - GPIO1-6 (A1-A3, SDA/SCL, D6): vendor pinout page describes these as
+   plain, undifferentiated analog/digital/I2C pins with no divider or
+   dedicated-hardware callout. Left unchanged (full chip-level
+   capabilities retained).
+ - "Reset" button (mentioned alongside "Bootloader" button in the overview
+   page's "Reset and Bootloader button" phrase): this is almost certainly
+   wired to the chip's hardware EN/RESET pin, not a GPIO, and Zephyr's own
+   gpio-keys node (source #6) only declares ONE button ("Boot" on GPIO9) -
+   confirms Reset is not a taggable general-purpose GPIO. Not tagged, no
+   further action needed.
+
+KEEP vs EXCLUDE decision for GPIO0 (BAT_MEASURE/MSR):
+ - Per the project's playbook policy (section 3, "KEEP available": "Analog
+   sensor readings that match pfodWeb's own data display use case:
+   thermistors, current/voltage/battery monitors...") this is a textbook
+   KEEP - not excluded from the pin picker.
+ - Additionally strengthened here versus a typical always-connected battery
+   monitor: PCB Cupid's own docs confirm the divider is OPTIONAL/user-
+   solder-bridged, meaning by default this pin has zero special circuitry
+   attached at all and is simply a normal general-purpose GPIO0/A0 - an even
+   more clear-cut KEEP than a hard-wired, always-on divider would be.
+ - adc.defaultRefVolts (board-wide, single value applied to every
+   analog_input-capable pin per build_boards.js) was deliberately NOT
+   changed from the chip-level "3.3". Changing it to reflect the 1:2
+   divider's ~6.6V effective full-scale would incorrectly apply that
+   scaling to GPIO1-6 as well, which have no divider at all - would be a
+   wrong global change for the sake of one optional, user-enabled pin.
+   Documented the derived math (Vbat ~= analogRead/4095*3.3*2, plus the
+   vendor forum's noted ESP32-ADC-nonlinearity calibration caveat) in a
+   per-pin "note" field on the GPIO0 chipGpios entry instead - this is the
+   mechanism precedent used elsewhere in this codebase (e.g.
+   esp8285/board.json's per-pin notes on serial_tx/serial_rx pins) for
+   documentation that applies to one specific pin, not the whole board.
+
+Mechanism decision: created a per-board board.json (full copy of the
+chip-level variants/esp32/esp32c6/board.json) rather than leaving the
+chip-level default in place, because a documentation-only "note" field on
+one chipGpios entry is a per-board override by definition - there is no
+partial-merge mechanism in this codebase (confirmed against the existing
+esp8285/wiolink/wifi_kit_8/agruminolemonv4 precedents, which all use the
+same "full copy + note field" pattern for pin-level documentation that
+doesn't change capabilities).
+
+Summary of what was tagged/changed:
+ - GPIO0: capabilities UNCHANGED (kept full analog_input/digital_input/
+   digital_output/pwm_output) - added a documentation "note" field only,
+   explaining the optional MSR-bridged battery-voltage-sense function and
+   its 200k:200k (1:2) divider math. Not excluded.
+ - GPIO14: tagged "led_low" (capabilities -> ["digital_output","pwm_output",
+   "led_low"]) - confirmed onboard "User LED0", active-low, via Zephyr's
+   official board DTS. Matches this board's own pins_arduino.h
+   LED_BUILTIN=14.
+ - GPIO9: tagged "button" (capabilities -> ["digital_input","button"]) -
+   confirmed onboard "Boot" pushbutton, active-low with internal pull-up,
+   via the same Zephyr DTS. No TX/RX conflict (this board's TX/RX are
+   GPIO16/17).
+ - All other GPIOs: unchanged from the chip-level esp32c6/board.json
+   default.
+
+Files touched this pass:
+ - C:\ai\aicode\pfodWeb\variants\esp32\esp32c6\Pcbcupid_GLYPH_C6\board.json (created)
+ - C:\ai\aicode\pfodWeb\boardsDetails\esp32\esp32c6\Pcbcupid_GLYPH_C6\notes.txt (this file, created)
+ - variants/esp32/esp32c6/Pcbcupid_GLYPH_C6/pins_arduino.h: NOT modified (no
+   change needed - BAT_MEASURE/MSR/BAT_VOLT_PIN aliases are accurate as-is
+   and don't need trimming since GPIO0 is being kept, not excluded).
+
+No build commands were run this pass, per task instructions.

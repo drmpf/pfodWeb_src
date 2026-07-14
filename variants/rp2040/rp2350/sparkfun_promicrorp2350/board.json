@@ -1,0 +1,86 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  //
+  // pfodWeb NOTE (button/LED/NeoPixel tagging audit, 2026-07-13):
+  //
+  // Board: SparkFun "Pro Micro RP2350" — official SparkFun product,
+  // Pro Micro form-factor RP2350 board with an onboard WS2812 addressable
+  // RGB LED and a separate red power-indicator LED.
+  //
+  // This board's own pins_arduino.h declares PIN_LED (25u) AND
+  // PIN_NEOPIXEL (25) as the SAME GPIO, with NUM_NEOPIXEL (1) — i.e. a
+  // single addressable WS2812 pixel doubling as the board's "status LED",
+  // identical pattern to its RP2040 sibling
+  // (variants/rp2040/rp2040/sparkfun_promicrorp2040/board.json).
+  //
+  // Confirmed via SparkFun's own official Pro Micro RP2350 Hookup Guide
+  // (docs.sparkfun.com/SparkFun_Pro_Micro_RP2350/hardware_overview and
+  // the GitHub-hosted docs/hardware_overview.md source at
+  // github.com/sparkfun/SparkFun_Pro_Micro_RP2350): the board has "a
+  // WS2812 RGB LED connected to pin 25 on the RP2350" plus a separate red
+  // Power LED "tied to the 3.3V line" (a passive hardware power
+  // indicator, disableable via a PWR solder jumper, NOT wired to any
+  // RP2350 GPIO — out of scope for GPIO capability tagging).
+  //
+  // GPIO25 tagged "led_neopixel" (not led_high/led_low, since it is one
+  // addressable WS2812 pixel, not a simple on/off LED) — matches this
+  // repo's existing led_neopixel precedent, both the RP2040 sibling
+  // above and variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json
+  // GPIO14 (another SparkFun single-WS2812-pixel status LED), which use
+  // the identical capability list ["digital_output","led_neopixel","pwm_output"].
+  // pwm_output is kept (not omitted) because arduino-pico's analogWrite()
+  // works on any RP2040/RP2350 GPIO regardless of NeoPixel usage,
+  // matching that precedent exactly.
+  //
+  // No bus collision: GPIO25 is not aliased as SDA/SCL/SS/MOSI/MISO/SCK
+  // in this board's pins_arduino.h (SPI0 uses GPIO20-23, Wire0 uses
+  // GPIO16/17, SPI1/Wire1 are unpinned "31" placeholders) — no
+  // auto-appended bus capability to worry about.
+  //
+  // No onboard user button beyond the standard RP2350 BOOT/RESET
+  // buttons — confirmed by the same Hookup Guide page: both are
+  // hardware-only control lines (BOOT forces USB bootloader mode,
+  // RESET restarts the MCU) and NOT wired to a normal GPIO, same as
+  // every other RP2040/RP2350 board's BOOTSEL — out of scope for GPIO
+  // tagging.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/sparkfun_promicrorp2350/notes.txt
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "SparkFun ProMicro RP2350" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // "rp2350" chip bucket; the SparkFun Pro Micro RP2350 has no onboard
+  // WiFi radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "PIN_LED / PIN_NEOPIXEL — single onboard WS2812 addressable RGB LED doubling as the status LED (NUM_NEOPIXEL=1). Confirmed via SparkFun's own Pro Micro RP2350 Hookup Guide (see pfodWeb NOTE above). The separate red power LED is a passive hardware indicator tied to 3.3V, not GPIO-connected." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040/RP2350 board.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

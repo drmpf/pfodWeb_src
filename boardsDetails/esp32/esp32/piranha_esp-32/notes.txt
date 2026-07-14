@@ -1,0 +1,99 @@
+Board: piranha_esp-32 (chip: esp32, dir: variants/esp32/esp32/piranha_esp-32/)
+Audit type: dedicated-hardware pin-exclusion audit, triggered by a fresh
+discovery sweep flagging this board's one non-boilerplate declaration:
+  static const uint8_t KEY_BUILTIN = 0;
+
+FILE READ
+---------
+pins_arduino.h declares: LED_BUILTIN=2, KEY_BUILTIN=0, TX=1, RX=3, SDA=21,
+SCL=22, SS=5, MOSI=23, MISO=19, SCK=18, A11=0, A13=15, A14=13, A15=12,
+A16=14, A18=25, A19=26, T1=0, T3=15, T4=13, T5=12, T6=14, DAC1=25, DAC2=26.
+No board.json override existed before this audit; chip-level default at
+variants/esp32/esp32/board.json was the fallback.
+
+IDENTIFYING THE REAL BOARD
+---------------------------
+This variant's directory name ("piranha_esp-32") is the literal upstream
+identifier - unlike the sibling metro_esp-32, no product-name ambiguity
+to resolve here. Confirmed via arduino-esp32 PR #3542 ("Added Piranha
+ESP-32 and Metro ESP-32 boards", drondistortion, Jan 2020) that this board
+is the iarduino.ru (Russian electronics/education vendor) "Piranha ESP-32"
+product, sibling to metro_esp-32 from the same PR.
+
+RESEARCHING GPIO0 (KEY_BUILTIN)
+---------------------------------
+- wiki.iarduino.ru/page/piranha-set-esp32/ ("Piranha Set ESP32" - iarduino's
+  own wiki page for this exact product line): confirms an onboard BOOT
+  pushbutton and documents its manual-flash procedure ("Кнопка BOOT служит
+  для ручного перевода модуля в режим прошивки" - hold BOOT, press and
+  release RESET, then release BOOT - the classic GPIO0-held-low-during-
+  reset strapping sequence used by every ESP32 BOOT button). This page's
+  pinout table lists the board's general-purpose/breakout GPIOs (13, 15-19,
+  21, 22, 25, 26, 32, 33, plus input-only 34, 36) and conspicuously OMITS
+  GPIO0 - consistent with GPIO0 being committed to the onboard BOOT button
+  circuit rather than exposed as free header I/O, matching the KEY_BUILTIN
+  naming in pins_arduino.h.
+- wiki.iarduino.ru/page/piranha-es32-wiki/ ("Piranha ESP32 v2" - the
+  sibling/successor board referenced in the earlier metro_esp-32 audit):
+  confirms the identical BOOT button description and procedure. This page
+  DOES list GPIO0 among its "available GPIOs", and explicitly states v2's
+  changes vs v1 are: parallel ADC+WiFi operation, a sturdier micro-USB
+  port, and an added external-antenna connector - no mention of remapping
+  the BOOT button or any GPIO0 behavior change. Used only as corroborating
+  context (this variant is not necessarily "v2"); the v1-generation
+  "Piranha Set ESP32" page above is the primary, board-specific source.
+- General ESP32 convention: GPIO0 is the universal boot-mode strapping pin
+  wired to a physical BOOT pushbutton on essentially every ESP32-WROOM-32
+  reference design and vendor dev board.
+- Conclusion: KEEP. Tagged capabilities ["digital_input","button"] on
+  GPIO0 in board.json. Confirmed via this board's own vendor wiki page
+  (stronger evidence than the sibling metro_esp-32 audit had, which lacked
+  a dedicated product page and relied entirely on the v2 sibling page).
+
+ALIAS COLLISION CHECK (step 4 of task brief)
+-----------------------------------------------
+Checked whether GPIO0 collides with any of this file's SDA/SCL/SS/MOSI/
+MISO/SCK/TX/RX declarations, since build_boards.js's buildEsp32Board()
+unconditionally appends i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck
+capabilities (and routes TX/RX pins to serial_tx/serial_rx exclusively)
+whenever a GPIO number matches consts.SDA/SCL/SS/MOSI/MISO/SCK/TX/RX,
+regardless of chipGpios settings. In this file: TX=1, RX=3, SDA=21, SCL=22,
+SS=5, MOSI=23, MISO=19, SCK=18. None of these equal 0 (GPIO0) - no
+collision, no capability leak, no alias line needed to be deleted.
+
+GPIO0 is also aliased as A11 (analog) and T1 (touch1) in this file. Neither
+of those participates in the bus-capability-injection list above, so they
+carry no functional risk. A11 only affects the pre-override display label
+(dispAliases would otherwise show "A11 (GPIO0)"), which is replaced by
+"GPIO0 (Button)" once chipGpios tags the pin with the "button" capability
+(build_boards.js's _hwIdentityLabel override). No pins_arduino.h edit was
+needed or made for this board - unlike metro_esp-32, which required
+deleting a colliding ADR alias for a different GPIO.
+
+MECHANISM
+-----------
+Created variants/esp32/esp32/piranha_esp-32/board.json as a full copy of
+the chip-level esp32/esp32/board.json default, with GPIO0's chipGpios
+entry changed from the default
+["analog_input_serial","digital_input","digital_output","pwm_output"] to
+exactly ["digital_input","button"]. A "// pfodWeb NOTE:" comment block at
+the top of the file cites the sources above in plain English (no literal
+pins_arduino.h declaration text quoted, per the comment-blind-regex parser
+gotcha discovered during the metro_esp-32 audit this session).
+
+FILES CHANGED
+---------------
+- variants/esp32/esp32/piranha_esp-32/board.json - NEW file, full copy of
+  the chip-level esp32/esp32/board.json default with GPIO0 capabilities
+  restricted to ["digital_input","button"].
+- pins_arduino.h - unchanged (no alias collision found requiring deletion).
+
+No build commands were run, per task instructions.
+
+SUMMARY
+---------
+GPIO0 (KEY_BUILTIN): KEEP, tagged as confirmed onboard BOOT/user button.
+Directly confirmed via this board's own iarduino.ru wiki page
+(wiki.iarduino.ru/page/piranha-set-esp32/), corroborated by the sibling v2
+board's page and universal ESP32 BOOT-pin convention. No alias collisions
+with SDA/SCL/SS/MOSI/MISO/SCK/TX/RX found - pins_arduino.h left unchanged.

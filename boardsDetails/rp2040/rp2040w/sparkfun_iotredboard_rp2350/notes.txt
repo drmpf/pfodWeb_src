@@ -1,0 +1,274 @@
+Board: sparkfun_iotredboard_rp2350 (SparkFun IoT RedBoard - RP2350)
+Chip bucket: variants/rp2040/rp2040w (rp2040w, CYW43/RM2-class WiFi+BLE)
+Audit date: 2026-07-13
+Audit type: dedicated-hardware pin-exclusion + button/LED/NeoPixel tagging
+(part of the ongoing RP2040/RP2350-family audit; this specific board had
+never been audited before this session).
+
+============================================================
+SOURCES CONSULTED
+============================================================
+1. This board's own pins_arduino.h
+   (variants/rp2040/rp2040w/sparkfun_iotredboard_rp2350/pins_arduino.h)
+   - authoritative arduino-pico board-support source the Designer's
+     generated sketches actually compile against. Self-contained (does
+     NOT #include the shared generic/common.h fallback).
+   - Cross-checked against the current upstream arduino-pico repo file
+     (raw.githubusercontent.com/earlephilhower/arduino-pico/master/
+     variants/sparkfun_iotredboard_rp2350/pins_arduino.h) via WebFetch -
+     confirmed matching (same 48 digital / 7 analog pin counts, LED on
+     pin 25, NeoPixel on pin 3). No drift between this repo's copy and
+     upstream.
+
+2. variants/rp2040/rp2040w/board.json (chip-level bucket defaults) -
+   confirms chipGpios is deliberately {} at chip level and this board is
+   listed as one of the "self-contained vendor files with their own real
+   pin layouts" needing its own per-board override.
+
+3. Precedent files read for schema/style/research method:
+   - variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json (+ its
+     own notes.txt) - established the "shared-but-broken-out SPI bus left
+     at chip defaults" policy this audit reuses for GPIO8-11.
+   - variants/rp2040/rp2040w/sparkfun_xrp_controller/board.json (+ notes)
+     - established the "PIN_LED sentinel value outside GPIO0-47 range
+       gets no chipGpios entry" policy this audit reuses for PIN_WL_LED.
+
+4. https://docs.sparkfun.com/SparkFun_IoT_RedBoard-RP2350/hardware_overview/
+   Official SparkFun hookup guide (WebFetch, 2026-07-13). Confirmed:
+   - "STAT/25 - Blue LED tied to the RP2350's IO25. User-programmable
+     status LED."
+   - "WRL - Blue LED tied to IO0 on the RM2." (the RM2 radio module's OWN
+     GPIO0 - not an RP2350 pin at all)
+   - "RGB/IO3 - WS2812 RGB LED tied to the RP2350's IO3."
+   - Buttons section: "There are three push buttons on the board labeled
+     RESET, USER/36 and BOOT ... The USER/36 button connects to IO36 on
+     the RP2350 ..." - THIS IS WRONG, see "DISCOVERED DOC ERROR" below.
+   - microSD "connects to the RP2350's SPI bus"; "Make sure the SPI [pins]
+     are LOW when the microSD card is unpowered."
+   - 8MB PSRAM "connects to the RP2350 over QSPI."
+   - Peripheral-power "LP" jumper: "Pulls the RP9080 [sic, RT9080] 3.3V
+     regulator's enable (EN) pin HIGH ... to power the peripheral
+     (3.3V_P) power circuit," which powers "the microSD card and RGB LED."
+   No polarity statement for the STAT LED, no GPIO numbers for SD
+   chip-select/card-detect, PSRAM CS, battery alert, WiFi enable, power-
+   source-detect, or VIN measurement - required going to the schematic.
+
+5. Official schematic PDF: docs.sparkfun.com/SparkFun_IoT_RedBoard-RP2350/
+   assets/board_files/SparkFun_IoT_RedBoard-RP2350.pdf (rev v10,
+   2025-02-05, KiCad 8.0.9, 4 sheets: Top Level/Connectors; Core Processor
+   and Wireless; Power and Battery Management; Peripheral Components).
+   Downloaded and read directly (not just OCR'd prose) to get the
+   RP2350B's full 80-pin-package GPIO-to-net-name listing on the Core
+   sheet, and the SD Card / LEDs / Buttons / External-Voltage-Measurement
+   sub-circuits on the Peripherals sheet.
+
+6. Raw KiCad schematic sources (ground truth, not OCR'd PDF text):
+   github.com/sparkfun/SparkFun_IoT_RedBoard-RP2350, Hardware/*.kicad_sch
+   - downloaded Hardware/peripherals.kicad_sch and
+     Hardware/SparkFun_IoT_RedBoard-RP2350.kicad_sch (top level) directly
+     via raw.githubusercontent.com and grepped/read them as plain
+     S-expression text to resolve two questions the PDF/prose left
+     ambiguous or contradictory (see below): the STAT LED's polarity, and
+     the USER button's real GPIO number.
+
+============================================================
+DISCOVERED DOC ERROR: USER button is GPIO39, not GPIO36
+============================================================
+The official hookup guide's Buttons section literally states "The
+USER/36 button connects to IO36 on the RP2350." This was repeated
+identically across four independent WebFetch queries against the same
+page (not a one-off summarization glitch).
+
+It is wrong. Two independent authoritative sources agree with each other
+and disagree with the doc:
+  - pins_arduino.h: `static const uint8_t USER_SW = (39u);` - no GPIO36
+    reference anywhere in the file.
+  - Raw KiCad schematic trace: on the "Core Processor and Wireless" sheet,
+    the RP2350B (U1) pin-to-net listing shows GPIO36/37/38 wired to
+    WRL_CLK/WRL_DAT/WRL_~{CS} respectively - these are the RM2 radio
+    module's own internal SPI-like control-bus signals (WRL_CLK/WRL_DAT/
+    WRL_~CS feed U2 RM2's SCLK/PICO/POCI/~CS pins) - definitely not a
+    button. GPIO39 is wired to net "~{USER_BTN}", which on the
+    "Peripheral Components" sheet feeds SW3 "USER" (pulled up to 3.3V via
+    R35 10k, standard active-low momentary-to-GND button wiring,
+    identical topology to the confirmed BOOT/RESET buttons on the same
+    sheet).
+Conclusion: GPIO39 is used as authoritative in board.json (matches the
+actual compiled USER_SW constant sketches would use). The doc-site error
+is noted in board.json's GPIO39 entry so a future maintainer isn't
+confused by the discrepancy if they check the hookup guide themselves.
+
+============================================================
+STAT LED (GPIO25) POLARITY - resolved by raw schematic trace
+============================================================
+pins_arduino.h and the hookup guide both identify GPIO25 as the STAT LED
+(also LED_BUILTIN) but neither states its polarity. This board is in the
+classic Arduino-Uno R3 footprint, where the built-in "L" LED is
+conventionally active-HIGH - but that convention should NOT be assumed
+without checking, since this is a different vendor design.
+
+Resolved by downloading Hardware/peripherals.kicad_sch (raw KiCad
+S-expression source) and tracing exact wire coordinates:
+  - D6 (the STAT LED, "Blue") is an SparkFun-LED:LED_Blue_0603 symbol.
+    Its library pin 1 = "K" (cathode), pin 2 = "A" (anode).
+  - Symbol placed at (114.3, 71.12), rotation 90 degrees -> cathode
+    (pin 1) resolves to absolute position (114.3, 68.58); anode (pin 2)
+    to (114.3, 73.66).
+  - A wire runs from (114.3, 66.04) to (114.3, 68.58) - i.e. straight into
+    the cathode.
+  - The hierarchical_label "~{STAT}" sits at exactly (114.3, 66.04) - the
+    other end of that same wire. So GPIO25 (via the ~{STAT} net) drives
+    the LED's CATHODE directly.
+  - A second wire runs from the anode (114.3, 73.66) to (114.3, 76.2),
+    where resistor R31 (2.2k, "SparkFun-Resistor:2.2k_0402", placed at
+    (114.3, 78.74)) sits, its far side going up to the 3.3V_P rail.
+  - Circuit: 3.3V_P -> R31 (2.2k) -> D6 anode -> D6 cathode -> GPIO25.
+    GPIO25 driven LOW sinks current and lights the LED; GPIO25 HIGH (or
+    left as input/floating) = LED off. ACTIVE LOW.
+  - Cross-check: the WRL status LED (D5, driven by the RM2's own IO0 via
+    net "WRL_IO0") uses the byte-for-byte identical topology (R30 2.2k,
+    same coordinate offsets translated to D5's position) - confirming
+    this active-low, resistor-to-anode/GPIO-to-cathode pattern is this
+    schematic's standard status-LED wiring convention, not a one-off wiring
+    quirk on just the STAT LED.
+  - Also corroborated by this schematic's own net-naming convention: every
+    other active-low signal in the design carries a tilde prefix
+    (~{RESET}, ~{BOOT}, ~{USER_BTN}, ~{SD_DET}, ~{BALRT}, ~{CS}) and
+    "~{STAT}" follows the same tilde convention.
+Conclusion: capabilities ["digital_output","led_low","pwm_output"] applied
+to GPIO25 (digital_input dropped - pin is committed to driving the
+built-in LED).
+
+============================================================
+PER-PIN REASONING (only pins needing a chipGpios override are listed;
+everything else is left at the rp2040w chip-level default, i.e. full
+digital_input/digital_output/pwm_output, because it's genuinely general-
+purpose / header-broken-out)
+============================================================
+GPIO0/1   (D0/D1, PIN_SERIAL1_TX/RX)         - general UART0, header-
+            exposed. KEPT default.
+GPIO2     (SD_DET_N)                          - CONFIRMED onboard microSD
+            card-detect, active low (schematic ~{SD_DET} <- J14 microSD
+            pin 9 ~{DET}). No D-alias given by vendor. capabilities: [].
+GPIO3     (RGB_LED / PIN_NEOPIXEL)            - CONFIRMED onboard WS2812
+            RGB LED data line (docs.sparkfun.com "RGB/IO3"; schematic D4
+            WS2812B). Tagged ["digital_output","led_neopixel",
+            "pwm_output"].
+GPIO4/5   (Wire0 SDA/SCL)                     - Qwiic I2C connector,
+            general purpose. KEPT default.
+GPIO6     (BATT_ALRT_N)                       - CONFIRMED onboard
+            MAX17048 fuel-gauge low-battery alert, active low (schematic
+            ~{BALRT} <- U8 MAX17048 ALRT). No D-alias given. capabilities: [].
+GPIO7     (PERIPHERAL_POWER_ENABLE)           - CONFIRMED peripheral-rail
+            (3.3V_P: microSD/RGB LED/Qwiic) power-enable, gates U10
+            RT9080-3.3 EN via net PERI_POW (schematic "JP5 LP" jumper
+            annotation). No D-alias given. capabilities: [].
+GPIO8-11  (D8-D11, SPI1/"SD Card SPI":
+           MISO/SS/SCK/MOSI)                  - LEFT AT DEFAULT. Unlike
+            sparkfun_thingplusrp2350's dedicated SD-CS pin (no D-alias
+            there), THIS board's own pins_arduino.h gives all four of
+            these pins plain general Arduino D-aliases - vendor's own
+            signal that these are genuinely dual-purpose (Arduino-header
+            SPI1, incidentally shared with the onboard microSD), matching
+            the "shared-but-broken-out SPI bus" policy already used for
+            sparkfun_thingplusrp2350's GPIO2/3/4 (SPI0 there). Not
+            touched.
+GPIO12-19 (D12-D19, "HSTX GPIO")              - general purpose header
+            pins (HSTX high-speed output is an optional peripheral
+            function on these pins, not a captured onboard connection in
+            this board's own schematic beyond a plain header break-out
+            connector J11). KEPT default.
+GPIO20-23 (D20-D23, SPI0/"External SPI":
+           MISO/SS/SCK/MOSI)                  - explicitly named
+            "External" in pins_arduino.h - unambiguously general purpose,
+            header-exposed. KEPT default.
+GPIO24    (WRL_ON)                            - CONFIRMED onboard RM2
+            radio-module power-enable (schematic WRL_ON -> U2 RM2 WLON
+            pin). No D-alias given. capabilities: [].
+GPIO25    (PIN_LED / LED_BUILTIN / D25
+           "aka STAT LED")                    - CONFIRMED onboard status
+            LED, ACTIVE LOW (see dedicated section above). Tagged
+            ["digital_output","led_low","pwm_output"].
+GPIO26    (POWER_SRC_5V)                      - CONFIRMED external-5V-
+            present status flag from U6 LM66200 power-mux ST pin
+            (schematic net 5V_SRC). No D-alias given. capabilities: [].
+GPIO27    (BATT_POWER)                        - CONFIRMED battery-
+            currently-supplying status flag from U7 LM66200 power-mux ST
+            pin (schematic net BATT_PWR). No D-alias given.
+            capabilities: [].
+GPIO28-35 (D28-D35, "External GPIO")          - general purpose header
+            pins, no dedicated onboard function found in the schematic.
+            KEPT default.
+GPIO30/31 (Wire1 SDA1/SCL1)                   - second I2C bus, general
+            purpose (no onboard IMU or other I2C peripheral present on
+            this board, unlike sibling board sparkfun_xrp_controller's
+            onboard LSM6DSO). KEPT default.
+GPIO36/37/38 (WRL_CLK/WRL_DAT/WRL_~{CS})      - CONFIRMED RM2 radio-
+            module's own internal SPI-like control bus (no pins_arduino.h
+            alias of any kind exists for these three GPIOs - the vendor
+            never exposes them at all). Left with NO chipGpios entry
+            (conservative - not exposed as a routable pin in the first
+            place, matching the "report NO CHANGE rather than guess"
+            instruction for genuinely unreferenced pins - though these
+            are in fact accounted for, just intentionally undocumented by
+            the vendor's own firmware since nothing in build_boards.js
+            would surface them as a pin anyway).
+GPIO39    (USER_SW)                           - CONFIRMED onboard USER
+            pushbutton (see "DISCOVERED DOC ERROR" section above -
+            resolved GPIO36-vs-39 discrepancy). Tagged
+            ["digital_input","button"].
+GPIO40-45 (D40-D45 / A0-A5, also
+           PIN_SERIAL2_TX/RX on 40/41)        - general purpose analog+
+            digital pins (also double as a second UART on this vendor's
+            design). Header-exposed. KEPT default - no serial_tx/rx
+            auto-tagging exists for these since pins_arduino.h only gives
+            plain RX/TX alias names to the Serial1 pins (GPIO0/1), not to
+            Serial2 (GPIO40/41) - this is a pre-existing minor gap (same
+            class as the one already flagged in sparkfun_thingplusrp2350's
+            notes.txt), out of scope for this board.json-only pass.
+GPIO46    (VIN_MEAS)                          - CONFIRMED dedicated
+            external input-voltage-measurement ADC input (schematic
+            R28/R29 divider from VRAW; matches pins_arduino.h's own
+            "VIN_MEAS = 2.93V @ VIN = 15V" scaling comment). ADC-capable
+            (ADC6) but deliberately not exposed as A6/D46 by the vendor.
+            capabilities: [].
+GPIO47    (RP2350_PSRAM_CS)                   - CONFIRMED onboard 8MB
+            PSRAM (APS6404L) chip-select (schematic net PSRAM_~{CS} to
+            U4). Same scaffolding as sparkfun_thingplusrp2350's GPIO8.
+            Not broken out, never user-toggled. capabilities: [].
+PIN_WL_LED (=64u, sentinel, NOT a real
+            RP2350 GPIO)                      - the WRL status LED (D5)
+            is driven by the RM2 radio module's OWN GPIO0 (net WRL_IO0),
+            not an RP2350 pin - outside the real GPIO0-47 address space
+            entirely. No chipGpios entry possible or needed (matches
+            existing repo precedent for out-of-range LED sentinels, e.g.
+            sparkfun_xrp_controller's identical PIN_LED=(64u) treatment).
+
+============================================================
+BUG-CLASS CHECK (button/LED colliding with an auto-appended bus alias)
+============================================================
+Checked every confirmed dedicated/tagged pin (GPIO2, 3, 6, 7, 24, 25, 26,
+27, 39, 46, 47) against every PIN_SPIx_*/PIN_WIREx_* #define in this
+board's pins_arduino.h (SDA=GPIO4, SCL=GPIO5, SDA1=GPIO30, SCL1=GPIO31,
+SS/CS=GPIO21, MOSI/PICO=GPIO23, MISO/POCI=GPIO20, SCK=GPIO22 - all SPI0).
+No overlap found - this board does NOT exhibit the "confirmed button/LED
+pin also aliased as a bus signal" bug class seen repeatedly elsewhere this
+session. No #define removal needed.
+
+============================================================
+SUMMARY
+============================================================
+Created variants/rp2040/rp2040w/sparkfun_iotredboard_rp2350/board.json
+(new file - none existed before). Added chipGpios overrides for 11 GPIOs:
+GPIO2 (SD card-detect, dedicated), GPIO3 (NeoPixel), GPIO6 (battery
+alert, dedicated), GPIO7 (peripheral power enable, dedicated), GPIO24
+(WiFi radio enable, dedicated), GPIO25 (STAT/LED_BUILTIN, confirmed
+ACTIVE LOW via raw schematic trace - contradicts the Uno-footprint
+active-high assumption), GPIO26/27 (power-source-select status flags,
+dedicated), GPIO39 (USER button - confirmed via schematic to be GPIO39,
+NOT GPIO36 as the official hookup guide incorrectly states), GPIO46 (VIN
+measurement, dedicated), GPIO47 (PSRAM chip-select, dedicated). GPIO8-11
+(SD-card-shared SPI1) deliberately left at chip defaults, matching the
+sparkfun_thingplusrp2350 "shared-but-broken-out SPI bus" precedent. No
+build commands were run; board.json's JSON validity was checked with a
+plain-text `//`-comment-stripping pass + `JSON.parse()` only.

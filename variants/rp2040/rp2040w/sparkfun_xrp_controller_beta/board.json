@@ -1,0 +1,232 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-13.
+// Board: SparkFun XRP Controller Board — BETA hardware revision. This is
+// the pre-production prototype of the XRP ("Experiential Robotics
+// Platform") controller: a genuine Raspberry Pi Pico W module (real
+// RP2040 + Infineon CYW43439 WiFi/BLE radio — confirmed both by this
+// board's own pins_arduino.h `#include <cyw43_wrappers.h>` and by
+// SparkFun's own docs: "on-board Raspberry Pi Pico W featuring the
+// RP2040 microcontroller"), NOT the custom RP2350B chip the production
+// (non-beta) sparkfun_xrp_controller uses. Diffing this board's
+// pins_arduino.h against the non-beta sibling's shows the beta is a
+// materially different, simpler design: GPIO numbers 0-28 only (vs.
+// 0-47), no per-motor current-sense ADC pins, no onboard PSRAM
+// (no RP2350_PSRAM_CS define), only 2 servo headers (vs. 4), a single
+// Qwiic I2C connector (vs. two on non-beta), and — most notably — NO
+// WS2812 NeoPixel at all (no BOARD_NEOPIXEL/PIN_NEOPIXEL/NUM_NEOPIXEL
+// defines anywhere in this file, confirmed absent from both the header
+// and SparkFun's own beta hardware-overview page).
+//
+// Sources consulted (full detail in
+// boardsDetails/rp2040/rp2040w/sparkfun_xrp_controller_beta/notes.txt):
+//   - This board's own pins_arduino.h (variants/rp2040/rp2040w/
+//     sparkfun_xrp_controller_beta/pins_arduino.h) — authoritative
+//     arduino-pico board-support source. XRP default/alternate pin-name
+//     #defines for every motor/servo/encoder signal, `#define PIN_LED
+//     (64u)` (CYW43-chip LED sentinel, same convention as rpipicow — no
+//     PSRAM/current-sense/NeoPixel defines present), and its own D18-D22/
+//     A0-A2/SDA/SCL static-const aliases.
+//   - variants/rp2040/rp2040w/sparkfun_xrp_controller/pins_arduino.h —
+//     non-beta sibling, diffed line-by-line against this file. Confirms
+//     the beta uses entirely different (lower, RP2040-range 0-28) GPIO
+//     numbers for the same motor/servo functions, and lacks the current-
+//     sense, PSRAM, second-Qwiic, and NeoPixel hardware the production
+//     board added.
+//   - variants/rp2040/rp2040w/board.json (chip bucket) — confirms
+//     chipGpios:{} is deliberately empty at this level.
+//   - variants/rp2040/rp2040w/rpipicow/board.json + notes.txt — the
+//     canonical precedent for a genuine Pico W board in this bucket:
+//     confirms GPIO23/24/25/29 are internal to the CYW43439 radio (WL
+//     enable/data/CS/clock) and NOT present on the pin header at all, and
+//     that `PIN_LED (64u)` addresses the WiFi chip's own WL_GPIO0 (not a
+//     real RP2040 pin) via arduino-pico's pin->=64 cyw43_arch_gpio_*
+//     special-case, which requires cyw43_arch_init() (implicitly run by
+//     WiFi.begin()) to have already executed — this repo's shared
+//     serial.ino template never calls that, so tagging pin 64 as a
+//     normal led_high/led_low capability would generate broken code for
+//     a Serial-connection sketch. Both findings apply identically here
+//     since this beta board uses the literal same Pico W module.
+//   - variants/rp2040/rp2040w/sparkfun_xrp_controller/board.json +
+//     boardsDetails/.../sparkfun_xrp_controller/notes.txt — non-beta
+//     sibling audited earlier this session, used as the schema/style
+//     template and as the button/motor tagging precedent.
+//   - https://docs.sparkfun.com/SparkFun_XRP_Controller/hardware_overview_beta/
+//     Official SparkFun BETA hookup guide (fetched via WebFetch,
+//     2026-07-13). Confirms exact GPIO numbers matching pins_arduino.h
+//     for every motor phase/enable/encoder pin, the 2 servo headers, the
+//     Qwiic I2C connector (GPIO18/19), the line-follower sensors
+//     (GPIO26/27), the range/distance sensor trigger/echo (GPIO20/21),
+//     and battery-voltage measurement (GPIO28). Confirms "GPIO22
+//     connects to the USER button", gated by a default-CLOSED "USER_BTN"
+//     solder jumper (opening it disconnects the button from GPIO22 and
+//     frees the pin for the board's "Extra" expansion connector — GPIO22
+//     and GPIO28 are both called out as shared with that connector).
+//     Confirms three status LEDs: "MOT" and "SYS" are hardwired to the
+//     motor-power and 3.3V system rails (no GPIO connection, same as
+//     non-beta), and the third is "the LED on Pico W" itself — i.e. the
+//     same WL_GPIO0/PIN_LED(64u) CYW43-routed LED as plain rpipicow, not
+//     a separate onboard LED specific to this board. Explicitly:
+//     "No RGB/NeoPixel LED is mentioned" for this beta hardware. Confirms
+//     the onboard IMU is an LSM6DSOX (STMicroelectronics) on the same
+//     Qwiic I2C bus (GPIO18/19) — a minor part-number variant of the
+//     non-beta board's LSM6DSO, not a separate GPIO.
+//   - WebSearch results (sparkfun.com news, thepihut.com, raspberrypi.com
+//     "All-new experiential robotics platform (XRP) powered by Raspberry
+//     Pi Pico W") — independently corroborate this beta hardware uses a
+//     genuine Pico W (RP2040 + CYW43439), matching the pins_arduino.h
+//     diff findings above.
+//
+// Per-pin mapping (matches this board's own pins_arduino.h #defines,
+// cross-checked against the beta hookup-guide GPIO numbers above):
+//   GPIO0/1   - MOTOR_3_ENCODER_A/B - dedicated motor-3 quadrature
+//               encoder inputs, no D-alias. Documented only.
+//   GPIO2/3   - MOTOR_3_IN_1 (phase) / MOTOR_3_IN_2 (enable) - dedicated
+//               motor-3 driver outputs. Documented only.
+//   GPIO4/5   - MOTOR_L_ENCODER_A/B - dedicated left-motor quadrature
+//               encoder inputs. Documented only.
+//   GPIO6/7   - MOTOR_L_IN_1 (phase) / MOTOR_L_IN_2 (enable) - dedicated
+//               left-motor driver outputs. Documented only.
+//   GPIO8/9   - MOTOR_4_ENCODER_A/B - dedicated motor-4 quadrature
+//               encoder inputs. Documented only.
+//   GPIO10/11 - MOTOR_4_IN_1 (phase) / MOTOR_4_IN_2 (enable) - dedicated
+//               motor-4 driver outputs. Documented only.
+//   GPIO12/13 - MOTOR_R_ENCODER_A/B - dedicated right-motor quadrature
+//               encoder inputs. Documented only.
+//   GPIO14/15 - MOTOR_R_IN_1 (phase) / MOTOR_R_IN_2 (enable) - dedicated
+//               right-motor driver outputs. Documented only.
+//   GPIO16    - SERVO_1 - dedicated servo-1 PWM signal header. Documented
+//               only.
+//   GPIO17    - SERVO_2 - dedicated servo-2 PWM signal header. Documented
+//               only.
+//   GPIO18/19 - I2C_SDA_1/SCL_1 (the single Qwiic connector on this
+//               board, made the default Wire bus via this file's own
+//               `__WIRE0_DEVICE i2c1` override; also carries the onboard
+//               LSM6DSOX IMU) - KEPT general purpose (already D18/D19 +
+//               SDA/SCL aliases), matching non-beta's identical GPIO4/5
+//               I2C-bus KEEP policy.
+//   GPIO20/21 - DISTANCE_TRIGGER/ECHO (range sensor) - KEPT general
+//               purpose (already a D20/D21 alias) per this repo's
+//               "onboard sensor exposed for pfodWeb's data-display use
+//               case" policy, matching non-beta's identical GPIO0/1
+//               treatment of the same signal type.
+//   GPIO22    - BOARD_USER_BUTTON - CONFIRMED onboard USER pushbutton
+//               (docs.sparkfun.com beta hardware overview: "GPIO22
+//               connects to the USER button"), gated by a default-CLOSED
+//               "USER_BTN" solder jumper. UNLIKE non-beta's GPIO36 (which
+//               had no static alias at all), this board's own
+//               pins_arduino.h already declares a general-purpose `D22`
+//               alias here, which under this chip bucket's "any alias
+//               gets full digital_input/digital_output/pwm_output"
+//               default would wrongly imply the button pin can be driven
+//               as an output. Overridden here to
+//               ["digital_input","button"] — dropping the incorrectly-
+//               implied digital_output/pwm_output — matching this repo's
+//               existing button-tagging precedent (non-beta's GPIO36,
+//               adafruit_fruitjam GPIO4/5, wiolink GPIO0). Not modifying
+//               pins_arduino.h itself (out of scope for a board.json-only
+//               pass; the D22 alias stays, this override just narrows its
+//               effective capability set).
+//   GPIO23/24/25/29 - CONFIRMED internal CYW43439 WiFi/BLE radio bus
+//               (wireless enable/SMPS control, data/IRQ, chip-select,
+//               clock respectively) - NOT present on this board's pin
+//               header at all, exactly matching plain rpipicow's own
+//               GPIO23/24/25/29 reservation (this beta board uses the
+//               literal same Pico W module). Already fully absent from
+//               pins_arduino.h's alias list (no D<n>/A<n> declared for
+//               any of them) - NO chipGpios entry added, matching
+//               rpipicow/board.json's explicit reasoning that adding one
+//               would wrongly re-introduce a pin that isn't even
+//               physically accessible (chipGpios keys get unioned back
+//               into the exposed-GPIO set by build_boards.js).
+//   GPIO26/27 - LINE_L/LINE_R (line-follower IR reflectance sensors) -
+//               KEPT general purpose (already A0/A1 aliases). NOTE: this
+//               differs from non-beta, whose pins_arduino.h does NOT
+//               alias its equivalent line-follower GPIOs (44/45) at all
+//               and whose board.json therefore documents them as
+//               capabilities:[]. On THIS board, the alias is a real,
+//               pre-existing part of this file's own design (not
+//               introduced by this pass) — treated the same as the
+//               range-sensor KEEP above (onboard analog sensor exposed
+//               for pfodWeb's data-display use case) rather than
+//               overridden to capabilities:[], since doing so would
+//               remove functionality this board's own pins_arduino.h
+//               deliberately grants and changing that is a
+//               pins_arduino.h-level decision, out of scope for a
+//               board.json-only pass. Documented here so the difference
+//               from non-beta is explicit and reviewable rather than a
+//               silent inconsistency.
+//   GPIO28    - BOARD_VIN_MEASURE (battery-voltage monitor, gated by a
+//               default-CLOSED "VIN_MEAS" solder jumper; also shared with
+//               the "Extra" expansion connector per the beta hookup
+//               guide) - KEPT general purpose (already an A2 alias),
+//               same reasoning and same non-beta-divergence note as
+//               GPIO26/27 above.
+//
+// No onboard NeoPixel on this beta hardware revision (CONFIRMED absent
+// from both pins_arduino.h and docs.sparkfun.com's beta hardware
+// overview, which explicitly states no RGB/NeoPixel LED for this board)
+// - this is a genuine hardware difference from the production non-beta
+// board (which added a WS2812 at GPIO37), not an oversight in this pass.
+// No chipGpios entry possible/needed since no such pin exists.
+//
+// BOARD_LED / PIN_LED = (64u): same CYW43439 WL_GPIO0-routed LED as plain
+// rpipicow ("the LED on Pico W" per the beta hookup guide) - not a real
+// RP2040 GPIO, not representable as a normal digital_output/led_high/
+// led_low capability (outside the chip's real GPIO0-29 address space, and
+// driving it correctly requires cyw43_arch_init() to have already run,
+// which this repo's shared serial.ino template does not do). Left
+// completely untagged (no chipGpios entry), matching rpipicow/board.json's
+// identical reasoning for the identical mechanism.
+//
+// Hardwired "MOT" and "SYS" indicator LEDs (per beta hookup guide): tied
+// directly to the motor-power and 3.3V/system rails respectively, not to
+// any RP2040 GPIO - no capability tag applies, no chipGpios entry
+// possible (no associated GPIO number). Same as non-beta.
+//
+// BOOT button (RP2040 BOOTSEL): standard Pico-family BOOTSEL-style
+// button, read via the boot ROM, not a normal digitalRead()-capable GPIO
+// - no "button" capability tag applies, matching this repo's existing
+// convention (rpipicow, non-beta sparkfun_xrp_controller, rpipico2w).
+//
+// No SDA/SCL/SS/MOSI/MISO/SCK bus-role collision with any button/LED pin
+// was found on this board: PIN_SPI0_*/PIN_SPI1_*/PIN_SERIAL1_*/
+// PIN_SERIAL2_*/PIN_WIRE1_* all resolve to the vendor's (31u) "not wired"
+// sentinel (not a real GPIO), and PIN_WIRE0_SDA/SCL point at GPIO18/19
+// (the Qwiic connector, already a confirmed general-purpose KEEP above,
+// not the button or any LED pin) - the "confirmed bug class" from the
+// audit brief (a button/LED pin also aliased as a bus signal, auto-
+// tagged by build_boards.js regardless of chipGpios) does not apply here.
+//
+// See boardsDetails/rp2040/rp2040w/sparkfun_xrp_controller_beta/notes.txt
+// for the full research trail.
+{
+  "boardName": "RP2040W",
+  "displayName": "Raspberry Pi Pico W / 2W",
+  "family": "rp2040",
+  "inputOnlyGpios": [],
+  "connections": ["serial", "tcp", "http", "ble"],
+  "pinNotes": {},
+  "chipGpios": {
+    "0":  { "capabilities": [], "note": "MOTOR_3_ENCODER_A - dedicated motor-3 quadrature encoder input - not general purpose (confirmed pins_arduino.h + docs.sparkfun.com beta hardware overview)." },
+    "1":  { "capabilities": [], "note": "MOTOR_3_ENCODER_B - dedicated motor-3 quadrature encoder input - not general purpose." },
+    "2":  { "capabilities": [], "note": "MOTOR_3_IN_1 (phase) - dedicated motor-3 driver output - not general purpose." },
+    "3":  { "capabilities": [], "note": "MOTOR_3_IN_2 (enable) - dedicated motor-3 driver output - not general purpose." },
+    "4":  { "capabilities": [], "note": "MOTOR_L_ENCODER_A - dedicated left-motor quadrature encoder input - not general purpose." },
+    "5":  { "capabilities": [], "note": "MOTOR_L_ENCODER_B - dedicated left-motor quadrature encoder input - not general purpose." },
+    "6":  { "capabilities": [], "note": "MOTOR_L_IN_1 (phase) - dedicated left-motor driver output - not general purpose." },
+    "7":  { "capabilities": [], "note": "MOTOR_L_IN_2 (enable) - dedicated left-motor driver output - not general purpose." },
+    "8":  { "capabilities": [], "note": "MOTOR_4_ENCODER_A - dedicated motor-4 quadrature encoder input - not general purpose." },
+    "9":  { "capabilities": [], "note": "MOTOR_4_ENCODER_B - dedicated motor-4 quadrature encoder input - not general purpose." },
+    "10": { "capabilities": [], "note": "MOTOR_4_IN_1 (phase) - dedicated motor-4 driver output - not general purpose." },
+    "11": { "capabilities": [], "note": "MOTOR_4_IN_2 (enable) - dedicated motor-4 driver output - not general purpose." },
+    "12": { "capabilities": [], "note": "MOTOR_R_ENCODER_A - dedicated right-motor quadrature encoder input - not general purpose." },
+    "13": { "capabilities": [], "note": "MOTOR_R_ENCODER_B - dedicated right-motor quadrature encoder input - not general purpose." },
+    "14": { "capabilities": [], "note": "MOTOR_R_IN_1 (phase) - dedicated right-motor driver output - not general purpose." },
+    "15": { "capabilities": [], "note": "MOTOR_R_IN_2 (enable) - dedicated right-motor driver output - not general purpose." },
+    "16": { "capabilities": [], "note": "SERVO_1 - dedicated servo-1 PWM signal header - not general purpose." },
+    "17": { "capabilities": [], "note": "SERVO_2 - dedicated servo-2 PWM signal header - not general purpose." },
+    "22": { "capabilities": ["digital_input", "button"], "note": "BOARD_USER_BUTTON - CONFIRMED onboard USER pushbutton, gated by default-CLOSED 'USER_BTN' solder jumper (docs.sparkfun.com beta hardware overview: \"GPIO22 connects to the USER button\"). Already carries a general D22 alias in this board's own pins_arduino.h; overridden here to button-only (drops the incorrectly-implied digital_output/pwm_output a plain alias would give), matching sparkfun_xrp_controller's GPIO36 button-tagging precedent." }
+  },
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

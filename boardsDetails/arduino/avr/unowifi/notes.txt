@@ -1,0 +1,126 @@
+Board: Arduino UNO WiFi (Rev1, "UNO WiFi Developer Edition", avr/unowifi,
+split off avr/standard)
+Date: 2026-07-14
+
+Reason for split: boards.txt had "unowifi.build.variant=standard", meaning
+this board shared variants/arduino/avr/standard/pins_arduino.h + board.json
+with plain Uno/ATmegaNG/Diecimila/Uno Mini. That's wrong: UNO WiFi Rev1 has
+a genuinely different onboard ESP8266 co-processor (bridged to the
+ATmega328P) that vanilla Uno does not have, so it needed its own directory
+to carry the bridge-chip pinNotes. (Confirmed this is Rev1, the
+ATmega328P-based board, boards.txt build.board=AVR_UNO_WIFI_DEV_ED,
+PID/VID 0x2A03/0x0057 - NOT "Uno WiFi Rev2", which is an unrelated
+SAMD21-based board not present anywhere in this AVR family.)
+
+Sources consulted:
+- https://docs.arduino.cc/retired/boards/arduino-uno-wifi/ - WebFetch of
+  this URL returned empty content (page likely JS-rendered/blocked for
+  the fetch tool); not usable directly, but see the DigiKey-hosted PDF
+  copy below which is the same official Arduino document.
+- https://media.digikey.com/pdf/Data%20Sheets/Arduino%20PDFs/UNO_WiFi_Web.pdf
+  - Official Arduino Product datasheet/product-page PDF (mirrors
+  arduino.org's original "Arduino UNO WiFi" page, product code A000133).
+  Read directly via the Read tool (PDF support) after WebFetch saved it
+  to disk. This is the primary source for every finding below. Confirms:
+    * "TWI: A4 or SDA pin and A5 or SCL pin. Support TWI communication
+      using the Wire library. NOTE: the A4 or SDA pin and A5 or SCL pin
+      are in use by the IO Expander SC16IS750IBS."
+    * "On the Arduino Uno Wi-Fi there's a SC16IS750IBS IO Expander Single
+      UART with I2C-bus/SPI interface that allows the communication
+      between AtMega 16u2, AtMega 328p and the ESP8266EX." (with a block
+      diagram showing WiFi chip <-UART-> SC16IS750 <-I2C-> Arduino UNO
+      (ATmega328p), and a separate direct UART path from the WiFi chip
+      through the same switch to the ATmega328p for "Program Use").
+    * "LED: 13. There is a built-in LED connected to digital pin 13. When
+      the pin is HIGH value, the LED is on, when the pin is LOW, it's
+      off." - identical wording/polarity to the standard Uno's D13 LED.
+    * Full pin-by-pin specialized-function enumeration (Serial 0/1,
+      External Interrupts 2/3, PWM 3/5/6/9/10/11, SPI 10/11/12/13, LED 13,
+      TWI A4/A5, AREF, RESET) matches the plain Uno's list exactly, with
+      TWI A4/A5 being the ONLY entry carrying an extra NOTE versus a
+      vanilla Uno's equivalent page - no other ATmega328P pin is called
+      out as WiFi-related anywhere in the document.
+    * Board photo/silkscreen shows "TX"/"RX" labels (explicitly documented
+      elsewhere in the same doc as wired to the ATmega8U2/16U2 USB-serial
+      chip, "flash when data is being transmitted via the USB-to-serial
+      chip... but not for serial communication on pins 0 and 1" - i.e.
+      not ESP8266-related and not this board's differentiator) and a
+      "WiFi" silkscreen label near the ESP8266 module; no ATmega328P pin
+      function is documented anywhere in this doc for a "WiFi" indicator
+      LED, and the doc's pin-by-pin enumeration is otherwise thorough and
+      complete for every ATmega328P specialized pin - treated as
+      confirmed-absent-from-ATmega328P (i.e. that LED, if it exists as a
+      status indicator, is driven directly by/wired only to the ESP8266
+      co-processor itself, out of scope for this AVR pin audit) rather
+      than a guess.
+- https://github.com/JAndrassy/UnoWiFiDevEdSerial1 (community library
+  implementing Serial1 for this exact board's ESP8266 bridge) + its
+  README (fetched via WebFetch) - corroborates the SC16IS750 bridge
+  mechanism independently of the official doc: "an additional on board
+  UART chip SC16IS750. This additional UART is connected to ATmega as an
+  I2C device", I2C address 0x48, and notes "Creators of the UNO WiFi did
+  not connect the interrupt pin of the SC16IS750" (a limitation of the
+  library's own interrupt-driven-RX feature, not relevant to this pin
+  audit). Did not state the ATmega's specific A4/A5 pin numbers directly
+  but is fully consistent with the official doc's statement that they
+  are the ones in use.
+- Web searches for "ESP_CH_UART" (the build-flag name seen in this
+  board's boards.txt entries) turned up nothing AVR/UnoWiFi-specific -
+  dead end, not useful; the boards.txt flags "-DESP_CH_UART
+  -DESP_CH_UART_BR={build.esp_ch_uart_br}" appear to just select a
+  compile-time code path in the arduino_org-flavoured core rather than
+  reveal any additional pin assignment, consistent with everything above
+  (no additional dedicated GPIO beyond the shared A4/A5 TWI bus).
+
+Per-pin findings:
+- D13 (digital pin 13, PIN_SPI_SCK / LED_BUILTIN) - confirmed identical
+  to the standard-family boards: onboard "L" status LED, active-high,
+  same classic Arduino pin-13 LED+SCK dual role. Tagged
+  ["digital_output","pwm_output","led_high"] (chipGpios override,
+  carried over verbatim from standard/board.json).
+- A4/SDA (digital pin 18) and A5/SCL (digital pin 19) - confirmed via
+  official Arduino documentation to be "in use by the IO Expander
+  SC16IS750IBS", an onboard UART-to-I2C bridge chip (fixed I2C address
+  0x48) that the ESP8266 co-processor's UART is routed through. NOT
+  excluded (capabilities left at their normal auto-derived
+  digital/analog/i2c_sda/i2c_scl set): I2C is inherently multi-drop and
+  the SC16IS750 only claims one fixed address on the bus, so a user's
+  own I2C peripheral at a different address still works normally
+  alongside it - matches the pin-audit playbook's "general-purpose I2C
+  bus, even with one onboard device already attached" KEEP policy
+  (section 3). This also matches Arduino's own editorial choice: their
+  official doc keeps A4/A5 listed as ordinary TWI pins and only adds an
+  informational NOTE, rather than removing them from the pinout
+  altogether. Added as plain-text pinNotes entries on "18"/"19" (no
+  chipGpios capability override) so a Designer user sees the caveat
+  without losing the ability to pick these pins for I2C use.
+- D0/D1 (Serial RX/TX) - confirmed wired to the ATmega8U2/16U2
+  USB-to-serial chip only, exactly as on the plain standard-family
+  boards; no ESP8266 connection via these pins. No change (already
+  handled generically by build_boards.js's serial_tx/serial_rx
+  hard-reservation, independent of this board's chipGpios).
+- No other dedicated ATmega328P pin found for the ESP8266 bridge, a
+  reset/enable line to the ESP8266, or a WiFi-status LED - the official
+  doc's pin-by-pin enumeration is thorough (covers every specialized
+  ATmega328P pin function on this board) and names only A4/A5 as
+  WiFi-co-processor-related. A silkscreened "WiFi" LED is visible in the
+  board photo but no ATmega328P pin function is documented for it
+  anywhere in the source - concluded (not guessed) that it is wired
+  directly to/driven by the ESP8266 module itself, out of scope for an
+  AVR GPIO audit per this task's own framing.
+- pins_arduino.h mechanically identical to standard/pins_arduino.h (same
+  NUM_DIGITAL_PINS=20, same PWM/SPI/TWI/analog pin assignments) -
+  confirmed via the official doc's own pin tables (20 digital I/O pins,
+  6 PWM, SPI 10/11/12/13, TWI A4/A5) matching the standard Uno exactly.
+  New unowifi/pins_arduino.h is a one-line
+  #include "../standard/pins_arduino.h", per the lilypad precedent.
+
+Summary: Arduino UNO WiFi (Rev1) - split from "standard" to attach
+pinNotes on A4/A5 (SDA/SCL) documenting the onboard SC16IS750
+UART-to-I2C bridge chip used to reach the ESP8266 Wi-Fi co-processor.
+Pins kept available (not excluded) since I2C is multi-drop and Arduino's
+own docs do the same. D13 onboard LED confirmed identical to the
+standard family and its tag carried over unchanged. No other
+ESP8266-dedicated ATmega328P GPIO or additional onboard LED found.
+boards.txt's unowifi.build.variant repointed from "standard" to
+"unowifi".

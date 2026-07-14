@@ -1,0 +1,189 @@
+Board: d32_pro (chip: esp32) - Wemos/LOLIN D32 Pro
+Directory: variants/esp32/esp32/d32_pro/
+Audit date: 2026-07-12
+Task: button/LED capability-tagging audit (playbook section 7a). A
+      board.json override already existed on this board from an earlier
+      dedicated-hardware-exclusion pass (excludes GPIO4/12/14/27/32/33 -
+      the onboard TFT/touch/microSD system) - that pass never applied
+      button/LED tagging, which is what this audit adds. Sibling board
+      d32 (plain, not Pro) was audited earlier this same session and
+      confirmed LED_BUILTIN=GPIO5 active-low via its own official
+      schematic; D32 Pro is a materially different, more featured board
+      (TFT connector, resistive touch, microSD, battery) and was
+      independently re-verified here, not assumed identical.
+
+SOURCES CONSULTED
+-----------------
+1. variants/esp32/esp32/d32_pro/pins_arduino.h (local file, read in full).
+   Declares: LED_BUILTIN=5 (static const), _VBAT=35 (static const,
+   BAT_VOLT_PIN), plus #define-only macros TF_CS=4, TS_CS=12, TFT_CS=14,
+   TFT_LED=32, TFT_RST=33, TFT_DC=27, and "#define SS TF_CS" (i.e. SS is
+   redefined to GPIO4 on this board, not the vendor-generic GPIO5).
+   Includes "<../d32/d32_core.h>" via angle brackets (not quotes).
+
+2. esp32_board_variants/variants/d32/d32_core.h (local file, read in
+   full - this is the file d32_pro's pins_arduino.h nominally includes).
+   Declares TX=1, RX=3, SDA=21, SCL=22, SS=5, MOSI=23, MISO=19, SCK=18,
+   plus A0-A19/T0-T9/DAC1/DAC2 aliases. Critically: SS=5 here collides
+   directly with LED_BUILTIN=5 - this is exactly the boilerplate-alias
+   collision pattern this audit wave has been told to watch for.
+   However: build_boards.js's resolveIncludes() (pfodWeb_src/
+   build_boards.js line ~71) only expands quoted `#include "..."`
+   directives via regex `/#include\s+"([^"]+)"/g` - it does NOT match
+   this file's (or plain d32's) angle-bracket `#include <...>` includes.
+   Confirmed by reading the resolveIncludes() source directly. This means
+   d32_core.h's content, including its colliding SS=5, is NEVER actually
+   pulled into the string parseEsp32Consts() parses for this board - it
+   is dead/unreferenced text from the build's point of view. This is the
+   identical situation already found and documented for sibling board
+   d32 (which includes the same header the same way).
+   Also confirmed: pins_arduino.h's own "#define SS TF_CS" is a
+   preprocessor macro, not a "static const uint8_t" declaration, so
+   parseEsp32Consts()'s alias regex does not match it either (that
+   regex/parser deliberately only recognizes "static const[expr]
+   uint8_t NAME = ...;" forms, by design - see the parser's own comment
+   block). Even if it were resolved, TF_CS=4, not GPIO5. So neither
+   route produces an SS alias landing on GPIO5 in the actual build
+   output.
+
+3. https://www.wemos.cc/en/latest/_static/files/sch_d32_pro_v2.0.0.pdf
+   PRIMARY EVIDENCE. Official Wemos/LOLIN schematic, rev 2.0.0, dated
+   2018-06-13. Title block reads "TITLE: D32_pro" - fetched as a PDF and
+   read directly (rendered/visual read, not text-scraped - WebFetch's
+   markdown conversion failed on this vector-graphics PDF, so the raw
+   PDF was downloaded and read with the Read tool's native PDF-page
+   rendering instead). Eight labelled blocks on one sheet: USB-UART,
+   Power, I2C Port, Auto Flash, IO, TFT LCD Port, Micro SD, Core,
+   Battery.
+   - "Battery" block: LiPo charger U5 (TP4054) with a status LED (D6,
+     via R6 2k) driven from the charger IC's own CHRG pin, not a GPIO -
+     same pattern as plain d32's charge-status LED. Separately, in the
+     same block: net "IO05/SS" (GPIO5) connects through LED2 and R9
+     (2k) to the +3V3 rail (+3V3 -> R9 -> LED2 -> IO05/SS), i.e. current
+     sinks through GPIO5 to light LED2 - an active-LOW LED. Same
+     reference designators (R9, LED2) and identical topology to the
+     confirmed-active-low LED on sibling board d32's own schematic -
+     strong independent corroboration this is the same LED circuit
+     reused across both D32 variants' base design, not a guess by
+     analogy. This directly confirms this board's own
+     LED_BUILTIN=GPIO5 as a genuine active-low onboard LED.
+   - Also in "Battery" block: VBAT feeds a two-resistor divider to GND,
+     R12 (100k) in series with R17 (100k), tapped by net "I35" (GPIO35)
+     - the same 100k/100k battery-voltage-sense divider design as plain
+     d32, confirming _VBAT=35/BAT_VOLT_PIN is a genuine hardware
+     battery-sense pin on this board too (independently verified on this
+     board's own schematic, per task instructions not to assume
+     identical hardware to any sibling).
+   - GPIO5's net label is explicitly printed as "IO05/SS" on this
+     schematic (unlike plain d32's schematic, which just labels it
+     "IO05") - this is the vendor's generic/default SPI-CS0 pin naming
+     for the ESP32-WROOM-32 module (GPIO5 is the chip's default VSPI CS0
+     pin), inherited into this template regardless of whether the board
+     actually uses it that way. This board's "TFT LCD Port" block (P4:
+     IO32/TFT_LED, IO33/TFT_RST, IO27/TFT_DC, IO23/MOSI, IO18/SCK, +3V3,
+     IO14/TF_CS, IO12/TS_CS, GND) and "Micro SD" block (P5: /CS via
+     IO04/TF_CS, DI via IO23/MOSI, CLK via IO18/SCK, DO via IO19/MISO)
+     both confirm GPIO5 is NOT wired to any TFT/SD chip-select line on
+     this board - GPIO4 (TF_CS) and GPIO14 (TFT_CS) do that job, exactly
+     matching pins_arduino.h's own "#define SS TF_CS" override. So the
+     "/SS" suffix on GPIO5's net label is vendor-template boilerplate
+     that this specific board's firmware deliberately does not use for
+     SPI chip-select - it is genuinely free to be the LED pin.
+   - "Auto Flash" block: U4 (UMH3N dual-transistor) auto-reset circuit
+     driven from the USB-UART's DTR/RTS - not a physical button.
+   - "Core" block: the only physical switch, K1 (silkscreened "RESET"),
+     wired directly to RESET/EN - a hard module reset, not a
+     GPIO-readable button. No separate BOOT/flash pushbutton exists.
+   - "IO" block (JP1/JP2 general breakout headers) and "I2C Port" block
+     (P3: GND/IO21-SDA/IO22-SCL/+3V3) confirm no additional
+     dedicated-hardware GPIOs beyond what's already excluded by the
+     prior TFT/SD audit pass (GPIO4/12/14/27/32/33) and the LED/battery
+     pins covered here.
+
+FINDINGS AND DECISIONS
+-----------------------
+GPIO5 (LED_BUILTIN): CONFIRMED onboard LED, active-LOW, via the official
+  D32 Pro schematic (sch_d32_pro_v2.0.0.pdf) - +3V3 -> R9 (2k) -> LED2 ->
+  GPIO5, same reference designators/topology as sibling board d32's
+  independently-confirmed active-low LED. Tagged
+  ["digital_output","led_low","pwm_output"] in board.json's chipGpios
+  entry for GPIO5 (digital_input dropped, matching this repo's led_low
+  precedent: d32, node32s, oroca_edubot). The existing pinNotes strapping
+  warning for GPIO5 ("Must be HIGH or floating on reboot") is left
+  unchanged - correct regardless of the LED tagging, and self-consistent
+  with an active-low LED being off by default at boot.
+
+Alias-collision check (CRITICAL step per playbook): GPIO5 IS aliased as
+  SS in the shared vendor header d32_core.h (nominally included via
+  "#include <../d32/d32_core.h>"), and the schematic itself labels the
+  net "IO05/SS". This is a real collision AT THE SOURCE level. However
+  it is CONFIRMED INERT at the build level: build_boards.js's
+  resolveIncludes() only resolves quoted `#include "..."` directives
+  (regex requires literal double-quotes), never angle-bracket
+  `#include <...>` — d32_core.h is therefore never actually substituted
+  into the source parsed for this board, so its SS=5 alias never reaches
+  parseEsp32Consts() and never contaminates GPIO5's capabilities in the
+  generated output. Separately, and independently of the include
+  mechanism: this board's own pins_arduino.h already overrides SS to
+  TF_CS (GPIO4) via "#define SS TF_CS", and the schematic's own TFT/SD
+  headers confirm GPIO5 carries no chip-select duty on this board -
+  GPIO5 is genuinely free for the LED. This exact situation (SS=5 in
+  d32_core.h, unreached by the parser) was already found and documented
+  for sibling board d32.
+  DECISION: no line was deleted from d32_pro/pins_arduino.h - it
+  contains no static-const bus-alias declarations at all (only
+  LED_BUILTIN and _VBAT), so there is nothing colliding in this board's
+  own file to delete. d32_core.h's SS=5 was NOT deleted either: it is a
+  shared vendor header also included (the same, currently-inert way) by
+  boards d32 and d1_mini32, so editing it is out of scope for a
+  single-board audit, and would have zero effect on any of the three
+  boards' generated output today since none of their includes resolve.
+  This is flagged here for visibility rather than acted on, per task
+  instructions to flag out-of-scope findings rather than act on them.
+
+GPIO35 (_VBAT / BAT_VOLT_PIN): unchanged - already correctly restricted
+  to analog_input/digital_input via the chip-level inputOnlyGpios 34-39
+  range, and independently confirmed via this board's own schematic to
+  be the same genuine 100k/100k battery-voltage divider as sibling d32.
+  No capability change needed by this audit (battery-pin handling was
+  already covered in the prior dedicated-hardware pass); no new per-pin
+  note was added here since d32_pro's board.json (unlike d32's) doesn't
+  carry a note on GPIO35 already and adding one is outside this audit's
+  button/LED scope - flagged here only for completeness, not acted on.
+
+No button GPIO found. The only physical switch (K1, "RESET") is wired
+  directly to RESET/EN, not to any GPIO; auto-program/flash is handled
+  by a transistor circuit (U4, UMH3N) from the USB-UART's DTR/RTS lines,
+  not a physical BOOT/flash pushbutton. Section 7a button-tagging is
+  therefore not applicable to this board - no button tag was added.
+
+TFT/SD dedicated-hardware pins (GPIO4/12/14/27/32/33): already excluded
+  from chipGpios by the prior dedicated-hardware-exclusion pass (see the
+  pre-existing top-of-file comment in board.json, unchanged by this
+  audit). Re-confirmed consistent with the schematic's "TFT LCD Port"
+  and "Micro SD" blocks during this audit's research but not re-touched
+  - flagged as already in scope and already handled, not re-litigated
+  here.
+
+pins_arduino.h: left unmodified - no line needed deletion (see
+  alias-collision finding above).
+
+SUMMARY
+-------
+GPIO5 (LED_BUILTIN) CONFIRMED active-low onboard LED via the official
+Wemos/LOLIN D32 Pro schematic (sch_d32_pro_v2.0.0.pdf) - same LED2/R9
+circuit as sibling board d32, independently re-verified rather than
+assumed. Tagged led_low. A real SS=5/LED_BUILTIN=5 alias collision
+exists in the shared vendor header d32_core.h and even in the
+schematic's own net labels ("IO05/SS"), but is confirmed inert at the
+build level because build_boards.js's include-resolver only expands
+quoted includes and this board's (angle-bracket) include is never
+resolved - and independently, this board's own pins_arduino.h already
+redirects SS to GPIO4 (TF_CS) and the schematic confirms GPIO5 carries
+no chip-select duty. No pins_arduino.h edit was needed. No onboard
+button GPIO exists (RESET button is on EN, not a GPIO). d32_core.h
+(shared by d32/d32_pro/d1_mini32) was left unmodified - out of scope
+for this single-board audit and inert regardless. board.json's existing
+top-of-file dedicated-hardware-exclusion comment was preserved; a new
+NOTE block was appended above it documenting this audit's research and
+decisions.

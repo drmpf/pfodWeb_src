@@ -1,0 +1,69 @@
+// pfodWeb NOTE: Olimex ESP32-GATEWAY. Sources: OLIMEX/ESP32-GATEWAY GitHub
+// repo (github.com/OLIMEX/ESP32-GATEWAY, HARDWARE/README.md - "LAN8710's
+// pin XTAL1 was disconnected from GPIO0 and connected to GPIO17/
+// EMAC_CLK_OUT_180. GPIO17 is now source clock. GPIO5 is now used as
+// Ethernet 'power enable pin'.") and the official Olimex vendor GPIO
+// pinout diagram (olimex.com/Products/IoT/ESP32/ESP32-GATEWAY/resources/
+// ESP32-GATEWAY-GPIOs-Rev.F-up.pdf), which states verbatim:
+//   "GPIO5, GPIO17 can be used only if Ethernet functionality is not used"
+//   "GPIO2, GPIO14, GPIO15 are used for SD card, they are free to use if
+//    SD is not used"
+//   "GPIO33 - status LED"
+//   "GPIO34 - user button"
+//   "GPIO4, GPIO12, GPIO13, GPIO32, GPI35, GPIO36, GPI39 - free to use"
+// Excludes GPIO5 (ETH_PHY_POWER)/GPIO17 (ETH clock out, absent from the
+// esp32/esp32 chip default already so no removal needed here) and
+// GPIO18/23 (ETH_PHY_MDIO/MDC per this board's own pins_arduino.h),
+// plus the standard ESP32 EMAC RMII data lines GPIO19/21/22/25/26/27
+// which are fixed in ESP32 silicon whenever EMAC/RMII Ethernet is used
+// (same reasoning applied to sibling Olimex boards esp32-poe and
+// esp32-evb in this database). Also excludes GPIO2/14/15, confirmed by
+// the vendor pinout diagram above as the onboard microSD 1-bit SDMMC
+// bus (matches BOARD_HAS_1BIT_SDMMC in this board's pins_arduino.h,
+// and the identical GPIO2/14/15 SDMMC exclusion already applied to
+// esp32-evb/esp32-poe in this database).
+// GPIO34 (KEY_BUILTIN) confirmed by the same vendor diagram as the
+// onboard user button ("GPIO34 - user button") - tagged "button" below.
+// GPIO34 is input-only on classic ESP32 (see inputOnlyGpios), so no
+// digital_output/pwm_output capability is added.
+// Alias-collision check (per audit step 4): this board's own
+// pins_arduino.h declared SS=5, MOSI=23, MISO=19, SCK=18 as boilerplate
+// SPI aliases - ALL FOUR collide exactly with the Ethernet-dedicated
+// GPIOs above (5=PHY power, 23=MDC, 18=MDIO, 19=fixed EMAC_TXD0). These
+// were never a real SPI bus on this hardware, so all four alias lines
+// were deleted from pins_arduino.h to stop build_boards.js from
+// unconditionally re-adding spi_ss/spi_mosi/spi_miso/spi_sck
+// capabilities regardless of the chipGpios exclusion here. SDA=32 and
+// SCL=16 do not collide with any excluded pin and were left unchanged
+// (GPIO16 is not in this chip's default chipGpios list at all, so SCL
+// is out of scope for this audit).
+{
+  "boardName": "ESP32",
+  "displayName": "ESP32 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["digital_input", "button"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

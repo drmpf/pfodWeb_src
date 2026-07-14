@@ -1,0 +1,133 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Pimoroni Tiny 2040" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins confirmed on this
+  // board beyond the chip-level default.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) RP2040 board,
+  // no onboard radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-13):
+  //
+  // Board: "Pimoroni Tiny 2040" (PIM558/PIM593 — 8MB/2MB flash variants,
+  // same pinout/hardware). This board's own pins_arduino.h declares
+  // PIN_LED (19u) with the comment "RGB LED on pins 18-20. Use the Green
+  // LED element on pin 19 as LED_BUILTIN" — i.e. PIN_LED only names ONE
+  // of three channels of a single onboard RGB LED, not a plain
+  // single-color LED. No PIN_BUTTON alias is declared anywhere in this
+  // board's pins_arduino.h.
+  //
+  // Sources consulted (WebSearch/WebFetch, 2026-07-13):
+  //  1. Official Pimoroni datasheet PDF (authoritative — Pimoroni's own
+  //     PIM558 datasheet, also mirrored at
+  //     media.digikey.com/pdf/Data%20Sheets/Pimoroni%20PDFs/Tiny_2040_Web.pdf,
+  //     sourced from shop.pimoroni.com/products/tiny-2040/7-19-21):
+  //     Features list: "User controllable RGB LED" and "Switch for basic
+  //     input (doubles up as DFU select on boot)". Notes section:
+  //     "The RGB LED is connected to GP18-GP20 and active low (so the
+  //     on/off state will work in the opposite way to the LED on a
+  //     Raspberry Pi Pico). You can PWM the pins to dim the LED." The
+  //     pinout diagram explicitly labels the LED block "R GP18 / G GP19
+  //     / B GP20" (separate from "RESET -> RUN" hardware reset) and
+  //     separately labels "BOOTSEL GP23  BOOT/DFU mode protected by
+  //     diode" — confirming GP23 is a real, diode-isolated GPIO wired to
+  //     the physical BOOT switch, distinct from the RESET button (which
+  //     drives the RUN/hardware-reset pin directly, not a GPIO).
+  //  2. shop.pimoroni.com/en-us/products/tiny-2040 (current product page,
+  //     fetched directly): confirms "The Tiny 2040 features an RGB LED
+  //     (not single-color)... connected to pins GP18-GP20... active low
+  //     ... PWM these pins to adjust brightness", and separately "the
+  //     board includes a reset button and some clever circuitry that lets
+  //     you use the boot button as a user controllable switch... mapping
+  //     to GPIO 23".
+  //  3. forums.pimoroni.com "Tiny 2040 RGB LED control" tutorial: sample
+  //     MicroPython code `rpwm = PWM(Pin(18)) # RED`, `gpwm = PWM(Pin(19))
+  //     # GREEN`, `bpwm = PWM(Pin(20)) # BLUE` — confirms the exact
+  //     channel-to-GPIO mapping and that it is common-anode (active-low,
+  //     "low numbers make it brighter").
+  //  4. docs.zephyrproject.org Pimoroni Tiny2040 board page: independently
+  //     lists "Red LED: GPIO18 (alias led0)", "Green LED: GPIO19 (alias
+  //     led1)", "Blue LED: GPIO20 (alias led2)" — corroborates source #3.
+  //
+  // Per-pin findings:
+  //   GPIO18 — RGB LED red channel. Tagged led_r_low (active-low /
+  //     common-anode, confirmed by all four sources above). pwm_output
+  //     kept — vendor docs explicitly describe PWM-dimming these pins.
+  //   GPIO19 (PIN_LED / LED_BUILTIN) — RGB LED green channel, the one
+  //     channel this board's pins_arduino.h names as LED_BUILTIN. Tagged
+  //     led_g_low for the same reasons as GPIO18. This is NOT a plain
+  //     single-color LED_BUILTIN despite the alias name — it only drives
+  //     one third of the physical RGB package.
+  //   GPIO20 — RGB LED blue channel. Tagged led_b_low, same rationale.
+  //   GPIO23 — NOT in this board's pins_arduino.h at all (no PIN_BUTTON
+  //     alias), but confirmed via the official datasheet's own pinout
+  //     diagram ("BOOTSEL GP23  BOOT/DFU mode protected by diode") and
+  //     product-page prose ("Switch for basic input (doubles up as DFU
+  //     select on boot)", "clever circuitry that lets you use the boot
+  //     button as a user controllable switch... GPIO 23") to be a real,
+  //     diode-isolated, user-readable GPIO wired to the board's BOOT
+  //     switch — distinct from the separate RESET button, which drives
+  //     the RUN (hardware reset) pin directly and is not a GPIO at all
+  //     (same out-of-scope RESET rationale as ../rpipico/board.json and
+  //     ../waveshare_rp2040_zero/board.json). Added here purely via
+  //     chipGpios (matches the general "GPIO absent from pins_arduino.h
+  //     but present in chipGpios" mechanism in build_boards.js).
+  //     Tagged digital_input + button only — digital_output/pwm_output
+  //     deliberately omitted, since no vendor source confirms it is
+  //     electrically safe to drive this diode-coupled BOOT/DFU-select
+  //     line as an output; matches the same conservative precedent this
+  //     repo already applies to u-blox EVK-NORA-W10's GPIO0 (SW2/BOOTn,
+  //     "multifunctional - usable for other user functions in software
+  //     after power-up") in variants/esp32/esp32s3/nora_w10/board.json,
+  //     which likewise received digital_input+button only, no output
+  //     capabilities.
+  //
+  // No SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies: this board's
+  // own pins_arduino.h declares PIN_SPI0_MISO=4, MOSI=7, SCK=6,
+  // SS=17 (dummy — "not available on any header pin", per its own
+  // comment), PIN_WIRE0_SDA=4/SCL=5, PIN_WIRE1_SDA=6/SCL=7 — none of
+  // which coincide with GPIO18/19/20 (RGB LED) or GPIO23 (BOOT button),
+  // so build_boards.js's unconditional SS/SDA/SCL/MOSI/MISO/SCK alias
+  // auto-append never fires on any of the tagged pins here (unlike the
+  // adafruit_feather_scorpio precedent, where PIN_SPI0_SS's vendor
+  // default DID collide with the confirmed LED pin and had to be
+  // removed from pins_arduino.h).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/pimoroni_tiny2040/notes.txt
+  "chipGpios": {
+    "18": { "capabilities": ["digital_output", "pwm_output", "led_r_low"], "note": "RGB LED red channel — GP18, active-low/common-anode, PWM-dimmable. Confirmed via official Pimoroni Tiny 2040 datasheet (GP18-GP20 RGB LED, active low), shop.pimoroni.com product page, forums.pimoroni.com RGB LED tutorial (Pin(18) # RED), and Zephyr's Tiny2040 board docs (Red LED: GPIO18)." },
+    "19": { "capabilities": ["digital_output", "pwm_output", "led_g_low"], "note": "PIN_LED / LED_BUILTIN — RGB LED green channel, GP19, active-low/common-anode, PWM-dimmable. This board's pins_arduino.h comment states 'Use the Green LED element on pin 19 as LED_BUILTIN' — LED_BUILTIN drives only this one channel of the 3-channel RGB LED, not a standalone single-color LED. Same sources as GPIO18." },
+    "20": { "capabilities": ["digital_output", "pwm_output", "led_b_low"], "note": "RGB LED blue channel — GP20, active-low/common-anode, PWM-dimmable. Same sources as GPIO18." },
+    "23": { "capabilities": ["digital_input", "button"], "note": "BOOTSEL / user button — not declared in this board's pins_arduino.h (no PIN_BUTTON alias), but confirmed via the official Pimoroni datasheet's pinout diagram ('BOOTSEL GP23 — BOOT/DFU mode protected by diode', distinct from the separate RESET->RUN hardware-reset button) and product-page text ('Switch for basic input (doubles up as DFU select on boot)'; 'clever circuitry that lets you use the boot button as a user controllable switch'). digital_output/pwm_output deliberately omitted — no vendor source confirms driving this diode-coupled BOOT/DFU line as an output is safe; matches the conservative precedent set for u-blox EVK-NORA-W10 GPIO0 (SW2/BOOTn) in variants/esp32/esp32s3/nora_w10/board.json." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other plain RP2040 board (this board's pins_arduino.h declares no
+  // custom analog pins, falling back to generic/common.h's default).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

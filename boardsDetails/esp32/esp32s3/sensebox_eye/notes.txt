@@ -1,0 +1,95 @@
+senseBox:eye (esp32s3/sensebox_eye) - button/LED confirmation research notes
+=============================================================================
+
+Sources consulted (WebSearch + WebFetch), one per line with what each told me:
+
+1. https://github.com/sensebox/senseBox_Eye
+   Vendor repo (schematics/datasheets/BSP for the senseBox:eye). Search-engine
+   summary of this repo's README lists onboard components: "WiFi module,
+   1 button, 1 reset button, 2 LEDs, 1 Neopixel RGB-LED, LiPo charging
+   controller, brightness sensor, 6-axis acceleration sensor, microSD slot".
+   Confirms a button and a NeoPixel RGB-LED are genuinely onboard (not just
+   pins_arduino.h alias naming).
+
+2. https://sensebox.de/en/products-boards.html
+   Vendor product page (senseBox.de official site). Lists "Button", "Reset
+   button" and "RGB LED" as onboard components of the senseBox MCU Eye board.
+
+3. https://docs.sensebox.de/en/docs/hardware/accessoires/rgb-led/
+   Vendor docs page for the *plug-in accessory* RGB-LED module (WS2812,
+   chainable via JST). Checked to make sure this wasn't being confused with
+   the Eye's onboard LED - confirmed it is a SEPARATE, non-onboard product
+   (the accessory connects to a digital port on a senseBox MCU, it is not
+   part of the Eye board itself).
+
+4. WebSearch "senseBox MCU Eye" description snippet (via sensebox.de content)
+   Independently states the senseBox MCU Eye "includes 1x NeoPixel RGB-LED"
+   among its onboard hardware - corroborates source 1/2 that the onboard LED
+   is specifically a WS2812-style addressable NeoPixel, not a simple
+   single-color or discrete-RGB LED.
+
+5. https://github.com/espressif/arduino-esp32/pull/11608
+   ("Add senseBox Eye board" by PaulaScharf, merged). Confirms this board's
+   variant.cpp/pins_arduino.h were added to the official arduino-esp32 core
+   using GPIO45 for the RGB LED and GPIO47 for the button, implemented via
+   the standard Arduino rgbLedWrite()/GPIO APIs (not raw register hacks).
+
+6. https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/esp32-hal-rgb-led.h
+   Confirms rgbLedWrite()/RGB_BUILTIN_LED_COLOR_ORDER defaults to
+   LED_COLOR_ORDER_GRB "default WS2812B color order" - i.e. the
+   PIN_RGB_LED/RGBLED_PIN mechanism used in this board's pins_arduino.h is
+   Espressif's standard single-GPIO addressable WS2812 NeoPixel driver
+   convention (RGBLED_NUM = "number of LEDs on the chain", here 1).
+
+7. Local file: variants/esp32/esp32s3/sensebox_eye/pins_arduino.h (already in
+   repo). #define PIN_RGB_LED 45 / RGBLED_PIN 45 / PIN_LED 45 / RGBLED_NUM 1
+   / LED_BUILTIN = PIN_RGB_LED; and #define PIN_BUTTON 47 / BUTTON 47. Used
+   only as corroborating cross-reference alongside the independent vendor
+   sources above - not as the sole basis for tagging (per task rules).
+
+Additional reasoning independent of any single source: a single GPIO
+physically cannot drive a full-color RGB LED via plain PWM (that requires
+three separate GPIOs, one per color channel). The fact that GPIO45 is the
+ONLY pin associated with "RGB LED" on this board is itself strong technical
+confirmation that it must be an addressable (WS2812/NeoPixel-protocol) LED,
+consistent with all vendor sources calling it a "NeoPixel RGB-LED".
+
+TX/RX conflict check
+---------------------
+Grepped pins_arduino.h for "static const uint8_t TX *=" / "RX *=" - NO
+matches. This board has no dedicated UART TX/RX pins declared (it uses
+native USB CDC via PIN_USB_DM/PIN_USB_DP for Serial, per USB_VID/PID/
+USB_MANUFACTURER defines at the top of the file). build_boards.js only
+hard-reserves consts.TX/consts.RX when those aliases exist; since they are
+undefined here, neither GPIO45 nor GPIO47 collide with a TX/RX reservation.
+No conflict - both pins were safe to tag.
+
+Pins considered but NOT tagged, and why
+-----------------------------------------
+- "Reset button" (mentioned in vendor docs alongside "Button"): NOT tagged.
+  This is a hardware EN/reset line wired to the chip's reset, not a
+  GPIO-controllable input - it has no corresponding #define in
+  pins_arduino.h at all, so there is no GPIO number to tag. No guess made;
+  this is simply out of scope (not a chip GPIO).
+- "2 LEDs" (vendor docs mention 2 LEDs total on the board, in addition to
+  the 1 NeoPixel RGB-LED): NOT tagged. pins_arduino.h only exposes ONE
+  LED-related define (PIN_RGB_LED/RGBLED_PIN/PIN_LED, all = GPIO45). The
+  other LED(s) mentioned by the vendor are most likely power/charge-status
+  indicator LEDs (typical of LiPo charging-controller boards) that are
+  hard-wired to charging circuitry rather than to a software-controllable
+  GPIO, and/or possibly a USB/power LED - no GPIO alias for a second LED
+  exists in this board's pins_arduino.h. I made NO guess as to a GPIO number
+  for this second LED; flagging here for human review in case the vendor
+  schematic (hardware/schematics/v1.2/senseBox-Eye_v1.2.pdf in the
+  senseBox_Eye GitHub repo) turns out to show it on an exposed GPIO - I was
+  not able to render/parse that PDF's schematic contents through available
+  tooling.
+
+Summary of what was tagged
+----------------------------
+GPIO45 -> ["digital_output","pwm_output","led_neopixel"] (onboard 1x NeoPixel
+RGB-LED; pwm_output retained because it was already present on this pin).
+GPIO47 -> ["digital_input","button"] (onboard user Button).
+Edits made in variants/esp32/esp32s3/sensebox_eye/board.json (existing file,
+edited in place; pre-existing pin-exclusion NOTE comments left untouched,
+new NOTE comments appended after them).

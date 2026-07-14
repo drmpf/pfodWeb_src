@@ -1,0 +1,101 @@
+Board: heltec_wireless_shell_v3 (variants/esp32/esp32s3/heltec_wireless_shell_v3)
+Researched: 2026-07-11
+
+1. Sources consulted
+--------------------
+https://docs.heltec.org/en/node/esp32/wireless_shell/index.html
+  - Vendor "Wireless Shell" docs page. Lists pin map / hardware resource
+    summary (7*ADC1+8*ADC2, 9*Touch, 3*UART, 2*I2C, 2*SPI). No mention of
+    any onboard user button or LED anywhere on the page.
+
+https://resource.heltec.cn/download/Wireless_Shell_V3/HTIT-Wsh_V3(Rev1.1).pdf
+  - Official HTIT-Wsh_V3 module datasheet (Rev 1.1, Sep 2022). Full pin
+    table (Table 2.2) for the bare SMD/castellated LoRa module. No button
+    or LED pin is described anywhere in the pin table or feature list.
+    Pin 7 (GPIO35) is listed only as "GPIO35, SPIIO6, FSPID, SUBSPID" -
+    no LED function noted on the module itself. Pin 8 (GPIO36) is
+    explicitly noted as "connected to external power (3.3V) control pin"
+    (Vext), matching this board's pins_arduino.h comment.
+
+https://heltec.org/project/wireless-shell-v3/
+  - Official product project page. Pin map diagram and hardware resource
+    list only; no mention of onboard button or LED (confirmed via
+    WebFetch summary of full page content).
+
+https://heltec.org/product/wireless-shell/
+  - Describes the "Wireless Shell Test Bottom Board" - a separate bare
+    breakout/backplane PCB for the older Wireless Shell V2 module (not
+    V3), with two physical buttons and a Micro USB port. This is a
+    different, optional accessory product, not part of the V3 module or
+    its default Arduino board definition, so not used as evidence for
+    this board's own button.
+
+https://raw.githubusercontent.com/Heltec-Aaron-Lee/WiFi_Kit_series/master/variants/heltec_wireless_shell_v3/pins_arduino.h
+  - Official upstream Arduino core pins_arduino.h for this exact board
+    variant (matches the local copy in this repo). Confirms:
+    LED_BUILTIN = 35, LED = 35, TX = 43, RX = 44, SDA = 2, SCL = 3.
+    Confirms NO button/PRG pin is declared anywhere in the file.
+
+https://github.com/ropg/heltec_esp32_lora_v3/blob/main/README.md
+  - Third-party Arduino library README covering WiFi LoRa 32(V3),
+    Wireless Stick(V3) and Wireless Stick Lite(V3) (NOT Wireless Shell
+    V3 - confirmed the README does not list Wireless Shell V3 as a
+    supported board). Describes a "bright white LED" plus separate
+    orange charge-status LED, and a USER/PRG button - but only for the
+    Stick/Stick Lite/LoRa32 boards it explicitly supports, which are
+    different physical products from the Wireless Shell V3 module.
+    Not used as direct evidence for Wireless Shell V3.
+
+https://www.espboards.dev/esp32/heltec-wifi-lora-32-v3/
+  - Combined pinout page covering WiFi LoRa 32(V3) / Wireless Shell(V3) /
+    Wireless Stick Lite(V3). Lists "LED" at pin 35 in a generic combined
+    pinout table but does not attribute it to a specific variant or give
+    color/polarity detail specific to Wireless Shell V3.
+
+https://docs.heltec.org/en/node/esp32/wireless_shell/index.html (button/LED specific query)
+  - Re-checked specifically for button/LED language; none found.
+
+2. Pins considered but NOT tagged
+----------------------------------
+GPIO35 (LED_BUILTIN / LED per vendor pins_arduino.h):
+  - This is the one pin with real vendor-sourced evidence (official
+    Heltec Arduino core repo, not just a generic alias) of an LED
+    function, consistent with the same GPIO35 pattern seen on the
+    sibling Wireless Stick Lite V3 board in the same product family.
+  - However, GPIO35 is NOT present in this board's chipGpios in
+    board.json - it already falls inside the GPIO33-37 "octal
+    flash/PSRAM reserved" range that is excluded at the ESP32-S3
+    chip-level default (variants/esp32/esp32s3/board.json), and this
+    board's own earlier pin-exclusion audit did not re-add it.
+  - Per task rules, existing pin-exclusions must not be touched, and
+    only capability arrays for GPIOs already present in chipGpios may be
+    modified. Re-adding GPIO35 to chipGpios to tag it would mean
+    reversing a prior audit decision, which is out of scope for this
+    pass.
+  - Decision: NOT tagged. This is a deliberate no-guess/no-change
+    decision given the scope constraint, not a judgment call about the
+    LED's existence (the LED's existence/GPIO is reasonably well
+    evidenced) - flagged via a NOTE comment in board.json for a human
+    reviewer to decide whether to lift the GPIO35 exclusion for this
+    specific board in a future pass.
+
+GPIO0 (potential PRG/BOOT button, common on ESP32 dev boards):
+  - GPIO0 IS present in chipGpios (untagged, currently
+    ["digital_input","digital_output","pwm_output"]).
+  - No Heltec documentation found (module datasheet, project page, docs
+    site, or official pins_arduino.h) describes any physical user button
+    on the Wireless Shell V3 module/board. The pins_arduino.h contains no
+    BUTTON/PRG_BUTTON declaration at all.
+  - The only Heltec products found with a documented physical button
+    (USER/PRG) are the enclosed "Wireless Stick"/"Wireless Stick Lite"
+    boards, a different physical product line from Wireless Shell V3.
+  - Decision: NOT tagged - no guess made at all. GPIO0 left completely
+    unmodified.
+
+3. Summary of what was tagged
+------------------------------
+Nothing was tagged. No capability arrays in board.json were changed.
+A NOTE comment was added near the top of board.json (after the existing
+NOTE) documenting the GPIO35 vendor-LED evidence and why it was left
+untagged (pin already excluded from chipGpios), and documenting that no
+button was found in any vendor source.

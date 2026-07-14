@@ -1,0 +1,171 @@
+wiznet_5100s_evb_pico (chip: rp2040) — pin-exclusion / capability audit
+=========================================================================
+
+BOARD: WIZnet "W5100S-EVB-Pico" — official WIZnet product, Raspberry Pi
+Pico form-factor board with an onboard W5100S Ethernet controller wired
+via SPI. This is the first board audited in the RP2040/RP2350 family
+(no prior board in this family has had dedicated-hardware pin exclusion
+applied; a couple of boards — rpipico, adafruit_trinkeyrp2040qt — had
+only LED/NeoPixel capability refinement, not bus-exclusion).
+
+SOURCES CONSULTED
+-----------------
+1. Repo files (read directly):
+   - variants/rp2040/rp2040/board.json (chip-level defaults to copy)
+   - variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json (schema
+     precedent)
+   - variants/rp2040/rp2040/rpipico/board.json (found unexpectedly to
+     already exist — establishes the GPIO25/LED_BUILTIN precedent for
+     the plain Pico; also confirms PIN_LED is a #define, not parsed by
+     parseEsp32Consts's `static const uint8_t` regex, so it never
+     surfaces as a pin unless a board.json adds an explicit chipGpios
+     entry for it)
+   - variants/rp2040/rp2040/wiznet_5100s_evb_pico/pins_arduino.h — just
+     `#include "../generic/pins_arduino.h"`, i.e. zero differentiation
+     from a plain Pico
+   - variants/rp2040/rp2040/generic/pins_arduino.h — declares PIN_LED=25,
+     SPI0 on GPIO16(MISO)/17(SS)/18(SCK)/19(MOSI), SPI1 on
+     GPIO12(SS)/13(SCK)... (unused by this board), I2C0 on GPIO4/5,
+     I2C1 on GPIO26/27
+   - variants/rp2040/rp2040/generic/common.h — declares D0-D22 as plain
+     sequential GPIO aliases (D23/24/25/29 deliberately already excluded
+     upstream in this repo's own fork of the file, GPIO25/LED handled
+     separately via PIN_LED), A0-A2 = GPIO26-28
+   - pfodWeb_src/build_boards.js buildEsp32Board() — confirmed exactly
+     how chipGpios entries interact with the auto-derived
+     spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl role append (it is
+     unconditional, keyed off consts.SS/MOSI/MISO/SCK/SDA/SCL resolved
+     from this board's own pins_arduino.h, and runs AFTER the
+     chipGpios-vs-default capability selection) — verified experimentally
+     by extracting and running stripJsonComments/parseEsp32Consts/
+     buildEsp32Board against the resolved source + the new board.json
+     (see "VERIFICATION" below). No build commands were run.
+   - variants/esp32/esp32/wt32-eth01/board.json,
+     variants/esp32/esp32s3/lilygo_t_eth_lite/board.json,
+     variants/esp32/esp32/esp32-poe/board.json — ESP32-family precedent
+     for how onboard Ethernet-PHY-dedicated GPIOs are excluded/restricted
+     (ESP32 achieves exclusion by omitting the GPIO from the full
+     chipGpios replacement object entirely, since ESP32's chip-level
+     default pre-lists every physical GPIO; RP2040 cannot use that trick
+     because GPIO16-21 already have pins_arduino.h aliases (D16-D21,
+     MISO/SS/SCK/MOSI) that would keep surfacing them via default
+     derivation even if absent from chipGpios — so explicit
+     `"capabilities": []` (or a single restricted capability) entries
+     are required instead)
+
+2. Web research (WebSearch/WebFetch):
+   - https://docs.wiznet.io/Product/Chip/Ethernet/W5100S/w5100s-evb-pico
+     — WIZnet's own official documentation. Fetched and returned an
+     explicit GPIO pin-map table:
+       GPIO16 = MISO (input), GPIO17 = CSn (output), GPIO18 = SCLK
+       (output), GPIO19 = MOSI (output), GPIO20 = RSTn (output),
+       GPIO21 = INTn (input)
+     with the quoted text: "These pins enable SPI communication with
+     W5100S to use Ethernet function. If you are using the Ethernet
+     function, these pins cannot be used for any other purpose."
+   - goughlui.com hands-on review (Oct 2022), independent corroboration:
+     "GP16 through GP21 are used by the Ethernet controller."
+   - Additional searches confirmed: only the standard BOOTSEL button
+     (not a normal GPIO — same as every RP2040 Pico-form-factor board,
+     out of scope for GPIO-keyed tagging) and the standard GP25 user LED
+     (same circuit as the official Pico); no WIZnet-specific extra LED,
+     button, or NeoPixel exists on this board.
+   - The getting-started PDF (w5100s-evb-pico-getting-started-guide-for-
+     aws-iot-core-v1-1-0.pdf) was fetched but its pinout/schematic content
+     is embedded as unreadable binary/image data, not extractable text —
+     not used as a source beyond confirming the doc references a
+     schematic image.
+
+PER-PIN REASONING
+------------------
+GPIO16 (MISO), GPIO17 (SS/CSn), GPIO18 (SCK), GPIO19 (MOSI):
+  These already carry the correct spi_miso/spi_ss/spi_sck/spi_mosi
+  capability automatically (buildEsp32Board() appends it unconditionally
+  based on this board's own pins_arduino.h SPI0 aliases), but PRIOR to
+  this board.json they ALSO carried digital_input/digital_output/
+  pwm_output (via their D16-D19 general aliases from generic/common.h).
+  Added chipGpios entries with "capabilities": [] to drop the
+  general-purpose trio, leaving exactly the genuine SPI0 bus role.
+  Verified experimentally (see below) — final capability list for each
+  is a single spi_* entry.
+
+GPIO20 (RSTn): Confirmed via WIZnet's own GPIO table as the dedicated
+  reset line, driven by the sketch/library at boot to hardware-reset the
+  W5100S. It has no bus-role capability keyword in this repo's
+  vocabulary (only spi_ss/mosi/miso/sck and i2c_sda/scl are
+  auto-appended board-specific roles), so it is tagged
+  "capabilities": ["digital_output"] only — output-only, since firmware
+  drives it, never reads it. digital_input and pwm_output dropped.
+
+GPIO21 (INTn): Confirmed via WIZnet's own GPIO table as the dedicated
+  interrupt line from the W5100S to the RP2040. Tagged
+  "capabilities": ["digital_input"] only — input-only, since it is
+  chip-driven (the RP2040 side must never drive it as an output).
+  digital_output and pwm_output dropped. (Not used by the stock Arduino
+  Ethernet library by default, but it is genuinely wired as a GPIO-level
+  signal per WIZnet's own doc, so it is surfaced as digital_input rather
+  than hidden.)
+
+GPIO0-15, GPIO22, A0-A2 (GPIO26-28): Untouched — no evidence these are
+  used by the W5100S or any other onboard peripheral; SPI1 (GPIO12/13/
+  14/15) and I2C0/I2C1 remain fully general-purpose. Confirmed by the
+  parser dry-run below that they retain their normal
+  digital_input/digital_output/pwm_output (+ i2c_sda/i2c_scl where
+  applicable) capabilities.
+
+GPIO25 (PIN_LED / LED_BUILTIN): NO CHANGE — deliberately left out of
+  this board.json. This is the same onboard-LED circuit as the plain
+  Raspberry Pi Pico (this board's pins_arduino.h is the unmodified
+  generic Pico file, and WIZnet markets the board as pinout/hardware
+  compatible with the official Pico); no WIZnet-specific LED exists.
+  However, tagging GPIO25 (as rpipico/board.json already does for the
+  base Pico, citing the official Raspberry Pi Pico datasheet) is outside
+  this task's explicit scope (Ethernet-chip-dedicated GPIOs), and I did
+  not independently re-verify LED polarity against a WIZnet-specific
+  schematic (the only schematic reference found was embedded as
+  unreadable image data in the PDF above) — rather than guess/reuse
+  another board's confirmation for a different physical board, it is
+  left untagged. Net effect: unchanged from the pre-existing behavior
+  (GPIO25 does not surface as a pin for this board, same as for every
+  other un-audited RP2040 board using the shared generic pinout —
+  PIN_LED is a #define, not a `static const uint8_t`, so it is never
+  parsed into an alias by parseEsp32Consts()). No onboard button or
+  NeoPixel exists beyond the standard BOOTSEL (not GPIO-addressable,
+  out of scope per existing rpipico/board.json precedent comment).
+
+"connections" FIELD: Left as the chip-level default (["serial"] only).
+  The W5100S is a wired-Ethernet add-on requiring its own
+  library/driver, not a chip-level radio (unlike ESP32/ESP8266 WiFi/BLE
+  SoCs, whose "connections" tcp/http/ble entries model built-in
+  transports) — changing this field to represent Ethernet-based
+  TCP/HTTP support was judged out of scope for a pin-capability audit
+  and was not requested.
+
+VERIFICATION (no build commands run)
+-------------------------------------
+Extracted stripJsonComments()/parseEsp32Consts()/_buildConnectionsBlock()/
+buildEsp32Board() from pfodWeb_src/build_boards.js via a standalone node
+-e script, ran them against this board's fully-resolved pins_arduino.h
+(generic/pins_arduino.h + generic/common.h concatenated) and the new
+board.json. Confirmed the final per-pin capability lists:
+  D16 => spi_miso
+  D17 => spi_ss
+  D18 => spi_sck
+  D19 => spi_mosi
+  D20 => digital_output
+  D21 => digital_input
+  D0-D15, D22, A0-A2 => unchanged (normal digital_input/digital_output/
+    pwm_output[/analog_input][/i2c_sda or i2c_scl on D4/D5])
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/wiznet_5100s_evb_pico/board.json (full
+file, chip-level defaults reproduced verbatim + chipGpios overrides for
+GPIO16/17/18/19/20/21) to exclude the onboard W5100S Ethernet
+controller's dedicated SPI0 bus, reset, and interrupt lines from
+general-purpose digital/PWM use, restricting each to its genuine single
+role, confirmed via WIZnet's own official documentation and corroborated
+by an independent review. GPIO25 (LED) and the BOOTSEL button:
+confirmed no board-specific hardware exists beyond the stock Pico
+circuit; deliberately left untagged as out of scope for this
+Ethernet-pin-exclusion pass (NO CHANGE).

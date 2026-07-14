@@ -54,6 +54,7 @@ static const uint8_t LED_BUILTIN = RGB_BUILTIN;
 #define BUILTIN_LED LED_BUILTIN  // backward compatibility
 #define LED_BUILTIN LED_BUILTIN  // allow testing #ifdef LED_BUILTIN
 
-static const uint8_t RGB_PWR = 34;
+// pfodWeb NOTE: RGB_PWR (GPIO34) deliberately NOT declared - internal
+// power-gate for the onboard NeoPixel, not general-purpose.
 
 #endif /* Pins_Arduino_h */

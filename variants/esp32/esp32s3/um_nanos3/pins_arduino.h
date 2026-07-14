@@ -16,12 +16,20 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 8;
 static const uint8_t SCL = 9;
 
-static const uint8_t SS = 34;
-static const uint8_t MOSI = 35;
-static const uint8_t MISO = 37;
-static const uint8_t SDO = 35;
-static const uint8_t SDI = 37;
-static const uint8_t SCK = 36;
+// pfodWeb NOTE: the vendor header's SPI-bus aliases for GPIO34-37 (SS,
+// MOSI, MISO, SCK, plus the SDO/SDI alternate names for MOSI/MISO on
+// the same physical pins) have been removed. Those four GPIOs fall
+// inside the GPIO33-37 octal flash/PSRAM range already excluded
+// chip-wide in the ESP32-S3 board.json (see that file's chipGpios
+// comment). Leaving the aliases in place would cause the board build
+// script to re-add those pins as user-selectable digital/PWM/SPI pins
+// even though the chip-level config omits them, silently exposing
+// internal PSRAM/flash bus lines in the Designer - the same
+// alias-leak bug found and fixed on the sibling um_edges3_d board.
+// Sources consulted: this board's own header (identical to the
+// upstream espressif/arduino-esp32 um_nanos3 variant, confirmed via
+// raw.githubusercontent.com), and Espressif's published ESP32-S3
+// GPIO33-37 octal PSRAM/flash restriction.
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
@@ -52,6 +60,7 @@ static const uint8_t LED_BUILTIN = RGB_BUILTIN;
 #define BUILTIN_LED LED_BUILTIN  // backward compatibility
 #define LED_BUILTIN LED_BUILTIN  // allow testing #ifdef LED_BUILTIN
 
-static const uint8_t RGB_PWR = 42;
+// pfodWeb NOTE: RGB_PWR (GPIO42) deliberately NOT declared - internal
+// power-gate for the onboard NeoPixel, not general-purpose.
 
 #endif /* Pins_Arduino_h */

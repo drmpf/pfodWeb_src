@@ -1,0 +1,193 @@
+Adafruit Floppsy RP2040 — dedicated-hardware pin-exclusion audit
+=================================================================
+Date: 2026-07-13
+Board directory: variants/rp2040/rp2040/adafruit_floppsy/
+Chip: rp2040 (variants/rp2040/rp2040/board.json chip-level defaults; chipGpios: {})
+
+SUMMARY (one line)
+-------------------
+Created a full per-board board.json excluding 23 dedicated-hardware GPIOs
+(34-pin floppy IDC interface, Apple II disk interface, TFT display, SD-card
+CS, level-shifter direction/enable) and tagging GPIO22 as the onboard
+NeoPixel and GPIO28 as the onboard active-high status LED; no
+pins_arduino.h edit was needed (no button/LED vs SDA/SCL/SS/MOSI/MISO/SCK
+alias collision of the "auto-append" bug class found on this board).
+
+SOURCES CONSULTED
+-----------------
+1. Local file (authoritative for this variant):
+   variants/rp2040/rp2040/adafruit_floppsy/pins_arduino.h
+   - Declares every floppy/Apple-II/TFT/SD pin via bare `#define NAME n`
+     macros, plus PIN_LED=28, PIN_NEOPIXEL=22, Wire0 (SDA=16/SCL=17),
+     SPI0 (SCK=18/MOSI=19/MISO=20/SS=24), and a pre-existing local
+     "pfodWeb NOTE" comment (added by earlier tooling/session, not
+     upstream) plus `static const uint8_t D16/D17/D18/D19/D20/D22/D27/
+     D28/D29` and `A1/A2/A3` aliases that expose the "spare" GPIOs with
+     generic names for the Designer.
+
+2. Upstream arduino-pico core (github.com/earlephilhower/arduino-pico):
+   - raw.githubusercontent.com/earlephilhower/arduino-pico/master/
+     variants/adafruit_floppsy/pins_arduino.h — fetched and compared;
+     content matches this repo's local copy verbatim (same #define
+     values, same "Not pinned out" 31u placeholders for unused
+     Serial1/Serial2/SPI1/Wire1). Confirms the local file is an
+     unmodified, faithful copy of the vendor-authored variant file.
+   - raw.githubusercontent.com/earlephilhower/arduino-pico/master/
+     boards.txt — `adafruit_floppsy` section: name=Adafruit Floppsy,
+     vid/pid 0x239a/0x8151 (and 0xc151 alt), build.variant=
+     adafruit_floppsy, build.chip=rp2040. Also checked build.led= across
+     ~40 boards (rpipico, adafruit_feather, adafruit_floppsy, etc.) and
+     found it is EMPTY for every single board in the whole file
+     (including rpipico, which this repo's own rpipico/board.json
+     already confirms DOES have a real onboard LED on GPIO25) — so
+     `build.led=` being blank is a universal/unused legacy boards.txt
+     field for this core and carries NO signal either way about whether
+     a board has an onboard LED. Ruled out as a red herring.
+
+3. Adafruit_Floppy Arduino library (github.com/adafruit/Adafruit_Floppy)
+   — the actual reference firmware library for this board:
+   - examples/04_msd_test/04_msd_test.ino — mass-storage-device firmware
+     with an explicit `#elif defined(ARDUINO_ADAFRUIT_FLOPPSY_RP2040)`
+     branch ("Yay built in pin definitions!") confirming this exact
+     board is a first-class supported target. Drives
+     `pinMode(FLOPPY_DIRECTION_PIN, OUTPUT); digitalWrite(..., HIGH)` and
+     `pinMode(FLOPPY_ENABLE_PIN, OUTPUT); digitalWrite(..., LOW)` at
+     setup() (guarded by `#if defined(...)`, i.e. board-specific dedicated
+     pins) — confirms both are committed hardware control lines, not
+     general purpose. Also polls INDEX_PIN/READY_PIN directly and
+     constructs `Adafruit_Floppy floppy(DENSITY_PIN, INDEX_PIN,
+     SELECT_PIN, MOTOR_PIN, DIR_PIN, STEP_PIN, WRDATA_PIN, WRGATE_PIN,
+     TRK0_PIN, PROT_PIN, READ_PIN, SIDE_PIN, READY_PIN)` — confirms all
+     13 Shugart floppy-interface pins are consumed by the driver.
+   - examples/04_msd_test/display_floppsy.h — the board-specific display
+     driver selected by the same firmware for this board
+     (`#include "display_floppsy.h"` under the ARDUINO_ADAFRUIT_FLOPPSY_
+     RP2040 branch of 04_msd_test.ino): constructs
+     `Adafruit_ST7789 display(&SPI1, TFT_CS, TFT_DC, TFT_RESET)` and
+     `init_display()` does `pinMode(TFT_BACKLIGHT, OUTPUT);
+     digitalWrite(TFT_BACKLIGHT, 1);` — confirms TFT_CS/TFT_DC/
+     TFT_RESET/TFT_BACKLIGHT are all committed to driving the onboard
+     1.3" color TFT, not general purpose. (Note: the constructor is
+     passed the RP2040 "SPI1" C++ peripheral object, but the physical
+     SCK/MOSI/MISO GPIOs used are still this board's GPIO18/19/20 -
+     arduino-pico's SPI peripheral-to-GPIO-pin mapping is reassignable
+     via setSCK()/setTX()/setRX(), independent of which peripheral
+     object name a sketch instantiates; this does not change which
+     physical GPIOs are shared/dedicated.)
+   - examples/apple2_test/apple2_test.ino — confirms the Apple II
+     disk-interface pin roles (APPLE2_ENABLE_PIN, APPLE2_PHASE1-4_PIN,
+     APPLE2_RDDATA_PIN, APPLE2_INDEX_PIN, APPLE2_PROTECT_PIN) and shows
+     the `#elif defined(ARDUINO_ADAFRUIT_FLOPPSY_RP2040)` branch again
+     resolves to "Yay built in pin definitions!" (i.e. this board's own
+     pins_arduino.h aliases, which reuse the Shugart-header GPIOs for
+     the Apple II phases per the APPLE2_PHASEn_PIN #define chain already
+     visible in pins_arduino.h).
+
+4. Adafruit blog posts (blog.adafruit.com):
+   - 2024/01/24 "Floppy Disk archiver and emulator, prototype is in!" —
+     confirms the initial Floppsy design: RP2040, 16MB onboard flash,
+     optional MicroSD for raw flux dumps/disk images, 1.3" color TFT for
+     status, 34-pin IDC + 26-pin FPC connectors, 12V Molex + USB-C power.
+   - 2024/10/29 "Floppsy rev B – now Apple-ier" — confirms rev B adds
+     the Apple Disk ][ 2x10 IDC connector (recycling many Shugart-header
+     GPIOs via the APPLE2_PHASEn_PIN aliasing already seen in
+     pins_arduino.h), a TPS65130 -12V bias supply for Apple II support,
+     and states verbatim that this rev "supports floppy disk emulation
+     mode by letting you control the direction of the two-level
+     shifters" (confirms FLOPPY_DIRECTION_PIN's role) and that "an
+     additional GPIO expander provides the 4-way button interface" for
+     onboard navigation buttons used for offline disk imaging — i.e. the
+     board's tactile buttons are NOT wired to raw RP2040 GPIO pins at
+     all; they sit behind an I2C-attached IO-expander chip. This is
+     consistent with this board's own pins_arduino.h, which already
+     notes "PIN_CARD_DETECT on IO expander" (i.e. the same onboard
+     expander is also used for SD-card-detect sensing).
+
+5. Adafruit Feather RP2040 pinout guide
+   (learn.adafruit.com/adafruit-feather-rp2040-pico/pinouts) — used only
+   to establish Adafruit's own RP2040-line LED convention (since no
+   Floppsy-specific learn guide/pinout page exists yet as of this
+   session — learn.adafruit.com/adafruit-floppsy-rp2040 and several
+   other guessed slugs 404). Confirms: "The red user LED is on D13
+   (GPIO13) and is active-high (digitalWrite HIGH turns it on)." Used as
+   supporting evidence (not board-specific proof) that Floppsy's
+   PIN_LED (GPIO28) is likewise active-high, absent any
+   board-specific evidence to the contrary - same methodology already
+   used by this repo's rpipico/board.json and
+   wiznet_5500_evb_pico/board.json LED entries.
+
+6. Searched (unsuccessfully) for a dedicated Adafruit product page or
+   learn guide specifically for "Floppsy" / "Adafruit Floppsy RP2040" —
+   none exists yet as of this session (2026-07-13); it appears to still
+   be an open-hardware blog-documented project rather than a
+   catalogued/guided shop product. No KiCad/Eagle schematic repo under
+   github.com/adafruit was found either (github search for
+   "org:adafruit floppsy" returned zero repositories). All hardware
+   conclusions above are instead cross-confirmed via the vendor's own
+   arduino-pico core variant file + Adafruit's own reference firmware
+   library (Adafruit_Floppy), which is considered authoritative for
+   pin-role purposes since it is the actual shipped board-support +
+   firmware pairing.
+
+PER-PIN REASONING
+------------------
+GPIO0  TFT_RESET                           -> excluded (dedicated TFT reset)
+GPIO1  DENSITY_PIN / APPLE2_ENABLE_PIN     -> excluded (dedicated floppy/Apple II)
+GPIO2  SELECT_PIN                          -> excluded (dedicated floppy)
+GPIO3  MOTOR_PIN / APPLE2_PHASE4_PIN       -> excluded (dedicated floppy/Apple II)
+GPIO4  DIR_PIN / APPLE2_PHASE3_PIN         -> excluded (dedicated floppy/Apple II)
+GPIO5  STEP_PIN / APPLE2_PHASE2_PIN        -> excluded (dedicated floppy/Apple II)
+GPIO6  WRDATA_PIN / APPLE2_WRDATA_PIN      -> excluded (dedicated floppy/Apple II)
+GPIO7  WRGATE_PIN / APPLE2_WRGATE_PIN      -> excluded (dedicated floppy/Apple II)
+GPIO8  SIDE_PIN / APPLE2_PHASE1_PIN        -> excluded (dedicated floppy/Apple II)
+GPIO9  FLOPPY_DIRECTION_PIN                -> excluded (level-shifter direction control, driven by reference firmware)
+GPIO10 INDEX_PIN                           -> excluded (dedicated floppy)
+GPIO11 TRK0_PIN                            -> excluded (dedicated floppy)
+GPIO12 PROT_PIN / APPLE2_PROTECT_PIN       -> excluded (dedicated floppy/Apple II)
+GPIO13 READ_PIN / APPLE2_RDDATA_PIN        -> excluded (dedicated floppy/Apple II)
+GPIO14 READY_PIN                           -> excluded (dedicated floppy)
+GPIO15 FLOPPY_ENABLE_PIN                   -> excluded (level-shifter/interface enable, driven by reference firmware)
+GPIO16 PIN_WIRE0_SDA                       -> KEPT general purpose (shared I2C0 bus; onboard IO-expander sits on it, but bus is shareable - matches board's own pins_arduino.h note and bigtreetech_SKR_Pico GPIO0/1 shared-bus precedent)
+GPIO17 PIN_WIRE0_SCL                       -> KEPT general purpose (same as GPIO16)
+GPIO18 PIN_SPI0_SCK                        -> KEPT general purpose (shared SPI0 bus for TFT+SD, separate CS lines; matches wiznet_5500_evb_pico shared-bus precedent)
+GPIO19 PIN_SPI0_MOSI                       -> KEPT general purpose (same as GPIO18)
+GPIO20 PIN_SPI0_MISO                       -> KEPT general purpose (same as GPIO18)
+GPIO21 PIN_CARD_CS                         -> excluded (dedicated SD-card chip-select)
+GPIO22 PIN_NEOPIXEL                        -> tagged ["digital_output","pwm_output","led_neopixel"] (onboard status NeoPixel)
+GPIO23 TFT_DC                              -> excluded (dedicated TFT data/command line)
+GPIO24 TFT_CS / PIN_SPI0_SS                -> excluded (capabilities: []; spi_ss auto-appended by build_boards.js regardless, matching wiznet precedent)
+GPIO25 TFT_BACKLIGHT                       -> excluded (dedicated TFT backlight control, driven directly by reference firmware)
+GPIO26 APPLE2_INDEX_PIN                    -> excluded (dedicated Apple II sense input via separate JST connector; board's own pins_arduino.h already omits A0 for this reason)
+GPIO27 A1                                  -> KEPT general purpose (genuinely spare analog/digital pin, no chipGpios override)
+GPIO28 PIN_LED / A2                        -> tagged ["digital_output","pwm_output","led_high"] (onboard status LED, confirmed active-high per Adafruit's RP2040-line convention; A2 alias does not carry over analog_input since an explicit chipGpios entry replaces the fallback derivation entirely)
+GPIO29 A3                                  -> KEPT general purpose (genuinely spare analog/digital pin, no chipGpios override)
+
+BUTTON: none tagged. Floppsy rev B's 4-way navigation buttons are wired
+behind an onboard I2C GPIO-expander chip, not exposed as raw RP2040 GPIO
+pins in this board's pins_arduino.h - out of scope for this repo's
+GPIO-keyed button/LED capability tagging (same class of exclusion as the
+rpipico BOOTSEL button, which is also not a normal addressable GPIO).
+
+BUG-CLASS CHECK (button/LED aliased as SDA/SCL/SS/MOSI/MISO/SCK, causing
+build_boards.js to unconditionally auto-append a bus capability): NOT
+FOUND on this board. Neither GPIO22 (NeoPixel) nor GPIO28 (LED) coincide
+with this board's SDA(16)/SCL(17)/SS(24)/MOSI(19)/MISO(20)/SCK(18)
+aliases. GPIO24 (TFT_CS) DOES coincide with PIN_SPI0_SS, but TFT_CS is not
+a button/LED - it is handled the same way the wiznet_5500_evb_pico
+precedent handles it (capabilities: [], letting spi_ss auto-append
+harmlessly on top of an otherwise-empty capability set). No
+pins_arduino.h edit was made or needed.
+
+FILES CREATED/MODIFIED
+-----------------------
+- Created: variants/rp2040/rp2040/adafruit_floppsy/board.json (full
+  per-board override file, chip-level defaults + chipGpios entries for
+  23 GPIOs as detailed above).
+- Created: boardsDetails/rp2040/rp2040/adafruit_floppsy/notes.txt (this
+  file).
+- pins_arduino.h: NOT modified (no defect of the in-scope bug class
+  found; file already confirmed byte-identical to the upstream
+  arduino-pico core variant).
+- No build commands were run; board.json was validated for plain JSON
+  well-formedness only (via a scratch script that strips `//` line
+  comments then calls JSON.parse - not build_boards.js).

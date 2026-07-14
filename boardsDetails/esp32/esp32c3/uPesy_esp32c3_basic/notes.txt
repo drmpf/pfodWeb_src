@@ -1,0 +1,69 @@
+uPesy_esp32c3_basic (chip: esp32c3) - dedicated-hardware pin-exclusion audit
+Date: 2026-07-12
+
+FLAGGED FOR: static const uint8_t VBAT_SENSE = 0; #define BAT_VOLT_PIN VBAT_SENSE
+in variants/esp32/esp32c3/uPesy_esp32c3_basic/pins_arduino.h.
+
+pins_arduino.h contents reviewed in full (33 lines):
+  USB_PRODUCT "uPesy ESP32C3 Basic"
+  TX=21, RX=20, SDA=3, SCL=10, SS=7, MOSI=6, MISO=5, SCK=4
+  A0..A5 = 0,1,2,3,4,5 (generic ESP32-C3 core template analog aliases)
+  VBAT_SENSE = 0 / BAT_VOLT_PIN
+No LED_BUILTIN or BUT_BUILTIN (or any button/LED alias) declared anywhere in
+this file - section 7a opportunistic check found nothing to tag.
+
+Sources consulted:
+1. https://www.upesy.com/blogs/tutorials/upesy-esp32c3-basic-low-power-board-documentation-version-latest
+   Official uPesy documentation for this exact board. States (French):
+   "La broche GPIO0 (non exposee) est utilisee par la carte pour mesurer la
+   tension d'alimentation" - GPIO0 is NOT physically exposed on a header pad
+   and is reserved by the board design for supply-voltage measurement.
+   Gives the measurement formula "V_BAT = 2 x (V_IO0_bits / 4095) x 3.3V"
+   and a code example doing analogRead(0) - confirms a 2x multiplier
+   (equal-ratio / 1:1 resistive divider) ahead of the ADC. Explicitly warns
+   this reading is only valid when the board is running on battery power;
+   with USB connected the reading is incorrect.
+2. https://www.upesy.com/products/esp32c3-low-power-basic-board
+   Official product page. Independently confirms "GPIO0 (not exposed) is
+   used by the board to measure the power supply voltage" and lists
+   GPIO2/GPIO8 as the strapping pins with pull-ups for BOOT mode selection
+   (matches the strapping pinNotes already inherited from the esp32c3
+   chip-level default - no change needed there).
+
+Note on product naming: uPesy's site/docs refer to this board as "uPesy
+ESP32-C3 Basic Low Power" / "ESP32C3 Low Power Basic"; this repo's
+USB_PRODUCT string is the shorter "uPesy ESP32C3 Basic". Treated as the same
+product (uPesy sells only one narrow-breadboard ESP32-C3 "Basic" board;
+"Low Power" is descriptive marketing text, not a separate SKU/pinout).
+
+REASONING / DECISION:
+- GPIO0 (VBAT_SENSE/BAT_VOLT_PIN/A0): vendor-confirmed dedicated
+  battery-voltage-sense pin, not broken out to a header. Divider ratio 2
+  (1:1 / equal resistors) -> corrected effective reference
+  3.3V * (R_series+R_shunt)/R_shunt = 3.3V * 2 = 6.6V. Per this project's
+  established battery/voltage-monitor KEEP policy (see esp32c3/
+  ttgo-t-oi-plus's GPIO2 for the identical pattern): capabilities left
+  UNCHANGED from chip default (analog_input retained, pin NOT excluded);
+  only an informational "note" field was added to chipGpios["0"] in the new
+  board.json. adc.defaultRefVolts left at board-wide "3.3" (unchanged)
+  because the divider is wired to this one dedicated pin only, not to the
+  board's other analog-capable pins.
+- Alias-collision check (critical step this session): searched
+  pins_arduino.h for SDA/SCL/SS/MOSI/MISO/SCK/TX/RX aliases landing on
+  GPIO0 - none found (SDA=3, SCL=10, SS=7, MOSI=6, MISO=5, SCK=4, TX=21,
+  RX=20). No alias line needed deletion; pins_arduino.h left unmodified.
+- Button/LED (section 7a): no LED_BUILTIN/BUT_BUILTIN alias in
+  pins_arduino.h, and neither uPesy source above mentions an onboard user
+  button or status LED for this board. Nothing to tag.
+
+MECHANISM: created variants/esp32/esp32c3/uPesy_esp32c3_basic/board.json as
+a full copy of the chip-level default
+(variants/esp32/esp32c3/board.json) with a "pfodWeb NOTE:" comment citing
+the two sources above and a "note" field added to chipGpios["0"]. No
+capability changes anywhere; chipGpios values are otherwise identical to
+the chip-level default.
+
+SUMMARY: GPIO0 is a vendor-confirmed dedicated (non-header) battery-sense
+pin with a 1:1 divider (effective 6.6V reference); kept at chip-default
+capabilities per KEEP policy with a documentation note only; no bus-alias
+conflicts found on GPIO0; no button/LED present on this board.

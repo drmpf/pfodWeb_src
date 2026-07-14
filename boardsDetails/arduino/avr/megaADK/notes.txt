@@ -1,0 +1,63 @@
+Board: Arduino Mega ADK (avr/megaADK, split off avr/mega)
+Date: 2026-07-14
+
+Reason for split: boards.txt previously had megaADK.build.variant=mega,
+sharing the plain ATmega2560 Mega's pins_arduino.h/board.json. Mega ADK
+is a Mega 2560 plus an onboard MAX3421E USB host controller (for Android
+Open Accessory / ADK use) wired via SPI, which dedicates one numbered
+digital pin (D7, RST) not free-for-use on plain Mega. A new self-contained
+variant directory was created: pins_arduino.h is a one-line #include of
+../mega/pins_arduino.h (identical mechanical ATmega2560 pin map -- the
+USB host controller is additive hardware, not a pin remap), with its own
+board.json adding a chipGpios exclusion for D7.
+boards.txt's megaADK.build.variant was repointed from "mega" to "megaADK".
+
+Sources consulted:
+- docs.arduino.cc/retired/boards/arduino-mega-adk-rev3/ (official Arduino
+  documentation for the Mega ADK Rev3). States, under the MAX3421E pin
+  connections:
+    "Digital: 7 (RST), 50 (MISO), 51 (MOSI), 52 (SCK)."
+    "Please do not use Digital pin 7 as input or output because is used
+     in the comunication with MAX3421E"
+    "Non broken out on headers: PJ3 (GP_MAX), PJ6 (INT_MAX), PH7 (SS)."
+- forum.arduino.cc/t/asm-megaadk-what-pins-of-mcu-are-connected-to-max3421e/218237
+  (Arduino Forum thread) -- independently corroborates the same four
+  connections: PH7=SS (chip select), PH4(=D7)=RESET, PJ3=GPX, PJ6=INT,
+  with SCK/MOSI/MISO on the standard PB1/PB2/PB3 hardware SPI pins
+  (D52/D51/D50). Confirms PH7/PJ3/PJ6 are "not broken out on headers."
+- forum.arduino.cc/t/arduino-mega-adk-use-of-pin-7/359091 -- corroborates
+  D7 = MAX3421E RST and quotes the same official "do not use Digital pin
+  7" warning.
+
+Per-pin findings:
+- D7 (RST) -- confirmed dedicated to the MAX3421E's reset line by
+  official Arduino documentation and two independent forum threads.
+  Excluded entirely: chipGpios["7"].capabilities = [].
+- Chip-select (SS) -- confirmed wired to ATmega2560 port pin PH7, which
+  has NO corresponding Arduino digital pin number in variants/mega's
+  pins_arduino.h digital_pin_to_port_PGM table (PH7 does not appear
+  anywhere in that 70-entry table; the table's PH entries are only
+  PH0/PH1/PH3/PH4/PH5/PH6, mapped to D17/D16/D6/D7/D8/D9). Sketches have
+  no digitalWrite()/digitalRead() way to reach PH7, so it cannot be
+  represented in the pin-number-keyed chipGpios map and needs no entry.
+- INT (interrupt) and GPX (general purpose) -- confirmed wired to PJ3
+  and PJ6 respectively, same situation as SS: PJ's only mapped digital
+  pins in the table are PJ0/PJ1 (D15/D14), so PJ3/PJ6 have no Arduino
+  digital pin number and need no chipGpios entry.
+- MISO/MOSI/SCK (D50/D51/D52) -- shared external SPI bus lines, same as
+  plain Mega; left as auto-derived (not dedicated solely to the
+  MAX3421E -- other SPI peripherals can share the bus via their own CS
+  lines). No change from plain Mega's treatment.
+- D13 -- same onboard status LED as plain Mega, active-high, carried
+  over unchanged (official Arduino documentation: "The built-in LED of
+  the Arduino board is connected internally to the 'D13' pin"). Not on
+  this board's SPI bus (SPI is D50-D53), no dual-role caveat needed.
+
+boards.txt change: megaADK.build.variant=mega -> megaADK.build.variant=megaADK
+(single line, C:\ai\aicode\pfodWeb\variants\arduino\avr\boards.txt line 377).
+
+Summary: Arduino Mega ADK -- split from shared "mega" variant; D7 (RST)
+confirmed dedicated to the onboard MAX3421E USB host controller and
+excluded; SS/INT/GPX confirmed on PH7/PJ3/PJ6 which have no Arduino
+digital pin number so require no chipGpios entry; D13 onboard LED
+carried over unchanged.

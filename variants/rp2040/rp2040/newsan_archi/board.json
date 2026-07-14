@@ -1,0 +1,142 @@
+// Output filename and BoardLoader data-variable name:
+//   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+//
+// pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+// 2026-07-12):
+//
+// Board: "Newsan Archi" (boards.txt: newsan_archi.name=Newsan Archi) — a
+// real, currently-manufactured Argentine educational RP2040 board named
+// "ARCHI" ("Archi-Kids"), produced by Newsan S.A. at its Tierra del Fuego
+// (Ushuaia) plant. Confirmed via multiple independent Argentine press/
+// government sources (not board-hobbyist sites, since this is a
+// low-volume regional-market product with no English-language coverage):
+//   - El Cronista: "Newsan inició la producción de la primeras placas
+//     ARCHI, 100% desarrolladas en Tierra del Fuego" — describes ARCHI as
+//     "un dispositivo portátil y programable" ("a portable and
+//     programmable device") that is "la puerta de entrada al mundo de la
+//     electrónica y la programación" for children, letting them
+//     "experimentar, aprender y jugar" ("experiment, learn and play") and
+//     fostering learning in "electrónica, programación, computación,
+//     videojuegos, robótica" (electronics, programming, computing, VIDEO
+//     GAMES, robotics).
+//   - Infobae: matching coverage of the same production announcement.
+//   - Gobierno de Tierra del Fuego (tierradelfuego.gob.ar): "La Agencia de
+//     Innovación recibió las primeras placas ARCHI producidas por Newsan"
+//     — confirms first 5,000 units produced, Newsan's own design/
+//     development lab in Ushuaia.
+// This board's "portable, programmable, plays video games" description is
+// consistent with the physical form suggested by its pins_arduino.h: four
+// game-style pushbuttons (A/B/C/D), a 64-pixel NeoPixel array (large
+// enough to function as a simple game/graphics display, e.g. an 8x8
+// matrix), and a buzzer for sound — i.e. a handheld game-console-style
+// educational board, not a bare dev board.
+//
+// This board's own pins_arduino.h (variants/rp2040/rp2040/newsan_archi/
+// pins_arduino.h) is a verbatim match (byte-for-byte, confirmed by fetching
+// raw.githubusercontent.com/earlephilhower/arduino-pico/master/variants/
+// newsan_archi/pins_arduino.h) of the upstream arduino-pico core's own
+// board-support file for this board — i.e. this is not a third-party
+// reverse-engineered guess, it is the vendor/core-maintainer-supplied
+// pinout, contributed upstream. That file itself cites its authoritative
+// source in its header comment: "Pin definitions taken from:
+// https://archikids.com.ar/documentacion" (Newsan's own ARCHI product
+// documentation portal). That page is a JavaScript SPA that could not be
+// scraped for additional static text via WebFetch (returns only the page
+// title, "Archi-Kids", no rendered body) — attempted directly plus via
+// several Google-cache/search-snippet fallbacks, all unsuccessful. No
+// independent schematic, KiCad source, or third-party pinout writeup for
+// this specific board could be located (it is a low-volume, Argentina-
+// market-only product with no GitHub hardware repo or hobbyist community
+// coverage found).
+//
+// Net result: the *existence* and *identity* of all four buttons and the
+// NeoPixel array is confirmed to a high degree of confidence (vendor's own
+// upstream-contributed alias names PIN_BUTTON_A/B/C/D and PIN_NEOPIXEL/
+// NUM_NEOPIXEL=64, cross-checked against independent press confirmation
+// that ARCHI is a real physical "play video games" handheld device this
+// pinout shape matches). Electrical *polarity* (active-high vs
+// active-low, internal vs external pull-up/down) could NOT be confirmed
+// from any available source, since the vendor's documentation portal is
+// unreachable and no schematic was found — the "button" capability tag
+// used below does not itself encode polarity (this repo's vocabulary has
+// no separate button_high/button_low tag, unlike led_high/led_low), so
+// this gap does not block tagging, but is flagged here for anyone doing
+// follow-up firmware/example work against this board.
+//
+// GPIO10 quirk (documented, not fixed — out of scope for this audit):
+// this board's own pins_arduino.h declares BOTH `PIN_BUTTON_B (10u)` AND
+// `PIN_SPI1_SCK (10u)` — i.e. Button B and the SPI1-bus clock line are
+// the SAME GPIO in the vendor's own upstream pinout (SPI1 is presumably
+// unused/not broken out on this particular board, and GPIO10 was reused
+// for Button B instead). build_boards.js's unconditional SPI-alias
+// auto-append (fires regardless of any chipGpios override, per the
+// precedent documented in wiznet_5500_evb_pico/board.json) will still
+// attach a "spi_sck" bus-role tag to GPIO10 on top of the "button"
+// capability set below — this is expected given the vendor's own
+// dual-aliasing, not a bug in this file.
+//
+// Per-pin findings:
+//   GPIO23 (PIN_BUTTON_A), GPIO10 (PIN_BUTTON_B), GPIO25 (PIN_BUTTON_C),
+//     GPIO19 (PIN_BUTTON_D) — four onboard game-style pushbuttons,
+//     ordinary GPIOs (not capacitive-only pins, unlike
+//     adafruit_trinkeyrp2040qt's touch button), full-capability tagging
+//     matching this repo's established ordinary-pushbutton precedent
+//     (vccgnd_yd_rp2040 GPIO24 PIN_USRKEY).
+//   GPIO24 (PIN_NEOPIXEL, NUM_NEOPIXEL=64) — onboard 64-pixel addressable
+//     WS2812-style NeoPixel array, output-only data line. pwm_output
+//     omitted (NeoPixel data lines use bit-banged/PIO timing-critical
+//     protocol, not a real PWM duty-cycle signal — matches the
+//     vccgnd_yd_rp2040 GPIO23 precedent of omitting pwm_output for a
+//     NeoPixel data pin, rather than the alternate sparkfun precedent
+//     that keeps it).
+//   GPIO22 (PIN_BUZZER) — out of scope per task instructions: no
+//     "buzzer" PinType exists in this repo's tagging vocabulary. Left
+//     untouched (chip-level default digital_input/digital_output/
+//     pwm_output capabilities apply unchanged, which is harmless/usable
+//     for driving a buzzer via analogWrite() tone-style code anyway).
+//
+// Full findings/sources trail:
+// boardsDetails/rp2040/rp2040/newsan_archi/notes.txt
+{
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Newsan Archi" (variants/rp2040/boards.txt).
+  "boardName": "RP2040",
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — all
+  // four buttons and the NeoPixel are handled entirely via the
+  // chipGpios capability overrides below.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) RP2040 board, no
+  // onboard radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  "chipGpios": {
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON_A — onboard game-style pushbutton. Confirmed via this board's own upstream arduino-pico pins_arduino.h (byte-for-byte match with raw.githubusercontent.com/earlephilhower/arduino-pico), which cites archikids.com.ar/documentacion as its source; existence cross-checked against independent Argentine press (El Cronista/Infobae/Tierra del Fuego gov't) describing ARCHI as a portable device for playing video games. Polarity/pull-up config could not be confirmed (vendor docs portal is a JS SPA, unreachable via WebFetch)." },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON_B — onboard game-style pushbutton (see GPIO23 note for sourcing). Also declared as PIN_SPI1_SCK (10u) in this board's own pins_arduino.h — a vendor-side dual-aliasing quirk (SPI1 presumably unused on this board); build_boards.js's unconditional SPI-alias auto-append will still attach a spi_sck bus-role tag on top of this capability set, independent of this override." },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON_C — onboard game-style pushbutton (see GPIO23 note for sourcing)." },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON_D — onboard game-style pushbutton (see GPIO23 note for sourcing)." },
+    "24": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL, NUM_NEOPIXEL=64 — onboard 64-pixel addressable NeoPixel array, output-only data line. Confirmed via this board's own upstream arduino-pico pins_arduino.h (see GPIO23 note for sourcing detail). pwm_output omitted — NeoPixel data uses bit-banged/PIO timing-critical protocol, not analogWrite()-style PWM, matching the vccgnd_yd_rp2040 GPIO23 precedent." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other plain RP2040 board (this board's pins_arduino.h declares no
+  // custom analog pins, falling back to generic_full/common.h's default).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

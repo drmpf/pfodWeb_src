@@ -146,20 +146,8 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
     // Normalise line endings to LF so newline handling is uniform throughout
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-    // Decode pfod escape sequences in a text segment before inserting into the DOM.
-    // &amp; is decoded last so &amp;lt; produces &lt; (literal) not < (tag opener).
-    function decodeEscapes(str) {
-        if (str.indexOf('&') === -1) return str;
-        return str
-            .replace(/&#96;/g,  '`')
-            .replace(/&#123;/g, '{')
-            .replace(/&#124;/g, '|')
-            .replace(/&#125;/g, '}')
-            .replace(/&#126;/g, '~')
-            .replace(/&lt;/g,   '<')
-            .replace(/&#92;/g,  '\\')
-            .replace(/&amp;/g,  '&');
-    }
+    // decodeEscapes() is shared with redraw.js's parsePfodInlineSegments
+    // (dwg canvas text) — defined once in redraw.js, which loads first.
 
     // Stack of active open tags — each entry describes the style delta that tag contributes.
     // {tag: string, bold: bool, italic: bool, underline: bool, deltaSize: number, textColor: string}

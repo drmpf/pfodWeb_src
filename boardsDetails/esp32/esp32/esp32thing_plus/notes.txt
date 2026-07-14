@@ -1,0 +1,90 @@
+Board: esp32thing_plus (chip: esp32)
+Directory: variants/esp32/esp32/esp32thing_plus/
+Audit date: 2026-07-12
+
+FLAG THAT TRIGGERED REVIEW
+--------------------------
+Discovery sweep flagged `#define TX1 TX` / `#define RX1 RX` in pins_arduino.h
+as possible new GPIOs.
+
+Verified by reading pins_arduino.h in full (54 lines): TX1/RX1 are plain
+macro aliases of the existing primary TX (GPIO17) / RX (GPIO16) pins, not
+new GPIO numbers. CONFIRMED FALSE POSITIVE - no action needed for this pair.
+
+FULL FILE REVIEW
+-----------------
+Read the entire pins_arduino.h (not just the flagged lines). Contents besides
+the false-positive alias:
+  - LED_BUILTIN = 13
+  - TX=17, RX=16, SDA=23, SCL=22, SS=33, MOSI=18, MISO=19, SCK=5
+  - A0..A12 analog aliases, T0..T9 touch aliases (mirrors the Adafruit
+    Feather ESP32 pin mapping - comment in the file literally says
+    "mapping to match other feathers and also in order")
+  - DAC1=25, DAC2=26
+No LiPo battery-sense ADC pin, no NeoPixel/RGB pin, and no explicit
+BUTTON/KEY define anywhere in the file.
+
+RESEARCH (SparkFun ESP32 Thing Plus, real board)
+--------------------------------------------------
+Sources consulted:
+  - https://learn.sparkfun.com/tutorials/esp32-thing-plus-hookup-guide/all
+      (official hookup guide; fetched and read directly)
+  - https://cdn.sparkfun.com/assets/learn_tutorials/8/5/2/ESP32_Thing_Plus_Schematic.pdf
+      (schematic, referenced via search; not fetched directly but hookup
+      guide code samples were sufficient to confirm pin numbers/polarity)
+  - https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32_WROOM_C/hardware_overview/
+      (newer USB-C hardware-overview page, general cross-check)
+
+Findings:
+  1. Onboard LED - Blink example in the hookup guide:
+       int ledPin = 13;
+       digitalWrite(ledPin, HIGH);  // on
+       digitalWrite(ledPin, LOW);   // off
+     Confirms GPIO13 (= LED_BUILTIN in pins_arduino.h) is a real onboard
+     LED, active-HIGH.
+  2. Onboard user button - WiFi example in the hookup guide:
+       const int BUTTON_PIN = 0;
+       if (digitalRead(BUTTON_PIN) == LOW) { ... }  // pressed
+     Confirms GPIO0 is wired to a real onboard pushbutton, active-LOW.
+     This is also why GPIO0 already carries the strapping-pin boot note
+     ("Must be HIGH or floating on reboot") at chip level - consistent
+     with a button that must not be held down at power-up.
+  3. Battery monitoring - the board has a LiPo charge circuit, but battery
+     voltage is read via an onboard MAX17048 fuel-gauge IC over I2C, not
+     via a direct GPIO ADC pin. No battery-sense pin exists to tag.
+  4. NeoPixel/addressable RGB LED - not present on this board (unlike the
+     sibling sparkfun_esp32_iot_redboard, which does have one on GPIO2).
+
+BUS-ALIAS COLLISION CHECK (per audit step 3)
+---------------------------------------------
+Checked GPIO0 and GPIO13 (the two candidate tag pins) against every
+SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias declared in this pins_arduino.h:
+  TX=17, RX=16, SDA=23, SCL=22, SS=33, MOSI=18, MISO=19, SCK=5, DAC1=25, DAC2=26
+Neither GPIO0 nor GPIO13 collides with any bus alias, so build_boards.js's
+unconditional bus-capability appending is not a concern here. No boilerplate
+alias to delete.
+
+CHANGES APPLIED
+----------------
+Created variants/esp32/esp32/esp32thing_plus/board.json (this board
+previously had no override and inherited the chip-level default at
+variants/esp32/esp32/board.json). Copied the chip-level default file
+verbatim and changed only two chipGpios entries, following the exact
+convention already used by sibling boards esp32thing/board.json and
+sparkfun_esp32_iot_redboard/board.json:
+  - GPIO0:  ["analog_input_serial","digital_input","digital_output","pwm_output"]
+            -> ["digital_input","button"]
+  - GPIO13: ["analog_input_serial","digital_input","digital_output","pwm_output"]
+            -> ["digital_output","pwm_output","led_high"]
+All other chipGpios entries, pwm/dac/adc blocks, inputOnlyGpios, connections,
+and pinNotes are unchanged from the chip-level default.
+
+SUMMARY
+-------
+TX1/RX1 flag was a false positive (alias of existing TX/RX, not new pins).
+Opportunistic check found two genuine, vendor-confirmed hardware identities
+(GPIO13 onboard LED active-high, GPIO0 onboard button active-low) that were
+previously untagged because this board never had an override file; both now
+tagged in a new board.json. No battery-sense pin and no NeoPixel exist on
+this board, so nothing further to tag. This board should not be re-flagged
+for TX1/RX1, and should not be re-flagged for missing button/LED tags.

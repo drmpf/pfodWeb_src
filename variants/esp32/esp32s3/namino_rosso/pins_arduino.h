@@ -25,7 +25,12 @@ static const uint8_t GPIO8 = 8;
 static const uint8_t GPIO19 = 19;
 static const uint8_t GPIO20 = 20;
 static const uint8_t GPIO3 = 3;
-static const uint8_t GPIO46 = 46;
+// pfodWeb NOTE: GPIO46/47/48 deliberately NOT declared here (or below as
+// RESET_ADD_ON/BOOT_MODE/NM_RESET/RESET_ARDUINO) — per vendor product
+// docs, GPIO46 is the reset line to the optional "Namino NERO" power
+// add-on shield, and GPIO47/48 are the bootloader-strap/reset lines for
+// a second onboard chip handling this board's PNP I/O and relay — none
+// are general-purpose (see this board's own board.json chipGpios override).
 static const uint8_t GPIO9 = 9;
 static const uint8_t GPIO10 = 10;
 static const uint8_t GPIO11 = 11;
@@ -33,8 +38,6 @@ static const uint8_t GPIO12 = 12;
 static const uint8_t GPIO13 = 13;
 static const uint8_t GPIO14 = 14;
 static const uint8_t GPIO21 = 21;
-static const uint8_t GPIO47 = 47;
-static const uint8_t GPIO48 = 48;
 static const uint8_t GPIO45 = 45;
 static const uint8_t GPIO0 = 0;
 static const uint8_t GPIO35 = 35;
@@ -50,18 +53,18 @@ static const uint8_t GPIO43 = 43;
 static const uint8_t GPIO2 = 2;
 static const uint8_t GPIO1 = 1;
 
-static const uint8_t RESET_ADD_ON = GPIO46;
 static const uint8_t SS = GPIO10;
 static const uint8_t MOSI = GPIO11;
 static const uint8_t MISO = GPIO13;
 static const uint8_t SCK = GPIO12;
-// SPI SD CARD
+// SPI SD CARD (shared general-purpose SPI header — CS_SDCARD/J4_cs_io2
+// is just the CS line on the same bus as SS/MOSI/MISO/SCK above, not an
+// exclusively-wired onboard SD slot; confirmed via vendor product page:
+// "SPI interface (SD card module not included)")
 static const uint8_t CS_SDCARD = GPIO2;
 // prog pins
-static const uint8_t BOOT_MODE = GPIO47;
 static const uint8_t ISP_TX = GPIO17;
 static const uint8_t ISP_RX = GPIO18;
-static const uint8_t NM_RESET = GPIO48;
 /* End Pins on ESP32-S3-WROOM-1U-N4R8 */
 
 /* Begin Analog Pins on ESP32-S3-WROOM-1U-N4R8 */
@@ -135,7 +138,6 @@ static const uint8_t DAC1 = 0;
 static const uint8_t DAC2 = 0;
 
 /* Begin Arduino naming */
-static const uint8_t RESET_ARDUINO = GPIO46;
 static const uint8_t PC0 = GPIO3;
 static const uint8_t PC1 = GPIO4;
 static const uint8_t PC2 = GPIO5;

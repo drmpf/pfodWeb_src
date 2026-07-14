@@ -1,0 +1,116 @@
+dfrobot_firebeetle2_esp32e (esp32/esp32) - TX2/RX2 pin-exclusion audit
+=======================================================================
+
+Flagged for review: pins_arduino.h declares
+  static const uint8_t TX2 = 17;
+  static const uint8_t RX2 = 16;
+GPIO16/17 are excluded chip-wide by the esp32/esp32 default board.json
+(comment there: "not user-accessible on modules with integrated
+flash/PSRAM"), so any board that declares them needs individual
+confirmation of whether this specific module variant actually has
+PSRAM parked on those pins.
+
+Sources consulted
+------------------
+- https://wiki.dfrobot.com/dfr0654/  (FireBeetle 2 ESP32-E IoT
+  Microcontroller: Wi-Fi & Bluetooth | DFRobot Wiki) - fetched directly.
+  States: "Onboard LED - LED controlled by pin IO2/D9", "Onboard RGB
+  Light - WS2812 RGB LED, controlled by pin IO5/D8", "User Button -
+  Controlled by pin IO27/D4". Flash Memory listed as "4 MB", no PSRAM
+  mentioned. No battery-voltage-sense pin mentioned anywhere on the page.
+- https://wiki.dfrobot.com/FireBeetle_Board_ESP32_E_SKU_DFR0654 - same
+  underlying content as above (older URL alias), cross-checked, no
+  discrepancies found.
+- https://www.dfrobot.com/product-2195.html (vendor product page for
+  SKU DFR0654) - fetched directly. States module is "ESP-WROOM-32E-
+  based", Flash 4MB, "PSRAM: Not included". Confirms "Digital Pins x 18"
+  and lists them explicitly: IO0, IO1, IO2, IO3, IO4, IO12, IO13, IO14,
+  IO15, IO16, IO17, IO18, IO19, IO21, IO22, IO23, IO25, IO26 (18 pins).
+  Notably GPIO5 and GPIO27 are NOT in this general-purpose list, which
+  corroborates them being internally dedicated (RGB LED and user button
+  respectively, per the wiki text above) rather than free header GPIOs.
+- WebSearch cross-reference distinguishing this DFR0654 (plain, 4MB,
+  no PSRAM) from the separate DFR1139 "FireBeetle 2 ESP32-E (N16R2)"
+  SKU, which IS built on an ESP32-WROOM-32E-N16R2 module with 16MB
+  flash + 2MB PSRAM (that variant is a different board entry entirely
+  and is not what this repo's dfrobot_firebeetle2_esp32e maps to -
+  confirmed against this repo's variants/esp32/boards.txt entry, which
+  sets build.flash_size=4MB default and an optional/disabled-by-default
+  PSRAM menu, matching the plain DFR0654, not the N16R2).
+- Prior-art precedent in this repo: variants/esp32/esp32/espino32 and
+  variants/esp32/esp32/BharatPi-LoRa both already establish the
+  "plain ESP-WROOM-32 module, no PSRAM -> GPIO16/17 genuinely free,
+  re-add to chipGpios with digital_input/digital_output/pwm_output"
+  pattern; BharatPi-LoRa's board.json is essentially an exact precedent
+  for this exact TX2=17/RX2=16 KEEP decision.
+
+Reasoning / decisions applied
+-------------------------------
+1. GPIO16/GPIO17 (TX2/RX2) - KEPT (not excluded). This is the plain
+   4MB-flash DFR0654 build with NO PSRAM (vendor-confirmed), so GPIO16/17
+   are not consumed by PSRAM signalling. DFRobot's own product page
+   explicitly lists IO16 and IO17 among the board's 18 general-purpose
+   digital pins. Added chipGpios["16"] and chipGpios["17"] with
+   ["digital_input", "digital_output", "pwm_output"] (no analog_input -
+   GPIO16/17 are not ADC-capable on the ESP32 chip). No TX/RX/SDA/SCL/
+   SS/MOSI/MISO/SCK alias collision on 16 or 17 in this board's
+   pins_arduino.h - safe to add as plain digital/PWM pins.
+
+2. GPIO5 (D8, also boilerplate-aliased SS) - opportunistic 7a find.
+   Vendor-confirmed as the onboard WS2812 RGB LED data line ("Onboard
+   RGB Light - WS2812 RGB LED, controlled by pin IO5/D8"), and excluded
+   from the vendor's 18-pin general-GPIO list, corroborating dedicated
+   internal use. The pins_arduino.h SS=5 alias is generic ESP32-Dev-
+   Module SPI-header boilerplate (SCK=18/MISO=19/MOSI=23/SS=5 is copied
+   into nearly every esp32/esp32 variant regardless of whether that pin
+   is truly wired as an SPI chip-select on the specific board), and per
+   this session's new collision check, was never vendor-confirmed as a
+   real SPI CS on this board - so it was DELETED from pins_arduino.h to
+   stop build_boards.js unconditionally granting spi_ss to this LED
+   pin. chipGpios["5"] tagged ["digital_output", "led_neopixel",
+   "pwm_output"] (dropped digital_input - the pin is an output-only
+   addressable-LED data line), matching this repo's existing
+   pandabyte_x32 RGB_BUILTIN precedent. MOSI(23)/MISO(19)/SCK(18)
+   aliases were left in place - no evidence they're anything but free
+   general-purpose GPIOs on this board.
+
+3. GPIO27 (D4) - opportunistic 7a find. Vendor-confirmed onboard user
+   button ("User Button - Controlled by pin IO27/D4"), also excluded
+   from the vendor's 18-pin general-GPIO list, corroborating dedicated
+   use (consistent with GPIO27 being wired to a physical button rather
+   than broken out as a free GPIO). Not TX/RX/SDA/SCL/SS/MOSI/MISO/SCK
+   on this board - no bus-alias collision. chipGpios["27"] tagged
+   ["digital_input", "button"] (dropped analog_input_serial/
+   digital_output/pwm_output present in the chip default), matching
+   this repo's pandabyte_x32/espino32 BUTTON_BUILTIN precedent.
+
+4. GPIO2 (D9, LED_BUILTIN=2) - checked but NOT changed. Vendor confirms
+   "Onboard LED - LED controlled by pin IO2/D9" AND GPIO2 IS included
+   in the vendor's 18-pin general-purpose GPIO list (dual-purpose: both
+   a real GPIO and drives the onboard LED, same pattern as this repo's
+   node32s GPIO2/LED3 precedent). However, no consulted source states
+   the LED's active-high vs active-low drive polarity, and the
+   led_high/led_low tags require that fact, not a guess. Left at chip-
+   default capabilities (no led_high/led_low tag) - explicit unconfirmed
+   item for human review, per this repo's no-guess policy (see
+   pandabyte_x32/notes.txt for the same treatment of an unconfirmed
+   LED polarity).
+
+5. Battery voltage sense pin - checked, none found in any consulted
+   source for this specific SKU (DFR0654). Not added. (Note: DFRobot
+   does sell FireBeetle 2 boards with battery-voltage-read pins/circuits
+   documented, e.g. the ESP32-C6 variant, but no such pin/circuit is
+   documented for this DFR0654 SKU - not assumed present.)
+
+Summary
+--------
+Created variants/esp32/esp32/dfrobot_firebeetle2_esp32e/board.json (full
+copy of the esp32/esp32 chip-level default) with GPIO16/17 re-added as
+plain digital+PWM pins (TX2/RX2 confirmed general-purpose, no-PSRAM
+module), GPIO5 tagged led_neopixel (onboard WS2812, dropped
+digital_input), and GPIO27 tagged button (onboard user button, dropped
+analog/output caps). Deleted the boilerplate "static const uint8_t SS =
+5;" line from pins_arduino.h since GPIO5 is vendor-confirmed dedicated
+to the RGB LED, not a real SPI chip-select, and would otherwise be
+silently granted spi_ss by build_boards.js. GPIO2/LED_BUILTIN left
+unchanged (polarity unconfirmed). No battery-voltage pin found/added.

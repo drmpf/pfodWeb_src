@@ -1,0 +1,127 @@
+Board: sparkfun_micromodrp2040 (chip: rp2040)
+SparkFun "MicroMod RP2040 Processor" board.
+Audit date: 2026-07-12 (RP2040/RP2350 button/LED/NeoPixel family audit).
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h:
+   variants/rp2040/rp2040/sparkfun_micromodrp2040/pins_arduino.h
+     #define PIN_LED        (25u)
+     #define PIN_NEOPIXEL   (31)
+     #define NUM_NEOPIXEL   (0)
+     #define PIN_WIRE1_SDA  (31u)
+     #define PIN_WIRE1_SCL  (31u)
+     ... includes "../generic/common.h"
+   File header comments cite:
+     https://cdn.sparkfun.com/assets/e/2/7/6/b/ProMicroRP2040_Graphical_Datasheet.pdf
+     https://cdn.sparkfun.com/assets/1/6/f/a/2/MicroMod_General_Pinout_v10_Graphical_Datasheet.pdf
+
+2. Chip-level defaults: variants/rp2040/rp2040/board.json (chipGpios: {} —
+   empty by design; every board must supply its own overrides).
+
+3. Shared fallback: variants/rp2040/rp2040/generic/common.h — declares
+   D0-D22 and A0-A2 (GPIO26-28) only; explicitly excludes GPIO23/24/25/29
+   as "on-board circuitry, not general-purpose header pins" (own comment
+   block). Confirms GPIO25 needs an explicit chipGpios entry to appear in
+   the Designer at all.
+
+4. Precedents read: rpipico/board.json (GPIO25 LED, active-high, simple
+   case), wiznet_5500_evb_pico/board.json (dedicated-hardware exclusion +
+   GPIO25 LED), adafruit_trinkeyrp2040qt/board.json (output-only NeoPixel
+   pin pattern).
+
+5. build_boards.js buildEsp32Board()/parseEsp32Consts() (pfodWeb_src/
+   build_boards.js, ~lines 439-720): confirmed the parser only harvests
+   routable-pin aliases from `static const uint8_t X = ...;` declarations
+   — bare `#define PIN_X (n)` lines are NOT harvested directly (used only
+   as fallback resolution targets for a pending static-const alias chain).
+   Confirmed via the parser's own comment: "unrelated numeric defines...
+   are never mistaken for a GPIO." This is the key fact that resolves the
+   GPIO31 question (see below).
+
+6. WebSearch + WebFetch, SparkFun MicroMod RP2040 Processor Board Hookup
+   Guide:
+   https://learn.sparkfun.com/tutorials/micromod-rp2040-processor-board-hookup-guide/all
+   Quote: "A STAT LED is added to the top side of the board. This is
+   useful debugging or as a status indicator. This is connected to
+   GPIO25." No mention anywhere in the guide of a NeoPixel, WS2812, or
+   addressable RGB LED, and no mention of GPIO31.
+
+7. WebFetch, SparkFun MicroMod RP2040 Processor product page
+   (sparkfun.com/sparkfun-micromod-rp2040-processor.html, retired
+   product) — no NeoPixel/addressable-LED feature listed.
+
+8. Official Eagle CAD schematic, downloaded and inspected directly (not
+   just WebFetch-summarized, since the WebFetch AI-markdown pass could
+   not read the binary/vector PDF or parse the full schematic XML):
+   https://raw.githubusercontent.com/sparkfun/MicroMod_Processor-RP2040/main/Hardware/MicroMod-RP2040-ProcessorBoard.sch
+   Grep/Read findings:
+     - Text label "Status LED" on the schematic sheet near parts D2/R1/GND3.
+     - part D2: library="SparkFun-LED" deviceset="LED-BLUE" device="0603"
+       value="BLUE"  (a real, populated blue LED, not a placeholder)
+     - part R1: library="SparkFun-Resistors" deviceset="1KOHM" value="1k"
+     - Net "LED_BUILTIN/G10": ties RP2040 (part U3) pin GPIO25 to R1 pin 2.
+     - Net "N$2": ties R1 pin 1 to D2 pin "A" (anode).
+     - D2 pin "C" (cathode) net segment ties directly to GND3 (GND).
+     => Full path: GPIO25 -> R1 (1k) -> D2 anode -> D2 cathode -> GND.
+        GPIO25 driven HIGH sources current through the LED -> active-high.
+     - grep for "NEOPIXEL"/"WS2812"/"neopixel" (case-insensitive): zero
+       matches anywhere in the ~927KB schematic file.
+     - grep for all `pin="GPIO<n>"` refs on the RP2040 IC symbol (part
+       U3/U1): GPIO0-GPIO25 present (plus non-listed ADC/QSPI-named pins
+       elsewhere); no GPIO31 pin exists on the symbol at all, consistent
+       with RP2040 silicon only physically having GPIO0-29.
+
+9. WebSearch cross-reference: SparkFun's separate "Pro Micro RP2040"
+   product (a different board) genuinely does have an onboard WS2812
+   addressable LED wired to its own GPIO25 — confirming this board's
+   pins_arduino.h header comment ("Changes to match ... MicroMod General
+   Pinout") was adapted from the Pro Micro RP2040 file, but the NeoPixel
+   hardware itself was correctly NOT carried over onto the MicroMod
+   Processor board (NUM_NEOPIXEL 0 confirms this) — only the dangling
+   PIN_NEOPIXEL/PIN_WIRE1_SDA/PIN_WIRE1_SCL "31" sentinel #defines were
+   left behind, unconnected to anything on this specific board.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED / LED_BUILTIN, "STAT LED"):
+  CONFIRMED real, populated, active-high onboard LED (see schematic
+  finding #8 above). Added chipGpios entry:
+    "25": { "capabilities": ["digital_output","pwm_output","led_high"], ... }
+  digital_input dropped (dedicated LED pin, not a general input) and
+  pwm_output kept (arduino-pico analogWrite() works on any RP2040 GPIO),
+  matching the rpipico/wiznet_5500_evb_pico precedent exactly. Without
+  this entry GPIO25 would not appear in the Designer pin list at all
+  (common.h's shared fallback deliberately excludes it, and PIN_LED /
+  LED_BUILTIN are both bare #defines that the parser does not harvest).
+
+GPIO31 (PIN_NEOPIXEL / PIN_WIRE1_SDA / PIN_WIRE1_SCL):
+  CONFIRMED NOT a real, populated NeoPixel or second I2C bus on this
+  board — NUM_NEOPIXEL(0) in the board's own header, no NeoPixel/WS2812
+  anywhere in SparkFun's hookup guide or official schematic, and 31 is
+  not even a real RP2040 GPIO (chip only has GPIO0-29; confirmed absent
+  from the RP2040 IC schematic symbol). Both PIN_WIRE1_SDA and
+  PIN_WIRE1_SCL also point at the same "31" value, which alone rules out
+  a genuine second I2C bus (SDA and SCL cannot be the same physical pin).
+  NO chipGpios entry added for GPIO31 — and this is deliberate, not an
+  oversight: none of PIN_NEOPIXEL/PIN_WIRE1_SDA/PIN_WIRE1_SCL are ever
+  referenced by a `static const uint8_t` alias in this board's headers
+  (they're bare #defines only), so build_boards.js's parser already never
+  adds GPIO31 to the generated pin list. Adding a chipGpios entry here
+  (even an empty-capabilities one) would be the one action that could
+  wrongly introduce a nonexistent "GPIO31" pin into the Designer, since
+  chipGpios keys are unconditionally unioned into the pin list
+  (buildEsp32Board(), allGpios union step). Left untouched.
+
+Onboard button: none beyond the standard RP2040 BOOTSEL (not a normal
+GPIO — out of scope, same as every other RP2040 board in this repo).
+Confirmed no separate general-purpose button exists via the hookup guide
+and schematic.
+
+SUMMARY
+-------
+Added one chipGpios override: GPIO25 tagged led_high (STAT LED, confirmed
+active-high via official schematic). GPIO31 (PIN_NEOPIXEL/PIN_WIRE1_SDA/
+PIN_WIRE1_SCL) confirmed NOT a real onboard NeoPixel or second I2C bus —
+correctly left with no chipGpios entry, matching its current (correct)
+total absence from the generated Designer pin list.

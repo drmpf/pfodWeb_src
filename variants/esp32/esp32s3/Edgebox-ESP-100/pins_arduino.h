@@ -12,31 +12,14 @@ static const uint8_t RST = 0;
 static const uint8_t SDA = 20;
 static const uint8_t SCL = 19;
 
-//I2C INT fro RTC PCF8563
-static const uint8_t I2C_INT = 9;
-
-//SPI BUS for W5500 Ethernet Port Driver
-static const uint8_t SS = 10;
-static const uint8_t MOSI = 12;
-static const uint8_t MISO = 11;
-static const uint8_t SCK = 13;
-static const uint8_t ETH_INT = 14;
-static const uint8_t ETH_RST = 15;
-
-//A7670G
-static const uint8_t LTE_PWR_EN = 16;
-static const uint8_t LTE_PWR_KEY = 21;
-static const uint8_t LTE_TXD = 48;
-static const uint8_t LTE_RXD = 47;
-
-//RS485
-static const uint8_t RS485_TXD = 17;
-static const uint8_t RS485_RXD = 18;
-static const uint8_t RS485_RTS = 8;
-
-//CAN BUS
-static const uint8_t CAN_TXD = 1;
-static const uint8_t CAN_RXD = 2;
+// pfodWeb NOTE: I2C_INT (GPIO9, RTC PCF8563 interrupt), SS/MOSI/MISO/
+// SCK/ETH_INT/ETH_RST (GPIO10-15, dedicated W5500 Ethernet SPI bus),
+// LTE_PWR_EN/PWR_KEY/TXD/RXD (GPIO16/21/47/48, dedicated A7670G cellular
+// modem), RS485_TXD/RXD/RTS (GPIO17/18/8, dedicated RS485 transceiver),
+// and CAN_TXD/RXD (GPIO1/2, dedicated CAN transceiver) deliberately NOT
+// declared - all fixed onboard hardware, not general-purpose (see
+// board.json chipGpios override). DO0-5/DI0-3/AO0-1 stay kept - the
+// industrial I/O terminal banks are the point of using this board.
 
 //BUZZER
 static const uint8_t BUZZER = 45;

@@ -1,0 +1,70 @@
+Board: lilygo_t3_s3_sx127x (variants/esp32/esp32s3/lilygo_t3_s3_sx127x)
+Research date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/master/examples/ArduinoLoRa/LoRaReceiver/utilities.h
+  - Vendor's own official example code. Contains a combined preprocessor
+    block for T3_S3_V1_2_SX1262 / SX1276 / SX1278 / SX1280 / SX1280_PA /
+    LR1121 / LR1121_PA (lines ~358-420) that defines:
+        #define BOARD_LED   37
+        #define LED_ON      HIGH
+        #define BUTTON_PIN  0
+    This confirms, for the SX1276/SX1278 variant specifically (our board
+    covers both), an onboard LED on GPIO37 (active-high, LED_ON=HIGH) and
+    an onboard button on GPIO0. This is vendor example code, not just a
+    generic pins_arduino.h alias, so treated as solid confirmation.
+
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/docs/en/t3_s3_sx1278/t3_s3_sx1278_hw.md
+  - Vendor hardware doc page for the T3-S3 SX1278 variant. Pin map states
+    "On Board LED" connected to GPIO37 ("turned on or off by writing a
+    high or low level" - doesn't restate polarity here, but consistent
+    with utilities.h LED_ON=HIGH above). Button description lists "BOOT"
+    as "Boot mode button, customizable" on GPIO0.
+
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series (repo root) and
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/schematic/T3_S3_V1.1.pdf
+  - Located via search as the schematic source for this board family;
+    used to confirm this is the correct vendor repo for the T3-S3 SX127x
+    variant. Schematic PDF itself not opened directly (utilities.h +
+    hw.md doc were sufficient and more directly citable), listed here
+    for completeness/traceability.
+
+https://wiki.lilygo.cc/products/t3-series/t3-s3/
+  - General T3-S3 product wiki page, confirms board family and links to
+    the same GitHub docs; used as secondary corroboration of board
+    identity only.
+
+PINS CONSIDERED
+----------------
+GPIO0 (BUTTON_1 in this board's pins_arduino.h):
+  - TAGGED as button. Confirmed onboard BOOT/user button via vendor
+    example code (BUTTON_PIN 0) and vendor hw doc (BOOT button on GPIO0).
+    Not TX/RX (TX=43, RX=44 in this board's pins_arduino.h) so no
+    TX/RX-reservation conflict. Existing chipGpios entry for "0" was
+    ["digital_input","digital_output","pwm_output"]; changed to
+    ["digital_input","button"] per task spec.
+
+GPIO37 (LED_BUILTIN in this board's pins_arduino.h):
+  - CONFIRMED as the onboard LED (active-high, LED_ON=HIGH) by vendor
+    example code and hw doc — this is a solid confirmation, not a guess.
+  - NOT TAGGED. GPIO37 falls inside this ESP32-S3 chip's pre-existing
+    33-37 octal-flash/PSRAM pin-exclusion range (see
+    variants/esp32/esp32s3/board.json comment: "GPIOs 26-32 (flash),
+    33-37 (octal flash/PSRAM), and 19-20 (USB) are excluded"), and this
+    board's board.json chipGpios has no "37" entry at all. Per task
+    instructions, re-adding an excluded pin to reverse a pre-existing
+    chip-level exclusion is out of scope for this task. Left untagged.
+    This is NOT a judgment call / guess — the identity and polarity of
+    the LED itself are confirmed by vendor sources; it is simply outside
+    the set of GPIOs this board.json currently exposes at all. Flagged
+    here for human review in case the chip-level exclusion should ever
+    be reconsidered for this specific pin on this specific board.
+
+SUMMARY OF CHANGES
+-------------------
+Tagged GPIO0 -> ["digital_input","button"] in
+variants/esp32/esp32s3/lilygo_t3_s3_sx127x/board.json, with a NOTE
+comment added after the existing NOTE comments explaining both the
+GPIO0 tag and why GPIO37 (confirmed LED) was deliberately left
+untagged.

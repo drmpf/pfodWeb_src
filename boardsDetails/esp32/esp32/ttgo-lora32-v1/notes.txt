@@ -1,0 +1,98 @@
+Board: esp32/esp32/ttgo-lora32-v1 ("TTGO LoRa32 V1 (No TFCard)")
+Research date: 2026-07-11
+
+pins_arduino.h aliases (NOT trusted on their own, see task rules):
+  LED_BUILTIN = GPIO2
+  KEY_BUILTIN = GPIO0
+  TX = GPIO1, RX = GPIO3 (checked - neither candidate GPIO below coincides with TX/RX)
+
+SOURCES CONSULTED
+-----------------
+1. https://lilygo.cc/en-us/products/lora-v1-0-kit
+   Official LilyGO vendor product page for THIS exact board ("LoRa32 V1.0 Kit").
+   States: "Red light" = power indicator (not GPIO controlled). "Blue light" =
+   "IO25 programmable control" - i.e. the real onboard user-controllable LED is
+   on GPIO25, NOT GPIO2 as the pins_arduino.h LED_BUILTIN alias implies. No
+   onboard user button is mentioned anywhere on the page (only implied
+   reset/boot circuitry near USB, not called out as a feature).
+
+2. https://raw.githubusercontent.com/lnlp/LMIC-node/main/src/boards/bsf_ttgo_lora32_v1.h
+   Third-party but carefully schematic-cross-referenced board support file
+   (LMIC-node), documenting "TTGO LoRa32 (aka T3) v1.3" - a later, pin-
+   compatible sub-revision (same OLED_SDA=4, OLED_SCL=15, LORA RST=14, SPI
+   pins 27/19/5/18 as our V1.0 board). It explicitly states: "Schematic diagram
+   and pinout diagram show no onboard user programmable LED while LED_BUILTIN
+   is defined in BSP. Definition in BSP is incorrect." - i.e. even on the
+   v1.3 hardware, GPIO2 is NOT a real LED. It also documents a "Button switch"
+   on GPIO36 (silkscreen label "V_SP"), active-low, separate from the battery-
+   voltage-sense pin (GPIO35). This is for the v1.3 revision specifically.
+
+3. https://github.com/lnlp/LMIC-node/issues/27 ("TTGO LoRa32 V1.0")
+   A user comment states "My board does have an onboard blue led at pin 2" -
+   this CONTRADICTS source #1 (official vendor page) and source #2 (schematic-
+   based BSF). Given it's an unverified forum comment vs. an official vendor
+   spec page + a maintainer who explicitly cross-checked the schematic, this
+   comment was NOT treated as reliable enough to override sources #1/#2.
+
+4. WebSearch result (LilyGO/TTGO-LoRa32-V2.1 issue #3, "Led wrong pin"):
+   "the sender sketch is trying to blink the led every time it sends the led
+   is on pin 25 and not pin 2" - corroborates GPIO25 (not GPIO2) as the real
+   LED pin on related TTGO LoRa32 revisions (V2.1 in this case).
+
+5. WebSearch summary of community blink examples for GPIO25 on TTGO LoRa32
+   boards: consistently digitalWrite(25, HIGH) = LED ON, i.e. active-high.
+   Used to confirm polarity (led_high) for the GPIO25 tag.
+
+6. https://wiki.lilygo.cc/products/t3-series/t3-lora32/ (official LilyGO wiki)
+   Covers V1.3, V1.6.1 and TCXO revisions specifically (not V1.0). Notes V1.3
+   has "2 x 2mm Buttons: RESET + BOOT" (no separate user button called out),
+   while V1.6.1/TCXO list a separate "Onboard LED" on GPIO25 - consistent with
+   source #1's GPIO25 finding for the LED, and consistent with NOT crediting
+   V1.0 with an extra user button beyond RESET/BOOT.
+
+7. WebSearch summary referencing a LilyGO vendor note that "later versions like
+   the V1.3 added features such as buttons" compared to V1.0 - i.e. the extra
+   user button (GPIO36/"V_SP" per source #2) is a V1.3 addition and should NOT
+   be assumed present on this exact V1.0 (No TFCard) board.
+
+8. https://randomnerdtutorials.com/ttgo-lora32-sx1276-arduino-ide/
+   Confirms this SX1276 board (matches our LORA_SCK/SX1276 comment in
+   pins_arduino.h) has "PRG (BOOT) and RST buttons" near the USB port - this
+   is the standard ESP32 auto-program circuit button pair (GPIO0 = BOOT/PRG),
+   not a documented general-purpose "user button" feature.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO0 (KEY_BUILTIN alias): This is the standard ESP32 BOOT/PRG strapping-pin
+  button, present on essentially all ESP32 dev boards for USB auto-flashing.
+  It IS a real physical button (source #8), but the official LilyGO V1.0
+  product page (source #1) does not list any user-facing button feature, and
+  source #7 indicates the extra "user button" was only added starting at
+  V1.3. No source confirms GPIO0 was intended/documented as a general-purpose
+  user input button on V1.0. Judgment call: left UNTAGGED - not confident
+  enough to call this a "user button" vs. a system programming button.
+  Recommend human review if a V1.0-specific schematic surfaces.
+
+- GPIO36 ("V_SP" button per LMIC-node bsf_ttgo_lora32_v1.h, source #2): This
+  is documented only for the "v1.3" sub-revision, and source #7 suggests this
+  button was a V1.3 addition not present on V1.0. Left UNTAGGED - explicit
+  judgment call NOT to guess this carries back to V1.0. Flagging for human
+  review in case V1.0 and V1.3 share this feature after all.
+
+- GPIO2 (LED_BUILTIN alias): Multiple independent sources (#1 official vendor
+  page, #2 schematic-based BSF, #4 community issue on a sibling revision) say
+  this pin has NO real onboard LED - the alias is a generic Arduino-core
+  default, not a real net connection. Confidently NOT tagged (this is not a
+  borderline case - evidence against it is solid).
+
+WHAT WAS TAGGED
+----------------
+GPIO25: capabilities changed from
+  ["analog_input_serial","digital_input","digital_output","pwm_output","dac_output"]
+to
+  ["digital_output","led_high","pwm_output"]
+(pwm_output retained because it was already present). Confirmed as the real
+onboard blue user-controllable LED, active-high, via official LilyGO vendor
+product page for this exact board (source #1), corroborated by sources #4-6.
+GPIO25 is not this board's TX/RX pin (TX=1, RX=3) and has an existing
+chipGpios entry (not excluded), so tagging was in-scope.

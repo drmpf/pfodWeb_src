@@ -1,0 +1,155 @@
+Board: MyRP_2350B ("MyMakers RP2350B") — chip rp2350 (genuine 48-pin RP2350B package)
+Audit date: 2026-07-13
+Result: NO CHANGE (board.json created, chipGpios left empty — no confirmed hardware to tag)
+
+SOURCES CONSULTED
+-----------------
+1. C:\ai\aicode\pfodWeb\variants\rp2040\rp2350\MyRP_2350B\pins_arduino.h (this repo's copy).
+2. C:\ai\aicode\pfodWeb\variants\rp2040\rp2350\board.json (chip-level rp2350 defaults,
+   chipGpios: {} by design; also notes that the one *other* genuine 48-pin RP2350B
+   board in this variant set, waveshare_rp2350b_plus_w, lives in the WiFi "rp2040w"
+   bucket instead).
+3. C:\ai\aicode\pfodWeb\variants\rp2040\rp2350\generic\common.h — the 26-pin/3-ADC
+   shared fallback this board's pins_arduino.h includes via "../generic/common.h"
+   (declares D0-D22, A0-A2=GPIO26-28, SS/MOSI/MISO/SCK from PIN_SPI0_*, SDA/SCL from
+   PIN_WIRE0_*; deliberately omits D23/D24/D25/D29 per its own header comment, since
+   those are SMPS/VBUS/LED/VSYS on the reference Pico).
+4. C:\ai\aicode\pfodWeb\variants\rp2040\rp2350\generic_2350b\common.h — the alternate
+   48-pin fallback (D0-D47, A0-A7=GPIO40-47) used by jumperless_v5. Read for
+   comparison to confirm MyRP_2350B does NOT include this file.
+5. Precedent read in full: variants/rp2040/rp2040/MyRP_bot/board.json and
+   boardsDetails/rp2040/rp2040/MyRP_bot/notes.txt (sibling board from the same
+   contributor/vendor, audited earlier this session, NO CHANGE result) —
+   variants/rp2040/rp2040/MyRP_bot/pins_arduino.h and
+   variants/rp2040/rp2040/rpipico/{board.json,pins_arduino.h} were also
+   cross-checked (rpipico's pins_arduino.h turned out to be byte-identical to
+   MyRP_2350B's, minus the added PICO_RP2350A macro — see below).
+6. C:\ai\aicode\pfodWeb\pfodWeb_src\build_boards.js — re-read parseEsp32Consts()
+   (lines 439-492) and buildEsp32Board() (lines 515+) to confirm exactly which
+   declarations become GPIO aliases: only `static const/constexpr uint8_t NAME =
+   <value>;` (plus one level of #define-fallback resolution for an alias chain).
+   Confirmed grep of build_boards.js finds NO reference to `LED_BUILTIN` or
+   `PIN_LED` anywhere in the parser — these are raw #defines, never harvested.
+7. variants\rp2040\boards.txt lines ~22498-22547: MyRP_2350B.name=MyMakers RP2350B,
+   vid=0x2e8a, 8 pid entries (1000/1100/5000/5100/9000/9100/d000/d100),
+   build.usb_manufacturer="MyMakers", build.usb_product="RP2350B",
+   build.core=rp2040, build.variant=MyRP_2350B.
+8. WebSearch: "MyRP_2350B arduino-pico GitHub PR MyMakers RP2350B"; "\"MyMakers\"
+   RP2350B board pinout"; "mymakers.online RP2350B board"; "\"RP2350B\"
+   mymakers.com OR mymakers.online board GPIO25 LED".
+9. WebFetch: github.com/earlephilhower/arduino-pico/pull/3164 (opening post + review
+   comments) and .../pull/3164/files (file diff), and www.mymakers.online (the
+   "MyMakers Academy" site turned up by search).
+
+WHAT WAS FOUND
+--------------
+- PR #3164 ("Add support for MyMakers RP2350B board"), submitted by GitHub user
+  nui4328 — the same contributor who submitted MyRP_bot's PRs #2680/#2687/#2692 —
+  merged 2025-10-02. The PR added variants/MyRP_2350B/pins_arduino.h, boards.txt
+  entries, tools/json/MyRP_2350B.json and a single-line tools/makeboards.py addition.
+- The file diff for variants/MyRP_2350B/pins_arduino.h fetched from the PR is
+  byte-for-byte identical to this repo's vendored copy (same PICO_RP2350A macro,
+  same PIN_LED/SPI0/SPI1/WIRE0/WIRE1/Serial1/Serial2 values, same
+  "#include ../generic/common.h" tail) — confirms this repo's file is an accurate,
+  unmodified vendoring of the real upstream contribution.
+- The PR's own description states VID/PID 0x2e8a/... and a claimed board URL
+  ("mymakers.com/rp2350b") that returned HTTP 404 when fetched directly — no working
+  vendor product page exists at that address. A separate WebSearch found
+  "mymakers.online", which is "MyMakers Academy" — a Thai student
+  robotics-competition/education site (product nav mentions "Board MyRP.MINI",
+  "MY RP-Pro v2.0", competition announcements) — i.e. the same
+  non-commercial/community-education organisation behind MyRP_bot, not a company
+  selling a documented consumer product with a datasheet. No RP2350B-specific
+  product page, schematic, or pinout diagram could be found on that site either.
+- The maintainer's (earlephilhower) review comments on PR #3164 were entirely about
+  repo hygiene (accidentally including hundreds of unrelated lines / duplicate
+  variant files), not about board hardware — no hardware description was extracted
+  from maintainer feedback.
+- The PR's own testing note: "Compiled and uploaded Blink sketch successfully" /
+  "Verified Serial output and GPIO functionality (e.g., LED on GPIO25)" — this
+  confirms an LED genuinely exists and responds on GPIO25, but says nothing
+  whatsoever about drive polarity (active-high vs active-low) or the LED's circuit.
+  No datasheet, schematic, product page, or store listing exists anywhere for this
+  board beyond the arduino-pico PR itself and the vendor's general (non-technical)
+  academy website.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED) — NOT tagged led_high/led_low/pwm_output, and in fact never
+enters the generated pin list at all under the current chip-level chipGpios:{}.
+  Traced precisely through build_boards.js: PIN_LED is a raw #define, never the
+  target of a `static const uint8_t` declaration anywhere in this board's
+  pins_arduino.h or in the shared generic/common.h it includes (that file
+  explicitly omits D25 from its D0-D22 block, by design — GPIO25 is documented
+  there as "onboard LED" on the reference Pico, deliberately excluded from the
+  general-purpose pin list). Consequently GPIO25 is absent from both
+  aliasesByGpio and allGpios, and since the rp2350 chip-level board.json's own
+  chipGpios is {} (by design for this heterogeneous third-party-board family),
+  GPIO25 does not appear as a routable pin in the Designer for this board at all
+  — not even as an untagged plain digital pin.
+  Separately from that mechanical fact: even if a chipGpios["25"] entry were
+  added here to surface it (as rpipico/board.json does, tagging it led_high,
+  confirmed against the official Raspberry Pi Pico datasheet/documentation), this
+  audit's rule is to confirm real hardware/polarity via vendor documentation, not
+  to guess from a GPIO number/comment alone. Unlike rpipico (an official
+  Raspberry Pi board with a public datasheet explicitly confirming "LED is
+  connected to GP25" and active-high wiring), MyRP_2350B is a third-party
+  community board with zero public documentation of its own LED circuit — the
+  PR's "LED on GPIO25 verified" testing note establishes existence and basic
+  function only, not polarity. This board's pins_arduino.h being a byte-for-byte
+  copy of the stock Pico's pin declarations (down to the same header comment
+  citing the official Pico datasheet URL) is at least as consistent with the
+  contributor simply reusing/copy-pasting the reference file as a convenient
+  starting point (as they evidently also did for their earlier MyRP_bot
+  contribution's file-header comment) as it is with a verified identical LED
+  circuit — so per the audit's explicit "report NO CHANGE rather than guess"
+  rule, no chipGpios entry is added for GPIO25.
+
+48-pin RP2350B chip vs 26-pin generic/common.h fallback — investigated, NO FIX
+NEEDED, not a bug.
+  This board is confirmed to use a genuine 48-pin RP2350B package
+  (`#define PICO_RP2350A 0`, boards.txt build.usb_product="RP2350B"), yet its
+  pins_arduino.h includes "../generic/common.h" — the 26-pin/3-ADC RP2040-style
+  fallback — rather than "../generic_2350b/common.h" (the 48-pin/8-ADC fallback
+  used by jumperless_v5, this variant set's other genuinely-RP2350B board). No
+  GPIO number greater than 27 (PIN_WIRE1_SCL) is referenced anywhere in this
+  board's own pins_arduino.h, so this is internally consistent, not a truncation
+  bug: this particular MyMakers board physically only breaks out the same 26
+  Pico-compatible pins as a standard Pico/Pico 2 form-factor board, leaving the
+  RP2350B chip's extra GPIO29-47 unbroken-out (a design/footprint choice, not a
+  file error) — matching the general pattern the chip-level board.json's own
+  comment already describes for this bucket (only one *other* genuine 48-pin
+  board, waveshare_rp2350b_plus_w, is broken out fully, and that one lives in a
+  different "rp2040w" chip bucket entirely because it's also WiFi-equipped).
+
+SDA/SCL/SS/MOSI/MISO/SCK collision-with-LED check — investigated, NO COLLISION.
+  SPI0 uses GPIO16/17/18/19, SPI1 uses GPIO12/13/14/15, Wire0 uses GPIO4/5, Wire1
+  uses GPIO26/27 — none of these overlap GPIO25 (the LED pin), so the
+  bus-capability-auto-append bug class flagged for this audit (a confirmed
+  button/LED pin also aliased as a bus pin) does not apply here; no #define
+  removal is needed.
+
+All other pins (D0-D22 via common.h, A0-A2 = GPIO26-28) — no board-specific
+evidence found for any of them either; left at the chip-level default (ordinary
+digital_input/digital_output/pwm_output, plus analog_input for A0-A2), matching
+every other undocumented rp2040/rp2350 pin in this family.
+
+SUMMARY
+-------
+MyRP_2350B ("MyMakers RP2350B") is a non-commercial, community/education-
+distributed genuine 48-pin RP2350B board from the same "MyMakers Academy"
+(Thailand-origin student robotics program) and the same upstream contributor
+(nui4328, GitHub) as the already-audited MyRP_bot sibling, merged into
+arduino-pico as PR #3164 (2025-10-02). This repo's pins_arduino.h is confirmed
+byte-identical to the real upstream PR file. An onboard LED at GPIO25 is
+confirmed to exist and function (per the PR's own "Blink sketch" testing note),
+but no datasheet, schematic, product page, or vendor documentation of any kind
+establishes its drive polarity, and the claimed vendor product URL from the PR
+description 404s. Per this audit's guidance, GPIO25 is left untagged (it in fact
+does not even enter the generated pin list under the current empty chipGpios).
+The board's use of the 26-pin generic/common.h fallback despite having a genuine
+48-pin RP2350B chip was investigated and found to be an intentional
+Pico-compatible-footprint design choice, not a bug — no fix needed. No
+button, NeoPixel, or other special-purpose hardware pin is documented anywhere
+for this board. board.json was created as a full copy of the rp2350 chip-level
+defaults with chipGpios: {} (no confirmed overrides) — NO CHANGE.

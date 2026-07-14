@@ -1,0 +1,35 @@
+Board: Elecrow CrowPanel 7.0 (ESP32-S3 Dev Module variant)
+Date: 2026-07-14 (documentation backfill — findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- Elecrow CrowPanel 7.0 schematic - confirmed GPIO10-13/19/20 as the
+  dedicated GT911 touch I2C bus and microSD SPI bus (see vendor
+  pins_arduino.h).
+- LED_BUILTIN = SOC_GPIO_PIN_COUNT + 48 core convention (arduino-esp32
+  core) - basis for identifying GPIO48 as the board's LED_BUILTIN alias.
+- openHASP CrowPanel HMI RGB docs - corroborate GPIO48 driving the WS2812
+  LED.
+
+Per-pin findings:
+- GPIO0, GPIO1, GPIO2, GPIO3, GPIO4, GPIO5, GPIO6, GPIO7, GPIO8, GPIO9:
+  capabilities [analog_input, digital_input, digital_output, pwm_output]
+  (GPIO0 without analog_input) - generic, no tag.
+- GPIO10, GPIO11, GPIO12, GPIO13: excluded (removed from chipGpios
+  entirely) - dedicated GT911 touch I2C bus and microSD SPI bus, confirmed
+  via Elecrow CrowPanel 7.0 schematic (see vendor pins_arduino.h). (GPIO19,
+  GPIO20 are also part of this dedicated range but were already excluded
+  chip-wide as native USB pins.)
+- GPIO14, GPIO15, GPIO16, GPIO17, GPIO18: capabilities [analog_input_serial,
+  digital_input, digital_output, pwm_output] - generic, no tag.
+- GPIO21, GPIO38-GPIO47: capabilities [digital_input, digital_output,
+  pwm_output] - generic, no tag.
+- GPIO48: capabilities [digital_output, pwm_output, led_neopixel] - tagged
+  "led_neopixel". Confirmed onboard WS2812 addressable RGB LED
+  (LED_BUILTIN = SOC_GPIO_PIN_COUNT + 48 core convention; matches openHASP
+  CrowPanel HMI RGB docs showing GPIO48 driving the WS2812 LED).
+
+Summary: Excluded the dedicated GT911 touch I2C bus and microSD SPI bus
+(GPIO10-13, plus already chip-wide-excluded GPIO19/20) per the Elecrow
+CrowPanel 7.0 schematic, and tagged GPIO48 as "led_neopixel" (onboard
+WS2812 RGB LED) per the LED_BUILTIN core convention and openHASP CrowPanel
+HMI RGB docs.

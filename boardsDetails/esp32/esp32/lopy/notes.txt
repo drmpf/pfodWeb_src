@@ -1,0 +1,63 @@
+LoPy board.json research notes
+Board: variants/esp32/esp32/lopy (Pycom LoPy module, NOT lopy4 - untouched)
+Date: 2026-07-11
+
+SOURCES CONSULTED:
+
+1. C:\ai\aicode\pfodWeb\variants\esp32\esp32\lopy\pins_arduino.h (local, vendor Arduino core file)
+   - Explicitly defines: "#define PIN_RGB_LED 0  // ->2812 RGB !!!" and
+     LED_BUILTIN/RGB_BUILTIN aliased to PIN_RGB_LED (GPIO0). Also defines
+     TX=1, RX=3, confirming GPIO0 is not the serial TX/RX pin.
+
+2. https://raw.githubusercontent.com/pycom/pycom-micropython-sigfox/master/esp32/boards/LOPY/mpconfigboard.h
+   (fetched directly, official Pycom firmware source for the LoPy board specifically,
+   not inferred from the GPy sibling)
+   - Contains: "#define MICROPY_HW_HB_PIN_NUM (0)" - confirms GPIO0 is the
+     Pycom "heartbeat" LED pin for the LoPy board (this is the same
+     mechanism used by pycom.heartbeat(True/False) in MicroPython, which
+     drives a WS2812/NeoPixel RGB LED). This is a LoPy-specific firmware
+     file, so it independently confirms (not just assumes from GPy) that
+     LoPy uses GPIO0 for its onboard heartbeat RGB LED.
+
+3. https://docs.pycom.io/datasheets/development/lopy/ (official Pycom datasheet page, fetched)
+   - Mentions "Orient the RGB LED / reset button over the USB connector on
+     any expansion board" - confirms presence of an onboard RGB LED and a
+     reset button, but does NOT mention any separate onboard user push
+     button. No GPIO numbers given on this page (directs to pinout PDF).
+
+4. https://pycom.io/wp-content/uploads/2018/08/lopy-pinout.pdf (official Pycom pinout PDF)
+   - Attempted fetch returned HTTP 500 (server error), could not be
+     retrieved directly. Not used as a source; relied on items 1-3 and 5
+     instead, which were sufficient to confirm GPIO0's role.
+
+5. WebSearch results (Pycom forum threads on WS2812/heartbeat LED usage,
+   e.g. forum.pycom.io "Using WS2812 with LoPy", and general Pycom
+   heartbeat LED documentation references) - corroborated that Pycom
+   boards including LoPy have a software-controllable WS2812 "heartbeat"
+   LED (pycom.heartbeat(False) API), consistent with items 1 and 2.
+
+PINS CONSIDERED BUT NOT TAGGED:
+
+- No onboard user button was found or tagged. The only button referenced
+  in any source is the reset button (paired physically with the RGB LED
+  near the USB connector per the datasheet page), which is explicitly out
+  of scope per task instructions (reset buttons are not "user buttons").
+  This is a firm conclusion based on the datasheet wording, not a guess -
+  no source mentions any additional user-accessible pushbutton on the
+  LoPy module.
+- GPIO0 was checked against TX/RX (TX=1, RX=3 per pins_arduino.h) - no
+  conflict, so no TX/RX-related exclusion was needed here.
+- No other GPIOs were considered as LED/button candidates; the RGB
+  heartbeat LED on GPIO0 is the only LED-like peripheral described in any
+  source, and it already had a chipGpios entry (not excluded by the
+  existing LoRa/antenna pin-exclusion NOTE at the top of board.json).
+
+SUMMARY OF WHAT WAS TAGGED:
+
+- GPIO0: capabilities changed from
+  ["analog_input_serial","digital_input","digital_output","pwm_output"]
+  to ["digital_output","led_neopixel","pwm_output"] (pwm_output retained
+  because it was already present on this pin). Tagged as the onboard
+  WS2812/NeoPixel "heartbeat" RGB LED, confirmed via Pycom's own LoPy-
+  specific firmware source (MICROPY_HW_HB_PIN_NUM) plus vendor
+  pins_arduino.h and the official datasheet page.

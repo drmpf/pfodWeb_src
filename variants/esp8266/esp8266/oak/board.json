@@ -1,0 +1,90 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  // (boardName/displayName are fallbacks — boards.txt's oak entry
+  // overrides both with "Digistump Oak" for the actual output id.)
+  "boardName": "ESP8266",
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  // pfodWeb NOTE: GPIO5 tagged "led_high" (onboard user LED, single
+  // color, NOT RGB/NeoPixel) - confirmed via the official Digistump Oak
+  // production schematic:
+  //   https://s3.amazonaws.com/digistump-resources/files/391244df_oak-prod-v1.pdf
+  //     Shows LED1 wired directly from the "GPIO5" net (broken out on
+  //     header JP1, alongside TX/RX/GND/VCC) through solder-jumper SJ1
+  //     and current-limiting resistor R7 (1.5K) to GND - i.e. GPIO5
+  //     sources current through the LED to GND, so the LED is
+  //     active-HIGH (digitalWrite(LED_BUILTIN, HIGH) = on). Matches this
+  //     board's own pins_arduino.h (`#define LED_BUILTIN 5`, aliased P1).
+  //   A second LED (LED2, R8 1.5K) is wired VCC -> solder-jumper SJ5 ->
+  //     LED2 -> R8 -> GND — a permanently-on power-indicator LED with no
+  //     GPIO connection at all (can only be disabled by cutting the
+  //     solder-jumper trace), so it is NOT a taggable GPIO capability.
+  //   No RGB/WS2812/NeoPixel component appears anywhere in the schematic's
+  //   component list (only single-color LED1/LED2, a linear regulator
+  //   U1, and passive R/C parts) - the "onboard RGB LED" premise was
+  //   checked and NOT confirmed for this board revision; see notes.txt.
+  //   No pushbutton (SW) component appears in the schematic either - the
+  //   Oak has no onboard user or reset button; see notes.txt.
+  //   Also cross-checked against the official Digistump Oak wiki "blink"
+  //   tutorial (archived, digistump.com/wiki/oak/tutorials/blink):
+  //     "pin 1 is connected to a small surface mounted LED on the board"
+  //     — this refers to the original Particle-cloud-based OakCore
+  //     firmware's own pin-numbering scheme (pin "1" there), which is
+  //     NOT the same numbering as this repo's pins_arduino.h (mainline
+  //     esp8266/Arduino core, raw GPIO numbers) - the schematic (hardware
+  //     truth, independent of firmware numbering) is what was used to
+  //     confirm GPIO5, not the tutorial's "pin 1" label.
+  //   See boardsDetails/esp8266/esp8266/oak/notes.txt for full research
+  //   notes.
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. No onboard user button on this board (checked - see notes.txt)",
+    "2":  "Must be HIGH at boot. Commonly wired to the on-board LED on dev boards",
+    "5":  "Onboard user LED (active-high, LED_BUILTIN) - confirmed via official schematic, see chipGpios note",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. Oak has an on-board resistor-divider giving A0 a 0-3.2V range (unlike the bare chip's native 0-1.0V) - see adc note below"
+  },
+
+  // Full usable-GPIO map — see variants/esp8266/esp8266/board.json for
+  // the full rationale (A0 analog-only, GPIO1/3 forced serial, PWM
+  // available on GPIO0-15 except 16, per randomnerdtutorials.com above).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "led_high"], "note": "Onboard user LED (active-high) — see pfodWeb NOTE above pinNotes for sources" },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  // pfodWeb NOTE: adc.defaultRefVolts set to "3.2" (not the chip-level
+  // default of "1.0") - Oak has an onboard resistor divider on A0,
+  // confirmed via the official production schematic:
+  //   https://s3.amazonaws.com/digistump-resources/files/391244df_oak-prod-v1.pdf
+  //     Shows R1 (220k) in series from the ESP12 module's native ADC pin
+  //     out to the header's ADC net, and R2 (100k, via solder-jumper SJ1)
+  //     from that same ADC node to GND - the same 220k/100k topology
+  //     already confirmed on this repo's D1 Mini/NodeMCU/ESPino board.json
+  //     files (see those files' NOTE comments for the general derivation).
+  //   Divider ratio (220k+100k)/100k = 3.2, so 1.0V(native) * 3.2 = 3.2V
+  //     full-scale at the external ADC/A0 pin.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.2" }
+}

@@ -1,0 +1,100 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: ArtronShop/IOXhop "IOXESP32-C6" (Thai maker brand, same family
+  // as the existing ioxesp32/board.json ESP32 board in this repo). No
+  // board.json override existed before this audit (used the chip-level
+  // esp32c6/board.json default). Flagged by the discovery sweep for
+  // having PIN_RGB_LED 8 / RGB_BRIGHTNESS 64 declared in pins_arduino.h
+  // but never individually reviewed. A button check was also done
+  // opportunistically per this session's audit playbook.
+  //
+  // Sources consulted:
+  //  - https://www.artronshop.co.th/product/647/ioxesp32-c6-... (vendor's
+  //    own product page for this exact board). States the board has
+  //    "one RGB LED with independently programmable colour and
+  //    brightness" ("มีหลอดแอลอีดี RGB แบบโปรแกรมสีและความสว่างได้อิสระ
+  //    จำนวน 1 ดวง") plus a separate reset switch and a "BOOT" switch
+  //    used to force upload/download mode ("สวิตช์บังคับเข้าโหมด
+  //    อัพโหลดโปรแกรม (BOOT)").
+  //  - https://dl.artronshop.co.th/IOXESP32/IOXESP32-C6/IOXESP32-C6%20Schematic.pdf
+  //    (vendor's own schematic PDF, linked from the product page).
+  //    Shows component LED3, an XL-1615RGBC-WS2812B addressable RGB LED
+  //    part, wired to IO8 - directly confirms PIN_RGB_LED=8 in this
+  //    variant's pins_arduino.h is a real onboard WS2812 device, not a
+  //    copy-paste placeholder. Also shows a pushbutton pulled up to VCC
+  //    on the IO9 net (10K resistor), consistent with the product page's
+  //    "BOOT" switch and with GPIO9 being the chip's own boot-strapping
+  //    pin (see chip-level pinNotes "Must be HIGH for normal boot").
+  //    The reset switch described on the product page is the board's
+  //    separate EN/reset line, not a GPIO, so it is out of scope for
+  //    chipGpios tagging.
+  //  - This variant's own pins_arduino.h: standard Arduino-core-style
+  //    declaration (PIN_RGB_LED 8, RGB_BRIGHTNESS 64, LED_BUILTIN =
+  //    SOC_GPIO_PIN_COUNT + PIN_RGB_LED), matching the pattern already
+  //    reviewed and confirmed genuine on sibling boards this session
+  //    (esp32c6/esp32c6 generic reference, waveshare_esp32_c6_zero).
+  //
+  // GPIO8 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+  // addressable RGB LED (schematic component LED3), matching this
+  // repo's led_neopixel precedent (esp32c6/esp32c6 GPIO8,
+  // waveshare_esp32_c6_zero GPIO8). Tagged capabilities
+  // ["digital_output","led_neopixel","pwm_output"].
+  // Alias-collision check: this variant's pins_arduino.h aliases are
+  // TX=16, RX=17, SDA=21, SCL=22, SS=18, MOSI=23, MISO=20, SCK=19 -
+  // none of those values is 8, so GPIO8 is not double-aliased as a bus
+  // pin and build_boards.js will not silently append a conflicting
+  // i2c/spi/uart capability here. No pins_arduino.h edit was needed.
+  //
+  // GPIO9 (chip strapping pin, "Must be HIGH for normal boot"):
+  // CONFIRMED onboard BOOT pushbutton for this exact product - the
+  // vendor's product page explicitly lists a BOOT switch, and the
+  // schematic shows a pushbutton pulled up on the IO9 net. Tagged
+  // capabilities ["digital_input","button"] only, per this session's
+  // button-pin convention (waveshare_esp32_c6_zero GPIO9,
+  // adafruit_qtpy_esp32c3 GPIO9). Same alias-collision check: GPIO9 is
+  // not TX/RX/SDA/SCL/SS/MOSI/MISO/SCK on this variant either - no
+  // conflict, no edit needed.
+  //
+  // All other GPIOs left unchanged from chip-level defaults.
+  //
+  // See boardsDetails/esp32/esp32c6/ioxesp32c6/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

@@ -1,0 +1,244 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Makerbase MKS THR42" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only (plain non-WiFi "rp2040" chip
+  // bucket; the RP2040 on this board has no onboard WiFi radio - it
+  // talks to the host over USB or an onboard CAN transceiver instead).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Makerbase "MKS THR42" V1.0_001 — a real, commercially sold
+  // Klipper "tool header" board: a bare RP2040 (no Pico module) plus one
+  // onboard TMC2209 stepper driver, one onboard ADXL345 accelerometer,
+  // a CAN-bus transceiver and a heater/3-fan MOSFET bank, all built onto
+  // a compact PCB mounted directly on a NEMA17 tool head (companion
+  // board is the THR36, same PCB design for NEMA14 tool heads — its
+  // pins_arduino.h is byte-for-byte identical to this one's, confirmed
+  // by diff, and its own board.json audit note applies equally here).
+  // Almost every GPIO is permanently wired to the onboard stepper
+  // driver (STEP/DIR/EN/UART/DIAG), the heater/fan MOSFET gates, the
+  // CAN transceiver, the ADXL345's dedicated SPI1 bus, the BLTouch/
+  // probe header, or an X/Y endstop/filament-runout input — this
+  // board's own pins_arduino.h already anticipates the first group (see
+  // its own "pfodWeb NOTE" comment: "GPIO0,1,2,3,4,5,6,8,9,10 are
+  // dedicated ... not general-purpose") by giving them no `static const
+  // uint8_t` alias at all, so build_boards.js's ESP32-style parser
+  // (parseEsp32Consts, which only harvests static-const aliases, not
+  // #defines) never exposes GPIO0-6/8-10 as routable pins in the first
+  // place. They are still added here via explicit chipGpios entries
+  // (capabilities: [] + a descriptive note), matching the established
+  // bigtreetech_SKR_Pico/board.json and mksthr36/board.json precedent
+  // for chip-driven pins with no alias at all, purely so the Designer's
+  // pin picker shows *why* each is unavailable rather than silently
+  // omitting it.
+  //
+  // Sources consulted (full detail + per-pin cross-check trail in
+  // boardsDetails/rp2040/rp2040/mksthr42/notes.txt):
+  //   - github.com/makerbase-mks/MKS-THR36-THR42-UTC (official vendor
+  //     repo) — hardware/MKS THR42 V1.0_001/PCB MKS THR42 V1.0_001
+  //     PIN.pdf (silkscreen pinout diagram) and .../SCH.pdf (full
+  //     10-sheet KiCad schematic export, dated 2022-10-27), both read
+  //     directly page-by-page.
+  //   - MKS_THR.cfg (the vendor-supplied Klipper config in the same
+  //     repo) — cross-checked every GPIO number against the schematic
+  //     and found an exact match (extruder step/dir/en/uart/heater/
+  //     sensor, ADXL345 SPI pins, X/Y endstops).
+  //   - README.md in the same repo — confirms shared RP2040+TMC2209+
+  //     ADXL345+CAN-transceiver feature set and THR36 (NEMA14, round)
+  //     vs THR42 (NEMA17, 42x42mm square) form-factor-only difference.
+  //
+  // Real defect found and fixed by this audit: GPIO7 (E0_DIAG, the
+  // onboard TMC2209's stall/sensorless-homing diagnostic line), GPIO11
+  // (3D_Touch/BLTouch control), GPIO12-15 (the onboard ADXL345
+  // accelerometer's dedicated SPI1 bus: MISO/CS/SCK/MOSI), GPIO20
+  // (Neopixel header), GPIO21 (Z+/PROBE endstop-probe signal), GPIO24/
+  // GPIO25 (X/Y endstop inputs) and GPIO29 (MT-DET filament-runout
+  // input) all DO have plain `static const uint8_t D<n>` aliases in
+  // this board's pins_arduino.h (unlike GPIO0-6/8-10 above), so without
+  // this override they were being offered as innocuous general-purpose
+  // digital_input/digital_output/pwm_output pins even though driving
+  // any of them from a Designer sketch would either corrupt the onboard
+  // stepper driver's UART-configured behaviour, feed bogus data into
+  // the ADXL345 accelerometer's SPI bus, or fight the endstop/probe/
+  // filament-sensor input against real hardware signals wired to it.
+  //
+  // Per-pin mapping (schematic-confirmed, MCU.sch net labels quoted):
+  //   GPIO0  - "HE0" - onboard heater0 MOSFET gate (via Q5/Q3 driver
+  //            stage, MOSFET.sch) - dedicated and safety-critical, not
+  //            general purpose. No alias in pins_arduino.h (not
+  //            currently routable either), noted for pin-picker clarity.
+  //   GPIO1  - "FAN0" - onboard fan-0 MOSFET gate (Q4 driver stage).
+  //            No alias, same treatment.
+  //   GPIO2  - "FAN1" - onboard fan-1 MOSFET gate (Q2 driver stage).
+  //            No alias, same treatment.
+  //   GPIO3  - "FAN2" - onboard fan-2 MOSFET gate (Q1 driver stage).
+  //            No alias, same treatment.
+  //   GPIO4  - "E0_DIR" - onboard TMC2209 stepper driver DIR line
+  //            (Driver.sch). No alias, same treatment.
+  //   GPIO5  - "E0_STEP" - onboard TMC2209 stepper driver STEP line.
+  //            No alias, same treatment.
+  //   GPIO6  - "E0_UART"/PIN_SERIAL1_TX/PIN_E0_UART - onboard TMC2209's
+  //            single-wire half-duplex UART (PDN_UART pin, used to
+  //            configure run/hold current, microstepping, thresholds).
+  //            No alias, same treatment. (PIN_SERIAL1_RX resolves to
+  //            the bogus, out-of-range value 31u in this board's own
+  //            pins_arduino.h - not a real GPIO, not addressed here.)
+  //   GPIO7  - "E0_DIAG"/PIN_E0_DIAG - onboard TMC2209 DIAG (stall-
+  //            detection / sensorless-homing) output. HAS a `D7` alias
+  //            in pins_arduino.h - real defect fix, see above.
+  //   GPIO8  - "CAN_RX"/PIN_CAN_RX/PIN_SERIAL2_TX - onboard CAN
+  //            transceiver (TJA1050/65HVD1050-class) RX line (CAN.sch).
+  //            No alias, same treatment as GPIO0-6.
+  //   GPIO9  - "CAN_TX"/PIN_CAN_TX/PIN_SERIAL2_RX - onboard CAN
+  //            transceiver TX line. No alias, same treatment.
+  //   GPIO10 - "E0_EN"/PIN_E0_EN - onboard TMC2209 stepper driver EN
+  //            (enable, active-low per schematic's "!" polarity marker
+  //            in MKS_THR.cfg) line. No alias, same treatment.
+  //   GPIO11 - "3D_Touch"/PIN_3D_TOUCH - dedicated BLTouch/3D-touch
+  //            probe control-signal header pin (Header.sch). HAS a
+  //            `D11` alias - real defect fix, see above.
+  //   GPIO12 - "SPI1_MISO"/PIN_SPI1_MISO - onboard ADXL345 accelerometer
+  //            SPI bus MISO (labelled SDO/ADDR on the ADXL345, per
+  //            Accelerometer.sch). HAS a `D12` alias - real defect fix.
+  //   GPIO13 - "SPI1_CS"/PIN_SPI1_SS - onboard ADXL345 SPI bus CS. HAS
+  //            a `D13` alias - real defect fix, same bus as GPIO12.
+  //   GPIO14 - "SPI1_SCK"/PIN_SPI1_SCK - onboard ADXL345 SPI bus SCK.
+  //            HAS a `D14` alias - real defect fix, same bus.
+  //   GPIO15 - "SPI1_MOSI"/PIN_SPI1_MOSI - onboard ADXL345 SPI bus MOSI
+  //            (labelled SDA/SDI/SDIO on the ADXL345). HAS a `D15`
+  //            alias - real defect fix, same bus.
+  //   GPIO16 - "SPI0_MISO"/PIN_SPI0_MISO (also this variant's generic
+  //            `MISO` alias) - routed to PCB test point T1 per the
+  //            schematic, not wired to any other onboard peripheral.
+  //            KEPT general-purpose (matches this repo's established
+  //            expansion-bus-without-an-exclusive-onboard-consumer KEEP
+  //            policy, e.g. bigtreetech_SKR_Pico's aux Serial/I2C
+  //            header) - this is also the pin this variant's default
+  //            SPI-bus aliases (SS/MOSI/MISO/SCK) already resolve to,
+  //            so no chipGpios override, default capabilities apply.
+  //   GPIO17 - "SPI0_CS"/PIN_SPI0_SS (generic `SS`) - PCB test point T2,
+  //            same reasoning as GPIO16 - KEPT.
+  //   GPIO18 - "SPI0_SCK"/PIN_SPI0_SCK (generic `SCK`) - PCB test point
+  //            T3, same reasoning - KEPT.
+  //   GPIO19 - "SPI0_MOSI"/PIN_SPI0_MOSI (generic `MOSI`) - PCB test
+  //            point T4, same reasoning - KEPT.
+  //   GPIO20 - "Neopixel"/PIN_NEOPIXEL - dedicated WS2812-style
+  //            addressable-RGB-LED header (3-pin: 5V/DATA/GND on J8 per
+  //            Header.sch) - tagged led_neopixel per this repo's
+  //            existing bigtreetech_SKR_Pico/rp2040w precedent: kept as
+  //            a usable LED output (digital_output+pwm_output+
+  //            led_neopixel), digital_input dropped since the pin is
+  //            committed to driving the LED header, not general-purpose
+  //            input. HAS a `D20` alias - real defect fix (was exposed
+  //            as plain digital I/O).
+  //   GPIO21 - "Z+"/PIN_ZPLUS - shared Z-probe/BLTouch sensor-signal
+  //            line, diode-combined (D19/D20 on Header.sch) between the
+  //            3-pin PROBE header (J7) and the 5-pin 3D-Touch/BLTouch
+  //            header (J9) - dedicated, not general purpose. HAS a
+  //            `D21` alias - real defect fix.
+  //   GPIO22 - "I2C_SDA"/PIN_WIRE0_SDA (generic `SDA`) - PCB test point
+  //            T5, not wired to any other onboard peripheral (the
+  //            onboard ADXL345 uses the separate dedicated SPI1 bus on
+  //            GPIO12-15, not this I2C bus). KEPT general-purpose, same
+  //            reasoning as GPIO16-19.
+  //   GPIO23 - "I2C_SCL"/PIN_WIRE0_SCL (generic `SCL`) - PCB test point
+  //            T6, same reasoning as GPIO22 - KEPT.
+  //   GPIO24 - "IO24"/PIN_IO24 - X-axis endstop input (J10 header, per
+  //            Header.sch and confirmed as "Stepper X" endstop_pin in
+  //            MKS_THR.cfg) - dedicated despite the generic "IO24"
+  //            #define name. HAS a `D24` alias - real defect fix.
+  //   GPIO25 - "IO25"/PIN_IO25 - Y-axis endstop input (J11 header,
+  //            confirmed as "Stepper Y" endstop_pin in MKS_THR.cfg).
+  //            HAS a `D25` alias - real defect fix.
+  //   GPIO26 - "TH0"/PIN_TH0 (also this variant's `A0` alias) - onboard
+  //            extruder/tool thermistor NTC divider (ADC0, THM.sch).
+  //            KEPT general-purpose per this repo's established
+  //            "onboard analog sensor (thermistor/battery/etc-class
+  //            reading)" KEEP policy (see bigtreetech_SKR_Pico GPIO26/
+  //            27, esp32/oroca_edubot) - no chipGpios override, default
+  //            analog_input+digital capabilities from the A0 alias
+  //            apply unchanged.
+  //   GPIO27 - unused/spare. The MCU.sch schematic
+  //            explicitly marks "GPIO27_ADC1" with a crossed-out (X)
+  //            no-connect marker - confirmed NOT wired to anything on
+  //            this board revision. KEPT general-purpose (an unused pin
+  //            poses no collision risk with other hardware); this
+  //            variant's pins_arduino.h still declares a `D27`/`A1`
+  //            alias for it, trusted as-is per this repo's default
+  //            KEEP-unless-confirmed-dedicated policy.
+  //   GPIO28 - Same as GPIO27: MCU.sch marks "GPIO28_ADC2" with an
+  //            explicit no-connect (X) marker. KEPT general-purpose,
+  //            `D28`/`A2` alias trusted as-is.
+  //   GPIO29 - "IO29"/PIN_IPO29 (also this variant's `A3` alias) -
+  //            MT-DET filament-runout/material-detection switch input
+  //            (J13 header, Header.sch) - dedicated, not general
+  //            purpose despite the generic "IPO29" #define name. HAS a
+  //            `D29`/`A3` alias - real defect fix.
+  //
+  // No onboard user-controllable LED: the only LED besides the Neopixel
+  // header is D4 "CGREEN", a fixed power-indicator LED wired directly
+  // across a resistor to 3V3 (Power.sch) with no GPIO connection at all
+  // - not controllable by firmware, out of scope for GPIO-keyed
+  // capability tagging (matches boards.txt's `mksthr42.build.led=`
+  // being empty - no LED_BUILTIN defined for this board). No onboard
+  // user button either: S1 "BOOT" ties to the QSPI_SS flash-select line
+  // (RP2040 BOOTSEL, out of scope per the rpipico/board.json precedent)
+  // and S2 ties to the RUN/reset pin (a hardware reset button, not a
+  // GPIO at all) - neither is a normal GPIO-addressable button.
+  "chipGpios": {
+    "0":  { "capabilities": [], "note": "Onboard heater0 MOSFET gate (HE0) - dedicated and safety-critical 3D-printer tool-head hardware, not general purpose." },
+    "1":  { "capabilities": [], "note": "Onboard fan-0 MOSFET gate (FAN0) - dedicated 3D-printer tool-head hardware, not general purpose." },
+    "2":  { "capabilities": [], "note": "Onboard fan-1 MOSFET gate (FAN1) - dedicated 3D-printer tool-head hardware, not general purpose." },
+    "3":  { "capabilities": [], "note": "Onboard fan-2 MOSFET gate (FAN2) - dedicated 3D-printer tool-head hardware, not general purpose." },
+    "4":  { "capabilities": [], "note": "Onboard TMC2209 stepper driver DIR line (E0_DIR) - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "5":  { "capabilities": [], "note": "Onboard TMC2209 stepper driver STEP line (E0_STEP) - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "6":  { "capabilities": [], "note": "Onboard TMC2209 stepper driver single-wire UART (E0_UART/PDN_UART, used to configure current/microstepping) - dedicated, not general purpose." },
+    "7":  { "capabilities": [], "note": "Onboard TMC2209 stepper driver DIAG (stall-detection/sensorless-homing) output (E0_DIAG) - dedicated 3D-printer motion-control hardware. Was previously exposed as plain D7 (full digital I/O) due to a static-const alias in pins_arduino.h; corrected here." },
+    "8":  { "capabilities": [], "note": "Onboard CAN-bus transceiver RX line (CAN_RX) - dedicated communications hardware, not general purpose." },
+    "9":  { "capabilities": [], "note": "Onboard CAN-bus transceiver TX line (CAN_TX) - dedicated communications hardware, not general purpose." },
+    "10": { "capabilities": [], "note": "Onboard TMC2209 stepper driver EN (enable, active-low) line (E0_EN) - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "11": { "capabilities": [], "note": "Dedicated BLTouch/3D-Touch probe control-signal header pin (3D_Touch) - dedicated, not general purpose. Was previously exposed as plain D11 (full digital I/O) due to a static-const alias in pins_arduino.h; corrected here." },
+    "12": { "capabilities": [], "note": "Onboard ADXL345 accelerometer dedicated SPI1 bus - MISO (SPI1_MISO / ADXL345 SDO). Was previously exposed as plain D12 (full digital I/O) due to a static-const alias in pins_arduino.h; corrected here - driving this pin generically would corrupt the accelerometer's SPI communication." },
+    "13": { "capabilities": [], "note": "Onboard ADXL345 accelerometer dedicated SPI1 bus - CS (SPI1_CS / ADXL345 CS). Same defect fix as GPIO12, same bus." },
+    "14": { "capabilities": [], "note": "Onboard ADXL345 accelerometer dedicated SPI1 bus - SCK (SPI1_SCK). Same defect fix as GPIO12, same bus." },
+    "15": { "capabilities": [], "note": "Onboard ADXL345 accelerometer dedicated SPI1 bus - MOSI (SPI1_MOSI / ADXL345 SDA/SDI). Same defect fix as GPIO12, same bus." },
+    "20": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "Dedicated WS2812-style addressable RGB LED header (Neopixel, 3-pin 5V/DATA/GND) - confirmed via pins_arduino.h PIN_NEOPIXEL and vendor schematic Header.sch. Was previously exposed as plain D20 (full digital I/O); corrected here to the standard led_neopixel capability set." },
+    "21": { "capabilities": [], "note": "Shared Z-probe/BLTouch sensor-signal line (Z+ / PIN_ZPLUS), diode-combined between the PROBE header and the 3D-Touch header - dedicated, not general purpose. Was previously exposed as plain D21 (full digital I/O); corrected here." },
+    "24": { "capabilities": [], "note": "X-axis endstop input (IO24) - confirmed as the 'Stepper X' endstop_pin in the vendor's own MKS_THR.cfg Klipper config - dedicated, not general purpose despite the generic '#define PIN_IO24' name. Was previously exposed as plain D24 (full digital I/O); corrected here." },
+    "25": { "capabilities": [], "note": "Y-axis endstop input (IO25) - confirmed as the 'Stepper Y' endstop_pin in the vendor's own MKS_THR.cfg Klipper config - dedicated, not general purpose. Was previously exposed as plain D25 (full digital I/O); corrected here." },
+    "29": { "capabilities": [], "note": "MT-DET filament-runout/material-detection switch input (IO29) - dedicated, not general purpose despite the generic '#define PIN_IPO29' name. Was previously exposed as plain D29/A3 (full digital I/O + analog input); corrected here." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference - same as every
+  // other RP2040 board. GPIO26 (extruder thermistor) already carries
+  // analog_input via its A0 pins_arduino.h alias; not affected by this
+  // dedicated-hardware audit (KEEP policy, see above). GPIO27/28 (A1/A2)
+  // are confirmed no-connect on this board revision but still carry
+  // default analog_input capability via their aliases - harmless since
+  // nothing else on the board contends for them.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

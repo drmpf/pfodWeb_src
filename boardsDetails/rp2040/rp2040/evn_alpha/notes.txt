@@ -1,0 +1,57 @@
+Board: EVN Alpha (by EVN, Centre Of Robotics Excellence, Singapore)
+Date: 2026-07-13
+
+Sources consulted:
+- github.com/EVNdevs/EVN-arduino (official vendor firmware repo):
+  - src/evn_pins_defs.h — servo/motor/button pin numbers, diffed line-for-line
+    against this board's pins_arduino.h: exact match.
+  - src/helper/EVNButtonLED.h/.cpp — button read via pinMode(PIN_BUTTON,
+    INPUT_PULLUP) + digitalRead, comment: "pin is LOW when button is
+    pressed" (active-low). LED driven via digitalWrite(PIN_LED, state)
+    where state=true is the toggled-on LED state (active-high).
+  - src/EVNAlpha.h — public ledWrite()/buttonRead() API, confirms the same
+    polarity at the user-facing library level.
+- evn.readthedocs.io (official docs) — Programming guide's ButtonLED
+  example: "press the User Button (leftmost one), the blue User LED
+  should toggle on and off".
+- cnx-software.com (2024) and coresg.tech/evn/ (vendor product page) —
+  board identity: a LEGO Technic-compatible robotics controller built
+  around a bare RP2040, 26 header ports for I2C/UART/Servo/EV3/NXT-motor
+  peripherals, crowdfunded 2024.
+
+Per-pin reasoning:
+- GPIO24 (PIN_BUTTON) — confirmed genuine active-low mechanical pushbutton
+  with internal pull-up. Tagged ["digital_input","button"].
+- GPIO25 (PIN_LED) — confirmed onboard blue "User LED", active-high.
+  Tagged ["digital_output","pwm_output","led_high"].
+- GPIO2/3, GPIO10/11 (PIN_SERVO1-4) — dedicated servo-port signal lines,
+  driven by the EVN library's own servo-pulse code. Excluded
+  (capabilities: []).
+- GPIO12-19 (PIN_MOTORx_ENCA/ENCB) — dedicated motor quadrature-encoder
+  feedback lines for 4 motor ports. Excluded (capabilities: []).
+- GPIO20-23, GPIO26-29 (PIN_MOTORx_OUTA/OUTB) — dedicated motor-driver
+  output lines, drive real DC motor windings. Excluded (capabilities: []).
+- GPIO0/1, 4-9 — genuine general-purpose aux comms/I2C header pins,
+  already routable via their own D-alias, left unchanged.
+
+Important mechanism note: this board's own pins_arduino.h never declares
+a static-const D-alias for GPIO2/3/10-23/26-29 (only bare #defines), so
+build_boards.js's parser (which only harvests `static const uint8_t`
+declarations) already made these invisible without any chipGpios entry.
+Since this rp2040 chip bucket's chipGpios defaults to {}, GPIO24/25
+(button/LED) were ALSO invisible pre-audit — the opposite problem from
+the usual RP2040 pattern (over-exposure). The chipGpios entries in
+board.json restore GPIO24/25 with proper tags, and additionally re-add
+the servo/motor/encoder GPIOs with capabilities:[] + descriptive notes
+(matching the bigtreetech_SKR_Pico precedent) purely so the Designer's
+pin picker shows *why* each dedicated GPIO is unavailable, rather than
+silently omitting it.
+
+No SDA/SCL/SS/MOSI/MISO/SCK bus-alias collision applies — this board's
+SPI0/SPI1/Wire1 pin remaps are all plain #defines, never promoted to the
+bare static-const names build_boards.js's auto-append logic keys off.
+
+Summary: EVN Alpha — 2 confirmed identity tags (button GPIO24, LED
+GPIO25, both via vendor firmware source) + 20 dedicated-hardware pins
+documented/excluded (4 servo, 8 encoder, 8 motor-driver-output). No
+NeoPixel found.

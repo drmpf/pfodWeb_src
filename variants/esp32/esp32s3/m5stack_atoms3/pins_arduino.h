@@ -25,16 +25,18 @@ static const uint8_t RXD2 = 2;
 static const uint8_t SDA = 38;
 static const uint8_t SCL = 39;
 
-static const uint8_t SS = 15;
-static const uint8_t MOSI = 21;
-static const uint8_t MISO = -1;
-static const uint8_t SCK = 17;
+// pfodWeb NOTE: SS/MOSI/SCK deliberately NOT declared - dedicated
+// onboard LCD SPI bus (confirmed via M5Stack AtomS3 docs: CS=15/
+// MOSI=21/SCK=17 exact match). MISO deliberately NOT declared either -
+// upstream declares it as -1, which wraps to 255 as a uint8_t and would
+// otherwise leak a phantom "GPIO255" pin.
 
 static const uint8_t G0 = 0;
 static const uint8_t G1 = 1;
 static const uint8_t G2 = 2;
 static const uint8_t G3 = 3;
-static const uint8_t G4 = 4;
+// pfodWeb NOTE: G4 deliberately NOT declared - dedicated onboard IR
+// transmitter, not general-purpose.
 static const uint8_t G5 = 5;
 static const uint8_t G6 = 6;
 static const uint8_t G7 = 7;

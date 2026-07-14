@@ -21,7 +21,17 @@ static const uint8_t SDA = 15;
 static const uint8_t SS = 5;
 static const uint8_t MOSI = 23;
 static const uint8_t MISO = 32;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: this file deliberately does NOT declare an alias named
+// SCK. Reason: GPIO eighteen is this board's confirmed onboard LED (see
+// LED_BUILTIN above), and the generic ESP32 dev-module template this
+// file was derived from happened to assign that same GPIO number to the
+// hardware SPI clock line - never vendor-confirmed as a real SPI
+// connection on this board. build_boards.js appends an spi_sck
+// capability onto any GPIO matching a parsed SCK alias regardless of a
+// chipGpios override, so leaving this declared would silently
+// contaminate the confirmed LED pin's capability list with an unwanted
+// SPI-role capability. SS/MOSI/MISO above are unaffected (no collision
+// found for those three GPIOs against any confirmed onboard hardware).
 
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
@@ -31,7 +41,8 @@ static const uint8_t A6 = 34;
 static const uint8_t A7 = 35;
 
 static const uint8_t T0 = 4;
-static const uint8_t T2 = 2;
+// pfodWeb NOTE: T2 (GPIO2) deliberately NOT declared - dedicated
+// Ethernet PHY power-enable pin (ETH_PHY_POWER).
 static const uint8_t T8 = 33;
 static const uint8_t T9 = 32;
 

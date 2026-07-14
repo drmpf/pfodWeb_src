@@ -1,0 +1,52 @@
+Board: wifiduino32 (chip: esp32)
+Directory: variants/esp32/esp32/wifiduino32/
+
+DISCOVERY SWEEP FLAG
+  static const uint8_t KEY_BUILTIN = 0;   (in pins_arduino.h)
+
+SOURCES CONSULTED
+  - variants/esp32/esp32/wifiduino32/pins_arduino.h (read in full, 60 lines)
+  - variants/esp32/esp32/board.json (chip-level default, used as the copy base)
+  - GitHub: espressif/arduino-esp32, PR #4218 "add board WiFiduino32"
+    (adds variants/wifiduino32/pins_arduino.h to the upstream Arduino
+    core; vendor file content matches this repo's copy exactly, incl.
+    LED_BUILTIN=2, KEY_BUILTIN=0, SDA=5, SCL=16, SS=5, MOSI=23,
+    MISO=19, SCK=18, TX=1, RX=3).
+  - PlatformIO board index: "Blinker WiFiduino32"
+    (docs.platformio.org/en/latest/boards/espressif32/wifiduino32.html)
+    - confirms this is an ESP32-WROOM class module (240MHz, 4MB flash,
+      320KB RAM) from Blinker, board id "wifiduino32". Page itself
+      carries no button-specific text, so used only to confirm vendor
+      identity/chip family, not the button claim.
+  - General ESP32 hardware knowledge (Espressif strapping-pin
+    behaviour): GPIO0 is a standard ESP32 strapping pin, pulled up
+    on-board and driven LOW by pressing the BOOT/user button; this is
+    already reflected in the chip-level board.json pinNotes entry
+    "0": "Must be HIGH or floating on reboot".
+
+REASONING
+  - KEY_BUILTIN = 0 is a vendor-declared alias (not a discovery-sweep
+    guess) confirmed present in the upstream arduino-esp32 vendor
+    source for this exact board, so GPIO0 is a genuine onboard
+    button, not a fabricated/heuristic pin.
+  - Alias-collision check (per audit policy): compared GPIO0 against
+    every SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias declared in this
+    board's pins_arduino.h:
+      TX=1, RX=3, SDA=5, SCL=16, SS=5, MOSI=23, MISO=19, SCK=18
+    None of these equal 0, so GPIO0 has no bus-alias collision on
+    this board. No pins_arduino.h lines needed to be deleted.
+  - board.json did not exist for this board (it inherited the
+    chip-level esp32/esp32/board.json default, which lists GPIO0 with
+    the generic ["analog_input_serial","digital_input","digital_output",
+    "pwm_output"] capability set). Created a board-level board.json as
+    a full copy of that chip-level default, then replaced GPIO0's
+    chipGpios capabilities with the KEEP + tag policy for a confirmed
+    button: ["digital_input","button"]. All other GPIO entries left
+    unchanged from the chip-level default.
+
+SUMMARY
+  GPIO0 on wifiduino32 is the vendor-confirmed onboard BOOT/user
+  button (KEY_BUILTIN); board.json created with GPIO0 capabilities
+  set to ["digital_input","button"]; no alias-collision cleanup was
+  needed in pins_arduino.h since none of its SDA/SCL/SS/MOSI/MISO/SCK/
+  TX/RX aliases point at GPIO0.

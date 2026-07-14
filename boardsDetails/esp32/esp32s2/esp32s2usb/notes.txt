@@ -1,0 +1,123 @@
+esp32s2usb (chip esp32s2) - dedicated-hardware pin-exclusion audit.
+Date: 2026-07-12
+
+Sweep flag verification:
+- Read C:\ai\aicode\pfodWeb\variants\esp32\esp32s2\esp32s2usb\pins_arduino.h in
+  full (73 lines). The discovery sweep's summary ("only USB descriptor/MSC
+  macros") IS accurate this time (contrast with amyboard, which the sweep
+  under-described). Besides the USB_VID/USB_PID/USB_MANUFACTURER/
+  USB_PRODUCT/USB_SERIAL/USB_WEBUSB_* and USB_FW_MSC_* macros, the file
+  declares only the standard boilerplate alias block common to every
+  ESP32-S2 Arduino-core variant: TX=43, RX=44, SDA=8, SCL=9, SS=34,
+  MOSI=35, MISO=37, SCK=36, A0-A19 (GPIO1-20), T1-T14 (GPIO1-14, touch),
+  DAC1=17, DAC2=18. No LED_BUILTIN, no RGB_BUILTIN/NEOPIXEL, no BUTTON/BOOT
+  alias, no battery-sense pin, no camera/I2S/display pin aliases of any
+  kind - nothing beyond the generic bus/analog/touch/DAC aliases.
+- Verified byte-for-byte against the upstream vendor file (source 1 below):
+  identical macro set and identical alias list/values. Confirmed-accurate
+  copy, not stale/hand-edited.
+
+What "esp32s2usb" actually is:
+- This is NOT a distinct physical product with its own PCB/silkscreen. It
+  is a generic Arduino-ESP32 core BUILD VARIANT ("ESP32S2 Dev Module (USB
+  CDC/MSC on boot)"-style target) used to build firmware for the ESP32-S2's
+  native USB-OTG peripheral (CDC serial + firmware-update-over-MSC), for
+  flashing onto ANY ESP32-S2 board that has USB D+/D- wired out (e.g.
+  DevKitC-1, Saola-1, or any other native-USB ESP32-S2 board). Its
+  USB_MANUFACTURER/USB_PRODUCT strings ("Espressif Systems" /
+  "ESP32-S2-USB") are just the default USB descriptor text the compiled
+  firmware presents to a host PC, not a marketing name for a specific
+  purchasable board. This explains why the file defines no LED/button/
+  NeoPixel: the variant is hardware-agnostic by design, only fixing the
+  generic pin defaults (UART/I2C/SPI/ADC/touch/DAC) that are common to the
+  chip, plus the USB descriptor strings that differentiate this variant's
+  firmware from the plain "esp32s2" (UART-only) variant.
+- espboards.dev's ESP32S2 Native USB pinout page (source 2) independently
+  corroborates this: it flags the board as a "generic match" against
+  esp32-s2-saola-1's PlatformIO board id, i.e. treats it as a reference/
+  generic board rather than a uniquely branded product.
+
+Onboard LED/button/NeoPixel check:
+- pins_arduino.h itself: no LED_BUILTIN, no RGB_BUILTIN, no BUTTON/BOOT
+  alias anywhere in the file.
+- espboards.dev (source 2) pin-legend check: the page's generic symbol key
+  includes a "Built-in LED" glyph (used site-wide across many of their
+  board pages), but when asked to enumerate every labeled pin in this
+  specific board's detailed pin-mapping table, NO GPIO is actually tagged
+  LED or LED_BUILTIN - the legend entry is unused boilerplate for this
+  board, not a real assignment. This matches pins_arduino.h having no LED
+  macro at all.
+- No product page, teardown, or schematic was found describing an onboard
+  LED, RGB/NeoPixel, or general-purpose pushbutton for this variant, since
+  it isn't a physical product to begin with (see above) - only the
+  standard chip-level GPIO0 BOOT strapping pin exists, already covered by
+  the chip-level board.json's pinNotes ("Must be HIGH for normal boot"),
+  and per this codebase's established precedent (pico32, XIAO_ESP32S3,
+  um_tinys3, amyboard) a bare BOOT/RST bootloader-entry pair is not tagged
+  as a general-purpose "button" capability without explicit vendor
+  confirmation of sketch-readable use - which doesn't exist here either.
+
+Alias-collision check (per this session's methodology - a GPIO tagged
+button/LED/NeoPixel must not also be a boilerplate SDA/SCL/SS/MOSI/MISO/
+SCK/TX/RX alias elsewhere in pins_arduino.h, since build_boards.js
+unconditionally appends those bus capabilities regardless of chipGpios):
+- Not applicable - no button/LED/NeoPixel candidate GPIO was found at all
+  (see above), so there is nothing to check for collision or delete.
+  (Noted in passing: GPIO8 already carries three aliases here - SDA, A7,
+  and T8 - but this is normal multi-alias overlap for a single physical
+  ESP32-S2 pin, not a button/LED candidate, so it needs no action.)
+
+Chip-level board.json coverage check:
+- variants/esp32/esp32s2/board.json (chip default, no per-board override
+  exists or is needed) already lists chipGpios entries for every GPIO this
+  variant's aliases reference: TX(43)/RX(44) -> digital_input/output/pwm;
+  SDA(8)/SCL(9) -> analog_input+digital+pwm; SS(34)/MOSI(35)/MISO(37)/
+  SCK(36) -> digital_input/output/pwm; A0-A19 and T1-T14 map to GPIO1-20,
+  all present with analog_input where the chip supports it; DAC1(17)/
+  DAC2(18) -> dac_output, matching the chip.json comment "ESP32-S2 has two
+  8-bit DAC channels on GPIO 17 and GPIO 18." GPIOs 19-20 (USB D-/D+,
+  correctly excluded from chipGpios) are not referenced by any alias in
+  this file, confirming the variant doesn't clash with the chip-level USB
+  exclusion. Nothing in this variant requires an addition, exclusion, or
+  correction to the chip-level default.
+
+Sources consulted:
+1. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32s2usb/pins_arduino.h
+   and https://github.com/espressif/arduino-esp32/blob/master/variants/esp32s2usb/pins_arduino.h
+   - Upstream vendor file. Confirmed byte-for-byte match with the local
+     copy: identical USB_VID/PID/MANUFACTURER/PRODUCT/SERIAL/WEBUSB_*/
+     FW_MSC_* macros plus identical TX/RX/SDA/SCL/SS/MOSI/MISO/SCK/A0-A19/
+     T1-T14/DAC1/DAC2 alias values.
+2. https://www.espboards.dev/esp32/esp32s2usb/ - "ESP32S2 Native USB
+   Development Board" pinout/spec page. Describes native USB-OTG support,
+   240 MHz, 4 MB flash, WiFi, 48 digital I/O / 20 analog inputs; flags it
+   as a "generic match" to esp32-s2-saola-1 (i.e. a generic/reference
+   variant, not a uniquely branded product). Site-wide "Built-in LED"
+   legend glyph exists but is NOT assigned to any GPIO in this board's
+   actual pin-mapping table.
+3. docs.espressif.com search (ESP-IDF / esp-dev-kits docs) - no hardware
+   product page or schematic exists for an "ESP32-S2-USB" board as such;
+   only the unrelated ESP32-S2-DevKitC-1 turns up, confirming esp32s2usb
+   is a firmware/build variant rather than a distinct physical product
+   with its own documented hardware.
+
+Applied:
+- NO CHANGE. No board.json override was created for this board - the
+  existing chip-level default (variants/esp32/esp32s2/board.json) already
+  correctly represents every GPIO this variant exposes, and no button/LED/
+  NeoPixel/dedicated-hardware pin exists to tag or exclude. Per established
+  precedent (pico32, amyboard), a board.json override is only created when
+  there is an actual capability change to apply - there is none here.
+
+Summary: esp32s2usb is a generic, hardware-agnostic Arduino-ESP32 firmware
+build variant for the ESP32-S2's native USB-OTG (CDC+MSC firmware-update)
+peripheral, not a distinct physical product - its pins_arduino.h contains
+only USB descriptor macros plus the standard chip-wide UART/I2C/SPI/ADC/
+touch/DAC boilerplate aliases, with no LED, NeoPixel, or general-purpose
+button of any kind. The original sweep's "just USB macros, not pins"
+description undersold the file slightly (it also has the standard bus/
+analog/touch/DAC aliases) but its conclusion (no dedicated hardware needing
+exclusion) is correct and independently confirmed against the byte-matching
+upstream vendor source plus third-party pinout documentation. No board.json
+was created; this notes.txt is the sole record of the review so the board
+is not re-flagged in a future sweep.

@@ -1,0 +1,135 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: cezerio dev ESP32C6 (vendor: RFtek Electronics / cezerio.com).
+  // No board.json override existed before this audit (used the chip-level
+  // esp32c6/board.json default). Flagged by the discovery sweep for
+  // PIN_RGB_LED=3, RGB_BRIGHTNESS=64, BUT_BUILTIN=9/BOOT, MATRIX=18,
+  // IMUSD=8/IMUSC=7 declared in pins_arduino.h but never individually
+  // reviewed. This board's pins_arduino.h is the genuine vendor-submitted
+  // file merged upstream into espressif/arduino-esp32 (PR #10462,
+  // "Add our new board 'cezerio dev ESP32C6'" by DogushC) - the unusual
+  // MATRIX/IMUSD/IMUSC names are board-specific, not generic boilerplate.
+  //
+  // Sources consulted:
+  //  - https://cezerio.com/cezerio_dev_esp32c6 - vendor's own product page.
+  //    Confirms onboard hardware: a 6-axis IMU (3-axis accelerometer +
+  //    3-axis gyroscope, LSM6DS3TR-C), a "25 x 1010 Addressable RGB LED"
+  //    5x5 matrix display, a single "2835 Addressable RGB LED" status
+  //    LED, "Two Buttons (Boot & Reset)", a LiPo battery charger, and a
+  //    4-pin Qwiic/STEMMA-QT connector described as general-purpose I2C
+  //    for attaching external sensors/modules.
+  //  - https://github.com/espressif/arduino-esp32/pull/10462 - the actual
+  //    upstream PR that added this board's variant files, confirming the
+  //    pins_arduino.h in this repo is the genuine vendor submission, not
+  //    a third-party guess.
+  //  - This board's own pins_arduino.h (local, already in repo): declares
+  //    PIN_RGB_LED=3 (feeds LED_BUILTIN/RGB_BUILTIN via the SOC_GPIO_PIN_
+  //    COUNT-offset virtual-pin convention used by every other ESP32
+  //    Arduino-core RGB_BUILTIN board in this codebase), BUT_BUILTIN=9
+  //    aliased to BOOT, MATRIX=18, IMUSD=8, IMUSC=7 - and separately,
+  //    standard SDA=8/SCL=7, which are numerically identical to
+  //    IMUSD/IMUSC, confirming the onboard IMU shares the board's single,
+  //    general-purpose I2C bus (also broken out to the Qwiic connector)
+  //    rather than having its own dedicated/exclusive bus.
+  //
+  // GPIO3 (PIN_RGB_LED): CONFIRMED onboard addressable status RGB LED
+  // ("2835 Addressable RGB LED" per vendor page). Tagged capabilities
+  // ["digital_output","led_neopixel","pwm_output"] (analog_input and
+  // digital_input dropped), matching this repo's led_neopixel precedent
+  // (waveshare_esp32_c6_zero GPIO8, adafruit_qtpy_esp32c3 GPIO2,
+  // adafruit_matrixportal_esp32s3 GPIO4). Alias-collision check: this
+  // board's TX/RX/SDA/SCL/SS/MOSI/MISO/SCK values are 16/17/8/7/14/22/
+  // 23/21 - none equal 3, so no bus capability leak. GPIO3 is also
+  // aliased A3 (analog) in this file; per established precedent (e.g.
+  // esp_c3_m1_i_kit GPIO3, piranha_esp-32 GPIO0) a non-priority alias
+  // like this is harmless - it only affects the pre-override display
+  // label, which is replaced by "GPIO3 (Led Neopixel)" once chipGpios
+  // tags the pin, so no pins_arduino.h edit was needed for GPIO3.
+  //
+  // GPIO9 (BUT_BUILTIN / BOOT): CONFIRMED onboard physical Boot button
+  // ("Two Buttons (Boot & Reset)" per vendor page - Reset is wired to the
+  // chip's hardware EN/RESET line, not a GPIO, so only Boot is a taggable
+  // general-purpose pin). Also this chip's standard boot-mode strapping
+  // pin - the chip-level pinNotes entry "Must be HIGH for normal boot" is
+  // retained unchanged, not removed. Tagged capabilities
+  // ["digital_input","button"] only. Alias-collision check: GPIO9 is not
+  // TX/RX/SDA/SCL/SS/MOSI/MISO/SCK on this board either - no conflict, no
+  // pins_arduino.h edit needed.
+  //
+  // GPIO7/GPIO8 (IMUSC/IMUSD): KEEP as general-purpose I2C - NOT excluded.
+  // These pins are numerically identical to this board's own SDA(8)/
+  // SCL(7) declarations, i.e. the onboard LSM6DS3TR-C IMU sits on the
+  // board's single shared I2C bus, the same bus broken out to the
+  // 4-pin Qwiic/STEMMA-QT connector for attaching further sensors -
+  // this is a general-purpose, multi-drop I2C bus with one onboard
+  // device already on it, not a bus wired exclusively to that device.
+  // Matches this project's playbook policy ("General-purpose I2C/SPI
+  // buses without a documented exclusive onboard consumer, even if only
+  // one device happens to be attached in the reference design"). Left
+  // unchanged from chip-level defaults (GPIO7/GPIO8:
+  // digital_input+digital_output+pwm_output; both already produce
+  // i2c_scl/i2c_sda capabilities automatically via the SDA/SCL alias
+  // match in build_boards.js). The IMUSD/IMUSC alias names themselves
+  // were left in pins_arduino.h (harmless documentation of the IMU's
+  // bus identity - SDA/SCL take naming priority per build_boards.js's
+  // ALIAS_PRIORITY list, so the generated pin labels stay "SDA (GPIO8)"/
+  // "SCL (GPIO7)").
+  //
+  // GPIO18 (MATRIX): EXCLUDED - CONFIRMED dedicated onboard hardware.
+  // This pin drives the onboard "25 x 1010 Addressable RGB LED" 5x5
+  // matrix display (single-wire addressable-LED protocol, e.g. WS2812-
+  // style), a fixed onboard peripheral per the vendor's own product page,
+  // not a general-purpose GPIO. Removed entirely from chipGpios (key
+  // omitted below). Alias-collision check: GPIO18 is not TX/RX/SDA/SCL/
+  // SS/MOSI/MISO/SCK on this board, BUT build_boards.js's buildEsp32Board
+  // builds its routable-pin set (allGpios) as the union of chipGpios keys
+  // AND every GPIO referenced by ANY static-const alias in pins_arduino.h
+  // - not just the 8 named bus roles. Since "MATRIX" is itself such an
+  // alias, simply omitting GPIO18 from chipGpios here would NOT have
+  // excluded it - the alias would silently re-add GPIO18 as a plain
+  // digital_input/digital_output/pwm_output pin via the no-chipGpios-
+  // entry fallback path. Fixed by deleting the "static const uint8_t
+  // MATRIX = 18;" declaration from pins_arduino.h entirely (replaced with
+  // a plain-English NOTE comment, no literal old declaration text
+  // reproduced, per the comment-blind-regex-parser rule).
+  //
+  // See boardsDetails/esp32/esp32c6/cezerio_dev_esp32c6/notes.txt for the
+  // full research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

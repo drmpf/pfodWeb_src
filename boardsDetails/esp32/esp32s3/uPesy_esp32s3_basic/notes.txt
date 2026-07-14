@@ -1,0 +1,104 @@
+uPesy_esp32s3_basic - onboard button/LED research notes
+=========================================================
+
+Sources consulted
+------------------
+1. C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\uPesy_esp32s3_basic\pins_arduino.h
+   - Local source file. Defines RGB_DATA=38 (with RGB_BUILTIN/RGB_BRIGHTNESS
+     macros for rgbLedWrite()), LED_BUILTIN=2, TX=43, RX=44. No BUTTON alias
+     defined. First clue that GPIO2 and GPIO38 are LED-related, but per task
+     rules this alone is not sufficient confirmation.
+
+2. https://www.upesy.com/products/esp32s3-devkit-board
+   - Vendor product page for "uPesy ESP32S3 DevKit". Confirmed this is the
+     same product as our "uPesy_esp32s3_basic" variant (PlatformIO's
+     boards/upesy_esp32s3_basic.json "url" field points to this exact page -
+     see source 6 below). Minimal text content (mostly images); did yield the
+     pinout diagram image URL used in source 4.
+
+3. https://www.upesy.com/blogs/tutorials/upesy-esp32s3-devkit-documentation-version-latest
+   - Vendor hardware documentation page. Describes ESP32S3-WROOM-1 (N16R8),
+     CH340X USB-UART, power management, EN and BOOT buttons (described only
+     as reset/download-mode hardware controls, no GPIO numbers given here),
+     and a generic "red power LED" (not user-controllable, no GPIO given).
+     Did NOT mention GPIO2/GPIO38 LEDs directly on this particular page.
+
+4. https://www.upesy.com/cdn/shop/files/upesy-esp32s3-pinout.png
+   ("uPesy ESP32S3 Basic Pinout" - vendor's own pinout diagram, downloaded
+   and visually inspected directly, including a cropped/zoomed close-up of
+   the board's component area)
+   - CONFIRMS board silkscreen shows two pushbuttons: "EN" (near USB
+     connector, wired to chip EN/reset, not a GPIO) and "BOOT" (near UART
+     connector, positioned adjacent to the GPIO0/STRAP pin row - the
+     standard ESP32-S3 BOOT-button-on-GPIO0 wiring).
+   - CONFIRMS a 4-pad SMD footprint labeled "38" next to the module,
+     matching a WS2812/SK6812-mini addressable-RGB-LED footprint - matches
+     RGB_DATA=38 in pins_arduino.h.
+   - CONFIRMS a small 2-pad SMD LED footprint labeled "2" immediately next
+     to the "38" NeoPixel footprint - matches LED_BUILTIN=2 in
+     pins_arduino.h.
+   - The diagram title itself reads "uPesy ESP32S3 Basic Pinout", directly
+     naming this exact board variant.
+
+5. https://www.upesy.com/blogs/tutorials/upesy-esp32s3-devkit-quickstart-installation-guide
+   ("Vos premiers pas avec la carte uPesy ESP32S3" - vendor quickstart
+   guide)
+   - STRONGEST/most direct confirmation. States (French): "La carte possede
+     2 LEDs integrees" (the board has 2 built-in LEDs): "Une LED bleue sur
+     la broche GPIO2" (a blue LED on GPIO2 pin), and a second RGB
+     addressable LED on pin 38 controlled via the FastLED library.
+   - Gives a literal Blink code example: pinMode(2, OUTPUT);
+     digitalWrite(2, HIGH) // turn the LED on; digitalWrite(2, LOW) //
+     turn the LED off. This confirms GPIO2's LED is ACTIVE-HIGH.
+
+6. PlatformIO platform-espressif32 PR #1250
+   (https://github.com/platformio/platform-espressif32/pull/1250/files)
+   - Confirmed boards/upesy_esp32s3_basic.json's "url" field is
+     "https://www.upesy.com/products/esp32s3-devkit-board" - i.e. official
+     confirmation that "uPesy ESP32-S3 Basic" (the PlatformIO/Arduino board
+     ID) and uPesy's "ESP32S3 DevKit" product/documentation are the same
+     physical board. No LED/button metadata fields present in this file.
+
+7. https://github.com/espressif/arduino-esp32/pull/8778
+   - Confirmed this is the PR that added the uPesy_esp32s3_basic variant to
+     arduino-esp32. No README or extra documentation found in the variant
+     directory beyond pins_arduino.h.
+
+8. https://github.com/uPesy (org) and https://github.com/uPesy/kicad_lib_upesy
+   - uPesy's public GitHub org/KiCad library. Contains only generic
+     symbol/footprint/3D-model library files, not a board-level schematic
+     for this specific product - not useful for further confirmation
+     beyond what the pinout diagram (source 4) already gave directly.
+
+Pins considered but NOT tagged
+-------------------------------
+- EN (reset) button: visually present on the vendor pinout diagram, but it
+  is wired directly to the chip's EN/CHIP_PU reset pin, not to any
+  general-purpose GPIO. Not tagged - no judgment call needed, this is a
+  hardware reset line only, out of scope for a GPIO capability tag.
+- No other candidate pins were considered. No second physical user
+  pushbutton beyond EN/BOOT was found in any source.
+- No polarity ambiguity remained for GPIO2 (confirmed active-HIGH by the
+  vendor's own digitalWrite(2, HIGH) example) or for GPIO38 (NeoPixel,
+  polarity not applicable to led_neopixel tag).
+- GPIO0 (BOOT button): not a guess - the vendor pinout diagram directly
+  shows a BOOT pushbutton drawn on the PCB immediately adjacent to the
+  GPIO0/STRAP pin, matching the universal ESP32/ESP32-S3
+  BOOT-button-on-GPIO0 convention (also independently confirmed as
+  sufficient evidence in this codebase's existing um_pros3/board.json
+  precedent for BOOT/user pushbuttons). No TX/RX conflict (TX=43, RX=44).
+
+What was tagged
+-----------------
+- GPIO0 -> ["digital_input", "button"] (onboard BOOT pushbutton)
+- GPIO2 -> ["digital_output", "led_high", "pwm_output"] (onboard blue LED,
+  active-HIGH; pwm_output kept because it was already present on this pin's
+  default capability set)
+- GPIO38 -> ["digital_output", "led_neopixel", "pwm_output"] (onboard
+  WS2812-style addressable RGB LED / RGB_DATA; pwm_output kept because it
+  was already present on this pin's default capability set)
+
+File edited: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\uPesy_esp32s3_basic\board.json
+(newly created - no board.json previously existed for this variant; created
+as a full copy of the esp32s3 chip-level default board.json with only
+GPIO0/2/38 capabilities modified, plus pfodWeb NOTE comments at the top).

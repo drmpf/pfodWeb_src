@@ -1,0 +1,166 @@
+Board: Adafruit Feather HUZZAH ESP8266
+Variant path: C:\ai\aicode\pfodWeb\variants\esp8266\esp8266\adafruit\
+Researched: 2026-07-11
+
+SOURCES CONSULTED
+=================
+
+1. https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/pinouts
+   (official Adafruit Learning Guide, Pinouts page)
+   - "GPIO #0, which does not have an internal pullup, and is also
+     connected a red LED ... note the LED is reverse wired so setting the
+     pin LOW will turn the LED on." => Confirms onboard RED LED on GPIO0,
+     ACTIVE-LOW.
+   - "GPIO #2, is also used to detect boot-mode. It also is connected to
+     the blue LED that is near the WiFi antenna." => Confirms a second,
+     BLUE LED on GPIO2 (this is the standard ESP-12E module boot-strap/TX
+     indicator LED shared by nearly every ESP8266 dev board using that
+     module, not something Adafruit added specifically for the Feather).
+   - RST and EN (CH_PD) are documented purely as control pins ("pulled
+     high by default... pulled down to ground momentarily it will reset
+     the ESP8266") - NOT GPIO-connected user pushbuttons, and no other
+     onboard pushbutton is documented anywhere on this page.
+
+2. https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/analog-input
+   (official Adafruit Learning Guide, Analog Input page)
+   - "This pin has a ~1.0V maximum voltage, so if you have an analog
+     voltage you want to read that is higher, it will have to be divided
+     down to 0 - 1.0V range." => Confirms A0 on this board has NO on-board
+     resistor divider extending its range (unlike NodeMCU/D1 Mini, which
+     both document 0-3.3V dividers in their own board.json files). The
+     Feather HUZZAH exposes the ESP8266's native 0-1.0V ADC directly.
+
+3. https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/using-arduino-ide
+   (official Adafruit Learning Guide, Arduino IDE / blink test page)
+   - Only shows example blink code using pin 0; does not itself document
+     LED polarity or button presence (superseded by the Pinouts page
+     above, which does).
+
+4. Web search cross-check ("Adafruit Feather HUZZAH ESP8266 GPIO2 blue LED
+   pinout") against Adafruit's PDF guide / product pages - corroborated
+   the GPIO2 blue-LED-near-antenna / boot-mode-detect description, no
+   contradicting info found.
+
+5. This board's own pins_arduino.h (variants/esp8266/esp8266/adafruit/):
+   `#define LED_BUILTIN 0` - matches the vendor-documented red LED GPIO,
+   used as the primary confirmation target for the LED tag.
+
+PART A - BUTTON / LED TAGS
+===========================
+TAGGED: GPIO0 -> added "led_low" capability (onboard red LED, active-low,
+LED_BUILTIN). GPIO0 is not this board's TX/RX pin (GPIO1/GPIO3 are the
+hard-reserved UART0 lines), so tagging is safe - no TX/RX conflict.
+
+NOT TAGGED - considered and rejected:
+  - GPIO2 blue LED: real and vendor-documented, but it is the generic
+    ESP-12E module boot-strap/TX-activity LED already covered by this
+    board's inherited chip-level GPIO2 pinNote ("Commonly wired to the
+    on-board LED on dev boards"), not a Feather-specific alias in this
+    board's own pins_arduino.h (no LED_BUILTIN2/LED_BLUE define exists).
+    Left untagged to stay consistent with the established precedent in
+    ../d1/board.json, which tags only the pins_arduino.h-aliased
+    LED_BUILTIN and leaves incidental module LEDs to the generic
+    chip-level note.
+  - No "button" tag applied anywhere: no onboard GPIO-connected user
+    pushbutton is documented for this board. RST and EN are non-GPIO
+    hardware control pins, not digital_input-capable buttons.
+
+PART B - ADC REFERENCE VOLTAGE
+================================
+NO CHANGE: defaultRefVolts left at the inherited chip-level "1.0" (volts).
+Adafruit's own Analog Input guide explicitly states A0's maximum is
+~1.0V with no mention of an on-board divider - unlike NodeMCU/D1 Mini,
+which both document a 0-3.3V-range on-board resistor divider in their own
+board.json files. This board exposes the bare ESP8266 chip's native
+0-1.0V ADC input directly, so the chip-level default is correct and was
+left unmodified.
+
+SUMMARY
+=======
+Created variants/esp8266/esp8266/adafruit/board.json (none existed before)
+as a full copy of the esp8266 chip-level default, tagging only GPIO0 as
+"led_low" (confirmed red LED, active-low, LED_BUILTIN) and leaving ADC
+defaultRefVolts at 1.0V (no divider found); no user button exists on this
+board.
+
+=====================================================================
+[2026-07-12] FULL DEDICATED-HARDWARE SWEEP (playbook sections 1-6)
+=====================================================================
+Reason for this pass: a fresh discovery sweep found ZERO non-boilerplate
+declarations in this board's pins_arduino.h. This entry documents the
+full sweep that confirms that zero-hit result via real research, rather
+than assuming "no hits" means "nothing to check".
+
+PINS_ARDUINO.H — FULL DECLARATION INVENTORY
+--------------------------------------------
+File: variants/esp8266/esp8266/adafruit/pins_arduino.h (39 lines, read in
+full). Every non-comment declaration:
+  1. `#define PIN_WIRE_SDA (4)`         - I2C SDA -> GPIO4
+  2. `#define PIN_WIRE_SCL (5)`         - I2C SCL -> GPIO5
+  3. `static const uint8_t SDA = PIN_WIRE_SDA;`  - alias
+  4. `static const uint8_t SCL = PIN_WIRE_SCL;`  - alias
+  5. `#define LED_BUILTIN 0`            - already tagged led_low (prior pass)
+  6. `#include "../generic/common.h"`   - pulls in the chip-generic SPI
+     pins (PIN_SPI_SS=15, PIN_SPI_MOSI=13, PIN_SPI_MISO=12, PIN_SPI_SCK=14,
+     all standard ESP8266 HSPI pins, no board-specific override) and A0
+     (PIN_A0=17, generic ADC alias).
+No SD-card chip-select, no display CS/DC/RST, no sensor IRQ, no other
+board-specific dedicated-peripheral pin exists in this file. This
+confirms the sweep's zero-hit result: the file genuinely has nothing
+beyond generic bus-pin aliases and the already-tagged LED.
+
+STEP 4 — GPIO0/LED ALIAS-COLLISION CHECK (the ESP32-side bug class)
+----------------------------------------------------------------------
+Checked whether GPIO0 (tagged "led_low") is ALSO one of the bus-alias
+GPIOs that pfodWeb_src/build_boards.js unconditionally appends
+capabilities for (SDA/SCL/SS/MOSI/MISO/SCK/TX/RX), which would silently
+add e.g. "i2c_sda" onto the LED pin's capability list regardless of
+chipGpios content (see build_boards.js lines ~698-703, appended AFTER the
+chipGpios-sourced base capabilities at line ~681-683).
+
+Resolved values for this board (from pins_arduino.h + included common.h,
+matching build_boards.js's own resolveIncludes() flattening):
+  SDA  = GPIO4   SCL = GPIO5
+  SS   = GPIO15  MOSI = GPIO13   MISO = GPIO12   SCK = GPIO14
+  TX/RX are handled for esp8266 via the chipGpios-level forced
+  serial_tx/serial_rx tags on GPIO1/GPIO3 (see chipEntry.capabilities /
+  forcedRole logic in build_boards.js), not via TX/RX static-const
+  aliases in this file (none exist here).
+
+GPIO0 matches NONE of SDA(4)/SCL(5)/SS(15)/MOSI(13)/MISO(12)/SCK(14), and
+is not GPIO1/GPIO3 (the forced TX/RX pins). RESULT: no collision - the
+led_low tag on GPIO0 is clean, not contaminated by any bus-alias
+capability. No fix needed for this board.
+
+STEP 2/3 — WEB RESEARCH: ANY OTHER DEDICATED PERIPHERAL?
+-----------------------------------------------------------
+Sources consulted (in addition to the sources already listed in the
+2026-07-11 section above, re-verified for this pass):
+  - https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/pinouts
+    Re-checked GPIO4/5 (I2C) and GPIO12/13/14 (SPI): documented as
+    "can use _any_ pins for I2C" / "can use SPI on any pins" - i.e. these
+    are general-purpose bus-capable header pins, not wired to any onboard
+    fixed peripheral. GPIO15 confirmed boot-mode/pulldown pin only (SPI
+    SS use is a generic capability, not a board-specific wiring).
+  - WebSearch: "Adafruit Feather HUZZAH ESP8266 onboard SD card display
+    flash chip schematic dedicated hardware" - confirms via Adafruit's
+    own PCB/GitHub repo (adafruit/Adafruit-Feather-ESP8266-HUZZAH-PCB)
+    and community forum threads (forums.adafruit.com, esp8266.com) that
+    this board has NO onboard SD card slot and NO onboard display -
+    SD-card and display use cases discussed online are all external
+    breakout boards wired via the exposed SPI/I2C header pins, not
+    anything built into the Feather HUZZAH itself.
+  - cdn-learn.adafruit.com/downloads/pdf/adafruit-feather-huzzah-esp8266.pdf
+    (Adafruit's own PDF guide, same content source as the Learning Guide
+    pages already cited) - no additional onboard peripherals found beyond
+    the two LEDs already tagged/considered in the 2026-07-11 pass.
+
+CONCLUSION: NO CHANGE
+-----------------------
+No GPIO0/bus-alias collision found (step 4 result: clean). No SD card,
+display, or other dedicated peripheral wired to any declared GPIO beyond
+the already-tagged red LED (GPIO0, led_low) and the already-considered,
+intentionally-untagged generic-module blue LED (GPIO2). board.json is
+left unmodified by this pass - the existing button/LED/ADC audit from
+2026-07-11 remains complete and correct, and the full dedicated-hardware
+sweep confirms it found genuinely nothing further to exclude.

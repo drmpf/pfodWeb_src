@@ -1,0 +1,145 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  "boardName": "ESP8266",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Generic ESP8266 Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // "esp8266" is its own family value (so the Designer's board picker
+  // keeps ESP8266 as a separate top-level family from ESP32), but it
+  // routes through the same buildEsp32Board() parser as "esp32" —
+  // ESP8266's pins_arduino.h declares pins via the identical
+  // `static const uint8_t NAME = value;` convention — matching how
+  // "ccode"/"unlistedBoard" already share one parser function.
+  "family": "esp8266",
+
+  // No GPIO concept applies to inputOnlyGpios here — GPIO16's lack of
+  // PWM/interrupt support is expressed via chipGpios below instead,
+  // since GPIO16 still supports digital_output (unlike a true input-only pin).
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over.  ESP8266 has WiFi but no
+  // on-chip Bluetooth — BLE is omitted.
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: Espressif ESP8266 datasheet + Arduino-ESP8266 core `common.h`,
+  // cross-checked against https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // pfodWeb NOTE: this board is "ESPresso Lite 2.0" (a.k.a. "ESPresso Lite
+  // V2.0"), a Malaysian-market ESP8266 board (Cytron Technologies x ESPert)
+  // distinct from the sibling espresso_lite_v1 directory ("ESPresso Lite
+  // 1.0"/"Beta" - different board.json, not touched here). This board's own
+  // pins_arduino.h has `#define LED_BUILTIN 2` (v1's is `16`), confirming the
+  // two revisions differ and must NOT be assumed to share pin wiring.
+  // GPIO2 tagged "led_low" (onboard LED, active-low) and GPIO13 tagged
+  // "button" (onboard USER button, active-low/INPUT_PULLUP) - confirmed via
+  // two independent official sources, no schematic PDF could be located for
+  // this specific revision (unlike the WEMOS D1 Mini) so the library source
+  // and the vendor's own manufacturing test firmware were used instead:
+  //   1. Official ESPert Arduino library (the library Cytron/ESPert
+  //      recommend for these boards), source inspected directly:
+  //      https://github.com/JimmySoftware/ESPert/blob/master/src/ESPert.cpp
+  //      - `ESPert::init()`: when built for this board (`ARDUINO_ESP8266_
+  //        ESPRESSO_LITE_V2`, which boards.txt's
+  //        `espresso_lite_v2.build.board=ESP8266_ESPRESSO_LITE_V2` maps to)
+  //        and `ESPertBoardType == ESPERT_BOARD_ESPRESSO_LITE2`, it sets
+  //        `ESPERT_PIN_LED = 2; ESPERT_PIN_BUTTON = 13;` (v1 keeps the
+  //        library's plain defaults, `16`/`2` - see espresso_lite_v1's own
+  //        board.json for that revision's independently-confirmed wiring).
+  //      - `ESPert_Button::init()` sets `pinMode(buttonPin, INPUT_PULLUP)`
+  //        and `isOn()` treats `digitalRead(buttonPin) == LOW` as pressed
+  //        -> confirms GPIO13 is a plain active-low pushbutton on V2.
+  //      - `ESPert_LED::init()` calls `off()` at startup, and
+  //        `ESPert_LED::set(bool state)`: for every board type except the
+  //        unrelated ESP201, `digitalWrite(ledPin, state ? LOW : HIGH)` -
+  //        i.e. LED.on() drives the pin LOW -> confirms GPIO2 LED is
+  //        active-low, matching pins_arduino.h's `#define LED_BUILTIN 2`.
+  //   2. Cytron's own official V2 manufacturing test-jig firmware, source
+  //      inspected directly (this program is flashed onto every V2 board
+  //      during production testing, so it exercises real onboard hardware):
+  //      https://github.com/CytronTechnologies/Espresso-Lite-v2.0-TestJig/blob/master/advanced/Espresso-Lite-TestJig-Board/Espresso-Lite-TestJig-Board.ino
+  //      - `setup()`: `pinMode(2, OUTPUT); digitalWrite(2, HIGH);` (LED off
+  //        at boot) and the softAP test blinks it via alternating
+  //        `digitalWrite(2, LOW)` / `digitalWrite(2, HIGH)` - independently
+  //        corroborates GPIO2 as the onboard LED, active-low.
+  // No official schematic, GPIO pin-function table, or retailer spec page
+  // (Cytron, JSumo, Open Electronics, espboards.dev) states a GPIO number
+  // for the "two user programmable side buttons" mentioned in V2's specs -
+  // only the ESPert library source above gives a concrete, board-specific
+  // GPIO number. See notes.txt for the full source list and dead links
+  // encountered (beta.espressolite.com/espressolite.com are largely
+  // unreachable now - Cloudflare/DNS failures).
+  //
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion pass): this board's
+  // pins_arduino.h originally included the shared ../generic/common.h,
+  // which unconditionally declares `static const uint8_t MOSI =
+  // PIN_SPI_MOSI;` with PIN_SPI_MOSI == 13 - the same GPIO already
+  // confirmed above as the onboard USER button. build_boards.js appends
+  // an spi_mosi capability onto any GPIO matching the parsed MOSI alias
+  // regardless of a chipGpios override, so GPIO13 was silently carrying
+  // both "button" and "spi_mosi" at once. Fixed by converting
+  // pins_arduino.h to a self-contained file (no longer includes
+  // common.h) that keeps the SS/MISO/SCK aliases but omits the MOSI
+  // one - see that file's own pfodWeb NOTE for details. No other
+  // GPIO2/GPIO13 alias collisions (SDA/SCL/SS/MISO/SCK/TX/RX) were
+  // found: SDA=4, SCL=5, SS=15, MISO=12, SCK=14, TX=1 (UART0), RX=3
+  // (UART0) - none coincide with GPIO2 (LED) or GPIO13 (button).
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. Commonly wired to a FLASH/BOOT button on dev boards",
+    "2":  "Must be HIGH at boot. Onboard LED (active-low, LED_BUILTIN) - confirmed via official ESPert library source + Cytron's own V2 test-jig firmware, see chipGpios note",
+    "13": "Onboard USER button (active-low, INPUT_PULLUP) - confirmed via official ESPert library source, see chipGpios note",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. No V2-specific schematic or spec confirms an on-board divider (unlike V1's vendor blog, which stated a 3.3V max for its AD pin) - defaultRefVolts left at the bare chip's native 0-1.0V, see adc note below"
+  },
+
+  // Full usable-GPIO map for the chip, so every commonly-broken-out pin
+  // shows up in the picker even on boards whose own pins_arduino.h
+  // doesn't alias it (matches the ESP32 chipGpios convention).
+  // GPIO1/GPIO3 are the hardware UART0 TX/RX lines used by the Serial
+  // pfod connection on every ESP8266 board — forced here rather than
+  // relying on a literal TX/RX alias in pins_arduino.h. Neither GPIO2
+  // (LED) nor GPIO13 (button) collides with these reserved UART pins.
+  // GPIOs 6-11 are internal flash SPI and are never broken out on a
+  // standard (non-8285) module — intentionally omitted here.
+  // Source for per-pin PWM/digital availability:
+  // https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // ("ESP8266 allows software PWM in all I/O pins: GPIO0 to GPIO15").
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_output", "pwm_output", "led_low"], "note": "Onboard LED (active-low) — see pfodWeb NOTE above pinNotes for sources" },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "button"], "note": "Onboard USER button (active-low, INPUT_PULLUP) — see pfodWeb NOTE above pinNotes for sources" },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  // ESP8266's analogWrite() PWM defaults to a 10-bit range (0-1023),
+  // unlike AVR/ESP32's 8-bit (0-255) default.
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  // No hardware DAC on ESP8266.
+  "dac": {},
+
+  // ESP8266 has one 10-bit ADC (0-1023) exposed as A0.  Native reference
+  // is 0-1.0V on the bare chip. pfodWeb NOTE: left at the chip-level "1.0"
+  // default (NOT changed to V1's "3.3") - no V2-specific schematic, GPIO
+  // pin-function table, or retailer/vendor spec page could be found stating
+  // an on-board divider or a max analog input voltage for this specific
+  // revision (checked Cytron, JSumo, Open Electronics, espboards.dev - all
+  // just say "10-bit ADC", the native chip spec, with no voltage-range
+  // qualifier). The ESPert library source has no analog-pin references at
+  // all. Per task instructions, absent solid V2-specific evidence of a
+  // divider, defaultRefVolts stays at the chip default - see notes.txt.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "1.0" }
+}

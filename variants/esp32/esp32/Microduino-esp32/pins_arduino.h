@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-static const uint8_t LED_BUILTIN = -1;
-#define BUILTIN_LED LED_BUILTIN  // backward compatibility
-#define LED_BUILTIN LED_BUILTIN  // allow testing #ifdef LED_BUILTIN
+// pfodWeb NOTE: LED_BUILTIN deliberately NOT declared - upstream declares
+// it as -1 (this board has no onboard LED), which wraps to 255 as a
+// uint8_t and would otherwise leak a phantom "GPIO255" pin.
 
 #define MTDO 15
 #define MTDI 12

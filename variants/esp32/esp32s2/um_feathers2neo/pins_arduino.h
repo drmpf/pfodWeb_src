@@ -51,7 +51,8 @@ static const uint8_t DAC1 = 17;
 static const uint8_t DAC2 = 18;
 
 static const uint8_t NEOPIXEL_MATRIX_DATA = 21;
-static const uint8_t NEOPIXEL_MATRIX_PWR = 4;
+// pfodWeb NOTE: NEOPIXEL_MATRIX_PWR (GPIO4) deliberately NOT declared -
+// internal power-gate for the onboard NeoPixel matrix, not general-purpose.
 
 static const uint8_t NEOPIXEL_DATA = 40;
 // RGB_BUILTIN and RGB_BRIGHTNESS can be used in new Arduino API rgbLedWrite()
@@ -62,7 +63,8 @@ static const uint8_t LED_BUILTIN = RGB_BUILTIN;
 #define BUILTIN_LED LED_BUILTIN  // backward compatibility
 #define LED_BUILTIN LED_BUILTIN  // allow testing #ifdef LED_BUILTIN
 
-static const uint8_t NEOPIXEL_PWR = 39;
+// pfodWeb NOTE: NEOPIXEL_PWR (GPIO39) deliberately NOT declared - internal
+// power-gate for the onboard NeoPixel, not general-purpose.
 
 static const uint8_t VBAT_SENSE = 2;
 #define BAT_VOLT_PIN VBAT_SENSE

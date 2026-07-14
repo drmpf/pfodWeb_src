@@ -1,0 +1,213 @@
+cezerio_dev_esp32c6 board.json dedicated-hardware pin-exclusion audit research notes
+=====================================================================================
+
+Board: cezerio_dev_esp32c6 (variants/esp32/esp32c6/cezerio_dev_esp32c6), chip esp32c6.
+Vendor: RFtek Electronics, product page branded "cezerio".
+Directory: variants/esp32/esp32c6/cezerio_dev_esp32c6/
+Audit date: 2026-07-12
+
+pins_arduino.h summary (read in full):
+  USB_MANUFACTURER "RFtek Electronics", USB_PRODUCT "cezerio dev ESP32C6".
+  PIN_RGB_LED = 3, feeding LED_BUILTIN/RGB_BUILTIN via the standard
+  SOC_GPIO_PIN_COUNT-offset virtual-pin convention used elsewhere in this
+  codebase (e.g. waveshare_esp32_c6_zero, adafruit_qtpy_esp32c3),
+  RGB_BRIGHTNESS 64.
+  BUT_BUILTIN = 9, aliased BOOT.
+  TX=16, RX=17, SDA=8, SCL=7, SS=14, MOSI=22, MISO=23, SCK=21.
+  A0..A6 = GPIO0..GPIO6 (so A3 also aliases GPIO3, the RGB LED pin).
+  MATRIX = 18 (no other role, not aliased as any bus pin).
+  IMUSD = 8, IMUSC = 7 - numerically identical to this file's own SDA/SCL
+  declarations.
+  No existing board.json override before this audit (used the chip-level
+  esp32c6/board.json default).
+
+Flagged by the discovery sweep for PIN_RGB_LED=3/RGB_BRIGHTNESS=64,
+BUT_BUILTIN=9/BOOT, MATRIX=18, and IMUSD=8/IMUSC=7 - the "cezerio"/RFtek
+board name plus MATRIX/IMUSD/IMUSC naming strongly suggested onboard
+LED-matrix and IMU peripherals worth individually researching rather than
+leaving at chip-level defaults.
+
+Sources consulted
+------------------
+1. https://cezerio.com/cezerio_dev_esp32c6 (WebSearch summary + WebFetch)
+   Vendor's own product page for this exact board. Confirms onboard
+   hardware: a 6-axis IMU (3-axis accelerometer + 3-axis gyroscope,
+   LSM6DS3TR-C part number), a "25 x 1010 Addressable RGB LED" 5x5 matrix
+   display, one separate "2835 Addressable RGB LED" status LED, "Two
+   Buttons (Boot & Reset)", a LiPo battery charger, USB-C, and a 4-pin
+   Qwiic/STEMMA-QT connector described as general I2C connectivity for
+   attaching the "vast ecosystem" of external I2C sensors/modules. The
+   page's prose does not spell out individual GPIO numbers (pinout is an
+   image), so it was used to confirm which onboard peripherals genuinely
+   exist on this product, not to source the exact pin numbers - the pin
+   numbers themselves come from this board's own pins_arduino.h (source
+   3 below).
+
+2. https://github.com/espressif/arduino-esp32/pull/10462
+   "Add our new board 'cezerio dev ESP32C6'" by DogushC - the actual
+   upstream PR that added this board's variant files to the official
+   espressif/arduino-esp32 core. Confirms the pins_arduino.h in this repo
+   is the genuine vendor-submitted file (board-specific, not generic
+   template boilerplate) - the unusual MATRIX/IMUSD/IMUSC names would not
+   appear in a copy-pasted generic ESP32-C6 template.
+
+3. pins_arduino.h (local, already in repo) - see summary above. Used as
+   corroboration for the exact GPIO numbers once source 1 confirmed the
+   peripherals exist, and as the authoritative pin list per this
+   project's established practice of trusting an Espressif-merged,
+   board-specific variant file over generic assumptions.
+
+4. WebSearch general corroboration (multiple queries: "cezerio dev
+   ESP32-C6 RFtek Electronics board", "cezerio dev ESP32C6 pinout
+   LSM6DS3TR Qwiic GPIO7 GPIO8 schematic") - consistently reported the
+   6-axis LSM6DS3TR-C IMU, 5x5 RGB LED matrix, addressable status LED,
+   Qwiic/STEMMA-QT I2C connector, and Feather-compatible 20-GPIO
+   pinout, with no source giving a conflicting peripheral list. No
+   source produced a full schematic-level pin table beyond what
+   pins_arduino.h itself already encodes.
+
+Reasoning per pin
+------------------
+GPIO3 (PIN_RGB_LED) - CONFIRMED onboard addressable status RGB LED ("2835
+  Addressable RGB LED" per the vendor page, distinct from the 5x5 matrix).
+  High confidence: vendor page confirms the peripheral exists, this
+  board's own vendor-submitted pins_arduino.h declares PIN_RGB_LED=3 and
+  feeds it through the same LED_BUILTIN/RGB_BUILTIN virtual-pin mechanism
+  used by every other confirmed onboard-NeoPixel board in this codebase.
+  Tagged capabilities ["digital_output","led_neopixel","pwm_output"],
+  matching the established led_neopixel precedent (waveshare_esp32_c6_zero
+  GPIO8, adafruit_qtpy_esp32c3 GPIO2, adafruit_matrixportal_esp32s3 GPIO4)
+  - analog_input and digital_input dropped from the chip-level default.
+
+  Alias-collision check: this board's TX/RX/SDA/SCL/SS/MOSI/MISO/SCK
+  values are 16/17/8/7/14/22/23/21 - none equal 3, so no bus capability
+  gets silently appended to this pin by build_boards.js. GPIO3 is also
+  aliased A3 (analog, from the A0..A6 block) in this file; per this
+  project's established precedent that a non-priority alias like this is
+  harmless (e.g. esp_c3_m1_i_kit GPIO3's A3 alias, piranha_esp-32 GPIO0's
+  A11 alias), the pre-override display label "A3 (GPIO3)" is simply
+  replaced by "GPIO3 (Led Neopixel)" once chipGpios tags the pin with
+  led_neopixel (build_boards.js's _hwIdentityLabel override) - no
+  pins_arduino.h edit was needed for GPIO3.
+
+GPIO9 (BUT_BUILTIN, aliased BOOT) - CONFIRMED onboard physical Boot
+  pushbutton. The vendor page states "Two Buttons (Boot & Reset)"; Reset
+  is standard ESP32 hardware EN/RESET wiring, not a GPIO, so only the
+  Boot button is a taggable general-purpose pin - consistent with this
+  file declaring only one button alias (BUT_BUILTIN/BOOT), not two. Also
+  this chip's standard boot-mode strapping pin - the chip-level pinNotes
+  entry "Must be HIGH for normal boot" is retained unchanged (expected/
+  documented for this pin, not removed). Tagged capabilities
+  ["digital_input","button"] only, per this project's button-pin
+  convention (waveshare_esp32_c6_zero GPIO9, Pcbcupid_GLYPH_C6 GPIO9,
+  adafruit_qtpy_esp32c3 GPIO9).
+
+  Alias-collision check: GPIO9 is not TX/RX/SDA/SCL/SS/MOSI/MISO/SCK on
+  this board either (same value list as above) - no conflict, no
+  pins_arduino.h edit needed.
+
+GPIO7/GPIO8 (IMUSC/IMUSD, the onboard IMU's I2C pins) - KEEP as
+  general-purpose I2C, NOT excluded. This is the key finding of this
+  audit: IMUSD=8 and IMUSC=7 are numerically IDENTICAL to this same
+  file's own SDA=8/SCL=7 declarations. That means the onboard
+  LSM6DS3TR-C IMU is wired to the board's single, shared I2C bus - the
+  same bus the vendor page describes as broken out to a 4-pin Qwiic/
+  STEMMA-QT connector "for interfacing with the vast ecosystem of
+  sensors, actuators, and more" (i.e. explicitly designed for a user to
+  chain additional I2C devices on the same bus alongside the onboard
+  IMU). This is a textbook "general-purpose I2C bus without a documented
+  EXCLUSIVE onboard consumer" per this project's playbook policy (section
+  3, KEEP bullet: "General-purpose I2C/SPI buses without a documented
+  exclusive onboard consumer, even if only one device happens to be
+  attached in the reference design (I2C especially is inherently
+  multi-drop)") - explicitly the opposite of the EXCLUDE bullet's
+  "communication bus wired exclusively to a specific onboard chip", since
+  here there is a physical connector for attaching further devices to
+  this exact bus.
+
+  Left completely unchanged from chip-level defaults (GPIO7:
+  digital_input+digital_output+pwm_output; GPIO8: same - neither has
+  analog_input at chip level since 7/8 fall outside the ESP32-C6's
+  0-6 analog-capable GPIO range). Both already produce i2c_scl/i2c_sda
+  capabilities automatically via build_boards.js's consts.SDA/consts.SCL
+  match (these ARE the board's SDA/SCL pins). The IMUSD/IMUSC alias names
+  were deliberately left in pins_arduino.h - they are accurate vendor
+  documentation of the IMU's bus identity and are harmless: SSA/SCL
+  outrank IMUSD/IMUSC in build_boards.js's ALIAS_PRIORITY list, so the
+  generated pin labels stay "SDA (GPIO8)"/"SCL (GPIO7)", not "IMUSD
+  (GPIO8)"/"IMUSC (GPIO7)".
+
+GPIO18 (MATRIX) - EXCLUDED. CONFIRMED dedicated onboard hardware: this
+  pin drives the onboard "25 x 1010 Addressable RGB LED" 5x5 matrix
+  display per the vendor's own product page - a fixed, always-attached
+  onboard peripheral (single-wire addressable-LED protocol, WS2812-style
+  25-pixel chain), not a general-purpose GPIO a user's sketch should be
+  offered. This matches the EXCLUDE policy bullet for "communication bus
+  wired exclusively to a specific onboard/always-attached chip" (a
+  single-wire addressable-LED data line is the same category as an SPI/
+  I2C bus dedicated to one onboard chip - it cannot be reused for
+  anything else without also driving/corrupting the onboard matrix).
+
+  Alias-collision check (this session's playbook step, generalized):
+  GPIO18 is not TX/RX/SDA/SCL/SS/MOSI/MISO/SCK on this board - the 8
+  named bus roles do not collide. HOWEVER, inspecting build_boards.js's
+  buildEsp32Board (pfodWeb_src/build_boards.js) directly revealed a
+  broader version of the same bug class: `allGpios` is built as the union
+  of chipGpios keys AND every GPIO referenced by ANY static-const alias
+  in pins_arduino.h (aliasesByGpio.keys()), not just the 8 named bus
+  roles. Since "MATRIX" is itself such an alias, simply omitting GPIO18
+  from board.json's chipGpios would NOT have excluded it - the "MATRIX"
+  alias alone would cause build_boards.js to fall into its no-chipGpios-
+  entry fallback branch and silently re-add GPIO18 as a plain
+  digital_input/digital_output/pwm_output pin. This was verified by
+  reading build_boards.js lines ~515-724 directly (parseEsp32Consts /
+  buildEsp32Board), not assumed.
+
+Mechanism decision
+--------------------
+1. Deleted the "static const uint8_t MATRIX = 18;" declaration entirely
+   from variants/esp32/esp32c6/cezerio_dev_esp32c6/pins_arduino.h,
+   replacing it with a plain-English "pfodWeb NOTE" comment (no literal
+   old declaration text quoted, no line commented-out with //, per the
+   established rule that build_boards.js's regex-based parser is
+   comment-blind and would still match a `//`-prefixed declaration).
+2. Created variants/esp32/esp32c6/cezerio_dev_esp32c6/board.json as a
+   full copy of the chip-level esp32c6/board.json default, with:
+   - GPIO3 capabilities changed to ["digital_output","led_neopixel",
+     "pwm_output"] (was ["analog_input","digital_input","digital_output",
+     "pwm_output"])
+   - GPIO9 capabilities changed to ["digital_input","button"] (was
+     ["digital_input","digital_output","pwm_output"])
+   - GPIO18 entry removed entirely (omitted from chipGpios)
+   - GPIO7/GPIO8 left unchanged (already correct as general-purpose I2C)
+   plus a pfodWeb NOTE comment block at the top of the file citing the
+   sources and reasoning above.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0-2, 4-6, 7, 8, 10, 11, 14-17, 19-23) were
+left at the chip-level esp32c6/board.json default - no vendor evidence of
+any other dedicated onboard hardware beyond the status NeoPixel, Boot
+button, shared IMU/Qwiic I2C bus, and the excluded LED matrix data line.
+
+Summary (one line)
+--------------------
+GPIO3 confirmed as a genuine onboard status NeoPixel and tagged
+led_neopixel; GPIO9 confirmed as a genuine onboard Boot button and tagged
+button; GPIO7/GPIO8 (IMUSC/IMUSD) confirmed as the board's single
+general-purpose I2C bus (also broken out to a Qwiic connector) shared
+with the onboard LSM6DS3TR-C IMU, not an exclusive dedicated bus, so left
+as ordinary general-purpose I2C-capable GPIOs; GPIO18 (MATRIX) confirmed
+as a dedicated data line to the onboard 5x5 addressable RGB LED matrix
+and excluded both from board.json's chipGpios AND from pins_arduino.h
+(deleting the MATRIX alias line was required to achieve a real exclusion,
+since build_boards.js re-admits any GPIO with any declared alias
+regardless of chipGpios content).
+
+Files touched this pass
+--------------------------
+ - C:\ai\aicode\pfodWeb\variants\esp32\esp32c6\cezerio_dev_esp32c6\board.json (created)
+ - C:\ai\aicode\pfodWeb\variants\esp32\esp32c6\cezerio_dev_esp32c6\pins_arduino.h (edited - MATRIX declaration deleted, replaced with plain-English NOTE comment)
+ - C:\ai\aicode\pfodWeb\boardsDetails\esp32\esp32c6\cezerio_dev_esp32c6\notes.txt (this file, created)
+
+No build commands were run this pass, per task instructions.

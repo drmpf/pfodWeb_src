@@ -1,0 +1,70 @@
+Board: Bee Motion (Bee_Motion, Smart Bee Designs product line), chip esp32s2
+Date: 2026-07-14 (independent verification pass - batch E, real vendor research)
+
+Sources consulted:
+- Local repo copy of variants/esp32/esp32s2/Bee_Motion/pins_arduino.h:
+  `static const uint8_t BOOT_BTN = 0;` and `static const uint8_t PIR = 5;`
+- Upstream official arduino-esp32 GitHub repo (Smart Bee Designs' own
+  contributed variant file), confirmed to match the local copy exactly:
+  https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/Bee_Motion/pins_arduino.h
+  (BOOT_BTN = GPIO0, PIR = GPIO5; TX=43, RX=44, SDA=36, SCL=37, SS=5,
+  MOSI=16, MISO=38, SCK=15 also match the local file).
+- CNX Software board writeup (independent tech press, not Smart Bee
+  Designs' own site):
+  https://www.cnx-software.com/2022/05/09/bee-motion-esp32-s2-pir-motion-sensor-offers-gpios-over-a-year-of-battery-life/
+  - confirms the physical board has "Reset and Boot buttons" and a PIR
+    motion sensor; does not give exact GPIO numbers itself but
+    corroborates the existence of both onboard controls.
+- Smart Bee Designs' own documentation repo for this board:
+  https://github.com/strid3r21/Bee-Motion
+  - confirms "BOOT button and RESET button for entering download mode"
+    and PIR motion sensor functionality; schematic/PCB-layout images are
+    present in the repo but not machine-readable via this pass's tooling.
+- Tindie product listing:
+  https://www.tindie.com/products/smartbee/bee-motion-esp32-pir-motion-sensor/
+  - mentions an ESPHome workaround ("jump the signal pin on the PIR
+    sensor to pin 4 on the board") for a specific use case; this is a
+    documented jumper workaround, not a contradiction of the GPIO5
+    default PIR wiring in pins_arduino.h.
+
+Per-pin findings:
+- GPIO0 (BOOT_BTN): capabilities ["digital_input","button"] - CONFIRMED.
+  Vendor's own upstream pins_arduino.h names this pin BOOT_BTN, and two
+  independent sources (CNX Software, Smart Bee Designs' own docs repo)
+  both describe a physical onboard BOOT button used for entering
+  download/flash mode. GPIO0 is also the standard ESP32/ESP32-S2
+  boot-strapping pin, consistent with this being the physical BOOT
+  button silkscreened on the board.
+- GPIO5 (PIR): kept at chip-level default capabilities
+  ["analog_input","digital_input","digital_output","pwm_output"] -
+  deliberately NOT tagged. The vendor's pins_arduino.h names this pin
+  PIR, and CNX Software / Smart Bee Designs' docs both confirm the board
+  has an onboard PIR motion sensor. It is left untagged because pfodWeb's
+  chipGpios capability tags (button/led_*) are for user-interaction
+  hardware, not analog sensor inputs - this is consistent with the prior
+  audit pass's own stated policy on this board and is not changed here.
+- GPIO1-4, 6-18: kept at chip-level default capability sets (analog_input/
+  analog_input_serial variants as applicable) - no tag applied. No vendor
+  source claims any of these are dedicated onboard hardware.
+- GPIO17, GPIO18: kept at chip-level default, including "dac_output"
+  capability (chip-level DAC channels) - no tag applied.
+- GPIO21, 33-45: kept at chip-level default
+  ["digital_input","digital_output","pwm_output"] - no tag applied.
+- GPIO46: kept at chip-level default ["digital_input"] (input-only pin per
+  chip-level inputOnlyGpios) - no tag applied.
+- pinNotes (chip-level, unchanged): GPIO45 "Must be LOW or floating on
+  reboot", GPIO46 "Must be LOW or floating on reboot". This board's
+  pinNotes omits the chip-level GPIO0 "Must be HIGH for normal boot" strap
+  warning found in the plain ESP32-S2 default, even though GPIO0 is
+  reassigned to the BOOT_BTN button role on this board; this is a
+  pre-existing gap not touched by this pass (out of scope: this task
+  covers chipGpios findings, not pinNotes completeness).
+
+Summary: Both existing findings on this board are CONFIRMED by real,
+independent vendor and press sources beyond the repo's own board.json/
+pins_arduino.h: GPIO0 is the physical BOOT button (upstream arduino-esp32
+vendor file + CNX Software + Smart Bee Designs' own docs repo all agree),
+and GPIO5 is the onboard PIR sensor input, correctly left untagged as a
+sensor pin rather than a button/LED capability. No corrections were
+needed; board.json's chipGpios map is unchanged, its top comment was
+updated to record these citations.

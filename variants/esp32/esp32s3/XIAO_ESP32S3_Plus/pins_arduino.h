@@ -45,6 +45,17 @@ static const uint8_t CAM_SCL = 39;
 static const uint8_t CAM_SDA = 40;
 static const uint8_t XMCLK = 10;
 
+// pfodWeb NOTE (correction, 2026-07-14): this file previously omitted the
+// MOSI1/MISO1/SCK1, I2S_*, MTCK/MTDO/MTDI/MTMS, DVP_*, CAM_*, XMCLK, and
+// ADC_BAT lines above/below plus D11-D19, on the theory that GPIO10-13/
+// 38-40 were dedicated onboard Sense-variant camera/mic pins. Restored
+// verbatim to match the OFFICIAL upstream arduino-esp32 pins_arduino.h
+// (github.com/espressif/arduino-esp32/blob/master/variants/
+// XIAO_ESP32S3_Plus/pins_arduino.h) after research established this is
+// the "Plus" product (no camera/mic - see Seeed's own product page and
+// board.json's top-of-file NOTE) - these GPIOs are ordinary user pins on
+// this board, matching upstream's own D11-D19 declarations for them.
+
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
@@ -56,6 +67,9 @@ static const uint8_t A9 = 8;
 static const uint8_t A10 = 9;
 static const uint8_t ADC_BAT = 10;
 #define BAT_VOLT_PIN ADC_BAT
+// pfodWeb NOTE: ADC_BAT/BAT_VOLT_PIN (GPIO10) - kept as a plain analog
+// GPIO (no dedicated-hardware exclusion); see board.json pinNotes["10"]
+// and top-of-file NOTE - no onboard voltage-divider circuit confirmed.
 
 static const uint8_t D0 = 1;
 static const uint8_t D1 = 2;

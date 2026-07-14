@@ -1,0 +1,94 @@
+Board: waveshare_esp32_s3_touch_lcd_5b (Waveshare ESP32-S3-Touch-LCD-5B, "B" hardware revision
+of the 5.0" model, 1024x600 panel vs 800x480 on the non-B "5")
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_lcd_5b
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+1. https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-5B
+   WebFetch returned HTTP 403 (blocked, same as most www.waveshare.com wiki pages).
+
+2. https://r.jina.ai/https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-5B (proxy fetch)
+   Succeeded but the page content itself says "Wiki resources are under urgent
+   production" — i.e. Waveshare has not yet published the wiki content for this
+   specific "B" revision. No pinout/button/LED info available from this source.
+
+3. https://www.waveshare.com/esp32-s3-touch-lcd-5b.htm and
+   https://www.waveshare.com/esp32-s3-lcd-5b.htm
+   Both 403/404 — no live product page found under either URL pattern (the
+   "esp32-s3-lcd-5b.htm" slug actually belongs to a DIFFERENT, non-touch "ESP32-S3-
+   LCD-5B" product per WebSearch snippet — a distinct board, not this one).
+
+4. https://docs.waveshare.com/ESP32-S3-Touch-LCD-5B — 404 Not Found (no docs-platform
+   page published yet either).
+
+5. https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-5B/ESP32-S3-Touch-LCD-5B-Schematic.pdf
+   and .../ESP32-S3-Touch-LCD-5B-Sch.pdf — both 404. No schematic PDF found at the
+   URL patterns used by sibling "B" boards (e.g. 7B, 3.5B).
+
+6. https://github.com/waveshareteam/ESP32-S3-Touch-LCD-5B — 404. Searched
+   waveshareteam GitHub org listing (136 repos) — no 5" or "5B" touch LCD repo found
+   (only 1.83" and 4" Touch-LCD repos visible in the sampled listing).
+
+7. WebSearch "ESP32-S3-Touch-LCD-5B waveshare" — general product snippets only
+   (1024x600 panel, CS8501 charge chip, CAN/I2C/RS485 interfaces); no button/LED/GPIO
+   detail surfaced.
+
+8. https://r.jina.ai/https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-7B (sibling "B"
+   revision board, used as a cross-check on Waveshare's "B"-revision documentation
+   pattern since the 5B's own page is unpublished). Confirms this board family's
+   "B" revisions use the SAME BOOT/RESET button pair (GPIO not specified) and the
+   SAME three fixed status LEDs — DONE (battery charge complete), CHARGE (battery
+   charging), POWER (power) — described as hardware indicators, explicitly "No
+   user-controllable RGB or NeoPixel LEDs". This matches the non-B "5" model's
+   documented behaviour exactly (see waveshare_esp32_s3_touch_lcd_5/notes.txt from
+   this same audit session), giving reasonable confidence the 5B follows the same
+   pattern, though this is a cross-board inference, not a 5B-specific citation.
+
+9. This board's own pins_arduino.h and board.json (already audited/excluded) were
+   re-read directly: no LED_BUILTIN/BUTTON alias is declared anywhere in
+   pins_arduino.h (unlike many other Arduino board files), and GPIO0 (the classic
+   ESP32 BOOT-strap pin) is already excluded from chipGpios as WS_LCD_G3 (onboard
+   ST7262 LCD green-3 data line), consistent with source 8's finding that BOOT is a
+   system-function pin, not a general user-readable button.
+
+PINS CONSIDERED AND NOT TAGGED
+-------------------------------
+- GPIO0 (BOOT button, by analogy with every sibling board in this family): even if
+  a BOOT button is confirmed to exist on GPIO0 for this "B" revision, GPIO0 is
+  ALREADY excluded from this board's chipGpios (used as WS_LCD_G3, the ST7262 LCD's
+  green-3 data line — pins_arduino.h line 24, board.json header NOTE lines 1-15).
+  Per task rules, pins inside an existing pin-exclusion must not be re-added even if
+  a button function is confirmed on them. No guess made about GPIO number since no
+  5B-specific source gave one anyway; left untagged and excluded exactly as before.
+  No board.json edit made for this reason.
+- EN/CHIP_PU (RESET button): hardware reset line, not a firmware-readable GPIO, not
+  taggable as a "button" capability regardless. Not a chipGpios entry at all.
+- CH422G I2C IO-expander pins (this board's own file/board.json notes confirm it uses
+  a CH422G, shared with the touch controller, for TP_RST/LCD_BL/LCD_RST/SD_CS/USB_SEL
+  etc., matching the non-B 5 model's EXIO0-5/OD0-1 pin table): these are behind an
+  I2C expander chip, not native ESP32-S3 GPIOs, so there is no chipGpios entry to tag
+  regardless of function, and none of them is described as a button or user LED.
+- DONE/CHARGE/POWER LEDs: described (source 8, cross-board) as passive battery
+  charge/power indicators wired to the onboard CS8501 charge-management chip, not to
+  any ESP32-S3 GPIO. Not user-controllable, not tagged.
+- No WS2812/NeoPixel/RGB LED found in any fetched documentation for this board or its
+  documented "B"-revision siblings (cross-checked per this session's known
+  hallucination risk on Waveshare sibling-board pages — the product title/specs never
+  mention an RGB/NeoPixel LED, unlike e.g. waveshare_esp32_s3_lcd_147 which explicitly
+  advertises "With Colorful RGB LED"). Nothing to tag.
+- This board's own wiki page (www.waveshare.com/wiki/ESP32-S3-Touch-LCD-5B) is
+  explicitly unpublished ("under urgent production") at the time of this audit, so
+  no direct 5B-specific GPIO citation for BOOT/RESET/LEDs could be obtained; the
+  conclusion above rests on consistent cross-board pattern evidence (sources 8/9)
+  rather than a page dedicated to this exact revision. Flagging this explicitly so a
+  human reviewer can re-check once Waveshare publishes the 5B wiki page.
+
+SUMMARY OF WHAT WAS TAGGED
+----------------------------
+Nothing was tagged. No confirmable onboard user-readable button or user-controllable
+LED exists on a native (non-expander) GPIO for this board, based on available
+evidence (the board's own wiki page is not yet published; sibling "B"-revision and
+non-B "5" documentation both show only a BOOT/RESET button pair on unspecified/
+excluded pins and passive battery-status LEDs not wired to any GPIO). board.json was
+NOT modified.

@@ -41,8 +41,8 @@
 static const uint8_t TX = 35;
 static const uint8_t RX = 34;
 
-static const uint8_t TXD2 = 17;
-static const uint8_t RXD2 = 16;
+// pfodWeb NOTE: TXD2/RXD2 (GPIO17/16, also RXD1/TXD1) deliberately NOT
+// declared — dedicated UART to the optional GSM Vela connector board.
 
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
@@ -52,45 +52,31 @@ static const uint8_t MOSI = 23;
 static const uint8_t MISO = 19;
 static const uint8_t SCK = 18;
 
+// pfodWeb NOTE: G2/G12/G15/G16/G17/G25/G26 deliberately NOT declared —
+// GPIO25/26/27/32/33/4 are the 3 motor driver IN1/IN2 outputs and GPIO2
+// is their shared nSLEEP enable line; GPIO12/14/15 are the GSM
+// connector's PWRKEY/RTS/CTS control lines; GPIO16/17 are its UART
+// (see above). GPIO13 (LED_ROBOHEART, also GSM_DTR) is kept — it's
+// still a simple onboard LED.
 static const uint8_t G23 = 23;
 static const uint8_t G19 = 19;
 static const uint8_t G18 = 18;
 static const uint8_t G3 = 3;
-static const uint8_t G16 = 16;
 static const uint8_t G21 = 21;
-static const uint8_t G2 = 2;
-static const uint8_t G12 = 12;
-static const uint8_t G15 = 15;
 static const uint8_t G35 = 35;
 static const uint8_t G36 = 36;
-static const uint8_t G25 = 25;
-static const uint8_t G26 = 26;
 static const uint8_t G1 = 1;
-static const uint8_t G17 = 17;
 static const uint8_t G22 = 22;
 static const uint8_t G5 = 5;
 static const uint8_t G13 = 13;
 static const uint8_t G0 = 0;
 static const uint8_t G34 = 34;
 
-static const uint8_t DAC1 = 25;
-static const uint8_t DAC2 = 26;
-
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
-static const uint8_t A4 = 32;
-static const uint8_t A5 = 33;
 static const uint8_t A6 = 34;
 static const uint8_t A7 = 35;
-static const uint8_t A10 = 4;
 static const uint8_t A11 = 0;
-static const uint8_t A12 = 2;
-static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
-static const uint8_t A15 = 12;
-static const uint8_t A16 = 14;
-static const uint8_t A17 = 27;
-static const uint8_t A18 = 25;
-static const uint8_t A19 = 26;
 
 #endif /* Pins_Arduino_h */

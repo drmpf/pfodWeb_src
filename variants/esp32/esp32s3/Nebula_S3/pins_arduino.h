@@ -19,16 +19,26 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 12;
 static const uint8_t SCL = 13;
 
-static const uint8_t SDA1 = 2;
-static const uint8_t SCL1 = 1;
+// pfodWeb NOTE: SDA1=2/SCL1=1 (secondary I2C/Wire1 bus) declarations
+// removed - confirmed dedicated to the onboard MPU-6050 IMU, not a
+// general-purpose bus (github.com/espressif/arduino-esp32/pull/8257,
+// "Add board: Nebula S3"). Removing the static const alias here (not
+// just the board.json chipGpios entry) is required per the pin-audit
+// parser gotcha: build_boards.js's buildEsp32Board() unions GPIOs found
+// via any pins_arduino.h alias with chipGpios keys, so leaving these
+// declared here would leak GPIO1/GPIO2 back into the pin list even with
+// the board.json exclusion. See board.json and notes.txt for reasoning.
 
 static const uint8_t SS = 41;
 static const uint8_t MOSI = 40;
 static const uint8_t MISO = 39;
 static const uint8_t SCK = 38;
 
-static const uint8_t D0 = 1;
-static const uint8_t D1 = 2;
+// pfodWeb NOTE: D0=1/D1=2 removed - these are generic template aliases
+// for the same GPIO1/GPIO2 excluded above (dedicated onboard MPU-6050
+// IMU I2C bus). Left declared, they would leak GPIO1/GPIO2 back into
+// the generated pin list via the D0/D1 aliases even with SDA1/SCL1
+// removed. See board.json and notes.txt.
 static const uint8_t D2 = 44;
 static const uint8_t D3 = 43;
 static const uint8_t D4 = 42;
@@ -51,7 +61,9 @@ static const uint8_t A0 = 4;
 static const uint8_t A1 = 5;
 static const uint8_t A2 = 6;
 static const uint8_t A3 = 7;
-static const uint8_t A4 = 1;
-static const uint8_t A5 = 2;
+
+// pfodWeb NOTE: A4=1/A5=2 removed - same reasoning as D0/D1 above:
+// generic template aliases for GPIO1/GPIO2, excluded as the dedicated
+// onboard MPU-6050 IMU I2C bus. See board.json and notes.txt.
 
 #endif /* Pins_Arduino_h */

@@ -1,0 +1,80 @@
+m5stack_core2 - onboard button/LED research notes
+====================================================
+
+Sources consulted:
+
+1. https://docs.m5stack.com/en/core/core2
+   Official M5Stack Core2 docs page. Confirms the only onboard indicator is
+   a "built-in green power indicator light" controlled by the AXP192 power
+   management chip via its own IO1 pin (AXP_IO1) - NOT a direct ESP32 GPIO.
+   Also gives the full pin map used elsewhere to confirm existing exclusions
+   (LCD/TF G38/G23/G18/G5/G15/G4, touch I2C+IRQ G21/G22/G39, mic/I2S
+   G12/G0/G2/G34, USB serial G1/G3, Port A G32/G33, Port B G26/G36, Port C
+   G13/G14) - all consistent with this board's existing board.json exclusions.
+
+2. https://github.com/m5stack/M5Core2/blob/master/src/AXP192.cpp
+   M5Core2 Arduino library source. Found AXP192::SetLed(uint8_t state),
+   which writes register 0x94 bit 0x02 on the AXP192 PMIC over I2C to
+   drive the green power-indicator LED. GPIO1 on the AXP192 chip itself
+   (register 0x92) is configured as open-drain output for this purpose.
+   This confirms the status LED is wired to a GPIO pin ON THE AXP192 PMIC,
+   accessed via I2C - it is NOT wired to any ESP32 GPIO pin at all, so
+   there is no ESP32 chipGpios entry that could represent it.
+
+3. https://community.m5stack.com/topic/4963/digitalwrite
+   Initially looked promising (LED tied to VESP_3V3 / GPIO10, active-low),
+   but WebFetch of the actual page content shows this thread is about the
+   M5Stack STICKC PLUS, not Core2. Discarded - wrong board, not used as
+   evidence for Core2.
+
+4. https://community.m5stack.com/topic/5892/need-help-with-hardware-i-o-on-core2
+   Core2-specific hardware I/O thread. Confirmed it does NOT mention any
+   onboard LED or GPIO for one; only discusses G1/G3 (USB serial, avoid
+   reusing) and Grove Port C G13/G14. No new info on LED/button.
+
+5. WebSearch: "M5Stack Core2 FT6336 touch buttons ABC capacitive not GPIO"
+   (docs.m5stack.com, M5Stack community, OpenELAB blog, M5Stack/M5Stack
+   GitHub PR #232 aggregate results) - confirms the A/B/C virtual buttons
+   are capacitive touch hot-zones on the front glass, read via the FT6336U
+   touch controller over I2C (address 0x38, IRQ on G39). They are NOT
+   plain GPIO-readable digital buttons.
+
+6. WebSearch: "M5Stack Core2 power button GPIO AXP192 IRQ"
+   (community.m5stack.com, m5-docs, blog.usedbytes.com) - confirms the
+   physical top power button is wired into the AXP192 PMIC's power-key
+   input, not any ESP32 GPIO. The AXP192 IRQ line (which would flag button
+   press events back to the ESP32) is NOT connected on stock Core2
+   hardware - some hobbyists have soldered a bodge wire from AXP192 IRQ to
+   GPIO35, but that is not a stock/documented connection and is out of
+   scope.
+
+Pins considered but NOT tagged:
+--------------------------------
+- A/B/C capacitive touch buttons: NOT plain GPIO buttons (I2C touch IC
+  FT6336U). Explicitly out of scope per task instructions and confirmed by
+  source #5 above. No GPIO tagged. Not a guess - solid documentary evidence.
+
+- Power button: routed through the AXP192 PMIC's dedicated power-key pin,
+  not any ESP32 GPIO. IRQ line back to ESP32 is unconnected on stock
+  hardware (source #6). No ESP32 GPIO exists to tag. Not a guess - solid
+  evidence it's PMIC-side only.
+
+- Onboard green power-indicator LED: confirmed real (source #1, #2), but
+  it is wired to the AXP192 PMIC's own GPIO1 pin and toggled over I2C via
+  AXP192::SetLed() - there is no ESP32 GPIO connected to this LED at all,
+  so there is nothing in chipGpios (or that could be added to chipGpios)
+  to represent it. This is a solid, confirmed finding, not a guess -
+  tagging is simply not applicable/possible for an I2C-PMIC-driven LED
+  with no corresponding ESP32 pin.
+
+- (Ruled out early, not seriously considered) GPIO10 "LED" claim from
+  source #3 - discarded once confirmed that thread is about the StickC
+  Plus board, not Core2. Note for human review: if someone later finds
+  real Core2-specific evidence of a plain ESP32 GPIO LED, this should be
+  revisited, but no such evidence was found in this pass.
+
+Summary of what was tagged:
+----------------------------
+NOTHING TAGGED. No plain ESP32-GPIO-readable button or ESP32-GPIO-driven
+LED could be confirmed on M5Stack Core2. board.json left completely
+unmodified.

@@ -1,0 +1,57 @@
+RAK3112 (esp32s3/rakwireless_rak3112) - onboard button/LED research notes
+==========================================================================
+
+Sources consulted:
+- https://docs.rakwireless.com/product-categories/wisduo/rak3112-module/datasheet/
+  Official RAKwireless datasheet page. Lists all 44 castellated pads and their
+  functions (UART, I2C, SPI, ADC, GPIO, power). No mention of any onboard LED
+  or push button anywhere in the pin definition table or feature list.
+- https://docs.rakwireless.com/product-categories/wisduo/rak3112-module/overview/
+  Official overview/feature page. Describes module features and target
+  applications; does not mention any onboard LED or button.
+- https://docs.rakwireless.com/product-categories/wisduo/rak3112-module/quickstart/
+  Official quickstart guide. Covers digital IO / analog IO / serial
+  peripherals usage but never references a built-in button or LED with a
+  GPIO assignment.
+- https://store.rakwireless.com/products/wisduo-lora-wifi-module-rak3112
+  RAKwireless store product page. Explicitly describes the RAK3112 as a
+  "15 mm x 23 mm x 3 mm stamp pad module" (bare SMD castellated-pad module),
+  confirming it is not a devkit/breakout board with its own physical UI
+  components (no button, no LED called out).
+- https://www.cnx-software.com/2025/09/15/rak3112-wisduo-lora-wifi-ble-module-targets-edge-ai-and-meshtastic-ui/
+  Third-party (CNX Software) hands-on/announcement article with photos and
+  block diagram. Describes it as a 44-castellated-pad stamp module; no
+  mention of onboard LED or button indicators.
+- https://docs.zephyrproject.org/latest/boards/rakwireless/rak3112/doc/index.html
+  Zephyr Project board documentation. Only generic ESP32-S3 SoC boilerplate
+  feature text appears ("Addressable RGB LED, driven by GPIO38" is a stock
+  ESP32-S3 SoC capability line copied across many Zephyr board docs, not a
+  RAK3112-specific confirmed onboard NeoPixel - GPIO38 does not match this
+  board's LED_GREEN(46)/LED_BLUE(45) aliases anyway, and no board-specific
+  LED/button section was found for RAK3112 in this doc).
+
+Pins considered but NOT tagged:
+- GPIO46 (LED_GREEN / WB_LED1 alias in pins_arduino.h) and GPIO45
+  (LED_BLUE / WB_LED2 alias in pins_arduino.h): these are pin-alias #defines
+  in the vendor pins_arduino.h, but per task rules aliases like this must
+  NOT be trusted without independent vendor documentation confirming a
+  physically populated LED. No datasheet, schematic, overview page,
+  quickstart guide, or third-party review found any onboard LED on the
+  RAK3112 module. The module is explicitly a bare 15x23x3mm SMD stamp
+  module (no PCB-level LEDs/buttons of its own) - LED_GREEN/LED_BLUE/
+  WB_LED1/WB_LED2 most plausibly describe pins intended for LEDs on an
+  optional carrier/breakout board (e.g. WisBlock) that a user may or may
+  not populate, not confirmed onboard hardware of the module itself. This
+  is a deliberate "no guess" - I found no evidence either way that would
+  let me confidently assign led_high/led_low, so I am leaving it fully
+  untagged for human review rather than guessing polarity or existence.
+- No BUTTON/user-button alias exists anywhere in pins_arduino.h, and no
+  vendor source mentions any push button on the module. No candidate pin
+  was identified for a button tag at all (not even an alias to reject).
+- GPIO45/46 are not TX/RX (TX=43, RX=44) so the TX/RX-conflict rule was not
+  a factor here; the reason for not tagging is purely lack of confirming
+  vendor evidence for an onboard LED.
+
+Summary: NO CHANGE. No confirmable onboard user button or LED found for
+rakwireless_rak3112 via real vendor documentation; board.json left
+unmodified (GPIO45/46 capability arrays untouched).

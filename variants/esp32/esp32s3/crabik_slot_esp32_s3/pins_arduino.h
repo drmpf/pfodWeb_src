@@ -67,13 +67,18 @@ static const uint8_t T10 = 10;
 static const uint8_t T11 = 11;
 static const uint8_t T12 = 12;
 
-static const uint8_t USB_DN = 19;
-static const uint8_t USB_DP = 20;
+// pfodWeb NOTE: USB_DN/USB_DP not declared — GPIO19/20 are the native
+// USB D-/D+ lines, not general-purpose (this project's chip-level
+// default already omits them, but this board's own declaration would
+// otherwise re-leak them).
 
 static const uint8_t BOOT_BTN = 0;
 static const uint8_t USER_LED = LED_BUILTIN;
 
-static const uint8_t EN_TROYKA = 15;
+// pfodWeb NOTE: EN_TROYKA (GPIO15) deliberately NOT declared — this is
+// the power-enable line for the whole Troyka modular connector
+// ecosystem; toggling it would cut power to every attached Troyka
+// module, not a spare GPIO (see board.json).
 
 static const uint8_t LIPO_ALERT = 16;
 

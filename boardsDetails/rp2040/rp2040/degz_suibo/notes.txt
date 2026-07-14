@@ -1,0 +1,208 @@
+pfodWeb RP2040 family audit — board: degz_suibo ("Degz Suibo RP2040")
+Date: 2026-07-13
+Result: NO CHANGE (board.json created with chipGpios: {} — matches the
+chip-level default, no capability overrides applied).
+
+FILES READ
+----------
+- variants/rp2040/rp2040/degz_suibo/pins_arduino.h (full file, 39 lines)
+- variants/rp2040/rp2040/degz_suibo/common.h (full file, 77 lines) — present
+  in this board's own directory but confirmed NOT included by
+  pins_arduino.h (which includes "../generic/common.h" instead, byte-
+  verified via `cat -A ... | tail -5`). This local common.h appears to be
+  orphaned/unused scaffolding, not a wired-in header — out of scope to
+  remove/fix under this audit (not a button/LED/NeoPixel capability issue),
+  flagged here for a future auditor.
+- `diff` of variants/rp2040/rp2040/rpipico/pins_arduino.h against
+  variants/rp2040/rp2040/degz_suibo/pins_arduino.h — ZERO output, i.e. the
+  two files are byte-identical. This board's pins_arduino.h is an
+  unmodified copy of the plain stock Raspberry Pi Pico template.
+- variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {})
+- variants/rp2040/rp2040/generic/common.h (D0-D22 + A0-A2 fallback,
+  deliberately excludes D23-25/D29 per its own pfodWeb comment — included
+  by this board via pins_arduino.h's "../generic/common.h")
+- variants/rp2040/rp2040/rpipico/board.json (precedent: simple LED tag,
+  confirmed via official Pico datasheet)
+- variants/rp2040/rp2040/pintronix_pinmax/board.json + notes.txt
+  (precedent: NO CHANGE reasoning style for an unconfirmed/inherited-
+  template PIN_LED alias with no vendor documentation)
+
+pins_arduino.h CONTENTS (full file, identical to rpipico's)
+-------------------------------------------------------------
+  #define PIN_LED        (25u)
+  #define PIN_SERIAL1_TX (0u)
+  #define PIN_SERIAL1_RX (1u)
+  #define PIN_SERIAL2_TX (8u)
+  #define PIN_SERIAL2_RX (9u)
+  #define PIN_SPI0_MISO  (16u)
+  #define PIN_SPI0_MOSI  (19u)
+  #define PIN_SPI0_SCK   (18u)
+  #define PIN_SPI0_SS    (17u)
+  #define PIN_SPI1_MISO  (12u)
+  #define PIN_SPI1_MOSI  (15u)
+  #define PIN_SPI1_SCK   (14u)
+  #define PIN_SPI1_SS    (13u)
+  #define PIN_WIRE0_SDA  (4u)
+  #define PIN_WIRE0_SCL  (5u)
+  #define PIN_WIRE1_SDA  (26u)
+  #define PIN_WIRE1_SCL  (27u)
+  #define SERIAL_HOWMANY (3u)
+  #define SPI_HOWMANY    (2u)
+  #define WIRE_HOWMANY   (2u)
+  #include "../generic/common.h"
+
+Header comment cites "https://datasheets.raspberrypi.org/pico/pico-
+datasheet.pdf" — i.e. the comment itself still says "Pico datasheet",
+confirming this file was never re-authored for the Suibo board's own
+hardware; it is the generic Pico template used as-is.
+
+WEB RESEARCH TRAIL (WebSearch / WebFetch, 2026-07-13)
+------------------------------------------------------
+1. WebSearch "Degz Suibo RP2040 board" — confirmed this IS a real,
+   commercially documented product (unlike pintronix_pinmax): Degz
+   Robotics (Turkey) sells "Suibo" as an underwater-ROV control board:
+   dual-core RP2040, 8MB external flash, LSM6DS3 IMU + QMC6310 compass
+   (9-axis stabilization), I2C/SPI/UART/RS485, up to 8 motor driver
+   outputs, 3.3-6V supply, "programmable LEDs". Part of the "Derin Diver"
+   ROV ecosystem (github.com/degzrobotics/Derin-Diver,
+   github.com/degzrobotics/Dive-Control). Selectable in Arduino IDE as
+   "Degz Robotics Suibo Rp2040" — matches this repo's degz_suibo id.
+   Sources: wiki.degzrobotics.com/elektronik-kartlar/Kontrol-Kartları/
+   suibo-rp2040/, degzrobotics.com/product/suibo_rov_control_card/,
+   github.com/degzrobotics.
+
+2. Direct WebFetch of wiki.degzrobotics.com pages returned HTTP 403
+   (blocked). Retried via r.jina.ai reader proxy (https://r.jina.ai/<url>),
+   which succeeded for three sub-pages:
+
+   a. wiki.degzrobotics.com/.../suibo-rp2040/ ("About the Product"):
+      - "Programmable LEDs are located on the board" (no GPIO given).
+      - Buttons: "One is the RESET button and the other is the BOOT
+        button" (no GPIO given — standard RP2040 hardware reset/BOOTSEL
+        circuits, same as every other board in this family, not normal
+        GPIOs).
+      - Full documented GPIO table:
+          PWM-capable: GP24, GP23, GP22, GP21, GP20, GP19, GP15
+          UART: GP0 (TX), GP1 (RX)
+          I2C: GP2 (SCL), GP3 (SDA)
+          SPI: GP6 (MISO), GP7 (MOSI), GP17 (CS), GP16 (SCK)
+          General purpose: GP10, GP11, GP12, GP13
+          ADC: GP29
+        GPIO25 does NOT appear anywhere in this table — not as LED, not
+        as PWM, not in any category.
+      - Onboard peripherals: LSM6DS3 IMU, QMC6310 compass (I2C), buzzer
+        connection available (no GPIO specified).
+
+   b. wiki.degzrobotics.com/.../suibo-rp2040/usage/ ("Use of the
+      Product"): "GPIO 0 represents the Tx LED, and GPIO 1 represents the
+      Rx LED." Also states: "The status LED does not light up on v1 Suibo
+      boards." These two statements are in tension (a GPIO-controllable
+      LED description vs. a hardware-revision-dependent non-functional
+      status LED) and GP0/GP1 are this board's own PIN_SERIAL1_TX/RX
+      (UART0) lines — consistent with a passive TX/RX activity indicator
+      wired in series with the UART lines (common on many boards), NOT a
+      plain digitalWrite()-controllable GPIO output. Treated as
+      out-of-scope for led_high/led_low tagging, matching this family's
+      established precedent of excluding passive/activity-only indicator
+      LEDs (e.g. sea_picro's passive power LED, ruled out-of-scope in
+      that board's own audit).
+
+   c. wiki.degzrobotics.com/.../suibo-rp2040/example/ ("Examples with
+      Suibo"): code examples use GPIO26 (heater output, pinMode/
+      digitalWrite), GPIO23 as `LIGHTING_PIN` (analogWrite-driven external
+      lighting brightness control — an EXTERNAL peripheral connector, not
+      an onboard status LED), GPIO29/A0 (thermistor/potentiometer analog
+      inputs). No mention of LED_BUILTIN, GPIO25, or any onboard-LED
+      digitalWrite example anywhere in the example code.
+
+3. A separate WebSearch attempt surfaced a search-engine-generated
+   summary asserting "GPIO 0 represents the Tx LED... you can control
+   these LEDs using Arduino code by setting the pins as outputs and using
+   digitalWrite" — this is logically inconsistent (GP0/GP1 are actively
+   used as hardware UART0 TX/RX; treating them as free digitalWrite()
+   outputs would break serial communication) and was NOT independently
+   corroborated by the actual page content fetched via r.jina.ai in item
+   2b beyond the base "Tx LED"/"Rx LED" labels. Treated as an unreliable
+   search-summary embellishment, not evidence, per this audit's standing
+   practice of discounting auto-generated search summaries that aren't
+   backed by the underlying fetched page text (see pintronix_pinmax
+   notes.txt for the same discounting practice applied there).
+
+CRITICAL CROSS-CHECK: pins_arduino.h vs vendor-documented pinout
+------------------------------------------------------------------
+The vendor wiki's own SPI/I2C pin table does NOT match this repo's
+degz_suibo/pins_arduino.h:
+  Vendor wiki SPI:  MISO=GP6,  MOSI=GP7,  SCK=GP16, CS=GP17
+  This repo's file: MISO=16u, MOSI=19u, SCK=18u,  SS=17u   (SPI0)
+  Vendor wiki I2C:  SCL=GP2, SDA=GP3
+  This repo's file: SDA=4u,  SCL=5u                          (Wire0)
+Only SS/CS (17) happens to coincide; MISO/MOSI/SCK are all different
+GPIO numbers between the vendor's documented hardware and this repo's
+declared pins_arduino.h. Combined with the byte-identical diff against
+rpipico/pins_arduino.h and the header comment still citing the "Pico
+datasheet", this confirms this variant's pins_arduino.h was scaffolded
+from the generic Pico template and never corrected against the real
+Suibo schematic — it is NOT a hand-verified hardware pinout. This is out
+of scope to fix under this button/LED/NeoPixel capability-tagging audit
+(rewriting PIN_SPI0_*/PIN_WIRE0_* would be a pins_arduino.h content
+change, not a chipGpios capability override), but it is the deciding
+factor in the PIN_LED conclusion below: given the file's other pin claims
+are already demonstrably wrong relative to the vendor's own
+documentation, PIN_LED=25u cannot be trusted as confirming a real
+onboard LED at GPIO25 either, especially since the vendor's own GPIO
+table never mentions GPIO25 in any capacity.
+
+CONCLUSION / PER-PIN REASONING
+-------------------------------
+GPIO25 (PIN_LED): NOT tagged led_high/led_low. No authoritative vendor
+source ties GPIO25 to an onboard LED — the vendor's own documented GPIO
+table (item 2a above) omits GPIO25 entirely, and the alias's only source
+is a pins_arduino.h file already shown (via the SPI/I2C mismatch above)
+to be an unmodified generic-Pico-template copy rather than a hardware-
+verified pinout for this board. Per this audit's rule ("if you cannot
+find authoritative vendor documentation, report NO CHANGE rather than
+guess at polarity from the alias name alone"), GPIO25 is left at its full
+chip-default derived capabilities (digital_input, digital_output,
+pwm_output) — unchanged from today's build output.
+
+GPIO0 / GPIO1 (PIN_SERIAL1_TX / PIN_SERIAL1_RX): NOT tagged. Vendor
+documentation describes these as "Tx LED"/"Rx LED" but this is (a)
+internally inconsistent with a separate statement that the status LED
+"does not light up on v1 Suibo boards", and (b) most consistent with a
+passive UART-activity indicator wired in series with the physical UART0
+TX/RX lines (which these pins are already dedicated to per
+PIN_SERIAL1_TX/RX), not a general-purpose digitalWrite()-controllable
+GPIO output. Matches this family's established precedent of excluding
+passive/activity-only LEDs from led_high/led_low tagging (e.g.
+sea_picro's passive power LED). No capability change applied.
+
+No button alias (no PIN_BUTTON/PIN_USRKEY/BOOTSEL-as-GPIO or similar) is
+declared in this board's pins_arduino.h. Vendor docs mention only a
+RESET button and a BOOT button — standard dedicated hardware
+reset/bootloader circuits, not digitalRead()-able GPIOs, matching every
+other RP2040 board's BOOTSEL/reset button in this repo.
+
+No NeoPixel/WS2812 alias (no PIN_NEOPIXEL or similar) is declared
+anywhere in this board's pins_arduino.h, and none is mentioned in the
+vendor documentation beyond the generic "programmable LEDs" phrase (too
+vague to act on, and not tied to any GPIO number).
+
+Bus-collision bug class check: this board declares SPI0 (MISO=16,
+MOSI=19, SCK=18, SS=17), SPI1 (MISO=12, MOSI=15, SCK=14, SS=13), Wire0
+(SDA=4, SCL=5), and Wire1 (SDA=26, SCL=27) per its own pins_arduino.h.
+PIN_LED=25 does not coincide with any of these bus pins, so the
+"confirmed button/LED pin also aliased as a bus pin" bug class does not
+apply here regardless of the PIN_LED conclusion above — no
+pins_arduino.h edit was made or needed.
+
+SUMMARY (one line): Degz Suibo RP2040 is a real, commercially documented
+underwater-ROV control board (Degz Robotics, Turkey) with genuine vendor
+wiki documentation, but that documentation's own GPIO table never
+mentions GPIO25 (the sole PIN_LED alias in this repo's pins_arduino.h,
+which is itself an unmodified copy of the generic Pico template and
+whose SPI/I2C pin claims already conflict with the vendor's documented
+pinout) and its "Tx/Rx LED" claims for GP0/GP1 are internally
+inconsistent and best read as passive UART-activity indicators, not
+digitalWrite()-controllable outputs; board.json created with
+chipGpios: {} (NO CHANGE from chip-level default capabilities, no
+button/LED/NeoPixel capability overrides applied).

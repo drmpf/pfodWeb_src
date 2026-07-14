@@ -1,0 +1,87 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Espressif's own generic "ESP32C6 Dev Module" entry, which
+  // represents the official ESP32-C6-DevKitC-1 reference board. No
+  // board.json override existed before this audit (used the chip-level
+  // esp32c6/board.json default). Flagged by the discovery sweep for
+  // having PIN_RGB_LED 8 / RGB_BRIGHTNESS 64 / WIRE1_PIN_DEFINED with
+  // SDA1=6, SCL1=7 declared in pins_arduino.h but never individually
+  // reviewed.
+  //
+  // Sources consulted:
+  //  - https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c6/esp32-c6-devkitc-1/user_guide.html
+  //    Official Espressif esp-dev-kits documentation for the
+  //    ESP32-C6-DevKitC-1. States the board includes an addressable RGB
+  //    LED "driven by GPIO8", and lists GPIO8 among the chip's strapping
+  //    pins (MTMS, MTDI, GPIO8, GPIO9, GPIO15).
+  //  - Same page's pin list: GPIO6 = "MTCK, GPIO6, LP_GPIO6,
+  //    LP_I2C_SDA, ADC1_CH6, FSPICLK"; GPIO7 = "MTDO, GPIO7, LP_GPIO7,
+  //    LP_I2C_SCL, FSPID" - general-purpose multi-function pins with no
+  //    onboard peripheral wired to them. This matches this variant's
+  //    own pins_arduino.h comment "LP I2C Pins are fixed on ESP32-C6"
+  //    (SDA1=6/SCL1=7) - the LP_I2C location is fixed by the chip's
+  //    pin muxing, not evidence of an onboard I2C device.
+  //  - ESP32-C6 Series Datasheet (espressif.com) - confirms LP_GPIO6/
+  //    LP_GPIO7 are the fixed low-power I2C controller pins.
+  //
+  // GPIO8 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+  // addressable RGB LED, directly stated by Espressif's own official
+  // user guide for this exact reference board. High confidence -
+  // matches this repo's existing led_neopixel precedent (e.g.
+  // waveshare_esp32_s3_zero GPIO21, adafruit_qtpy_esp32c3 GPIO2).
+  // Checked this variant's pins_arduino.h alias list - TX=16, RX=17,
+  // SDA=23, SCL=22, SS=18, MOSI=19, MISO=20, SCK=21 - GPIO8 is not
+  // aliased as any of those, so no conflicting boilerplate bus alias
+  // to strip for this pin. pinNotes "8": "Must be HIGH or floating on
+  // reboot" retained as-is - expected/documented strapping behavior
+  // for this exact pin, consistent with the onboard LED circuit being
+  // pre-tuned by Espressif for safe boot per the user guide.
+  // Tagged capabilities ["digital_output","led_neopixel","pwm_output"].
+  //
+  // GPIO6/GPIO7 (SDA1/SCL1, second/LP I2C bus): KEEP as general-purpose
+  // I2C - no onboard peripheral documented at either pin on this
+  // reference board. Left unchanged from chip-level defaults
+  // (GPIO6: analog_input+digital_input+digital_output+pwm_output;
+  // GPIO7: digital_input+digital_output+pwm_output).
+  //
+  // See boardsDetails/esp32/esp32c6/esp32c6/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

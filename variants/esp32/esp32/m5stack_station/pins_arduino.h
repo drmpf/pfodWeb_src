@@ -17,7 +17,11 @@ static const uint8_t SCL = 33;
 
 static const uint8_t SS = 5;
 static const uint8_t MOSI = 23;
-static const uint8_t MISO = -1;
+// pfodWeb NOTE: MISO deliberately NOT declared - upstream declares it as
+// -1, which wraps to 255 as a uint8_t and would otherwise leak a
+// phantom "GPIO255" pin. SS/MOSI/SCK stay kept - no confirmed dedicated
+// consumer found for this specific board (unlike M5Stack Core2/Tough,
+// this board has no MISO wired, so it's not the same shared TFT+SD bus).
 static const uint8_t SCK = 18;
 
 static const uint8_t G1 = 1;

@@ -1,0 +1,72 @@
+m5stack_atoms3 - button/LED GPIO research notes
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\m5stack_atoms3
+
+SOURCES CONSULTED
+-----------------
+https://docs.m5stack.com/en/core/AtomS3
+  Product page - confirms AtomS3 has a "programmable button function" below
+  the 0.85" screen and an integrated LED/IR area; did not give exact GPIO
+  numbers in the fetched text (schematic PDF linked separately, not fetched).
+
+https://docs.m5stack.com/en/arduino/m5atoms3/button
+  M5Stack Arduino docs page for the AtomS3 button API (AtomS3.BtnA /
+  wasPressed()/wasReleased()); confirms a physical button exists and is
+  exposed via the M5AtomS3/M5Unified library Button_Class, but the page
+  text did not itself state the raw GPIO number.
+
+https://github.com/m5stack/M5AtomS3
+  Official M5Stack Arduino library repo for AtomS3; confirms BtnA button
+  object and library-level API, used as pointer to M5Unified for the
+  underlying GPIO mapping.
+
+https://github.com/m5stack/M5Unified (raw M5Unified.cpp fetched via
+https://raw.githubusercontent.com/m5stack/M5Unified/master/src/M5Unified.cpp)
+  Official M5Stack low-level board-support source. Found the board
+  detection switch statement:
+    case board_t::board_M5AtomS3:
+    case board_t::board_M5AtomS3Lite:
+    case board_t::board_M5AtomS3U:
+    case board_t::board_M5AtomS3R:
+    case board_t::board_M5AtomVoiceS3R:
+      m5gfx::pinMode(GPIO_NUM_41, m5gfx::pin_mode_t::input);
+  This is a direct, official-source confirmation that GPIO41 is the
+  onboard physical button on the plain AtomS3 (shared code path with the
+  other AtomS3 variants).
+  Also found the RGB LED pin table (_pin_table_other0) mapping
+  board_M5AtomS3U and board_M5AtomS3Lite to GPIO_NUM_35 for the onboard
+  NeoPixel/RGB LED. No separate explicit board_M5AtomS3 entry was visible
+  in the fetched excerpt, but this matches exactly the value already
+  declared in this board's own pins_arduino.h (`#define PIN_RGB_LED 35`),
+  which is treated as sufficient corroboration that plain AtomS3 also
+  uses GPIO35 for its onboard NeoPixel.
+
+Local repo file also reviewed (not a web source, but load-bearing):
+  variants/esp32/esp32s3/m5stack_atoms3/pins_arduino.h - declares
+  `#define PIN_RGB_LED 35` and `RGB_BUILTIN LED_BUILTIN`, TX=43, RX=44.
+  variants/esp32/esp32s3/board.json (chip-level default) - documents
+  GPIOs 26-32 (flash) and 33-37 (octal flash/PSRAM) as excluded from
+  chipGpios at the chip level (comment on line 49-51).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+GPIO35 (onboard NeoPixel/RGB LED, PIN_RGB_LED in pins_arduino.h, confirmed
+via M5Unified source as described above): NOT TAGGED. This is not a
+judgment call/guess - it is a hard rule-out. GPIO35 falls inside the
+chip-level pin-exclusion range for ESP32-S3 (GPIO33-37, octal
+flash/PSRAM) documented in variants/esp32/esp32s3/board.json, and
+correspondingly has NO chipGpios entry in this board's own board.json.
+Re-adding it would reverse a pre-existing chip-level exclusion, which is
+explicitly out of scope for this task. Left untagged for human review -
+if a reviewer confirms the M5Stack AtomS3 module genuinely does not use
+octal PSRAM/flash on this pin (i.e. GPIO35 is truly free and only used
+for the NeoPixel on this specific module), the exclusion could
+potentially be narrowed for this board specifically, but that decision
+is deferred.
+
+WHAT WAS TAGGED
+----------------
+GPIO41 -> ["digital_input","button"] (onboard physical button, confirmed
+via M5Stack's own M5Unified library source code). GPIO41 is not this
+board's TX (43) or RX (44) pin, so no TX/RX conflict. Prior capabilities
+(digital_input, digital_output, pwm_output; no analog capability was
+present) were replaced per the button-tag rule.

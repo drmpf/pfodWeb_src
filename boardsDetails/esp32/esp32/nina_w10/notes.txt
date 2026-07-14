@@ -1,0 +1,196 @@
+nina_w10 (chip: esp32) - dedicated-hardware pin-exclusion audit + button/LED tagging re-check
+Date: 2026-07-12
+
+This is a RE-AUDIT of an already-existing notes.txt from an earlier session (same
+conclusion reached independently, extended with two more primary sources: the
+original arduino-esp32 PR that added this variant, and the file's GitHub commit
+history). No prior board.json existed and none is created by this pass either -
+see SUMMARY at the bottom for why.
+
+FLAGGED DECLARATIONS (from pins_arduino.h, full file read):
+  static const uint8_t LED_GREEN = 33;
+  static const uint8_t LED_RED   = 23;
+  static const uint8_t LED_BLUE  = 21;
+  static const uint8_t SW1       = 33;   (SAME GPIO as LED_GREEN)
+  static const uint8_t SW2       = 27;
+
+Also present in the file, checked for alias collisions (task step 7):
+  TX = 1, RX = 3           -> no collision with GPIO 21/23/27/33.
+  SDA = 12, SCL = 13       -> no collision.
+  SS = 5, MOSI = 23, MISO = 19, SCK = 18
+    -> MOSI = 23 COINCIDES with LED_RED = 23. This is the standard default
+       ESP32 VSPI pin mapping (5/23/19/18) that appears essentially unchanged
+       on nearly every plain ESP32 Arduino-core variant, not something unique
+       to this board's LED wiring. build_boards.js appends "spi_mosi" to
+       GPIO23's capability list unconditionally because of this alias, fully
+       independent of any chipGpios entry in board.json. Since GPIO23/LED_RED
+       is NOT being tagged as an LED this pass (see reasoning below), this
+       collision has no practical effect right now - it is recorded here so a
+       future reviewer who DOES later confirm LED_RED's polarity knows to
+       remove the MOSI-driven "spi_mosi" capability from GPIO23 in the same
+       edit that adds an led_r_* tag, or explicitly decide the pin should
+       keep both roles.
+  A5 = 33, D17 = 33, T8 = 33 -> ordinary generic aliases for the same GPIO33,
+       not separate hardware, no new information.
+  D12 = 23, D18 = 21, D5 = 27 -> ordinary generic aliases, no new information.
+
+SOURCES CONSULTED
+
+1. https://github.com/espressif/arduino-esp32/blob/master/variants/nina_w10/pins_arduino.h
+   - Confirms the upstream file matches this repo's copy exactly.
+
+2. GitHub commit history for that file (fetched via WebFetch on the GitHub
+   commits page for the path):
+   - Original commit: "Add new target u-blox nina-w10 (#771)", author mazgch,
+     committed by me-no-dev, Oct 25 2017. Later touched only by generic
+     repo-wide refactors (GPIO refactor #6259 in 2022, S3/platform.txt review
+     #8726 in 2023, pre-commit-hooks refactor #9515 in 2024) - none of those
+     later commits changed pin assignments.
+
+3. https://github.com/espressif/arduino-esp32/pull/771 (the original PR)
+   - Fetched via WebFetch. PR references "the u-blox NINA-W1 System
+     Integration Manual (sections 1.3 and 2.4)" as its source, and targets
+     the u-blox NINA-W10 module / EVK-NINA-W10 evaluation kit. The PR
+     description/diff view available to WebFetch did NOT contain any prose
+     explaining the GPIO33 dual role - only the two file changes (boards.txt,
+     pins_arduino.h) themselves, which are already fully visible in source 1.
+     No additional clarifying commentary was recoverable from the PR itself.
+
+4. https://www.espboards.dev/esp32/nina-w10/ (third-party pinout summary)
+   - Reflects pins_arduino.h content, labels pins as "built-in LED"/"switch",
+     no polarity info, does not cite u-blox schematics. Weak/secondary source,
+     used only as corroboration.
+
+5. https://usermanual.wiki/Document/EVKNINAW10UserGuideUBX17057549.786634709/html
+   (mirror of u-blox's official EVK-NINA-W10 User Guide, doc UBX-17057549)
+   - REAL vendor documentation, and the decisive source for this audit.
+   Confirms:
+   a) The board has an RGB LED with reference designator "DS9" (a single
+      packaged part with three independently controllable color channels,
+      not three separate discrete LEDs like the BharatPi-Node-Wifi board's
+      tricolor status LEDs audited earlier this session):
+        RED   channel -> IO-23 (module pin-1),  via jumpers J15-3/J14-5
+        GREEN channel -> IO-33 (module pin-28), via jumper J7-5_J7-6
+        BLUE  channel -> IO-21 (module pin-8),  via jumpers J16-1/J16-2
+      "To control DS9, the associated signal jumpers ... must be populated" -
+      i.e. none of the three channels is guaranteed connected without the
+      end user first populating the relevant jumper block.
+      Also: "When the RMII PHY is connected to the module, the BLUE-LED is
+      not available at IO-21" - a further configuration-dependent caveat on
+      just the blue channel.
+   b) Four buttons exist on the board: RESET, BOOT, SW1, SW2. SW1 and SW2 are
+      both described as "general function button[s]" (no fixed application
+      meaning assigned by the vendor).
+      SW1: wired via jumper J5 to "module pin-7". The SAME document's RGB LED
+        table separately identifies "module pin-7" as = IO-33 = the LED_GREEN
+        channel. I.e. GPIO33/module-pin-7 is a genuinely SHARED, jumper-
+        selectable pin on the physical board: whichever jumper block the
+        end user populates (the SW1 jumper at J5, or the LED jumper at
+        J7-5_J7-6) determines whether IO-33 reads a button or drives the
+        green LED channel. Both functions are real and vendor-documented;
+        neither is a documentation typo. They are simply mutually exclusive
+        uses of one physical pin, selected outside the pins_arduino.h file
+        (at the hardware jumper layer), which is why the Arduino core's
+        pins_arduino.h can only give ONE GPIO number two different alias
+        names - it cannot know which jumper any given assembled unit has
+        populated.
+      SW2: wired via jumper J6 to IO-27, but the guide explicitly adds this
+        also "requires J14-15_J14-16 populated" as a SECOND, separate jumper
+        pair in addition to J6 before module pin-18 reaches the IO-27 header
+        pin. I.e. SW2 is not connected to IO-27 by a single default jumper -
+        it requires an additional routing jumper pair to be populated too.
+   c) I searched the full extracted text specifically for "active low",
+      "active high", "pull-up", "pull-down", "NPN", "PNP", "cathode",
+      "anode", "3V3" pull terms - none of these appear anywhere in the
+      accessible (non-schematic-image) text. The actual jumper/LED-driver
+      schematic is only present in the document as an image (Appendix B),
+      not extractable via WebFetch/text tools. Polarity of the RGB LED and
+      the pull direction of SW1/SW2 could not be confirmed.
+
+6. https://github.com/ldab/Arduino-u-blox-NINA-W10 and
+   https://github.com/jakkra/u-blox-nina-w10x-dev-pcb
+   - Third-party repos. Neither documents onboard LEDs/buttons for the
+     official u-blox EVK-NINA-W10 (the jakkra repo is a different, unofficial
+     custom NINA-W10x PCB, not the vendor EVK this variant is named for).
+     Not used for any decision.
+
+REASONING PER FLAGGED PIN
+
+- GPIO33 (LED_GREEN / SW1): THE DUAL-ROLE QUESTION IS RESOLVED, NOT LEFT
+  UNRESOLVED. Source 5b confirms this is a genuine hardware jumper-mux, not
+  a vendor typo: module pin-7/IO-33 is wired through separate jumper blocks
+  to either the SW1 button OR the LED_GREEN channel, and the end assembler
+  chooses which one is actually connected. Since the two uses are physically
+  mutually exclusive and pins_arduino.h has no way to encode "whichever
+  jumper is populated on this specific unit", there is no single correct
+  capability tag for GPIO33 that would be true for every board built from
+  this Arduino core variant. NOT TAGGED as either "button" or an "led_*"
+  variant - this is a deliberate, evidence-based no-guess decision, not a
+  gap in research.
+
+- GPIO23 (LED_RED): Role confirmed (RGB LED DS9's red channel) by vendor
+  source 5a, but (i) connection requires jumpers J15-3/J14-5 to be populated
+  - not guaranteed present by default - and (ii) no active-high/active-low
+  polarity evidence was found anywhere in the accessible vendor text (item
+  5c). Tagging led_r_high or led_r_low without polarity evidence would be a
+  guess. NOT TAGGED. (Also see the MOSI=23 alias note above - moot while
+  untagged, but relevant if a future reviewer does confirm polarity.)
+
+- GPIO21 (LED_BLUE): Role confirmed (RGB LED DS9's blue channel) by vendor
+  source 5a, same jumper-dependency and same total absence of polarity
+  evidence as GPIO23, PLUS an extra vendor-documented caveat that this
+  channel is unavailable whenever RMII Ethernet PHY is attached to the
+  module - a third layer of board-specific variability. NOT TAGGED.
+
+- GPIO27 (SW2): Role confirmed ("general function button") by vendor source
+  5b, but the same source explicitly states the IO-27 connection requires a
+  SECOND, separate jumper pair (J14-15/J14-16) beyond the primary SW2 jumper
+  (J6) - i.e. this pin is not reliably wired to SW2 on an arbitrary board
+  built from this variant without that extra, non-default jumper population.
+  Unlike the LED pins, "button" as a capability tag does not itself require
+  polarity data, so this pin's uncertainty is purely about whether it is
+  physically connected at all, not about signal direction. Given the
+  vendor's own explicit "requires X additional jumper" caveat (a level of
+  caution not seen on any other button-tagged board audited this session),
+  NOT TAGGED - flagged here for human review in case a reviewer judges the
+  jumper-populated state to be the reasonable default assumption for this
+  eval-kit-style variant.
+
+WHY NO board.json IS CREATED
+
+Every one of the five flagged declarations traces to a real, vendor-
+documented piece of hardware (this is NOT a vendor typo/naming-inconsistency
+situation for any of the five), but every one of them is ALSO jumper-
+dependent and/or missing polarity data needed to select an accurate
+capability tag. Tagging any of them would require guessing information the
+vendor manual does not provide (LED polarity) or asserting a default jumper
+configuration the vendor manual does not claim (SW1 vs LED_GREEN choice on
+GPIO33; SW2's second jumper pair). Per the task's own instruction to
+document genuine ambiguity rather than guess, and consistent with the
+board.json-creation precedent observed across every other board audited
+this session (a board.json is only added when at least one chipGpios entry
+actually changes), no board.json is created for nina_w10. The chip-level
+default at variants/esp32/esp32/board.json remains authoritative for this
+variant, unmodified.
+
+SUMMARY
+- This variant models the u-blox EVK-NINA-W10 evaluation board (confirmed
+  via the original arduino-esp32 PR #771 by mazgch, Oct 2017, and the
+  vendor's own EVK-NINA-W10 User Guide UBX-17057549), whose onboard RGB LED
+  (DS9, red=IO-23/green=IO-33/blue=IO-21) and buttons (SW1=IO-33, SW2=IO-27)
+  are all wired through user-populated jumper blocks rather than fixed
+  traces.
+- GPIO33's LED_GREEN/SW1 dual declaration is CONFIRMED as genuine vendor-
+  documented jumper multiplexing of one physical pin, not a documentation
+  error - resolved, not left as an open question, but still correctly left
+  untagged since no single capability can represent a jumper-selectable pin.
+- GPIO23 (LED_RED) and GPIO21 (LED_BLUE): confirmed real RGB LED channels,
+  left untagged - no polarity evidence found, both jumper-dependent.
+- GPIO27 (SW2): confirmed real button, left untagged - requires a second,
+  non-default jumper pair per the vendor's own manual.
+- Alias check performed per task step 7: GPIO23 also carries the standard
+  boilerplate MOSI alias (part of the default 5/23/19/18 VSPI pin set found
+  on almost all ESP32 variants, not board-specific) - noted for a future
+  reviewer, no action needed while GPIO23 remains untagged.
+- No board.json created (none existed before; none is warranted now). No
+  edits made to pins_arduino.h. No capability changes applied anywhere.

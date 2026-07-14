@@ -44,13 +44,10 @@ static const uint8_t IO25 = 25;
 static const uint8_t IO26 = 26;
 static const uint8_t TX0 = 1;
 static const uint8_t RX0 = 3;
-//TFlash(uSD)
-static const uint8_t SD2 = 9;
-static const uint8_t SD3 = 10;
-static const uint8_t CMD = 11;
-static const uint8_t CLK = 6;
-static const uint8_t SD0 = 7;
-static const uint8_t SD1 = 8;
+// pfodWeb NOTE: SD2/SD3/CMD/CLK/SD0/SD1 (GPIO9/10/11/6/7/8) deliberately
+// NOT declared - these are the ESP32 WROOM module's internal flash SPI
+// bus (not a real external TF-card slot on this board despite the
+// comment), already excluded chip-wide by variants/esp32/esp32/board.json.
 
 //Arduino Uno backward compatibility
 static const uint8_t A0 = 2;

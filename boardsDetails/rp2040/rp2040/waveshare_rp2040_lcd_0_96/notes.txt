@@ -1,0 +1,198 @@
+Board: waveshare_rp2040_lcd_0_96 (chip: rp2040)
+Waveshare "RP2040-LCD-0.96" — a Pico-form-factor RP2040 board with an
+onboard 0.96" 160x80 65K-colour IPS TFT LCD (ST7735S-family controller,
+4-wire SPI + separate D/C line), USB-C connector, and an onboard TPS63000
+buck-boost DC-DC chip.
+Audit date: 2026-07-13.
+
+SOURCES CONSULTED
+1. This repo's own files:
+   - variants/rp2040/rp2040/waveshare_rp2040_lcd_0_96/pins_arduino.h
+     (already present before this audit; vendor-sourced header comments
+     cite waveshare.com/wiki/RP2040-LCD-0.96, the board's PDF, and a
+     detail photo; declares PIN_LCD_DC=8, PIN_LCD_CS=9, PIN_LCD_SCLK=10,
+     PIN_LCD_MOSI=11, PIN_LCD_RST=12, PIN_LCD_BL=25, and an inline
+     "pfodWeb NOTE: bespoke pin set" comment from an earlier audit pass
+     already identifying GPIO8,9,10,11,12,13,14,15,25 as onboard-dedicated
+     and already omitting D8-D15/D25 aliases accordingly).
+   - variants/rp2040/rp2040/waveshare_rp2040_lcd_1_28/pins_arduino.h —
+     sibling board (1.28" instead of 0.96" LCD), same LDC_SPI/PIN_LCD_*
+     GPIO layout (8/9/10/11/12/25), corroborating this is Waveshare's
+     standard RP2040+small-LCD pin convention, not a one-off.
+   - rp2040_board_variants/variants/waveshare_rp2040_lcd_0_96/
+     pins_arduino.h — the pristine, un-audited original (still `#include
+     "../generic/common.h"`), confirms the working copy in
+     variants/rp2040/rp2040/... is this repo's own Designer-parsing
+     mirror, already diverged from the vendor original by a prior audit
+     pass, not a file consumed by any real firmware-build toolchain.
+   - variants/rp2040/rp2040/rpipico/pins_arduino.h — confirms the stock
+     Pico's default Wire0 location is PIN_WIRE0_SDA=4/PIN_WIRE0_SCL=5 (NOT
+     8/9), i.e. this board's PIN_WIRE0_SDA=8/SCL=9 is not some universal
+     RP2040 convention — it collides with this specific board's own LCD
+     DC/CS pins.
+   - variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios={}).
+   - variants/rp2040/rp2040/bridgetek_idm2040_43a/board.json and
+     variants/rp2040/rp2040/rpipico/board.json — precedents for the full
+     board.json structure, the empty-capabilities dedicated-pin-doc
+     pattern, and the "no onboard user button beyond BOOTSEL" precedent.
+   - pfodWeb_src/build_boards.js — read parseEsp32Consts() and
+     buildEsp32Board() in full (lines ~340-420 and ~500-725) to confirm
+     exactly how pins_arduino.h aliases become Designer pins/capabilities,
+     and specifically to confirm the SDA/SCL bus-role auto-append
+     (`if (g === sda) caps.push('i2c_sda')`, line ~698) fires
+     unconditionally regardless of any chipGpios capability override,
+     keyed off `consts.SDA`/`consts.SCL` which are populated only from a
+     literal `static const uint8_t SDA/SCL = ...;` declaration (not from
+     any raw `#define`).
+
+2. Waveshare's own wiki page, waveshare.com/wiki/RP2040-LCD-0.96 (direct
+   WebFetch returned HTTP 403; fetched via a text-extraction proxy
+   instead). Confirmed quotes/paraphrases: "26 x multi-function GPIO
+   pins"; "2 x SPI, 2 x I2C, 2 x UART, 3 x 12-bit ADC, 16 x controllable
+   PWM channels"; "0.96-inch 160x80 pixels 65K colorful IPS LCD display";
+   USB-C connector; "8 x Programmable I/O (PIO) state machines"; Li-po
+   charge/discharge header; onboard DC-DC. The wiki's WS2812 demo code
+   example targets an *external* LED wired to a GPIO by the user
+   (`sm = StateMachine(0, ws2812, freq=8000000, sideset_base=Pin(0))`) —
+   confirmed this is NOT an onboard NeoPixel. No push-button of any kind
+   listed among the board's features/components.
+
+3. github.com/richteel/Waveshare-RP2040-LCD-0.96 — third-party
+   CircuitPython sample code repo specifically for this exact board.
+   Independently confirms the identical pin map: "GP8 - LCD_DC", "GP9 -
+   LCD_CS", "GP10 - LCD_CLK", "GP11 - LCD_DIN", "GP12 - LCD_RST", "GP25 -
+   LCD_BL". No button, LED, or NeoPixel GPIO definitions anywhere in that
+   repo — the sample code is exclusively about driving the LCD.
+
+4. forums.raspberrypi.com/viewtopic.php?t=324715 — independent forum
+   thread specific to this board. Confirms pinout is "compatible with
+   Raspberry Pi Pico" (many Pico shields/HATs are reusable); confirms an
+   ST7735S-family controller behind a "4-wire SPI" (SPI + separate
+   command/data line) interface; confirms GPIO25 is the PWM-driven
+   backlight-intensity pin (resolving an early doc/demo-code discrepancy
+   where some sample code briefly used GPIO13 instead — the thread
+   concludes the schematic/GPIO25 assignment is what's physically
+   correct); flags an unrelated silkscreen SWDIO/SWDCLK swap (a debug-
+   probe wiring gotcha, not a GPIO-capability issue — no action needed
+   here). No button or onboard-LED mention anywhere in the thread.
+
+5. Standard RP2040 BOOTSEL, as with every other Pico-family board already
+   audited in this repo (rpipico, wiznet_5500_evb_pico,
+   bridgetek_idm2040_43a): BOOTSEL is not a normal GPIO — arduino-pico
+   exposes it as a `BOOTSEL` boolean read via a special QSPI-flash-CS
+   trick, not `digitalRead()` — so it is out of scope for GPIO capability
+   tagging, not a missed button.
+
+PER-PIN REASONING / DECISIONS
+
+GPIO8 (PIN_LCD_DC) — onboard LCD's dedicated SPI data/command select
+  line. Confirmed by sources #1 (this board's own header) and #3
+  (independent richteel sample code, "GP8 - LCD_DC"). Already excluded
+  from pins_arduino.h's own D-alias list by an earlier audit pass.
+  ADDITIONALLY this GPIO carried the vendor's default Wire0 SDA alias
+  (`PIN_WIRE0_SDA (8u)` promoted to a top-level `static const uint8_t SDA
+  = PIN_WIRE0_SDA;`) — a genuine instance of the audit brief's flagged
+  bug class: build_boards.js's unconditional i2c_sda auto-append (fires
+  regardless of any chipGpios override) would otherwise tag this
+  LCD-dedicated pin as i2c_sda on top of full generic digital I/O, even
+  with a chipGpios["8"].capabilities=[] override in place. FIXED at the
+  source: removed `#define PIN_WIRE0_SDA` and the referencing
+  `static const uint8_t SDA = PIN_WIRE0_SDA;` line from this board's
+  pins_arduino.h (this repo's Designer-parsing mirror, not a file
+  consumed by any real firmware-build toolchain — see source #1). Added
+  chipGpios["8"] = empty capabilities + note documenting both the LCD
+  dedication and the removed Wire0 alias.
+
+GPIO9 (PIN_LCD_CS) — onboard LCD's dedicated SPI1 chip-select line. Same
+  confirmation (sources #1, #3) and same bug-class fix as GPIO8: removed
+  `#define PIN_WIRE0_SCL` and `static const uint8_t SCL = PIN_WIRE0_SCL;`.
+  Added chipGpios["9"] = empty capabilities + note.
+
+GPIO10 (PIN_LCD_SCLK) — onboard LCD's dedicated SPI1 clock line,
+  software-remapped from SPI1's silicon-default GPIO14 to GPIO10 (a
+  valid, ordinary RP2040 GPIO-mux remap — SPI1 SCK is selectable among
+  GPIO10/14/26 on this chip; not a discrepancy). Confirmed by sources #1
+  and #3 ("GP10 - LCD_CLK"). Already excluded from pins_arduino.h's own
+  D-alias list. Added chipGpios["10"] = empty capabilities + note, purely
+  to document the dedication (matches the bridgetek_idm2040_43a precedent
+  of recording already-invisible dedicated pins for clarity).
+
+GPIO11 (PIN_LCD_MOSI / DIN) — onboard LCD's dedicated SPI1 data-out line,
+  similarly remapped from SPI1's silicon-default GPIO15. Confirmed by
+  sources #1 and #3 ("GP11 - LCD_DIN"). Same treatment as GPIO10.
+
+GPIO12 (PIN_LCD_RST) — onboard LCD's dedicated hardware reset line.
+  Confirmed by sources #1 and #3 ("GP12 - LCD_RST"). Same treatment as
+  GPIO10. (This GPIO is also SPI1's silicon-default MISO pin per
+  PIN_SPI1_MISO=12, but that role is irrelevant here since RST is driven
+  as a plain digital output, not read via the SPI1 peripheral.)
+
+GPIO13, GPIO14, GPIO15 (PIN_SPI1_SS/SCK/MOSI, SPI1's silicon-*default*
+  pins) — NOT confirmed by any source consulted as physically wired to
+  the LCD or any other onboard peripheral; the LCD's actual SPI1 usage is
+  entirely on the remapped GPIO10/11 (+ manual GPIO8/9/12 GPIO lines), so
+  these three default-SPI1 pins are left unused by the display. An
+  earlier audit pass already removed their D13/D14/D15 aliases from
+  pins_arduino.h (grouped under the same "dedicated to an onboard
+  peripheral" comment as GPIO8-12/25), which was arguably conservative,
+  but no vendor source found in this session confirms or refutes that
+  choice either way. Per this audit's "confirm via real vendor
+  documentation, never guess — report NO CHANGE rather than guess" rule:
+  NOT added to chipGpios (no entry needed anyway, since they're already
+  excluded from the Designer by the missing pins_arduino.h alias, and no
+  new evidence supports changing that prior decision in either
+  direction).
+
+GPIO25 (PIN_LCD_BL) — onboard LCD's dedicated, PWM-dimmable
+  backlight-enable line. Confirmed via source #3 ("GP25 - LCD_BL") and
+  independently via source #4 (Raspberry Pi forum thread resolving a
+  doc/demo-code mismatch in favour of GPIO25 being the correct,
+  PWM-controlled backlight pin). This is NOT a general-purpose status LED
+  (unlike, e.g., bridgetek_idm2040_43a's or rpipico's GPIO25, which are
+  genuinely spare onboard LEDs unrelated to any display) — it is entirely
+  committed to the onboard LCD's backlight circuit, so it is tagged with
+  empty capabilities (no led_high/led_low/pwm_output), matching this
+  repo's dedicated-hardware-pin convention rather than the spare-LED
+  convention. Already excluded from pins_arduino.h's own D-alias list.
+  Added chipGpios["25"] = empty capabilities + note.
+
+Onboard buttons — NONE found. Sources #2, #3, and #4 all independently
+  describe/enumerate this board's features/components without mentioning
+  any push-button (beyond BOOTSEL, out of scope per point 5 above). The
+  audit task brief for this board stated it has "two buttons", but no
+  vendor documentation, third-party sample code, or forum discussion
+  found in this session supports that claim for the RP2040-LCD-0.96
+  specifically (it may be a mix-up with a different Waveshare product,
+  e.g. a Pico-LCD-xxx HAT with onboard A/B/joystick buttons, which is a
+  different, non-integrated add-on board). Per "confirm via real vendor
+  documentation, never guess — report NO CHANGE rather than guess": NO
+  button capability added anywhere on this board.
+
+Onboard NeoPixel/WS2812 — NONE found. Source #2 explicitly confirms the
+  wiki's only WS2812 example targets an external LED, not an onboard one.
+  NO NeoPixel capability added.
+
+SUMMARY
+Created variants/rp2040/rp2040/waveshare_rp2040_lcd_0_96/board.json (new
+file — none existed before). Added chipGpios documentation entries (empty
+capabilities + sourced note) for GPIO8/9/10/11/12/25 (onboard LCD's
+DC/CS/SCLK/MOSI/RST/backlight lines) — GPIO10-12/25 were already excluded
+from pins_arduino.h's own alias declarations by an earlier audit pass, so
+this formalizes/documents rather than newly changes their Designer
+exposure. GPIO8/9 required an additional pins_arduino.h fix: their vendor
+default Wire0 SDA/SCL aliases (PIN_WIRE0_SDA=8, PIN_WIRE0_SCL=9) collided
+with these same GPIOs' dedicated LCD DC/CS role, and build_boards.js's
+unconditional i2c_sda/i2c_scl bus-role auto-append does not respect
+chipGpios capability overrides — so removed `#define PIN_WIRE0_SDA/SCL`
+and the two referencing `static const uint8_t SDA/SCL` lines from this
+board's pins_arduino.h (Wire1 on GPIO6/7 is unaffected and untouched;
+this pins_arduino.h copy is this repo's own Designer-parsing mirror, not
+a file consumed by any real firmware-build toolchain, so the edit does
+not affect real device firmware compiles). No onboard button found
+despite the audit brief's premise of "two buttons" — no vendor/community
+source in this session corroborates that claim for this specific board
+(BOOTSEL/reset only, out of scope, matching precedent). No onboard
+NeoPixel found (the wiki's WS2812 demo targets an external LED). GPIO13/
+14/15 (SPI1's unused silicon-default pins) were investigated but left
+unchanged/undocumented in chipGpios — no vendor confirmation either way,
+matching the "report NO CHANGE rather than guess" rule.

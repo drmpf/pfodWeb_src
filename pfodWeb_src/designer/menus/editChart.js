@@ -310,7 +310,7 @@ const DesignerEditChart = (() => {
 
   /// Build the ordered pin list for the plot pin picker.
   /// Entry 0 = "Not connected"; remaining = ANALOG_INPUT board pins not already used.
-  /// @returns {{ label:string, notes:string|null, name:string|null, codeName:string|null }[]}
+  /// @returns {{ label:string, notes:string|null, busTags:string[], name:string|null, codeName:string|null }[]}
   function _buildPlotPinList(state) {
     const used = _usedPinNamesForPlot(state);
     const list = [{ label: 'Not connected', notes: null, name: null, codeName: null }];
@@ -319,7 +319,7 @@ const DesignerEditChart = (() => {
                         bp.capabilities.supports(PinType.ANALOG_INPUT_SERIAL) && state.connection === 'serial';
       if (!hasAnalog) continue;
       if (used.has(bp.name)) continue;
-      list.push({ label: bp.label, notes: bp.notes || null, name: bp.name, codeName: bp.codeName });
+      list.push({ label: bp.label, notes: bp.notes || null, busTags: bp.capabilities.busTags(), name: bp.name, codeName: bp.codeName });
     }
     return list;
   }
@@ -339,7 +339,10 @@ const DesignerEditChart = (() => {
     let out = '{?Qps`' + currentIdx + '~' + DESIGNER_PROMPT_FMT;
     out += 'Select analog input pin\nfor Plot ' + (n + 1);
     for (const entry of pinList) {
-      const optLabel = entry.notes ? entry.label + '\n<-2>' + entry.notes : entry.label;
+      const busTagsStr = entry.busTags && entry.busTags.length ? entry.busTags.join(', ') : null;
+      let subtitle = entry.notes;
+      if (busTagsStr) subtitle = subtitle ? subtitle + ' (' + busTagsStr + ')' : busTagsStr;
+      const optLabel = subtitle ? entry.label + '\n<-2>' + subtitle : entry.label;
       out += '|' + optLabel;
     }
     out += '}';
@@ -364,6 +367,27 @@ const DesignerEditChart = (() => {
     }
     state.save();
     return PFOD_EMPTY;   // back-nav re-requests the plot editor with updated pin shown
+  }
+
+  /// Boards with zero routable pins (Unlisted Board, and any future
+  /// target that isn't "Minimal C Code") have no real list for the
+  /// picker to offer, but their generated code is still a normal
+  /// Arduino/C++ sketch, so the user may still want the plot's pin
+  /// code emitted with a `?` placeholder to fill in by hand.  See
+  /// editMenuItemPin.js's _togglePlaceholder for the item-pin analogue.
+  function _togglePlotPlaceholder(state) {
+    const plot = _activePlot(state);
+    if (!plot) return PFOD_EMPTY;
+    if (plot.pin && plot.pin.name === PLACEHOLDER_PIN_NAME) {
+      plot.pin = null;
+    } else {
+      plot.pin = { name: PLACEHOLDER_PIN_NAME, codeName: PLACEHOLDER_PIN_NAME, type: PinType.ANALOG_INPUT };
+    }
+    state.save();
+    // A plain button click, not a select-list submit — no implicit
+    // pfod back-navigation to rely on, so refresh in place ourselves
+    // (matches the Qa/Qs toggle handlers below).
+    return _renderPlotUpdate(state);
   }
 
   // ── Per-plot editor body ─────────────────────────────────────────────
@@ -397,8 +421,41 @@ const DesignerEditChart = (() => {
            '<-2>Currently (' + plot.dataRangeMin + ' to ' + plot.dataRangeMax + ')';
 
     // Pin picker — Java: <-1>slot, text + </-1> + hint.
-    const pinText = plot.pin ? 'Connected to pin ' + plot.pin.name : 'Not connected to an I/O pin';
-    out += '|Qp<-1>' + DESIGNER_MENU_FMT + '~' + pinText + '\n<-3><b><y>Click here to change';
+    // Targets with no routable pins fall into two cases:
+    //  - Minimal C Code has no Arduino pin API at all — disable the row.
+    //  - Any other no-pin target (e.g. Unlisted Board) still generates a
+    //    normal Arduino/C++ sketch, so offer a `?` placeholder toggle
+    //    instead — see _togglePlotPlaceholder.
+    // Mirrors editMenuItem.js's itemHasPin handling.
+    const hasPins        = state.board.pins.length > 0;
+    const isPlaceholder  = plot.pin && plot.pin.name === PLACEHOLDER_PIN_NAME;
+    const canPlaceholder = !hasPins && state.board.family !== 'ccode';
+    let pinText, pinFmt, pinHint;
+    if (hasPins) {
+      pinText = plot.pin ? 'Connected to pin ' + plot.pin.name : 'Not connected to an I/O pin';
+      pinFmt  = DESIGNER_MENU_FMT;
+      pinHint = '<b><y>Click here to change';
+    } else if (canPlaceholder) {
+      pinFmt = DESIGNER_MENU_FMT;
+      if (isPlaceholder) {
+        pinText = DesignerGenerateCode.chartPlotPinName(item.autoCmd, plotNum) + ' = ?';
+        pinHint = '<b><y>Click here to remove placeholder';
+      } else {
+        pinText = 'No I/O pins defined';
+        // Middle line reverts to plain (non-italic, default colour) so
+        // the actual generated variable name reads clearly against the
+        // yellow-italic instructional text around it.
+        pinHint = '<y><i>Click here to add</i></y>\n' +
+                  DesignerGenerateCode.chartPlotPinName(item.autoCmd, plotNum) + ' = ?\n' +
+                  '<y><i>placeholder in generated code';
+      }
+    } else {
+      pinText = 'No I/O pins defined';
+      pinFmt  = DESIGNER_DISABLED_FMT;
+      pinHint = null;
+    }
+    out += '|Qp<-1>' + pinFmt + '~' + pinText;
+    if (pinHint) out += '\n<-3>' + pinHint;
 
     // Auto-scale — Java: <-2>text</-2>\n<-3><b><y>hint.
     out += '|Qa' + DESIGNER_MENU_FMT + '~<-2>Plot is ' + (plot.autoScale ? 'Auto' : 'Fixed') +
@@ -618,6 +675,9 @@ const DesignerEditChart = (() => {
     if (sub === 'p') {
       if (rawCmd[depth + 2] === 's') {
         return _applyPlotPinPick(state, rawCmd, depth + 3);
+      }
+      if (state.board.pins.length === 0 && state.board.family !== 'ccode') {
+        return _togglePlotPlaceholder(state);
       }
       return { pfod: _renderPlotPinPicker(state), skipSave: true };
     }

@@ -36,8 +36,8 @@
 // Onboard  QMI8658 IMU
 #define QMI_INT1 8
 
-static const uint8_t SDA = 47;
-static const uint8_t SCL = 48;
+// pfodWeb NOTE: SDA/SCL not declared — shared with the onboard
+// touch/RTC/IMU chips, not a general expansion port (see board.json).
 // UART0 pins
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;

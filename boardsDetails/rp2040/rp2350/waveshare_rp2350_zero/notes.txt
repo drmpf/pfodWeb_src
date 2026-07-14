@@ -1,0 +1,79 @@
+Board: waveshare_rp2350_zero (chip: rp2350) — Waveshare RP2350-Zero
+Audit date: 2026-07-13
+
+SOURCES CONSULTED
+- pfodWeb source: variants/rp2040/rp2350/waveshare_rp2350_zero/pins_arduino.h (full file + ASCII
+  pinout diagram comment) — declares only PIN_NEOPIXEL (16u); no PIN_LED, no button alias.
+  Header comment cites https://www.waveshare.com/wiki/RP2350-Zero and the RP2350_Zero.pdf datasheet.
+  Includes ../generic_full/common.h for the blanket D0-D29 fallback (30-pin RP2350A package,
+  PICO_RP2350A defined).
+- pfodWeb source: variants/rp2040/rp2350/board.json (chip-level defaults, chipGpios: {} by design).
+- pfodWeb source: variants/rp2040/rp2350/generic_full/common.h — confirms LED_BUILTIN is only
+  defined #ifdef PIN_LED, which this board's pins_arduino.h never defines; no other
+  button/LED-related aliases present.
+- Precedent read: variants/rp2040/rp2040/waveshare_rp2040_zero/board.json (RP2040 sibling, already
+  confirmed this session) — identical pins_arduino.h pattern (PIN_NEOPIXEL (16u), no PIN_LED, no
+  button alias), identical "Zero" form factor. Verified this RP2350 board's own GPIO number
+  independently rather than assuming — it also resolves to GPIO16.
+- Precedent read: variants/rp2040/rp2040/rpipico/board.json — BOOTSEL/BOOT out-of-scope rationale
+  reused here.
+- WebSearch "Waveshare RP2350-Zero GPIO16 WS2812 NeoPixel pinout" — confirms GPIO16 is the WS2812
+  RGB LED data pin, corroborated across multiple independent result snippets (Waveshare wiki,
+  TinyGo docs, CircuitPython board page, Zephyr docs).
+- WebSearch "Waveshare RP2350-Zero BOOT button no separate LED wiki" — Waveshare wiki summary:
+  "The RP2350-Zero has a BOOT button that you press when resetting to enter download mode, a RUN
+  reset button, and a WS2812 cool RGB LED." Confirms only one onboard LED (the WS2812) and only
+  BOOT + RESET/RUN buttons.
+- https://www.waveshare.com/wiki/RP2350-Zero — direct WebFetch blocked with HTTP 403 (same as the
+  RP2040-Zero sibling audit); relied on WebSearch snippets instead, cross-checked against two
+  independent secondary sources below.
+- https://docs.zephyrproject.org/latest/boards/waveshare/rp2350_zero/doc/index.html (WebFetch) —
+  "The board features a WS2812 RGB LED... pio node configured for ws2812... BOOT button used to
+  enter UF2 flashing mode... RESET button pressed/released while BOOT is held to trigger a reset
+  sequence." Explicitly: "no indication of the presence of a separate plain or standard
+  (non-addressable) LED on this board — only the WS2812 RGB LED is documented."
+- https://circuitpython.org/board/waveshare_rp2350_zero/ (WebFetch) — general board specs only
+  ("29 x multi-function GPIO pins... 24 x controllable PWM channels"), no explicit NEOPIXEL/LED/
+  BUTTON pin table on that particular page; used as a secondary corroboration attempt, not a primary
+  source for the GPIO16 assignment (that came from WebSearch + Zephyr docs + this board's own
+  pins_arduino.h, which already hardcodes PIN_NEOPIXEL (16u)).
+- TinyGo board definition (found via WebSearch, waveshare-rp2040-zero page) — NEOPIXEL = WS2812 =
+  GPIO16 on the RP2040 sibling; used only as corroborating context for the "Zero" form-factor
+  pattern, not as a primary RP2350-Zero source.
+
+PER-PIN REASONING
+- GPIO16 (PIN_NEOPIXEL): Onboard WS2812 addressable RGB LED. Confirmed via this board's own
+  pins_arduino.h (#define PIN_NEOPIXEL (16u)), WebSearch results referencing the Waveshare wiki/
+  product page and TinyGo, and Zephyr Project's official board documentation. This is the board's
+  ONLY onboard visual indicator — Zephyr docs explicitly state no separate plain LED is documented,
+  consistent with the already-confirmed RP2040-Zero sibling (same "Zero" form-factor pattern, same
+  GPIO16 NeoPixel pin). Tagged output-only: "capabilities": ["digital_output", "led_neopixel"] —
+  matches the established RP2040-Zero precedent
+  (variants/rp2040/rp2040/waveshare_rp2040_zero/board.json GPIO16) and the repo-wide
+  vccgnd_yd_rp2040/board.json GPIO23 NeoPixel-tagging convention. pwm_output omitted since WS2812 is
+  a bit-serial protocol data line, not a PWM-dimmable output. digital_input dropped since the pin is
+  write-only in normal NeoPixel use.
+- No PIN_LED alias exists anywhere in this board's pins_arduino.h — nothing to tag as
+  led_high/led_low. generic_full/common.h's LED_BUILTIN is conditional on PIN_LED being defined,
+  which it is not here.
+- No collision check needed for GPIO16 against SPI/Wire/Serial bus pins — this board's SPI0
+  (2,3,4,5), SPI1 (12,13,14,15), Wire0 (4,5), Wire1 (26,27), Serial1 (0,1), and Serial2 (8,9)
+  definitions never touch GPIO16, so no build_boards.js bus-auto-append collision exists on the
+  NeoPixel pin (unlike the adafruit_feather_scorpio precedent case).
+- BOOT button: standard RP2350 bootloader-entry button, out of scope per task instructions (same
+  BOOTSEL rationale already established in rpipico/board.json and reused for the RP2040-Zero
+  sibling — not a normal GPIO digitalRead(), and this board's pins_arduino.h declares no alias for
+  it anyway).
+- RESET/RUN button: hardware reset, not represented by any pins_arduino.h alias — no GPIO to tag.
+- No other user-accessible buttons found in any consulted source.
+- inputOnlyGpios / pinNotes / pwm / dac / adc all left at chip-level defaults (12-bit ADC, 8-bit
+  analogWrite, no DAC) — this board's pins_arduino.h declares no board-specific analog aliases
+  beyond ../generic_full/common.h.
+
+SUMMARY
+Created variants/rp2040/rp2350/waveshare_rp2350_zero/board.json (full per-board override file,
+copied verbatim from the chip-level variants/rp2040/rp2350/board.json defaults) tagging GPIO16
+(PIN_NEOPIXEL) as ["digital_output","led_neopixel"] — the board's sole onboard indicator, with no
+separate plain LED and no user button beyond the out-of-scope BOOT/RESET pair, matching its
+already-confirmed RP2040-Zero sibling exactly. JSON validity verified via manual `//`-comment
+stripping + JSON.parse (no build script executed, no require() of build_boards.js).

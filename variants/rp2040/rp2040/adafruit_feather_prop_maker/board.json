@@ -1,0 +1,275 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's only button (BOOT, GPIO7) is an ordinary GPIO wired to
+  // a switch to GND with the RP2040's internal pull-up enabled by
+  // software — not a dedicated/capacitive-only pin — so it is handled
+  // entirely via the chipGpios "button" tag below, not via
+  // inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Adafruit "RP2040 Prop-Maker Feather with I2S Audio Amplifier"
+  // (product 5768) — a Feather RP2040 combined with the functionality of
+  // the Prop-Maker FeatherWing, purpose-built for animatronics/prop
+  // building: onboard MAX98357 3W Class-D I2S audio amplifier, onboard
+  // LIS3DH accelerometer (STEMMA QT / shared I2C bus, address 0x18),
+  // screw-terminal breakouts for an external NeoPixel strip and an
+  // external servo, a spare digital I/O terminal ("Btn"), and a
+  // software-gated 5V external-power rail feeding those terminals plus
+  // the servo header and the audio amp. It also carries its own small
+  // onboard status LED (D13) and onboard single status NeoPixel (GPIO4),
+  // separate from the external-NeoPixel-strip terminal (GPIO21).
+  //
+  // Sources consulted (WebSearch/WebFetch, 2026-07-13):
+  //  1. https://learn.adafruit.com/adafruit-rp2040-prop-maker-feather/pinouts
+  //     (official Adafruit guide, authoritative Arduino/CircuitPython pin
+  //     reference) — quotes verbatim:
+  //       "connected to GPIO4 ... powered by the 3.3V power supply ...
+  //       In CircuitPython, the LED is used to indicate the runtime
+  //       status" (status NeoPixel).
+  //       "Above the USB C connector is the D13 LED ... controllable in
+  //       CircuitPython code using board.LED, and in Arduino as PIN_LED."
+  //       "[BOOT button] located on GPIO7 ... To enter the bootloader,
+  //       press and hold Boot and then power up the board" (board.BUTTON
+  //       in CircuitPython).
+  //       "Btn - Extra digital input or output pin. It can be used for
+  //       button input or digital output, for activation or a simple
+  //       LED" (GPIO19, EXTERNAL_BUTTON) — explicitly bidirectional,
+  //       general-purpose, NOT itself a button on this board's own PCB.
+  //       "Sig - Servo motor output pin. It located on GPIO20 ... EXTERNAL_SERVO"
+  //       — no hardware (level-shifter/buffer) mentioned restricting this
+  //       pin's direction.
+  //       "Neo - The external NeoPixel data output pin. Connect your
+  //       NeoPixel strip's data input pin to this connection ... GPIO21
+  //       ... EXTERNAL_NEOPIXELS" — page was explicitly re-checked for
+  //       the word "level" (level shift/level-up) and NONE was found
+  //       anywhere on this board's own pinouts page for the Neo/Sig/Btn
+  //       terminal pins (unlike the separate, standalone "Prop-Maker
+  //       FeatherWing" companion product, whose own guide DOES describe
+  //       a "5V level up-shifter" on its NeoPixel port — that shifter is
+  //       NOT confirmed present on this integrated Feather board, so
+  //       that inference was discarded).
+  //       "5V - 5V power for the external NeoPixels ... connected to a
+  //       separate control transistor that is controlled by the External
+  //       Power Pin ... disabled by default" (confirms the 5V RAIL to the
+  //       Neo/Servo terminals is switched, not the GPIO signal lines
+  //       themselves).
+  //       I2S amp: "communicates with the RP2040 via three pins" - Data
+  //       GPIO16 (I2S_DATA), Clock GPIO17 (I2S_BIT_CLOCK), Word Select
+  //       GPIO18 (I2S_WORD_SELECT) - "requires External Power Pin enabled
+  //       for operation" i.e. wired through the same switched rail.
+  //       "[accelerometer] interrupt pin is connected to GPIO22 ...
+  //       ACCELEROMETER_INTERRUPT ... Part of LIS3DH accelerometer on I2C
+  //       address 0x18."
+  //       "[External Power Pin] controls the External Power Pin ...
+  //       connected to a separate control transistor for the 5V terminal
+  //       block pin, servo header and the I2S amplifier ... disabled by
+  //       default, so you will need to set the pin high" (GPIO23,
+  //       EXTERNAL_POWER).
+  //  2. https://learn.adafruit.com/adafruit-rp2040-prop-maker-feather/overview
+  //     — confirms onboard LIS3DH accelerometer with tap detection, and
+  //     "On-board STEMMA QT connector that lets you quickly connect any
+  //     Qwiic, STEMMA QT or Grove I2C devices with no soldering!" i.e.
+  //     the accelerometer shares the same user-facing STEMMA QT I2C bus
+  //     (GPIO2/3, this board's Wire0), not an internally-isolated bus —
+  //     matching this repo's adafruit_macropad2040 STEMMA-QT-with-onboard-
+  //     sensor precedent (left at full default capability, no exclusion).
+  //  3. https://github.com/adafruit/circuitpython
+  //     ports/raspberrypi/boards/adafruit_feather_rp2040_prop_maker/pins.c
+  //     — confirms every alias-to-GPIO mapping used above verbatim (LED->
+  //     GPIO13, NEOPIXEL->GPIO4, BUTTON->GPIO7, SDA->GPIO2, SCL->GPIO3,
+  //     I2S_DATA->GPIO16, I2S_BIT_CLOCK->GPIO17, I2S_WORD_SELECT->GPIO18,
+  //     EXTERNAL_BUTTON->GPIO19, EXTERNAL_SERVO->GPIO20,
+  //     EXTERNAL_NEOPIXELS->GPIO21, ACCELEROMETER_INTERRUPT->GPIO22,
+  //     EXTERNAL_POWER->GPIO23) — matches this board's own pins_arduino.h
+  //     exactly, pin-for-pin.
+  //  4. https://docs.zephyrproject.org/latest/boards/adafruit/feather_propmaker_rp2040/doc/index.html
+  //     and raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+  //     boards/adafruit/feather_propmaker_rp2040/adafruit_feather_propmaker_rp2040.dts
+  //     — official upstream Zephyr board port, independently
+  //     cross-referencing the same hardware. Quotes verbatim:
+  //       red_led { gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>; label = "Red LED"; };
+  //       onboard_button { gpios = <&gpio0 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; ... };
+  //       onboard_ws2812 { gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>; chain-length = <1>; };
+  //       external_ws2812 { gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>; chain-length = <4>; }
+  //         (a usage-example overlay node, not evidence of dedicated
+  //         silicon — same reasoning as the adafruit_feather_scorpio
+  //         precedent's external-ws2812 example node on GPIO16).
+  //       servo-power-enable { gpio-hog; gpios = <23 GPIO_ACTIVE_HIGH>;
+  //         output-high; } — Zephyr's own board port defaults GPIO23
+  //         high at boot (its own convenience default), independently
+  //         confirming GPIO23 is the dedicated external-power-rail
+  //         enable line, distinct from source #1's Arduino/CircuitPython
+  //         "disabled by default" software convention.
+  //     This independently CONFIRMS: D13 LED is active-high; BOOT/GPIO7
+  //     button is active-low with the RP2040's internal pull-up enabled;
+  //     onboard status NeoPixel is GPIO4; external NeoPixel terminal is
+  //     GPIO21; GPIO23 is the dedicated external-power-enable control
+  //     line.
+  //
+  // Per-pin findings:
+  //
+  //   GPIO4 (PIN_NEOPIXEL) — onboard single status NeoPixel (WS2812),
+  //     output-only data line, distinct from the external-strip terminal
+  //     (GPIO21). Confirmed by sources #1, #3, #4.
+  //     capabilities: ["digital_output", "led_neopixel"]
+  //
+  //   GPIO7 (PIN_BUTTON / BOOT) — onboard bootloader-select pushbutton,
+  //     also documented as usable as a general digital input when
+  //     application code is running. Active-low, RP2040 internal pull-up
+  //     enabled (Zephyr GPIO_PULL_UP flag; no external pull-up).
+  //     capabilities: ["digital_input", "digital_output", "pwm_output", "button"]
+  //     Full GPIO capability retained (ordinary GPIO wired to a switch to
+  //     GND), matching the adafruit_feather_scorpio/pimoroni_plasma2040
+  //     GPIO7/GPIO23 BOOT-button precedents.
+  //
+  //   GPIO13 (PIN_LED) — onboard status LED, active-high (confirmed via
+  //     source #4's GPIO_ACTIVE_HIGH flag).
+  //     capabilities: ["digital_output", "pwm_output", "led_high"]
+  //     digital_input dropped to match this repo's established led_high
+  //     precedent (rpipico, adafruit_feather_scorpio); pwm_output kept
+  //     since arduino-pico's analogWrite() works on any RP2040 GPIO. This
+  //     GPIO also doubled as this board's vendor-default (unused)
+  //     PIN_SPI0_SS alias (13u) — no onboard SPI device consumes it (the
+  //     audio amp uses I2S, the accelerometer uses I2C) — fixed 2026-07-13
+  //     by removing that #define from pins_arduino.h, matching the
+  //     adafruit_feather_scorpio precedent for this exact bus-alias-
+  //     contamination bug class.
+  //
+  //   GPIO16 (PIN_I2S_DATA), GPIO17 (PIN_I2S_BIT_CLOCK), GPIO18
+  //     (PIN_I2S_WORD_SELECT) — dedicated onboard MAX98357 I2S audio
+  //     amplifier control lines, not general purpose. Confirmed via
+  //     source #1 ("communicates with the RP2040 via three pins ...
+  //     requires External Power Pin enabled for operation") and source
+  //     #3 (pins.c aliases). capabilities: [] for all three, matching
+  //     this repo's adafruit_macropad2040 PIN_SPEAKER/PIN_SPEAKER_ENABLE
+  //     dedicated-onboard-peripheral exclusion precedent.
+  //
+  //   GPIO19 (PIN_EXTERNAL_BUTTON, "Btn" terminal) — a spare,
+  //     general-purpose RP2040 GPIO routed to a screw-terminal/pad for
+  //     the USER's own external button or LED, not a button/LED on this
+  //     board's own PCB. Confirmed explicitly bidirectional via source #1
+  //     verbatim: "Extra digital input or output pin. It can be used for
+  //     button input or digital output, for activation or a simple LED."
+  //     capabilities: ["digital_input", "digital_output", "pwm_output"]
+  //     No "button"/"led_*" tag applied (this repo's tagging vocabulary
+  //     reserves those for the board's OWN onboard hardware, not a bare
+  //     GPIO the user wires their own external component to). This
+  //     board's own pins_arduino.h declares no D19 static-const alias for
+  //     this GPIO (bespoke pin set, not ../generic_full/common.h), so
+  //     this chipGpios entry is required to restore it to general-purpose
+  //     availability rather than leaving it silently absent.
+  //
+  //   GPIO20 (PIN_EXTERNAL_SERVO, "Sig" terminal) — a bare RP2040 GPIO
+  //     routed to the servo header's signal pin, powered by the switched
+  //     5V "V+" rail (via GPIO23) but with no separate buffer/level-
+  //     shifter documented on the signal line itself. Source #1 labels it
+  //     "Servo motor output pin" (use-case framing) but documents no
+  //     hardware restricting its direction — matching this repo's
+  //     established pimoroni_plasma2040 GPIO14 (CLK) precedent, where a
+  //     similarly use-case-labeled pin ("CLK for APA102 only") was still
+  //     confirmed general-purpose and given full capability.
+  //     capabilities: ["digital_input", "digital_output", "pwm_output"]
+  //     No D20 static-const alias exists in this board's own
+  //     pins_arduino.h; this chipGpios entry restores general-purpose
+  //     availability, matching the GPIO19 treatment above.
+  //
+  //   GPIO21 (PIN_EXTERNAL_NEOPIXELS, "Neo" terminal) — the external
+  //     NeoPixel-strip data-output terminal, distinct from this board's
+  //     own onboard status NeoPixel (GPIO4). Source #1 labels it "The
+  //     external NeoPixel data output pin" but — after this board's own
+  //     pinouts page was explicitly checked for "level shift"/"level up"
+  //     wording and none was found — no level-shifter or other
+  //     direction-restricting hardware is confirmed present on this
+  //     signal line (unlike the separate standalone "Prop-Maker
+  //     FeatherWing" companion product's own guide, which does describe
+  //     one on its NeoPixel port; that inference was discarded as
+  //     inapplicable to this specific integrated board absent direct
+  //     confirmation). Matching this repo's established
+  //     adafruit_feather_scorpio (GPIO16-23) and pimoroni_plasma2040
+  //     (GPIO15/DAT) precedents that an external-strip-driver output
+  //     terminal is ordinary general-purpose GPIO unless hardware is
+  //     specifically confirmed to restrict it:
+  //     capabilities: ["digital_input", "digital_output", "pwm_output"]
+  //     No led_neopixel tag applied — per this repo's explicit
+  //     pimoroni_plasma2040 policy, that tag is reserved for a board's
+  //     OWN onboard addressable LED (GPIO4 here), not an external-strip
+  //     terminal the user wires their own hardware to. No D21
+  //     static-const alias exists in this board's own pins_arduino.h;
+  //     this chipGpios entry restores general-purpose availability,
+  //     matching the GPIO19/GPIO20 treatment above.
+  //
+  //   GPIO22 (PIN_ACCELEROMETER_INTERRUPT) — dedicated interrupt line
+  //     from the onboard LIS3DH accelerometer (I2C address 0x18, on the
+  //     shared STEMMA QT bus), not general purpose. Confirmed via source
+  //     #1 ("interrupt pin is connected to GPIO22 ... Part of LIS3DH
+  //     accelerometer") and source #3 (pins.c alias). capabilities: [],
+  //     matching this repo's adafruit_macropad2040 dedicated-peripheral-
+  //     signal-line exclusion precedent (OLED_CS/RST/DC).
+  //
+  //   GPIO23 (PIN_EXTERNAL_POWER) — dedicated control line for the
+  //     onboard transistor that switches the 5V rail feeding the Neo/Sig
+  //     terminal blocks, servo header, and I2S amplifier; not general
+  //     purpose. Confirmed via source #1 ("connected to a separate
+  //     control transistor for the 5V terminal block pin, servo header
+  //     and the I2S amplifier ... disabled by default") and independently
+  //     via source #4's Zephyr gpio-hog node. capabilities: [], matching
+  //     the GPIO16-18/GPIO22 dedicated-onboard-control-line exclusion
+  //     reasoning above.
+  //
+  //   GPIO2/GPIO3 (Wire0 SDA/SCL) — NO CHANGE. Genuine user-facing STEMMA
+  //     QT I2C expansion connector that happens to also carry the onboard
+  //     LIS3DH accelerometer as one bus participant (source #2: "On-board
+  //     STEMMA QT connector that lets you quickly connect any Qwiic,
+  //     STEMMA QT or Grove I2C devices"), not an internally-isolated bus
+  //     — matching this repo's adafruit_macropad2040 STEMMA-QT precedent.
+  //     Left at full chip-level default capability.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_feather_prop_maker/notes.txt
+  "chipGpios": {
+    "4":  { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL - onboard single status NeoPixel (WS2812), output-only data line, distinct from the external-strip terminal on GPIO21. Confirmed via learn.adafruit.com/adafruit-rp2040-prop-maker-feather/pinouts (\"connected to GPIO4 ... In CircuitPython, the LED is used to indicate the runtime status\"), CircuitPython pins.c (NEOPIXEL -> pin_GPIO4), and Zephyr's adafruit_feather_propmaker_rp2040.dts onboard_ws2812 node (gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>)." },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON / BOOT - onboard bootloader-select pushbutton, also usable as a general input when application code is running. Active-low with the RP2040's internal pull-up enabled. Confirmed via Zephyr's adafruit_feather_propmaker_rp2040.dts onboard_button node (gpios = <&gpio0 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>) and Adafruit's own pinouts guide (\"To enter the bootloader, press and hold Boot and then power up the board\"; board.BUTTON in CircuitPython). Full digital_input/digital_output/pwm_output retained, matching the adafruit_feather_scorpio GPIO7 / pimoroni_plasma2040 GPIO23 BOOT-button precedents." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED - onboard status LED above the USB-C connector, active-high. Confirmed via Zephyr's adafruit_feather_propmaker_rp2040.dts red_led node (gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>), consistent with Adafruit's own pinouts guide (board.LED / PIN_LED). digital_input dropped to match this repo's established led_high precedent (rpipico, adafruit_feather_scorpio); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO. This GPIO was also the vendor's default (unused) PIN_SPI0_SS alias, which would have contaminated this confirmed LED tag with a spurious spi_ss capability - fixed 2026-07-13 by removing that alias from pins_arduino.h (no onboard SPI device consumes it - the audio amp uses I2S, the accelerometer uses I2C), matching the adafruit_feather_scorpio precedent for this exact bug class." },
+    "16": { "capabilities": [], "note": "PIN_I2S_DATA - dedicated data line to the onboard MAX98357 I2S audio amplifier, not general purpose. Confirmed via learn.adafruit.com/adafruit-rp2040-prop-maker-feather/pinouts (\"communicates with the RP2040 via three pins\") and CircuitPython pins.c (I2S_DATA -> pin_GPIO16)." },
+    "17": { "capabilities": [], "note": "PIN_I2S_BIT_CLOCK - dedicated bit-clock line to the onboard MAX98357 I2S audio amplifier, not general purpose. See GPIO16 note above for sourcing." },
+    "18": { "capabilities": [], "note": "PIN_I2S_WORD_SELECT - dedicated word-select (LR clock) line to the onboard MAX98357 I2S audio amplifier, not general purpose. See GPIO16 note above for sourcing." },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_EXTERNAL_BUTTON - spare general-purpose GPIO routed to the \"Btn\" screw-terminal/pad for the user's OWN external button or LED, not hardware on this board's own PCB. Confirmed explicitly bidirectional via learn.adafruit.com/adafruit-rp2040-prop-maker-feather/pinouts: \"Extra digital input or output pin. It can be used for button input or digital output, for activation or a simple LED.\" No button/led tag applied (reserved for the board's own onboard hardware, not a user-wired external component). No static-const alias exists for this GPIO in this board's bespoke pins_arduino.h; this entry restores general-purpose availability." },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_EXTERNAL_SERVO - bare RP2040 GPIO routed to the servo header's \"Sig\" pin. Adafruit's guide labels it \"Servo motor output pin\" (use-case framing) but documents no hardware restricting its direction (only the servo's separate V+ power rail is switched, via GPIO23) - matching this repo's pimoroni_plasma2040 GPIO14 (CLK) precedent, where a similarly use-case-labeled pin was still confirmed general-purpose. No static-const alias exists for this GPIO in this board's bespoke pins_arduino.h; this entry restores general-purpose availability." },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_EXTERNAL_NEOPIXELS - the external NeoPixel-strip data-output terminal (\"Neo\"), distinct from this board's own onboard status NeoPixel on GPIO4. Adafruit's guide labels it \"The external NeoPixel data output pin\" but this board's own pinouts page was checked explicitly for level-shifter wording and none was found (unlike the separate standalone \"Prop-Maker FeatherWing\" companion product, whose own guide does describe one - that inference does not carry over here without direct confirmation). Matching this repo's adafruit_feather_scorpio (GPIO16-23) and pimoroni_plasma2040 (GPIO15/DAT) precedents, an external-strip-driver terminal with no confirmed direction-restricting hardware is left general-purpose. No led_neopixel tag applied - per this repo's pimoroni_plasma2040 policy, that tag is reserved for a board's own onboard addressable LED, not an external-strip terminal. No static-const alias exists for this GPIO in this board's bespoke pins_arduino.h; this entry restores general-purpose availability." },
+    "22": { "capabilities": [], "note": "PIN_ACCELEROMETER_INTERRUPT - dedicated interrupt line from the onboard LIS3DH accelerometer (I2C address 0x18, on the shared STEMMA QT bus), not general purpose. Confirmed via learn.adafruit.com/adafruit-rp2040-prop-maker-feather/pinouts (\"interrupt pin is connected to GPIO22 ... Part of LIS3DH accelerometer\") and CircuitPython pins.c (ACCELEROMETER_INTERRUPT -> pin_GPIO22)." },
+    "23": { "capabilities": [], "note": "PIN_EXTERNAL_POWER - dedicated control line for the onboard transistor that switches the 5V rail feeding the Neo/Sig terminal blocks, servo header, and I2S amplifier; not general purpose. Confirmed via learn.adafruit.com/adafruit-rp2040-prop-maker-feather/pinouts (\"connected to a separate control transistor for the 5V terminal block pin, servo header and the I2S amplifier ... disabled by default\") and independently via Zephyr's adafruit_feather_propmaker_rp2040.dts servo-power-enable gpio-hog node." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares A0-A3
+  // (GPIO26-29) directly, no onboard hardware consumes any of them, and
+  // this audit found no reason to override the chip-level default.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

@@ -41,7 +41,8 @@ static const uint8_t D8 = 19;
 static const uint8_t D9 = 20;
 static const uint8_t D10 = 18;
 
-static const uint8_t WIFI_ENABLE = 3;
-static const uint8_t WIFI_ANT_CONFIG = 14;
+// pfodWeb NOTE: WIFI_ENABLE (GPIO3) and WIFI_ANT_CONFIG (GPIO14)
+// deliberately NOT declared - dedicated onboard WiFi antenna switch
+// control lines, not general-purpose.
 
 #endif /* Pins_Arduino_h */

@@ -1,0 +1,282 @@
+Board: melopero_shake_rp2040 ("Melopero Shake RP2040", Melopero Electronics,
+melopero.com — Italian vendor) — chip family: rp2040
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel audit)
+
+pins_arduino.h identity pins (this board's own file, before this audit's edit,
+declared only these macros, then fell through to ../generic/common.h for the
+D0-D31 blanket fallback and LED_BUILTIN):
+  #define PIN_LED        (25u)
+  #define PIN_SERIAL1_TX (0u)
+  #define PIN_SERIAL1_RX (1u)
+  #define PIN_SERIAL2_TX (8u)
+  #define PIN_SERIAL2_RX (9u)
+  #define PIN_SPI0_MISO  (20u)
+  #define PIN_SPI0_MOSI  (19u)
+  #define PIN_SPI0_SCK   (18u)
+  #define PIN_SPI0_SS    (1u)
+  #define PIN_SPI1_MISO  (12u)
+  #define PIN_SPI1_MOSI  (11u)
+  #define PIN_SPI1_SCK   (10u)
+  #define PIN_SPI1_SS    (13u)   <- REMOVED this audit, see below
+  #define PIN_WIRE0_SDA  (8u)
+  #define PIN_WIRE0_SCL  (9u)
+  #define PIN_WIRE1_SDA  (2u)
+  #define PIN_WIRE1_SCL  (3u)
+This file's SPI0/SPI1/Wire0/Wire1/Serial1/Serial2 values are byte-for-byte
+identical to the plain Raspberry Pi Pico's generic pins_arduino.h EXCEPT for
+Serial2 (8/9 vs Pico's not-pinned-out 31/31) and PIN_LED being unchanged at
+25u (also identical to plain Pico). This board's own pins_arduino.h declares
+no PIN_BUTTON, PIN_NEOPIXEL, or PIN_BATTERY alias — the real green user LED
+(GPIO13), the NeoPixel (GPIO16), and the battery monitor (GPIO17) were all
+identified from vendor documentation and official third-party board ports
+below, not from this board's own pins_arduino.h PIN_LED macro (which turned
+out to be a stale/un-updated boilerplate value — see GPIO13/GPIO25 reasoning
+below).
+
+Sources consulted:
+1. https://www.melopero.com/getting_started_with_melopero_shake_rp2040.pdf
+   (official Melopero "Getting started with Melopero Shake RP2040" guide,
+   PDF) — fetched via a text-extraction proxy (r.jina.ai) since the raw PDF
+   is image/vector-heavy (Adobe Illustrator export) and did not extract as
+   plain text through the standard WebFetch tool or this environment's local
+   PDF-to-text pipeline (pdftoppm/poppler-utils not installed here). The
+   proxy-extracted text is consistent with source #7 below (the same spec
+   list also appears on Melopero's product page), giving two independently-
+   fetched copies of the same official wording:
+     "Green user LED on pin 13"
+     "RGB WS2812 LED (aka NeoPixel)"
+     "Orange LED for signaling the charging status"
+     "Battery monitor (it sends an alert when the battery voltage drops at
+     3.4V)"
+     "The battery monitor output is available as a digital signal (HIGH or
+     LOW) on pin GP17" / "Low Battery Monitor: GP17 outputs LOW signal when
+     battery drops to 3.4V"
+     "Qwiic/Stemma QT connector for attaching lots of Melopero, Adafruit and
+     SparkFun sensors"
+     "JST 2-pin connector for attaching the battery"
+     "SWD header for debugging"
+     "Classic Feather pinout for maximum compatibility"
+     Pin-naming-convention note: "13" / "D13" / "13" (MicroPython/
+     CircuitPython/Arduino IDE respectively) for the user LED — i.e. the
+     bullet-list "pin 13" IS the GPIO number, not a physical package-pin
+     number (same convention already established and cross-checked against
+     an official physical/GPIO conversion table in the sibling
+     melopero_cookie_rp2040 audit).
+   The PDF's own tabular pinout section did not extract cleanly through the
+   text-proxy (columns/rows visibly scrambled, e.g. one extraction pass
+   returned a garbled "D13 GP12 TX0 MISO1 SDA0 43" row and mis-paired the
+   NEOPIXEL/BATTERY rows) — NOT relied upon for any conclusion; every GPIO
+   number used in this audit is instead corroborated by at least one of the
+   independent, cleanly-structured machine-readable sources #2/#3 below.
+   No accelerometer/gyroscope/IMU/motion-sensor feature appears anywhere in
+   this document's feature list.
+2. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/raspberrypi/boards/melopero_shake_rp2040/pins.c
+   (official, compiled CircuitPython board port for this exact board,
+   maintained by Adafruit/Scott Shawcroft) — plain-text C source, extracted
+   cleanly. Quoted matching lines:
+     { MP_ROM_QSTR(MP_QSTR_LED), MP_ROM_PTR(&pin_GPIO13) },
+     { MP_ROM_QSTR(MP_QSTR_NEOPIXEL), MP_ROM_PTR(&pin_GPIO16) },
+     { MP_ROM_QSTR(MP_QSTR_BATTERY), MP_ROM_PTR(&pin_GPIO17) },
+   No BUTTON, IMU, ACCEL, GYRO, or INT(errupt)-named alias exists anywhere
+   in the file (explicitly checked by grepping the full pin-alias table for
+   those keywords) — this is strong evidence of no onboard motion sensor and
+   no ordinary-GPIO-exposed pushbutton beyond BOOTSEL/RESET (which are
+   dedicated hardware lines with no GPIO alias, same as every other RP2040
+   board in this repo).
+   mpconfigboard.h (same board dir) additionally confirms bus pin choices:
+   SPI SCK=GPIO18/MOSI=GPIO19/MISO=GPIO20, I2C SDA=GPIO2/SCL=GPIO3 (the
+   Qwiic/Stemma QT bus), UART TX=GPIO0/RX=GPIO1 — all consistent with this
+   board's own pins_arduino.h SPI0/Wire1/Serial1 values. Only ONE SPI bus is
+   defined anywhere in this board's CircuitPython port (no second SPI bus
+   referenced at all) — see GPIO13 bus-collision reasoning below.
+3. https://raw.githubusercontent.com/raspberrypi/pico-sdk/master/src/boards/include/boards/melopero_shake_rp2040.h
+   (official, upstream Raspberry Pi pico-sdk board header — this is the
+   canonical hardware-description header pico-sdk ships for this board,
+   consumed by MicroPython's rp2 port and by any pico-sdk-based firmware;
+   independently cross-checked against a Raspberry Pi Forums thread that
+   separately quoted the same two #define values from this file, confirming
+   the fetch was accurate) — confirms:
+     #define PICO_DEFAULT_LED_PIN 13
+     #define PICO_DEFAULT_WS2812_PIN 16
+   with NO `PICO_DEFAULT_LED_PIN_INVERTED` macro present anywhere in the
+   file. pico-sdk's own convention (seen and relied upon elsewhere in this
+   family of boards) is to define PICO_DEFAULT_LED_PIN_INVERTED (as 1) ONLY
+   on boards whose status LED is wired active-low; its absence here is
+   pico-sdk's own signal that the (default) active-high wiring applies to
+   this board's LED. This file also independently corroborates this board's
+   UART1 TX=8/RX=9, I2C1 SDA=2/SCL=3, and SPI0 SCK=18/MOSI(TX)=19/
+   MISO(RX)=20/CSN=1 pin choices, matching this board's own pins_arduino.h,
+   and documents only ONE SPI bus for this board (no PICO_DEFAULT_SPI1_*
+   defines exist in the file at all) — used as the deciding evidence (along
+   with source #2) that this board's pins_arduino.h PIN_SPI1_* block is an
+   unused/spare Feather-template default, not a real second bus.
+4. https://github.com/melopero (official Melopero GitHub organization, full
+   repository listing fetched — 32 repos enumerated) — CONFIRMS no
+   "Shake"-named repository exists anywhere in the org (contrast with the
+   sibling Cookie board, which has both Melopero_Cookie_RP2040 and
+   Melopero_Cookie_RP2040_Arduino_Library repos). This means there is no
+   board-specific Arduino/MicroPython library to directly quote a
+   digitalWrite()/ledOn() polarity confirmation from for this particular
+   board (unlike the Cookie and Scorpio audits) — see the GPIO13 polarity
+   confidence note below for how this gap was handled. The org's only
+   IMU-adjacent repositories (Melopero_LSM9DS1 / Melopero_LSM9DS1_Arduino_
+   Library) are generic drivers for a separate, standalone LSM9DS1 breakout
+   sensor product Melopero also sells — unrelated to the Shake board itself,
+   and further corroborating (by their absence of any Shake-specific
+   variant/example) that Shake has no onboard IMU.
+5. https://www.melopero.com/shop/development-boards/melopero-shake-rp2040/
+   (official product page) — independently repeats the same feature-list
+   wording as source #1 (fetched separately, cross-checked, identical
+   phrasing), explicitly noting after enumerating all specs: no
+   accelerometer/gyroscope/IMU/motion-sensor feature is listed. Also
+   confirms this is a genuinely different product from Melopero's separate
+   "RP2040 MCU Board, With 1.28inch Round LCD, accelerometer and gyroscope
+   Sensor" listing (a different board entirely, also sold by Melopero, which
+   DOES have an IMU) — ruling out any name-based confusion between the two
+   products.
+6. Zephyr RTOS upstream (zephyrproject-rtos/zephyr) was checked for a
+   melopero/shake_rp2040 board port (as was successfully used for
+   independent LED-polarity confirmation in the adafruit_feather_scorpio
+   audit) — no such port exists (404 on the expected path, and a targeted
+   web search confirms no Zephyr board support for this board). This is the
+   reason GPIO13's LED polarity below is stated as "inferred" rather than
+   "directly source-quoted" — no devicetree or library source exists for
+   this specific board to literally show a GPIO_ACTIVE_HIGH/LOW flag or a
+   digitalWrite(13, HIGH) call.
+
+Per-pin reasoning:
+
+GPIO13 (vendor-documented "Green user LED", pico-sdk PICO_DEFAULT_LED_PIN):
+  Onboard single green status LED.
+  capabilities: ["digital_output", "pwm_output", "led_high"]
+  Confirmed as THE LED pin by three independent, cleanly-extracted official
+  sources: Melopero's own spec sheet/getting-started guide ("Green user LED
+  on pin 13" — sources #1 and #5), Adafruit's compiled CircuitPython board
+  port (MP_QSTR_LED -> pin_GPIO13, source #2), and the upstream pico-sdk
+  board header (PICO_DEFAULT_LED_PIN 13, source #3). This triple agreement
+  is treated as conclusive on WHICH pin is the LED.
+  Polarity (active-high) confidence note: no dedicated Arduino/MicroPython
+  library or Zephyr devicetree port exists for this specific board (source
+  #4/#6) to quote a literal "digitalWrite(13, HIGH) turns the LED on"
+  statement from, unlike the Cookie and Scorpio sibling-board audits in this
+  same family. Active-high is inferred from two converging, non-guessed
+  signals instead: (a) pico-sdk's board header (source #3) defines NO
+  PICO_DEFAULT_LED_PIN_INVERTED macro — a macro pico-sdk's own build system
+  specifically checks and requires boards to define (as 1) when their LED is
+  wired active-low, and does define on boards that need it, so its absence
+  here is a real (if indirect) signal from the canonical hardware-description
+  source, not silence-as-guess; (b) this repo's own RP2040-family audit
+  history is unanimous so far — every board audited (rpipico,
+  wiznet_5500_evb_pico, vccgnd_yd_rp2040, adafruit_feather_scorpio,
+  melopero_cookie_rp2040) has an onboard status LED independently confirmed
+  active-high via library source or devicetree, with zero active-low
+  exceptions found in this chip family to date. Flagging this transparently
+  per the task's "confirm via real vendor documentation, report NO CHANGE
+  rather than guess" standard: this is the one point on this board where the
+  evidence is corroborating-but-indirect rather than a literal vendor
+  statement, should a future audit uncover a Shake-specific library that
+  contradicts it.
+  digital_input dropped to match this repo's established led_high precedent
+  for dedicated onboard LED pins (rpipico, wiznet_5500_evb_pico,
+  vccgnd_yd_rp2040, adafruit_feather_scorpio, melopero_cookie_rp2040);
+  pwm_output kept since arduino-pico's analogWrite() works on any RP2040
+  GPIO, enabling brightness dimming.
+  Bus-alias collision (this audit's known "confirmed pin also aliased to a
+  bus role" bug class — see adafruit_feather_scorpio precedent): this
+  board's pins_arduino.h originally ALSO declared GPIO13 as PIN_SPI1_SS.
+  Sources #2 and #3 both independently document only ONE SPI bus for this
+  exact board (SPI0: SCK18/MOSI19/MISO20/CSN1) with no second SPI bus
+  referenced anywhere in either the official CircuitPython port or the
+  pico-sdk board header — conclusive evidence that this board's
+  pins_arduino.h PIN_SPI1_* block (byte-for-byte identical to the plain
+  Raspberry Pi Pico's own generic PIN_SPI1_* values) is an unused/spare
+  template default carried over when this board's arduino-pico core support
+  was scaffolded, not a real, physically-wired second SPI bus. FIXED by
+  removing the `#define PIN_SPI1_SS (13u)` line from pins_arduino.h (with an
+  inline explanatory comment), keeping PIN_SPI1_MISO/MOSI/SCK as-is, exactly
+  matching the adafruit_feather_scorpio PIN_SPI0_SS removal precedent.
+
+GPIO16 (vendor-documented "RGB WS2812 LED (aka NeoPixel)", pico-sdk
+PICO_DEFAULT_WS2812_PIN):
+  Onboard single WS2812 addressable RGB LED, output-only data line (this
+  board has ONE NeoPixel, not a matrix — contrast with the sibling
+  melopero_cookie_rp2040's 5x5 matrix).
+  capabilities: ["digital_output", "led_neopixel"]
+  Confirmed by the same three-source agreement as GPIO13: Melopero's spec
+  sheet (source #1/#5), CircuitPython's pins.c (MP_QSTR_NEOPIXEL ->
+  pin_GPIO16, source #2), and pico-sdk's board header (PICO_DEFAULT_WS2812_
+  PIN 16, source #3).
+  digital_input/pwm_output omitted, matching this repo's established
+  NeoPixel-tagging vocabulary (vccgnd_yd_rp2040 GPIO23, adafruit_feather_
+  scorpio GPIO4, melopero_cookie_rp2040 GPIO17 precedents) — pwm_output is
+  not meaningful for a bit-serial/PIO-driven WS2812 data line.
+  No bus-alias collision: GPIO16 does not appear anywhere in this board's
+  SPI0/SPI1/Wire0/Wire1/Serial1/Serial2 alias list.
+
+Result: board.json created at
+  variants/rp2040/rp2040/melopero_shake_rp2040/board.json
+as a full per-board file (chip-level rp2040/board.json fields copied
+verbatim) with chipGpios overrides for GPIO13 (green user LED, active-high
+inferred, full GPIO minus digital_input + led_high tag, bus-alias collision
+fixed) and GPIO16 (single WS2812 NeoPixel, output-only). A pins_arduino.h
+edit was also made this audit: the colliding `#define PIN_SPI1_SS (13u)` was
+removed (with an inline explanatory comment), since GPIO13 is confirmed as
+the LED and the official CircuitPython/pico-sdk board ports for this exact
+board document only one SPI bus for this board, confirming SPI1 is
+unused/spare.
+
+NO CHANGE items (left at chip-level default, no chipGpios override — see
+board.json's own inline comments for the equivalent reasoning):
+  - GPIO17 ("Battery monitor" — vendor-documented low-battery alert output,
+    MP_QSTR_BATTERY -> pin_GPIO17 in CircuitPython). No capability tag in
+    this repo's established vocabulary (button/led_high/led_low/
+    led_neopixel) fits a battery/charge-status monitor signal, and no
+    dedicated library accessor exists for it beyond the plain named pin
+    alias — identical treatment and rationale to melopero_cookie_rp2040's
+    analogous GPIO16 "NEOPIXEL/Qwiic POWER" pin, which received the same NO
+    CHANGE disposition in that board's audit.
+  - GPIO25 (this board's own arduino-pico pins_arduino.h PIN_LED value,
+    left completely unedited/unchanged in pins_arduino.h). This value is
+    byte-for-byte identical to the plain Raspberry Pi Pico's own generic
+    PIN_LED (25u) and is almost certainly an un-updated leftover from the
+    generic Pico variant template used to scaffold this board's arduino-pico
+    core support — this board's pins_arduino.h is otherwise identical to
+    the plain Pico template apart from its Wire0/Wire1/SPI1/Serial2 pin
+    numbers, which WERE customized for the real hardware, while PIN_LED
+    apparently was not. None of the three independent official sources
+    (#1/#2/#3, all specifically enumerating this board's own real pin
+    functions) names any function for GPIO25 on this board; the real,
+    triple-source-confirmed green user LED is GPIO13 (tagged above). No
+    pins_arduino.h edit was made for GPIO25 since it carries no
+    bus-collision risk (GPIO25 does not appear in any SPI/Wire/Serial alias
+    on this board) and leaving PIN_LED technically "wrong" but harmless in
+    the Arduino core is out of scope for this board.json-focused audit
+    (board.json capability tagging operates on real GPIO numbers directly,
+    independent of what any #define macro name claims).
+  - No accelerometer/gyroscope/IMU/motion-sensor chip exists on this board
+    despite the "Shake" product name (confirmed absent via sources #1, #2,
+    #3, #4, and #5 above, all independently silent on any such component;
+    this board's real onboard peripherals are limited to the LED, single
+    NeoPixel, Qwiic/Stemma QT I2C connector, and LiPo battery
+    charger/monitor circuitry). No GPIOs are dedicated to a nonexistent
+    sensor, so nothing to tag.
+
+JSON validity: verified via a manual `//`-comment-stripped JSON.parse() in
+node (no build_boards.js require(), per task instructions) — parses cleanly,
+chipGpios keys confirmed as ["13","16"].
+
+Summary: Confirmed and tagged the two real onboard identity pins on this
+board (green user LED GPIO13, active-high inferred with an explicit
+transparency note on the indirect nature of the polarity evidence; single
+WS2812 NeoPixel GPIO16, output-only) via triple-source agreement across
+Melopero's own official documentation, Adafruit's compiled CircuitPython
+board port, and the upstream Raspberry Pi pico-sdk board header. Fixed a
+confirmed button/LED-pin-also-aliased-as-bus-role collision on GPIO13
+(PIN_SPI1_SS) by removing the colliding #define from pins_arduino.h, since
+both independent official third-party board ports for this exact board
+document only one SPI bus. Explicitly investigated and RULED OUT an onboard
+accelerometer/gyroscope/IMU despite the "Shake" product name — none exists;
+the name is marketing-only. Left GPIO17 (battery monitor) and GPIO25
+(pins_arduino.h's own, apparently stale, PIN_LED value) UNCHANGED at the
+chip-level default, both with full reasoning recorded above and in
+board.json's inline comments.

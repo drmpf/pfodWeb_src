@@ -1,0 +1,78 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  // (boardName/displayName are fallbacks — boards.txt's d1_wroom_02/d1_mini/
+  // d1_mini_clone/d1_mini_lite/d1_mini_pro entries override both for the
+  // actual output ids.)
+  "boardName": "ESP8266",
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // pfodWeb NOTE: GPIO2 tagged "led_low" (onboard LED, active-low) - confirmed
+  // via this board's own pins_arduino.h (`#define LED_BUILTIN 2`) plus the
+  // official WEMOS/LOLIN D1 Mini schematic (KiCad, D1_mini.kicad_sch, rev
+  // v4.0.0):
+  //   https://www.wemos.cc/en/latest/_static/files/sch_d1_mini_v4.0.0.pdf
+  //     Shows LED1 (LED_0603_B) wired +3V3 -> R5 (2k) -> LED1 -> IO2/GPIO2,
+  //     i.e. GPIO2 sinks current through the LED to turn it on, so the LED
+  //     is active-LOW (digitalWrite(LED_BUILTIN, LOW) = on).
+  // Same schematic shows SW1 (SW_2x4x3.5), the only pushbutton on the
+  // board, wired to the RST net (with debounce cap C14 and pull R11) -
+  // that is the RESET button, not a user-accessible GPIO button, and RST
+  // is not a chip GPIO, so no "button" capability applies to any pin here.
+  // GPIO0 has no pushbutton on this schematic (auto-program via CH340C
+  // DTR/RTS through transistor pair U5, not a physical FLASH button) -
+  // see notes.txt. This LED/button wiring is standard across the whole
+  // D1 Mini family (5 boards.txt entries share this file) - see notes.txt
+  // for family-variance caveats (esp. "Lite").
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. No onboard user button on this board (checked - see notes.txt); only a non-GPIO RESET button (SW1) is present",
+    "2":  "Must be HIGH at boot. Onboard LED (active-low, LED_BUILTIN) - confirmed via official schematic, see chipGpios note",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. D1 Mini has an on-board resistor-divider giving A0 a 0-3.2V range (unlike the bare chip's native 0-1.0V) - see adc note below"
+  },
+
+  // Full usable-GPIO map — see variants/esp8266/esp8266/board.json for
+  // the full rationale (A0 analog-only, GPIO1/3 forced serial, PWM
+  // available on GPIO0-15 except 16, per randomnerdtutorials.com above).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_output", "pwm_output", "led_low"], "note": "Onboard LED (active-low) — see pfodWeb NOTE above pinNotes for sources" },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  // pfodWeb NOTE: adc.defaultRefVolts corrected from "3.3" (earlier-session
+  // value, unverified) to "3.2" - confirmed via the official WEMOS/LOLIN D1
+  // Mini product page and schematic:
+  //   https://www.wemos.cc/en/latest/d1/d1_mini.html
+  //     ("1 analog input(3.2V max input)"; specs table: "Analog Input Pins
+  //     | 1(3.2V Max)")
+  //   https://www.wemos.cc/en/latest/_static/files/sch_d1_mini_v4.0.0.pdf
+  //     Shows the on-board divider: A0 -> R12 (220k) -> node -> R13 (100k)
+  //     -> GND, with the node feeding TOUT/ADC (chip pin 6, native 0-1.0V).
+  //     Divider ratio (220k+100k)/100k = 3.2, so 1.0V(native) * 3.2 = 3.2V
+  //     full-scale at A0 - exactly matches the "3.2V Max" spec, not 3.3V.
+  // ("3.3V" is common informal/marketing shorthand elsewhere but is not
+  // what the resistor math or the official spec table give.)
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.2" }
+}

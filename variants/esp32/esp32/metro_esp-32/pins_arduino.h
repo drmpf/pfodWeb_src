@@ -12,7 +12,15 @@ static const uint8_t KEY_BUILTIN = 0;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t ADR = 12;
+// pfodWeb NOTE: the address-select alias for GPIO 12, previously declared
+// here, has been removed. This vendor board (iarduino.ru "Metro ESP-32")
+// carries an onboard connector for chaining the vendor's proprietary
+// I2C "Metro module" accessories, and this GPIO is committed to managing
+// that chain's module addressing (per the iarduino_Metro Arduino library,
+// whose module-detection function takes an address-line argument that
+// defaults to this same GPIO on this board family). Removing the alias
+// keeps this GPIO out of the Designer's pin list entirely - see board.json
+// for the matching chipGpios exclusion and full source citations.
 
 static const uint8_t SS = 5;
 static const uint8_t MOSI = 23;

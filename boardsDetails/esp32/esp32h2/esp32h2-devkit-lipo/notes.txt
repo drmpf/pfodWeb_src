@@ -1,0 +1,217 @@
+esp32h2-devkit-lipo board.json dedicated-hardware pin-exclusion audit research notes
+=====================================================================================
+
+Board: esp32h2-devkit-lipo (variants/esp32/esp32h2/esp32h2-devkit-lipo), chip esp32h2.
+Real-world identity: Olimex ESP32-H2-DevKit-Lipo (ESP32-H2-MINI-1-N4 module,
+USB-C w/ CH340E USB-to-serial, LiPo battery charger (BL4054B) + connector,
+pUEXT connector, Qwiic/Stemma connector, Reset button, User button, User LED).
+pins_arduino.h declares PIN_RGB_LED/RGB_BUILTIN/RGB_BRIGHTNESS=8 and
+KEY_BUILTIN=9, plus generic ESP32-H2 chip-template UART/I2C/SPI/analog
+boilerplate (TX=24, RX=23, SDA=12, SCL=22, SS=0, MOSI=25, MISO=11, SCK=10,
+A0-A4=1-5). No board.json override existed before this audit (used the
+chip-level esp32h2/board.json default). Flagged by the discovery sweep for
+PIN_RGB_LED=8/RGB_BRIGHTNESS=64/KEY_BUILTIN=9 - matching the sibling Olimex
+"-devkit-lipo" family (esp32-devkit-lipo, esp32c3-devkit-lipo,
+esp32s2-devkit-lipo) already audited elsewhere this session.
+
+Sources consulted
+------------------
+- https://github.com/OLIMEX/ESP32-H2-DevKit-Lipo
+  Official Olimex OSHW GitHub repo. Confirms board identity, feature list
+  (ESP32-H2-MINI-1-N4 module, USB-C w/ USB-serial, LiPo charger + connector,
+  pUEXT connector, Qwiic/Stemma connector, Reset button, User button, User
+  LED, "all GPIOs available on two headers"), and repo structure
+  (HARDWARE/ESP32-H2-DevKit-Lipo-Rev.A/, DOCUMENTS/).
+- https://www.olimex.com/Products/IoT/ESP32-H2/ESP32-H2-DevKit-LiPo/open-source-hardware
+  Official Olimex product page. Feature bullets confirm "User LED" and
+  "User button" as standard components, plus "battery power measurement and
+  power sense circuitry" that "can be enabled" (solder-jumper-gated, per the
+  family's established pattern). Does NOT mention RGB/NeoPixel/WS2812
+  anywhere on the page.
+- https://api.github.com/repos/OLIMEX/ESP32-H2-DevKit-Lipo/contents/HARDWARE/ESP32-H2-DevKit-Lipo-Rev.A
+  Confirmed the hardware folder contains a genuine KiCad project
+  (.kicad_sch/.kicad_pcb/.kicad_pro) for hardware Rev A, plus Gerbers and
+  3D packages - i.e. real vendor design source, not just a marketing PDF.
+- https://raw.githubusercontent.com/OLIMEX/ESP32-H2-DevKit-Lipo/main/HARDWARE/ESP32-H2-DevKit-Lipo-Rev.A/ESP32-H2-DevKit-LiPo_Rev_A.kicad_sch
+  Official Olimex KiCad schematic source, Rev A, fetched and read directly
+  as plain-text KiCad S-expression source - this is the ground-truth
+  net-level schematic, not a rendering or a third-party guess. Fetched
+  multiple times with targeted queries to cross-check findings. Key
+  findings, quoted verbatim from the "Main-Bus" bus_alias line:
+    (bus_alias "Main-Bus" (members "GPIO27\USB_D+" "GPIO26\USB_D-"
+    "GPIO25\PWR_SENS" "GPIO24\U0TXD" "GPIO23\U0RXD" "GPIO22\I2C0_SDA"
+    "GPIO14\XTAL_32K_N" "GPIO14" "GPIO13\XTAL_32K_P" "GPIO13"
+    "GPIO12\I2C0_SCL" "GPIO11\U1RXD" "GPIO10\U1TXD" "GPIO9\BUT1"
+    "GPIO8\LED1" "GPIO5\FSPID(SPI2_MOSI)" "GPIO4\FSPICLK(SPI2_CLK)" "GPIO3"
+    "GPIO2\BAT_SENS" "GPIO1\FSPICS0(SPI2_CS0)" "GPIO0\FSPIQ(SPI2_MISO)"
+    "ESP_EN" "BUT1"))
+  This directly confirms (net-label ground truth, not guesswork):
+    * GPIO9\BUT1 - a button net, with "BUT1" also present as a bare
+      component-reference bus member.
+    * GPIO8\LED1 - an LED net.
+    * GPIO2\BAT_SENS - battery-voltage-sense pin.
+    * GPIO25\PWR_SENS - external-power-sense pin.
+    * GPIO22\I2C0_SDA / GPIO12\I2C0_SCL - real I2C bus pins (note: REVERSED
+      relative to this board's own pins_arduino.h SDA=12/SCL=22 boilerplate
+      - out of scope for this audit, noted for the record).
+    * GPIO24\U0TXD / GPIO23\U0RXD - matches pins_arduino.h TX=24/RX=23
+      exactly (this part of the boilerplate IS accurate for this board).
+    * GPIO11\U1RXD / GPIO10\U1TXD - alternate UART1 pins, unrelated to this
+      board's own SCK=10/MISO=11 boilerplate aliases (another
+      generic-template artifact, out of scope).
+  A pushbutton symbol (lib_id "OLIMEX_Buttons:T1107A(6x3,8x2,5MM)") is
+  present in the schematic, consistent with a real physical button wired to
+  the GPIO9\BUT1 net.
+  Full unique lib_id list for the whole schematic (checked for any
+  addressable-LED driver IC or WS2812/NeoPixel-style part):
+    OLIMEX_Buttons:T1107A(6x3,8x2,5MM), OLIMEX_Cases:ESP32-H2-MINI-1-N4,
+    OLIMEX_Connectors:BAT_CON/CON15/CONN_01X10/QWST/USB2.0_TYPE-C,
+    OLIMEX_Devices:Crystal, OLIMEX_Diodes:D_Schottky, OLIMEX_Diodes:LED,
+    OLIMEX_IC:BL4054B-42TPRN(SOT23-5) [LiPo charger],
+    OLIMEX_IC:CH340E(MSOP-10) [USB-serial], OLIMEX_Jumpers:SJ/SJ_Closed,
+    OLIMEX_OTHER:Fiducial, OLIMEX_Power:+3.3V/+5V/GND/PWR_FLAG/VBAT,
+    OLIMEX_RCL:C/R, OLIMEX_Regulators:WL9005P3-33(SOT89-3),
+    OLIMEX_Transistors:P-MOS+DIOD/Q_NPN_BEC.
+  The ONLY LED-type symbol anywhere is "OLIMEX_Diodes:LED" - a plain
+  two-terminal diode/LED part, not an addressable IC footprint. There is
+  no addressable-LED driver IC in the component list (the only ICs are the
+  LiPo charger, USB-serial converter, and voltage regulator). A full-text,
+  case-insensitive search of the entire schematic file for "WS2812",
+  "NeoPixel", "SK6812", "2812", and "RGB" returned ZERO matches anywhere.
+  Also present: "OLIMEX_Jumpers:SJ"/"SJ_Closed" solder-jumper symbols near
+  the power circuitry, consistent with this board family's established
+  solder-jumper-gated BAT_SENS/PWR_SENS pattern (off by default on sibling
+  boards in this family) - exact jumper-to-pin mapping not independently
+  confirmed for this specific board/revision.
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32h2/pins_arduino.h
+  Upstream generic (chip-level, non-board-specific) Espressif Arduino-ESP32
+  core template for the bare esp32h2 chip. This file is BYTE-IDENTICAL to
+  our local esp32h2-devkit-lipo/pins_arduino.h for every line EXCEPT
+  KEY_BUILTIN=9, which the upstream chip-generic template does not define
+  at all. This is the single most important finding of this audit: it
+  proves Olimex's pins_arduino.h for this board is simply the stock
+  Espressif chip-generic template with only KEY_BUILTIN=9 added as a
+  deliberate board-specific customization. The PIN_RGB_LED/RGB_BUILTIN/
+  RGB_BRIGHTNESS/rgbLedWrite() block was inherited UNMODIFIED from
+  Espressif's own template - which exists there because Espressif's
+  reference ESP32-H2-DevKitM-1 board has a real onboard WS2812 - and was
+  never verified or adapted against Olimex's own (evidently simpler, per
+  the schematic) LED hardware.
+
+Reasoning per pin
+------------------
+GPIO9 (KEY_BUILTIN) - CONFIRMED onboard physical user button. The vendor's
+  own Rev A KiCad schematic (ground-truth, fetched directly from
+  github.com/OLIMEX/ESP32-H2-DevKit-Lipo) shows a real pushbutton component
+  (lib_id "OLIMEX_Buttons:T1107A...") wired to a net explicitly bus-aliased
+  "GPIO9\BUT1", with "BUT1" also present as a bare component-reference bus
+  member - not a guess or a reused boilerplate name (strengthened by the
+  fact that the generic upstream Espressif esp32h2 chip template has NO
+  KEY_BUILTIN definition at all, so Olimex added this deliberately to match
+  their real hardware). Also the ESP32-H2's standard strapping pin
+  (chip-level pinNotes entry "Must be HIGH for normal boot" retained
+  unchanged, not removed - expected for this pin). Checked this board's own
+  pins_arduino.h for any other I2C/SPI/UART alias landing on GPIO9: TX=24,
+  RX=23, SDA=12, SCL=22, SS=0, MOSI=25, MISO=11, SCK=10, A0-A4=1-5 - NONE is
+  9. No alias collision found (unlike the esp32c3-devkit-lipo sibling, which
+  had SCL=9 colliding with its confirmed button pin - this board has no
+  equivalent problem). Tagged capabilities ["digital_input","button"] only,
+  per the playbook's exclusion rule for button pins (no analog/output/pwm
+  mixed in).
+
+GPIO8 (PIN_RGB_LED/RGB_BUILTIN/RGB_BRIGHTNESS) - CONFIRMED a real onboard
+  LED exists (schematic net "GPIO8\LED1"), but NOT confirmed as an
+  addressable WS2812/NeoPixel. The evidence in fact argues against it: the
+  schematic's only LED-type symbol anywhere in the whole design is the
+  generic two-terminal "OLIMEX_Diodes:LED" part (not a 4-6-pin addressable
+  IC footprint one would expect for a WS2812/SK6812), no addressable-LED
+  driver IC appears anywhere in the schematic's component list, and an
+  exhaustive case-insensitive text search of the entire schematic file for
+  "WS2812"/"NeoPixel"/"SK6812"/"2812"/"RGB" returned zero matches. The
+  RGB_BUILTIN/RGB_BRIGHTNESS/rgbLedWrite() macros in this board's
+  pins_arduino.h are verbatim, byte-identical boilerplate copied from
+  Espressif's generic esp32h2 chip template (confirmed by diffing against
+  the upstream file, see Sources above) - i.e. they describe Espressif's
+  own WS2812-equipped ESP32-H2-DevKitM-1 reference board, not necessarily
+  Olimex's actual (apparently simpler, single-color) LED wiring on this
+  board. Per this session's established playbook precedent for "LED
+  confirmed present but type/polarity NOT independently confirmed by real
+  hardware evidence" (see variants/esp8266/esp8266/wifiduino/board.json
+  GPIO2, where a confirmed-but-undocumented-polarity LED was left WITHOUT
+  any led_* capability tag), this pin is KEPT with its plain default
+  capabilities (digital_input/digital_output/pwm_output, unchanged from the
+  chip-level default) and is NOT tagged "led_neopixel" - doing so would
+  overclaim beyond what the real vendor schematic supports, and risks
+  misleading the pfodWeb Designer UI into offering a NeoPixel/RGB color
+  control for what may just be a plain single-color LED. Documented via a
+  pinNotes entry instead (see board.json).
+
+Alias-conflict check (per this session's new playbook step)
+-------------------------------------------------------------
+Checked this board's pins_arduino.h for any TX/RX/SDA/SCL/SS/MOSI/MISO/SCK
+boilerplate alias landing on GPIO8 or GPIO9 (the build_boards.js bug where
+those aliases get unconditionally appended as capabilities regardless of a
+board.json chipGpios override - found repeatedly on sibling "-devkit-lipo"
+boards this session, e.g. esp32c3-devkit-lipo had GPIO9 aliased as SCL).
+This board's values: TX=24, RX=23, SDA=12, SCL=22, SS=0, MOSI=25, MISO=11,
+SCK=10, A0=1, A1=2, A2=3, A3=4, A4=5. NONE of these equals 8 or 9 - so,
+unlike the esp32c3-devkit-lipo sibling, this board has NO alias collision
+on GPIO8 or GPIO9, and no pins_arduino.h edit was needed or made.
+
+Findings noted but NOT acted on (out of scope for this GPIO8/9-focused audit)
+-------------------------------------------------------------------------------
+- GPIO25 (real PWR_SENS per schematic) collides with this file's boilerplate
+  MOSI=25 alias. Not GPIO8/9, so out of scope for the mandated alias check;
+  recorded here for a future SPI/power-sense-focused audit pass.
+- GPIO22/GPIO12 (real I2C0_SDA/I2C0_SCL per schematic) are the REVERSE of
+  this board's own pins_arduino.h boilerplate SDA=12/SCL=22 - another
+  generic-template artifact unrelated to GPIO8/9, left untouched.
+- GPIO2 (real BAT_SENS per schematic) already carries analog_input
+  capability via the chip-level default (it doubles as this board's analog
+  channel A1 in pins_arduino.h) - no capability change needed. Added an
+  informational pinNotes entry only. Solder-jumper symbols
+  ("OLIMEX_Jumpers:SJ"/"SJ_Closed") were seen in the schematic near the
+  power circuitry, consistent with this board family's usual
+  solder-jumper-gated BAT_SENS/PWR_SENS enable pattern (off by default on
+  sibling boards) - exact jumper reference designator to pin mapping was
+  not independently isolated for this specific board/revision, so no
+  stronger claim was made.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0, 1, 3, 4, 5, 10-14, 22-25) were left at the
+chip-level esp32h2/board.json default - this audit's scope was limited to
+the flagged PIN_RGB_LED=8/KEY_BUILTIN=9 pins and the alias-conflict check
+they triggered.
+
+What was tagged/changed
+-------------------------
+1. Created variants/esp32/esp32h2/esp32h2-devkit-lipo/board.json (none
+   existed before) as a full copy of the chip-level esp32h2/board.json
+   default, with:
+     - GPIO9 capabilities changed to ["digital_input","button"] (was
+       ["digital_input","digital_output","pwm_output"])
+     - GPIO8 capabilities left UNCHANGED (["digital_input","digital_output",
+       "pwm_output"]) - deliberately NOT tagged "led_neopixel" per the
+       reasoning above
+     - pinNotes entries added/extended for GPIO2, GPIO8, and GPIO9
+       documenting the findings and citing sources
+   plus a pfodWeb NOTE comment block at the top of the file citing all
+   sources above.
+2. pins_arduino.h: NOT modified - no alias collision was found on GPIO8 or
+   GPIO9 in this file (see Alias-conflict check above), so there was
+   nothing to delete/fix.
+
+One-line summary
+------------------
+GPIO9 confirmed via Olimex's own Rev A KiCad schematic as a real onboard
+user button (net "GPIO9\BUT1" with a matching pushbutton symbol) - tagged
+["digital_input","button"]; GPIO8 confirmed as carrying a real onboard LED
+(net "GPIO8\LED1") but NOT confirmed as WS2812/NeoPixel (schematic shows
+only a generic non-addressable LED symbol, no driver IC, and zero
+WS2812/NeoPixel/RGB text matches anywhere) despite this board's inherited
+RGB_BUILTIN/rgbLedWrite() macros being byte-identical boilerplate copied
+unmodified from Espressif's WS2812-equipped DevKitM-1 chip template - so
+GPIO8 was deliberately left untagged (no led_neopixel claim) pending
+stronger evidence. No GPIO8/GPIO9 boilerplate alias collisions were found
+in this board's pins_arduino.h, so no pins_arduino.h edit was required.

@@ -1,0 +1,115 @@
+Board: imbrios-logsens-v1p1 (Imbrios LogSens V1.1)
+Research date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+1. https://www.imbrios.com/products/logsens/
+   Vendor product page. Lists reference docs: "LogSens V1.1 Board Datasheet"
+   (Google Drive link), schematics "available on request via contact form"
+   (not public), PCB Assembly Drawing "Coming soon!!" (not public).
+
+2. https://drive.google.com/open?id=1PXmG1d7eC_31Z0X_DecLLfbRP7PM5HuZ
+   ("LogSens V1.1 Board Datasheet", official Imbrios Systems PDF, Rev V0.9,
+   28/3/2020, downloaded and text-extracted with pdftotext -layout).
+   This is the primary evidence source used for this task. Key findings:
+     - Sec 3.1 "Top Side Connectors" physical drawing: silkscreen shows
+       LED6, LED7, LED8, LED9, LED5, LED3, LED1, LED2 and SW1(RST)/SW2
+       (BOOT)/SW3/SW4 as distinct populated components on the board.
+     - Sec 5.10 "Indications" table: "6 MCU_IO32_LED1 -> LED6",
+       "7 MCU_IO33_LED2 -> LED7" (LED8/LED9 are on MCU_UART2_RXD/TXD,
+       i.e. GPIO16/17, already excluded from chipGpios as CAN/RS485
+       lines). No polarity (active-high/active-low) information is
+       given anywhere for LED6/LED7 - just "Software Configurable".
+     - Sec 5.1 "Wireless MCU Module" pin table confirms MCU_IO32_LED1
+       and MCU_IO33_LED2 are I/O type pins, +3.3V level, no polarity or
+       drive-circuit info (resistor/transistor) given.
+     - Sec 5.11 "Switches" table (clean, unambiguous):
+         SW1 = MCU_RESET (hardware reset, not a GPIO, not applicable)
+         SW2 = MCU_BOOT  ("To enter programming mode; Also Software
+               Configurable")
+         SW3 = MCU_I36_SW3 ("Software Configurable")
+         SW4 = MCU_I34_SW4 ("Software Configurable")
+       This matches pins_arduino.h exactly: SW2_BUILDIN=0, SW3_BUILDIN=36,
+       SW4_BUILDIN=34, LED1_BUILDIN=32 ("LED6"), LED2_BUILDIN=33 ("LED7").
+     - No content anywhere in the PDF states LED on/off drive polarity.
+       No pdftoppm/poppler image renderer was available in this
+       environment to inspect the Fig.1 "Hardware Block Diagram" image
+       (text-only extraction was used); the block diagram is a bitmap,
+       not text, so even if rendered it may not show polarity without a
+       full schematic anyway.
+
+3. https://github.com/imbrios/logsens-arduino-esp32 (repo root, and
+   docs/esp-idf_component.md, docs/arduino-ide/windows.md)
+   Vendor's Arduino-ESP32 core fork / setup docs. No LED/button example
+   code found. The only digitalWrite() example present
+   (`pinMode(4, OUTPUT); digitalWrite(4, HIGH);`) is a generic ESP-IDF
+   GPIO example on GPIO4, unrelated to LED6/7 - and GPIO4 is itself
+   already excluded from chipGpios (CAN/RS485 transceiver line).
+
+4. WebSearch queries for "imbrios logsens schematic", "imbrios logsens
+   pull request LED polarity", "imbrios logsens-arduino-esp32 examples
+   LED1_BUILDIN digitalWrite" - no additional public schematic, forum
+   post, or example sketch found anywhere confirming LED drive polarity.
+
+5. https://docs.platformio.org/en/stable/boards/espressif32/imbrios-logsens-v1p1.html
+   PlatformIO board registry page - generic board metadata only (flash
+   size, upload protocol), no LED/button/GPIO hardware detail.
+
+6. Board's own pins_arduino.h (already in repo, not fetched externally)
+   Confirms alias names LED1_BUILDIN=32, LED2_BUILDIN=33, SW2_BUILDIN=0,
+   SW3_BUILDIN=36, SW4_BUILDIN=34, TX=1, RX=3. Per task rules these
+   alias names alone are NOT used as confirming evidence - only used to
+   locate candidate pins, then independently confirmed (or not) against
+   the vendor datasheet above.
+
+WHAT WAS TAGGED
+----------------
+GPIO0  -> ["digital_input","button"]   (SW2 / MCU_BOOT, datasheet sec 5.11)
+GPIO34 -> ["digital_input","button"]   (SW4 / MCU_I34_SW4, datasheet sec 5.11)
+GPIO36 -> ["digital_input","button"]   (SW3 / MCU_I36_SW3, datasheet sec 5.11)
+All three are confirmed genuine tactile user-input switches by the
+official Imbrios vendor datasheet (not merely inferred from
+pins_arduino.h names). None of these GPIOs are the board's TX (1) or
+RX (3) pins, so no TX/RX hard-reservation conflict. The "button"
+capability tag has no polarity variant, so datasheet identity
+confirmation alone was sufficient here.
+
+WHAT WAS CONSIDERED BUT NOT TAGGED (FOR HUMAN REVIEW)
+-------------------------------------------------------
+GPIO32 (LED6, alias LED1_BUILDIN) and GPIO33 (LED7, alias LED2_BUILDIN):
+  - Identity IS solidly confirmed by the vendor datasheet (sec 5.10
+    Indications table, and sec 5.1 pin table) as genuine populated
+    onboard LEDs, software-controllable from the ESP32 MCU.
+  - However, the LED capability tags (led_high vs led_low) require
+    knowing on/off drive polarity, and NO source found (datasheet,
+    vendor GitHub repo/docs, PlatformIO page, web search) states
+    whether HIGH or LOW turns these LEDs on. The datasheet only says
+    "Software Configurable" for both. The full schematic that would
+    show the actual LED drive circuit is explicitly NOT public
+    ("available on request" / "Coming soon!!" per the product page).
+  - Per task instructions ("If you cannot find solid confirming
+    evidence, do NOT tag anything... do not guess"), these two GPIOs
+    were deliberately left UNTAGGED rather than guessing a polarity.
+    This is a genuine "no guess made" case, not a best-guess judgment
+    call - a human reviewer with access to the schematic (e.g. by
+    requesting it from Imbrios via info@imbrios.com) could confirm
+    polarity and add led_high or led_low tags to GPIO32/GPIO33.
+  - Both GPIO32 and GPIO33 currently retain their existing (untouched)
+    capability sets: ["analog_input","digital_input","digital_output",
+    "pwm_output"].
+
+Other datasheet-mentioned LEDs (LED1/LED-TX, LED2/LED-RX, LED3/+3.3V,
+LED5/+5.0V, LED8/LED9 on UART2 RX/TX) are fixed-function power/serial
+indicators, not software-controllable general-purpose LEDs, or fall on
+already-excluded pins (GPIO16/17 CAN/RS485) - not candidates for
+tagging and not considered further.
+
+SW1 (MCU_RESET) is a hardware reset switch wired directly to the ESP32
+EN/reset line, not a GPIO-readable button - not applicable/not tagged.
+
+SUMMARY
+-------
+Tagged GPIO0, GPIO34, GPIO36 as ["digital_input","button"] (confirmed
+SW2/SW4/SW3 respectively via Imbrios official datasheet sec 5.11).
+Left GPIO32 (LED6) and GPIO33 (LED7) untagged - LED identity confirmed
+but on/off polarity could not be confirmed from any public source.

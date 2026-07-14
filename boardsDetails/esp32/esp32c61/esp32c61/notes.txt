@@ -1,0 +1,69 @@
+Board: esp32c61 / esp32c61 (Espressif generic "ESP32C61 Dev Module" entry,
+representing the official ESP32-C61-DevKitC-1 reference board)
+Directory: variants/esp32/esp32c61/esp32c61/
+Audit date: 2026-07-12
+
+pins_arduino.h summary (read in full):
+  PIN_RGB_LED 8, LED_BUILTIN/RGB_BUILTIN wired to it, RGB_BRIGHTNESS 64
+  TX=11, RX=10, SDA=23, SCL=22, SS=25, MOSI=26, MISO=27, SCK=28
+  A0..A3 = GPIO0..GPIO3
+  WIRE1_PIN_DEFINED, SDA1=6, SCL1=7 ("LP I2C Pins are fixed on ESP32-C61")
+
+ESP32-C61 is a newer (2025-era, WiFi 6 / BLE 5.0 focused) chip than the
+C3/C5/C6 siblings being audited in the same wave, so it was NOT assumed to
+match their conclusions automatically - it was researched independently.
+In this case Espressif's own official dev-kit documentation for this exact
+chip does exist and is unambiguous, so confidence ended up high, same as
+the other chips.
+
+Sources consulted:
+  1. https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c61/esp32-c61-devkitc-1/user_guide.html
+     Official Espressif esp-dev-kits documentation for the
+     ESP32-C61-DevKitC-1 (fetched 2026-07-12 via WebFetch). States: "RGB
+     LED: Addressable RGB LED, driven by GPIO8." Also states "GPIO7,
+     GPIO8, and GPIO9 are strapping pins of the ESP32-C61 chip."
+     Pin-function table gives:
+       GPIO6 = MTDO, GPIO6, LP_GPIO6, FSPICLK
+       GPIO7 = GPIO7, FSPID
+     Neither pin's function list references any onboard peripheral beyond
+     the chip's own low-power/JTAG/SPI pin muxing.
+  2. General web corroboration (CNX Software "ESP32-C61-DevKitC-1
+     development board features ESP32-C61 low-cost WiFi 6 and Bluetooth
+     LE 5.0 SoC") - independently references the same RGB LED / GPIO8
+     wiring for this board, consistent with Espressif's own
+     documentation.
+
+Reasoning:
+  GPIO8 (PIN_RGB_LED): CONFIRMED real onboard addressable RGB LED, stated
+  directly by Espressif's own official user guide for the exact physical
+  reference board this generic "ESP32C61 Dev Module" entry models. High
+  confidence - primary vendor source for this specific chip/board, not
+  inferred from a sibling chip. Tagged capabilities
+  ["digital_output","led_neopixel","pwm_output"], matching this repo's
+  existing led_neopixel precedent (waveshare_esp32_s3_zero GPIO21,
+  esp32c6/esp32c6 GPIO8, adafruit_qtpy_esp32c3 GPIO2).
+
+  Alias-collision check (required step this session): compared GPIO8
+  against this variant's own TX/RX/SDA/SCL/SS/MOSI/MISO/SCK alias list
+  (11/10/23/22/25/26/27/28) - GPIO8 is not aliased as any of those, so no
+  conflicting boilerplate bus alias exists for this pin and build_boards.js
+  will not silently append an i2c/spi/serial capability alongside
+  led_neopixel. No pins_arduino.h edit was needed.
+
+  GPIO6/GPIO7 (SDA1/SCL1, second/LP I2C bus): KEEP as general-purpose I2C.
+  Espressif's own pin-function table shows these are just the chip's
+  fixed LP_I2C controller pins (a hardware pin-mux constraint dictated by
+  silicon, not evidence of an onboard I2C device) with no documented
+  onboard peripheral consumer on the DevKitC-1 reference board. Left
+  unchanged from chip-level board.json defaults (GPIO6 and GPIO7 both:
+  digital_input+digital_output+pwm_output). Also confirmed consts.SDA/
+  consts.SCL in pins_arduino.h resolve to GPIO23/GPIO22 (the primary Wire
+  bus), not GPIO6/GPIO7, so build_boards.js's automatic i2c_sda/i2c_scl
+  tagging (keyed off consts.SDA/consts.SCL only) does not fire on GPIO6/7
+  either - no collision there.
+
+Summary: Created variants/esp32/esp32c61/esp32c61/board.json (full copy
+of the chip-level esp32c61/board.json default) with GPIO8 retagged
+["digital_output","led_neopixel","pwm_output"] for the confirmed onboard
+RGB LED; GPIO6/GPIO7 left as general-purpose I2C (no change); no
+alias-collision bug found on this board.

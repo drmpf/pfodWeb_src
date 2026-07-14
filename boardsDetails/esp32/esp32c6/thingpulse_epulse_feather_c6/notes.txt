@@ -1,0 +1,117 @@
+Board: ThingPulse ePulse Feather C6
+Chip: esp32c6 (ESP32-C6-MINI-1)
+Directory: variants/esp32/esp32c6/thingpulse_epulse_feather_c6/
+Audit date: 2026-07-12
+
+WHY FLAGGED
+A discovery sweep found:
+  #define PIN_RGB_LED 8
+  #define RGB_BRIGHTNESS 64
+in pins_arduino.h and asked whether GPIO8 is a genuine onboard NeoPixel, and
+whether (like the parallel-audited sibling thingpulse_epulse_feather, esp32
+non-C6) this C6 variant also carries a battery-voltage-sense pin with a
+documented resistor-divider ratio.
+
+FULL FILE READ
+Read the complete pins_arduino.h (36 lines). Besides PIN_RGB_LED/RGB_BRIGHTNESS,
+it declares TX=16, RX=17, SDA=23, SCL=22, SS=18, MOSI=19, MISO=20, SCK=21,
+A0..A6=0..6. No BATT_MONITOR, VBAT, BAT_VOLT_PIN, or any battery/voltage-divider
+comment anywhere in the file. No button-related alias or #define either.
+
+SOURCES CONSULTED
+1. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/thingpulse_epulse_feather_c6/pins_arduino.h
+   Upstream file matches this repo's local copy byte-for-byte.
+2. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32c6/pins_arduino.h
+   (local copy: variants/esp32/esp32c6/esp32c6/pins_arduino.h)
+   IDENTICAL to the ThingPulse C6 file for every declaration the ThingPulse
+   file contains (the generic file additionally has the fixed LP_I2C
+   SDA1=6/SCL1=7 lines, which the ThingPulse file omits). Strong evidence
+   the ThingPulse C6 pins_arduino.h is an unmodified copy of the generic
+   ESP32-C6 dev-module template, not a board-specific customisation.
+3. https://thingpulse.com/products/epulse-feather-c6/
+4. https://www.cnx-software.com/2024/03/06/epulse-feather-c6-esp32-c6-development-board-adafruit-feather-lipo-battery/
+5. https://www.electronics-lab.com/epulse-feather-c6-an-esp32-c6-based-dev-board-with-wifi-ble-zigbee-thread-matter-capabilities/
+6. https://linuxgizmos.com/epulse-feather-c6-a-risc-v-powered-board-with-advanced-zigbee-thread-and-ble-connectivity-2/
+   Product page and three independent hardware write-ups. All describe the
+   board's feature set in detail: ESP32-C6-MINI-1(-N4) module, 4MB flash,
+   Adafruit Feather form factor, ~17-20 accessible GPIO/ADC/I2C/UART pins,
+   TP4065 LiPo charging IC, MAX17048 fuel-gauge chip for battery/state-of-
+   charge monitoring, USB-C. NONE of these sources mention an onboard RGB
+   LED, NeoPixel, or WS2812 anywhere.
+7. https://github.com/ThingPulse/epulse-feather-c6-samples
+   Sample projects: "Fuel Gauge Simple" and "Fuel Gauge WiFi" - battery
+   monitoring exclusively via the MAX17048 over I2C. No NeoPixel/RGB sample.
+8. https://github.com/ThingPulse/esp32-epulse-feather-testbed
+   ThingPulse's own hardware testbed firmware repo for this product line.
+   No RGB/NeoPixel reference found in the available page content.
+9. variants/esp32/esp32/thingpulse_epulse_feather/pins_arduino.h (this repo,
+   sibling board audited in parallel this wave)
+   Explicitly declares `static const uint8_t LED_BUILTIN = -1;` - i.e. on
+   the non-C6 sibling in the same "Low Power" product line, ThingPulse
+   deliberately shipped NO onboard LED. That file also documents its own
+   BATT_MONITOR pin: `static const uint8_t BATT_MONITOR = 35; // Note:
+   voltage divider 2.2M/4.7M`. The C6 file has no equivalent declaration.
+10. Search results state the C6 model's battery monitoring is handled by
+    the MAX17048 fuel-gauge IC (I2C), replacing the analog resistor-divider
+    approach used on the original (non-C6) ePulse Feather.
+
+REASONING / DECISION
+
+GPIO8 (PIN_RGB_LED / RGB_BUILTIN / RGB_BRIGHTNESS): NOT tagged led_neopixel.
+  - No product page, hardware review, schematic summary, or ThingPulse
+    sample/testbed repo consulted mentions an RGB LED or NeoPixel on this
+    board.
+  - The pins_arduino.h RGB LED block is proven byte-identical to the
+    generic Espressif ESP32-C6 dev-module template (source #2 above),
+    consistent with the file being an unmodified copy rather than a
+    board-specific customisation.
+  - The sibling non-C6 board in the same "Low Power" line explicitly opts
+    OUT of a built-in LED (LED_BUILTIN = -1), the opposite convention from
+    a board that actually carries a populated NeoPixel.
+  - This repo's KEEP+tag policy requires confirmation of genuinely
+    populated hardware before tagging (see pandabyte_xc6/board.json for a
+    contrasting example where a vendor PR's hardware test table -
+    "Blink RGB (FastLED)" PASS - provided that confirmation). No equivalent
+    evidence exists here.
+  - Result: GPIO8 left unchanged from the chip-level esp32c6/board.json
+    default (digital_input, digital_output, pwm_output), strapping-pin
+    note retained ("Must be HIGH or floating on reboot").
+
+Battery-sense pin: none exists in pins_arduino.h. Confirmed by multiple
+  vendor/review sources that battery state is read via the MAX17048
+  fuel-gauge chip over I2C on this board, not an ADC pin with a resistor
+  divider. Unlike the sibling thingpulse_epulse_feather board (BATT_MONITOR
+  = GPIO35, 2.2M/4.7M divider -> corrected defaultRefVolts), there is
+  nothing to correct here - adc.defaultRefVolts stays at the chip-level
+  default of 3.3.
+
+Alias-collision check: TX=16, RX=17, SDA=23, SCL=22, SS=18, MOSI=19,
+  MISO=20, SCK=21 - none collide with GPIO8, so no bus capability
+  (i2c_sda/scl, spi_ss/mosi/miso/sck, serial_tx/rx) would be unconditionally
+  appended onto GPIO8 by build_boards.js regardless of the led_neopixel
+  decision. No collision found or needed fixing on this board.
+
+Button check (section 7a, opportunistic): no button alias/#define in
+  pins_arduino.h, no vendor source mentions an onboard user button. Nothing
+  to tag.
+
+OUTCOME
+Created variants/esp32/esp32c6/thingpulse_epulse_feather_c6/board.json as a
+full copy of the chip-level esp32c6/board.json default. No chipGpios or adc
+values differ from the chip-level default - the audit's conclusion is that
+none of the flagged items (RGB LED, battery pin) are confirmed board-
+specific hardware, so the board correctly falls back to the generic
+ESP32-C6 GPIO capability set. The board.json exists primarily to carry the
+`// pfodWeb NOTE:` documenting this investigation, so a future sweep does
+not re-flag GPIO8 and mistakenly apply led_neopixel without new evidence.
+pins_arduino.h was not modified (nothing needed deleting - no alias
+collision was found).
+
+ONE-LINE SUMMARY
+GPIO8's PIN_RGB_LED/RGB_BRIGHTNESS is unconfirmed boilerplate copied from
+the generic ESP32-C6 dev-module template (no vendor source documents an
+onboard NeoPixel, and the sibling board explicitly ships no LED) - left
+untagged; no battery-sense pin exists on this board (MAX17048 fuel gauge
+over I2C replaces the sibling's resistor-divider ADC pin) - no
+adc.defaultRefVolts correction needed; board.json created as a
+chip-level-default copy purely to document the investigation.

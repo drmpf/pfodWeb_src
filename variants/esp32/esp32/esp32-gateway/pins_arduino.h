@@ -21,10 +21,13 @@ static const uint8_t KEY_BUILTIN = 34;
 static const uint8_t SCL = 16;  // This is extension pin 11
 static const uint8_t SDA = 32;  // This is extension pin 13
 
-static const uint8_t SS = 5;
-static const uint8_t MOSI = 23;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK (GPIO5/23/19/18) deliberately NOT
+// declared - stale boilerplate from the generic ESP32 pins_arduino.h
+// template. On this board those exact GPIOs are dedicated to the
+// onboard LAN8720 Ethernet PHY (GPIO5=ETH_PHY_POWER, GPIO23=ETH_PHY_MDC,
+// GPIO18=ETH_PHY_MDIO per the #defines above; GPIO19 is the ESP32's
+// fixed-silicon EMAC_TXD0 RMII data line) - none of these are a real
+// SPI bus on this hardware. See board.json / boardsDetails notes.txt.
 
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;

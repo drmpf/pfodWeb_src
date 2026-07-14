@@ -1,0 +1,205 @@
+Board audit notes: challenger_2350_bconnect (iLabs "Challenger+ RP2350 BConnect", chip: rp2350)
+Audit date: 2026-07-13
+Part of: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware pin exclusion audit.
+
+SOURCES CONSULTED
+-----------------
+1. https://ilabs.se/challenger-rp2350-bconnect-datasheet/ (official iLabs vendor
+   datasheet). Fetched directly and successfully this session (not 404'd).
+   Two fetches were made: a general extraction pass, then a targeted
+   verbatim-quote pass asking specifically for every sentence mentioning
+   LED / NeoPixel / GPIO+number / D13 / D14 / active level / button, with
+   an explicit instruction not to paraphrase.
+2. https://ilabs.se/product/challenger-rp2350-bconnect/ (vendor product page)
+   - general feature list only, no GPIO-level detail (pinout is an image,
+     not extractable as text by this session's tools).
+3. https://thepihut.com/products/challenger-rp2350-bconnect (reseller listing)
+   - surfaced in search, not separately fetched; consistent high-level specs
+     with the vendor pages, no additional pin detail.
+4. This board's own shipped Arduino-core header:
+   variants/rp2040/rp2350/challenger_2350_bconnect/pins_arduino.h
+   (the actual file that determines real firmware/pin behaviour).
+5. variants/rp2040/rp2350/board.json (chip-level rp2350 defaults, empty
+   chipGpios, confirming no chip-level assumption for this board bucket).
+6. variants/rp2040/rp2350/challenger_2350_wifi6_ble5/board.json + notes.txt
+   (same-generation, same-base-pinout Challenger 2350 sibling audited
+   earlier this session; used to cross-check the shared PCB pinout
+   template and the GPIO22 repurposing question below — NOT copied
+   verbatim, every GPIO independently re-verified against this board's own
+   header and its own datasheet).
+7. variants/rp2040/rp2040/challenger_2040_wifi/board.json + notes.txt and
+   variants/rp2040/rp2040/challenger_2040_wifi6_ble/board.json (earlier
+   RP2040-generation Challenger siblings; source of the confirmed
+   active-high LED precedent used for the polarity inference below).
+8. boardsDetails/rp2040/rp2350/challenger_2350_wifi6_ble5/notes.txt (read
+   for research method / documentation format precedent).
+9. variants/rp2040/boards.txt (challenger_2350_bconnect.* entries) — no
+   pin-level information beyond board id/build.variant/USB VID:PID list;
+   confirms boards.txt display name "iLabs Challenger 2350 BConnect" and
+   build.variant challenger_2350_bconnect matching this directory.
+10. sparkfun_micromodrp2040/board.json + notes.txt (source of the
+    "genuinely unrouted, unaliased chip pin gets no chipGpios entry"
+    precedent applied to GPIO10/11 below).
+
+BOARD IDENTITY / WHAT "BCONNECT" MEANS
+---------------------------------------
+Confirmed via the vendor datasheet: "BConnect" is NOT a wireless
+co-processor or Bluetooth module name (initial working hypothesis from the
+task brief) — it is iLabs' name for a physical peripheral-connector
+standard. Quote: "The board is equipped with two BConnect connectors that
+allow you to connect an array of different peripherals based on the
+BConnect standard. Having dual channels means that you can operate both a
+Bi2C peripheral as well as a BSerial peripheral at the same time." This
+board has NO onboard WiFi/BLE/cellular radio or co-processor of any kind —
+unlike the challenger_2350_wifi6_ble5 and challenger_2350_nbiot siblings in
+this same directory. This board's own pins_arduino.h independently confirms
+this: it contains no PIN_ESP*/PIN_WIFI*/co-processor-UART/SPI defines of
+any kind, unlike every genuinely wireless-equipped sibling. Correctly
+bucketed in the plain "rp2350" chip bucket (not "rp2040w") — no
+WiFi-bucketing flag needed for this board (contrast with several other
+Challenger siblings that DO carry a WiFi-bucketing flag note).
+
+Datasheet quote on the connector buses: "One UART channel have been routed
+to the header pins (RX, TX). SPI – One SPI channel have been routed to the
+header pins (SCK, SDO, SDI). I2C – One I2C channel have been routed to the
+header pins (SCL, SDA)." — matches this board's single Serial1 (GPIO12/13)
+/ SPI0 (GPIO16-19) / Wire0 (GPIO20/21) header-routed buses exactly. No
+separate dedicated GPIOs were found or documented for the BConnect
+connectors beyond these same standard header-routed buses.
+
+PER-PIN REASONING
+------------------
+GPIO7  - PIN_LED / LED_BUILTIN / D13 (pins_arduino.h: PIN_LED=(7u), D13=(7u)).
+  Datasheet: "On the other side of the USB connector there is a user
+  programmable green LED. This LED is connected to pin D13 and can easily
+  be controlled by the user program." Matches exactly (D13 = GPIO7 on this
+  board). No explicit "Active level: High/Low" sentence is given for this
+  model (confirmed absent by the targeted verbatim re-fetch, which returned
+  "Not mentioned" for that item). Active-high polarity is therefore
+  INFERRED, not directly quoted, from the same-vendor, same-recurring-
+  wording precedent already confirmed active-high elsewhere in this
+  product line (challenger_2040_wifi/board.json datasheet: "Active level:
+  High"; challenger_2040_wifi6_ble/board.json GPIO10). This carries
+  slightly lower confidence than a directly-quoted polarity statement —
+  flagged here for visibility, same caveat pattern already used by the
+  challenger_2350_wifi6_ble5 sibling's own GPIO7/D13 LED (identical pin
+  number, identical datasheet wording, same caveat).
+  Tagged: ["digital_output", "pwm_output", "led_high"]. digital_input
+  dropped (LED is drive-only); pwm_output kept for brightness dimming.
+  No SPI/I2C/UART bus-alias collision on GPIO7 on this board — the
+  "confirmed button/LED pin also aliased as a bus signal" bug class
+  flagged for this audit does not apply; no pins_arduino.h edit needed.
+
+GPIO22 - NEOPIXEL (pins_arduino.h: `#define NEOPIXEL (22u)`, no Dn/An alias).
+  This is the pin requiring the most care in this audit. The vendor
+  datasheet's own NeoPixel sentence reads: "Finally there is a neopixel
+  LED on the board. This is an RGB LED with intensity control, run by a
+  single GPIO (D14/GPIO11) pin on the board." This is VERBATIM IDENTICAL
+  wording to the sentence already found (and correctly trusted) on the
+  RP2040-generation challenger_2040_wifi6_ble datasheet page, where GPIO11
+  genuinely was correct for that specific model. On the BConnect board,
+  however, this claim is directly contradicted by this board's own shipped
+  pins_arduino.h: there is no D14 alias declared anywhere in the file (the
+  D-alias list is D0,D1,D5,D6,D9,D10,D11,D12,D13, none of them 14), and
+  NEOPIXEL is explicitly defined as GPIO22, not GPIO11.
+  Resolution: treated the datasheet's "D14/GPIO11" sentence as STALE,
+  REUSED BOILERPLATE TEXT copy-pasted across iLabs' Challenger product
+  line without being updated per-model, and trusted this board's own
+  shipped Arduino-core header (the file that actually determines real
+  firmware behaviour) as ground truth instead. Corroborating evidence:
+  the sibling challenger_2350_wifi6_ble5 board shares the identical base
+  RP2350A pinout template (identical D0-D13/A0-A5/SPI0/Wire0 layout,
+  identical PIN_LED=GPIO7=D13) but has GPIO22 wired instead to
+  PIN_ESP32_HS (its ESP32-C6 co-processor handshake signal), confirmed by
+  ITS OWN vendor datasheet page ("GPIO22: Handshake signal for ESP Hosted
+  operation"). This shows GPIO22 is the same physical PCB pin position
+  across this product family, genuinely repurposed per board variant
+  (NeoPixel on the co-processor-free BConnect board; ESP32-C6 handshake on
+  the WiFi6/BLE5 board) — exactly consistent with what each board's own
+  pins_arduino.h independently and separately declares. This is treated as
+  strong corroboration that GPIO22 = NeoPixel is correct for THIS specific
+  board, not a guess.
+  Because NEOPIXEL is a bare #define never referenced by any
+  `static const uint8_t` alias in this file, build_boards.js's parser
+  (which only harvests GPIO numbers from `static const uint8_t X = ...;`
+  declarations, per parseEsp32Consts()'s own documented rationale) would
+  never surface GPIO22 as a pin in the Designer at all without an explicit
+  chipGpios entry — added here for that reason (chipGpios injects GPIOs
+  the .h file's alias parser misses; this mechanism is already used
+  elsewhere in this family, e.g. every co-processor-pin exclusion entry in
+  the sibling boards).
+  Tagged: ["digital_output", "led_neopixel", "pwm_output"] — matches this
+  repo's established led_neopixel precedent (challenger_2040_wifi/
+  board.json GPIO11, challenger_2040_wifi6_ble/board.json GPIO11).
+  digital_input dropped. No SPI/I2C/UART bus-alias collision on GPIO22 on
+  this board.
+
+BUTTON
+------
+No onboard user pushbutton beyond RESET/BOOTSEL was found. The targeted
+verbatim re-fetch of the datasheet page returned "Not mentioned" for the
+word "button" anywhere on the page. No PIN_BUTTON-style alias or
+button-related comment appears anywhere in this board's own
+pins_arduino.h. Consistent with every other Challenger-family sibling
+audited this session (all confirmed RESET+BOOTSEL only, no separate
+user-GPIO pushbutton). No chipGpios entry added for a button (none exists
+to tag).
+
+GPIO10 / GPIO11 (PIN_WIRE1_SDA / PIN_WIRE1_SCL) — DELIBERATELY NOT TOUCHED
+----------------------------------------------------------------------------
+This board's pins_arduino.h declares:
+    // Not pinned out
+    #define PIN_WIRE1_SDA       (10u)
+    #define PIN_WIRE1_SCL       (11u)
+Flagged for extra scrutiny because, unlike the usual family-wide "not
+pinned out" idiom in this codebase (an out-of-range sentinel value, 31u or
+99u, that is not a real GPIO — e.g. every other "Not pinned out" Wire1/
+SPI1/Serial2 block in this same directory, including this board's own
+Serial2 block two lines above: `PIN_SERIAL2_TX/RX (31u)`), this one uses
+REAL, valid GPIO numbers (10 and 11) that genuinely exist on the RP2350A
+die. This raised the question of whether it is a genuine chipGpios
+exclusion candidate.
+Resolution: no chipGpios entry added, and no pins_arduino.h edit made.
+Reasoning: (1) this board's own D10/D11 aliases point at GPIO2/GPIO3
+respectively — a completely different physical pin pair — so GPIO10/11
+are not reachable via any Dn/An/bus-role alias in this file at all; (2)
+build_boards.js's parser only harvests GPIO numbers referenced by a
+`static const uint8_t` alias, and no such alias anywhere in this file
+resolves to 10 or 11 (PIN_WIRE1_SDA/SCL are bare #defines, never assigned
+to a static const); (3) therefore GPIO10 and GPIO11 already do NOT appear
+as pins in the generated Designer pin list for this board, matching the
+comment's own claim that they are "not pinned out" (i.e. not physically
+accessible from any header pin on this board). This matches an established
+precedent already in this repo for a real (non-sentinel), unaliased,
+"not pinned out" GPIO: sparkfun_micromodrp2040/pins_arduino.h declares
+`#define PIN_SPI1_SS (9u) // not pinned out`, and that board's own
+board.json (audited earlier this session) deliberately added no chipGpios
+entry for GPIO9, for the identical reason. Adding a chipGpios entry for
+GPIO10/11 here would be the one action that could wrongly INTRODUCE
+inaccessible phantom pins into the Designer, so both were left untouched.
+
+SUMMARY
+-------
+- GPIO7 (PIN_LED/D13): tagged led_high (+ digital_output, pwm_output).
+  Confirmed onboard user LED per vendor datasheet; polarity inferred from
+  same-vendor precedent (datasheet does not state polarity for this exact
+  model).
+- GPIO22 (NEOPIXEL): tagged led_neopixel (+ digital_output, pwm_output).
+  Confirmed onboard NeoPixel via this board's own pins_arduino.h; the
+  vendor datasheet's specific "GPIO11" claim for this LED was determined
+  to be stale reused boilerplate (contradicted by the header and by
+  independent cross-checking against the wifi6_ble5 sibling's own,
+  differently-wired GPIO22) and was NOT used to override the header.
+- No onboard co-processor of any kind (BConnect = a peripheral-connector
+  standard, not a radio module) — no dedicated-hardware GPIO exclusions
+  needed.
+- No onboard user button beyond RESET/BOOTSEL.
+- GPIO10/GPIO11 (Wire1, real numbers but "not pinned out" per this board's
+  own header) deliberately left out of chipGpios — already correctly
+  excluded from the Designer's pin list by the existing parser mechanism,
+  and adding an entry would risk introducing inaccessible phantom pins.
+- No confirmed button/LED pin on this board collides with an SPI/I2C/UART
+  bus alias, so the "bus-capability auto-append" bug class flagged for
+  this audit does not apply — no pins_arduino.h edit was made.
+- board.json created at
+  variants/rp2040/rp2350/challenger_2350_bconnect/board.json.

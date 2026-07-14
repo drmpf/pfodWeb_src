@@ -1,0 +1,199 @@
+uPesy_esp32c3_mini board.json dedicated-hardware pin-exclusion audit research notes
+====================================================================================
+
+Board: uPesy_esp32c3_mini (variants/esp32/esp32c3/uPesy_esp32c3_mini), chip esp32c3.
+Real-world identity: uPesy ESP32C3 Mini (a.k.a. "uPesy ESP32C3 Mini Low Power"
+in uPesy's own product listing), ESP32-C3-MINI-1 module on uPesy's smallest
+carrier PCB (3cm x 2cm, no integrated connectors - pads only, per the vendor's
+own product description). pins_arduino.h declares TX=21, RX=20, SDA=3, SCL=10,
+SS=7, MOSI=6, MISO=5, SCK=4, A0=0, A1=1, A3=3, A4=4, A5=5 (generic ESP32-C3
+core template aliases - note A2 is NOT declared on this board, unlike its
+sibling uPesy_esp32c3_basic), and VBAT_SENSE=0 (aliased to BAT_VOLT_PIN). No
+board.json override existed before this audit (used the chip-level
+esp32c3/board.json default). Flagged by the discovery sweep for having
+VBAT_SENSE=0 declared but never individually reviewed.
+
+Sibling board uPesy_esp32c3_basic (near-identical pins_arduino.h, same
+ESP32-C3-MINI-1 module, VBAT_SENSE=0/BAT_VOLT_PIN declared identically) was
+audited in parallel this same wave by a separate session - NOT assumed
+identical per this task's explicit instruction; verified independently, and
+a real, vendor-documented difference was found (see GPIO0 section below).
+
+Sources consulted
+------------------
+- https://www.upesy.com/blogs/tutorials/upesy-esp32c3-mini-documentation-version-latest
+  Official uPesy documentation page for this exact board (Mini, not Basic -
+  confirmed a distinct URL/page from the Basic sibling's own doc page).
+  Fetched three times with progressively more targeted prompts to get an
+  exact verbatim quote rather than a paraphrase, since the first fetch's
+  summary ("2.5V" reference) looked surprising next to the Basic sibling's
+  reported "3.3V" formula and warranted double-checking it wasn't a
+  WebFetch summarization artifact. Final verbatim quote obtained:
+    "Avec une batterie Li-Ion/Li-Polymer, on peut estimer sa capacité
+    restante en se basant sur sa tension. La carte intègre un pont
+    diviseur de tension, relié à la broche GPIO0, qui divise la tension
+    V_DC par un ratio.
+    On peut donc connaître soit la tension de la batterie V_BAT, soit
+    d'une alimentation externe V_IN, voir celle de l'USB V_BUS avec la
+    formule suivante :
+    V_BAT = 2 x (V_IO0,bits / 4095) x 2.5V
+    Le ratio est de 2."
+  Also states the ESP32-C3's ADC usable range is treated as limited to
+  0-2.5V in this board's own doc ("La plage de tension de l'ADC de
+  l'ESP32C3 est limité entre 0 et 2.5V") - this is uPesy's own stated
+  reason for using a 2.5V constant in the Mini-specific formula, distinct
+  from the ratio itself. Also confirms: the reading is only valid when the
+  board is battery-powered (USB power gives an incorrect result); GPIO9 is
+  wired to a physical BOOT pushbutton ("La broche GPIO9 intervient
+  également lors d'un téléversement d'un nouveau programme. Elle est
+  reliée au bouton BOOT."); the EN pin is wired to a physical RESET/EN
+  button ("La broche RESET permet de rebooter l'ESP32C3 si elle est mise à
+  la masse. Elle est également reliée au bouton EN à gauche.") - EN is not
+  a usable Arduino GPIO, out of scope; and explicitly no LED tied to any
+  specific pin on this or other "Low Power" uPesy boards ("Comme sur les
+  autres cartes Low Power, il n'y a pas de LED reliée à une broche
+  particulière"), and no power-on indicator LED either ("Il n'y a pas de
+  LED indiquant la mise sous tension").
+- https://www.upesy.com/products/upesy-esp32c3-mini-low-power
+  Official product page. Confirms board identity, size (3cm x 2cm), and
+  "no integrated connectors, only pads on the back for soldering wires".
+  Independently confirms a battery-voltage measurement circuit exists:
+  "Elle dispose d'un circuit pour mesurer la tension de la batterie." Does
+  not itself give GPIO numbers, a BOOT-button callout, or LED information -
+  those came from the documentation page above.
+- (For comparison only, not re-cited as a source for this board's own
+  board.json) uPesy_esp32c3_basic/board.json's own pfodWeb NOTE comment,
+  written this same session by the parallel-wave subagent auditing that
+  sibling board, quotes ITS OWN Mini-analog documentation page as using
+  "V_BAT = 2 x (V_IO0,bits / 4095) x 3.3V" - a genuinely different constant
+  (3.3V) from this Mini board's own page (2.5V), for what is otherwise
+  near-identical hardware. Both pages independently and consistently state
+  "Le ratio est de 2" - only the reference-voltage constant in the
+  vendor's own worked formula differs between the two product doc pages.
+
+Reasoning per pin
+------------------
+GPIO0 (VBAT_SENSE / BAT_VOLT_PIN / A0) - CONFIRMED onboard dedicated
+  battery-voltage-sense pin via uPesy's own official Mini-specific
+  documentation page and product page (independently: the doc page gives
+  the full divider/formula treatment, the product page separately confirms
+  "a circuit to measure battery voltage" exists). Vendor-given ratio is 2
+  (equal-value resistive divider, R_series == R_shunt). Per this task's
+  instructed formula (3.3V * (R_series+R_shunt)/R_shunt), this computes to
+  an effective corrected reference of 3.3V * 2 = 6.6V, which is what was
+  documented in the board.json chipGpios["0"].note field - even though
+  uPesy's OWN worked formula for this specific board uses a 2.5V constant
+  instead of 3.3V (see Sources above; that reflects uPesy's own
+  characterization of the ESP32-C3 ADC's practical linear range on this
+  board, a separate accuracy consideration from the divider ratio itself,
+  and not something this task's formula asked to incorporate). Per this
+  project's established battery/voltage-monitor KEEP policy (section 3 of
+  the board-variant-pin-audit playbook: "Analog sensor readings that match
+  pfodWeb's own data-display use case ... battery monitors" -> KEEP
+  available), this pin's capabilities were left unchanged from the
+  chip-level default (analog_input retained, not excluded) - only a
+  documentation "note" was added to chipGpios["0"], matching the
+  established pattern used elsewhere (e.g. esp32c3/uPesy_esp32c3_basic's
+  own GPIO0 entry, esp32c3/ttgo-t-oi-plus's GPIO2 entry). Board-wide
+  adc.defaultRefVolts was NOT changed (left at "3.3") because the divider
+  is wired only to this one dedicated pin (GPIO0), not to the board's other
+  analog-capable pins (A1=GPIO1, A3=GPIO3, A4=GPIO4, A5=GPIO5) - changing
+  the board-wide value would have incorrectly scaled those unrelated pins
+  too.
+
+GPIO9 (BOOT button) - CONFIRMED onboard physical BOOT pushbutton via
+  uPesy's own official Mini-specific documentation page: "La broche GPIO9
+  intervient également lors d'un téléversement d'un nouveau programme.
+  Elle est reliée au bouton BOOT." (GPIO9 is also involved during firmware
+  upload and is wired to the BOOT button.) This is a real, physically
+  present pushbutton per the vendor's own text (not the automatic
+  USB-auto-reset-circuitry pattern some other ESP32 dev boards use instead
+  of a manual button - explicitly checked for and ruled out via a targeted
+  WebFetch prompt). Note this pin is NOT itself named via any
+  static-const alias in this board's own pins_arduino.h (no BUT_BUILTIN or
+  similar declared) - tagged anyway per this task's explicit instruction to
+  do an "opportunistic section 7a check" using real vendor confirmation,
+  consistent with the playbook's rule that button/LED tags are added by
+  hand after vendor verification, not inferred from (or gated on) a
+  pins_arduino.h alias name. Also this chip's standard boot-mode strapping
+  pin - the chip-level pinNotes entry "Must be HIGH for normal boot" was
+  retained unchanged (expected and consistent: a button that pulls GPIO9
+  low when pressed, idle-high via the chip's internal pull-up, is the
+  standard ESP32-C3 BOOT-button wiring pattern). Tagged capabilities
+  ["digital_input","button"] only, per the playbook's exclusion rule for
+  button pins (no analog/output/pwm mixed in).
+
+LED - checked and NOT tagged. No LED_BUILTIN or other LED-suggestive alias
+  exists anywhere in this board's own pins_arduino.h, and BOTH vendor
+  sources above explicitly and independently confirm no onboard LED exists
+  on this board: the documentation page states "il n'y a pas de LED reliée
+  à une broche particulière" (no LED tied to any specific pin) and "Il n'y
+  a pas de LED indiquant la mise sous tension" (no power-on indicator LED
+  either). Nothing to tag.
+
+EN/RESET button - out of scope. The documentation page confirms a physical
+  RESET button wired to the chip's EN pin, but EN is the chip's hardware
+  enable/reset line, not a usable Arduino-addressable GPIO, so it has no
+  corresponding chipGpios entry to tag.
+
+Alias-conflict check (per this session's task instruction)
+-------------------------------------------------------------
+Checked this board's own pins_arduino.h for any SDA/SCL/SS/MOSI/MISO/SCK/
+TX/RX alias landing on GPIO0 or GPIO9: SDA=3, SCL=10, SS=7, MOSI=6, MISO=5,
+SCK=4, TX=21, RX=20 - none is 0 or 9. No bus-capability contamination risk
+found for either pin (build_boards.js's unconditional `if (g === sda) caps.
+push('i2c_sda')`-style appends, at pfodWeb_src/build_boards.js lines
+~698-703, would only fire if one of those aliases' values matched 0 or 9,
+which none do here). Consequently NO pins_arduino.h edit was needed or made
+for this board - unlike the esp32c3-devkit-lipo precedent (a different
+board, in an earlier session) where a genuine SCL=9 collision required
+deleting that line. This board's pins_arduino.h was read in full and left
+completely unmodified.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (1-8, 10, 11, 20, 21) were left at the
+chip-level esp32c3/board.json default - no dedicated-hardware evidence was
+found for any of them in either vendor source consulted. GPIO2 is A2 on the
+sibling Basic board's pins_arduino.h but is NOT declared as A2 here (this
+Mini board's own file skips A2) - left as the plain chip-level default
+(analog_input still offered via the chip-level chipGpios["2"] entry, which
+is correct since GPIO2 is a real, generically-usable ADC-capable pin on
+this chip regardless of whether this specific board's Arduino core file
+happens to alias it as "A2").
+
+What was tagged/changed
+-------------------------
+1. Created variants/esp32/esp32c3/uPesy_esp32c3_mini/board.json (none
+   existed before) as a full copy of the chip-level esp32c3/board.json
+   default, with:
+     - GPIO0 (chipGpios["0"]) capabilities left UNCHANGED (KEEP policy),
+       "note" field added documenting the confirmed battery-voltage-sense
+       function, the vendor's ratio-2 divider, and the 6.6V effective
+       corrected reference per this task's formula.
+     - GPIO9 (chipGpios["9"]) capabilities changed to
+       ["digital_input","button"] (was
+       ["digital_input","digital_output","pwm_output"]), "note" field
+       added documenting the confirmed onboard BOOT pushbutton.
+   plus a pfodWeb NOTE comment block at the top of the file citing the
+   sources above.
+2. variants/esp32/esp32c3/uPesy_esp32c3_mini/pins_arduino.h: NOT edited -
+   no alias-collision was found for either GPIO0 or GPIO9, so no deletion
+   was required.
+
+One-line summary
+------------------
+GPIO0 (VBAT_SENSE/BAT_VOLT_PIN) confirmed via uPesy's own Mini-specific
+documentation and product pages as a real onboard battery-voltage-sense
+pin with a ratio-2 divider (6.6V effective corrected reference documented,
+board-wide adc.defaultRefVolts left at 3.3 since the divider is pin-local);
+capabilities kept per the project's battery-monitor KEEP policy. GPIO9
+additionally confirmed (opportunistic section 7a check) as a real onboard
+BOOT pushbutton via the same documentation page and tagged
+["digital_input","button"]. No onboard LED exists on this board (vendor-
+confirmed, explicitly stated twice in the doc page) and no button/LED bus-
+alias collisions were found, so pins_arduino.h needed no edits. A genuine,
+vendor-documented difference from the sibling uPesy_esp32c3_basic board was
+found and recorded: this Mini board's own formula uses a 2.5V constant
+(vs. Basic's 3.3V) for the same ratio-2 divider, reflecting a Mini-specific
+ADC-linear-range caveat in uPesy's own documentation.

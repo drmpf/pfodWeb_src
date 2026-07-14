@@ -1,0 +1,74 @@
+// pfodWeb NOTE: WIZnet W6300-EVB-Pico2. This board's own pins_arduino.h
+// was originally just `#define PICO_RP2350A 1` +
+// `#include "../generic/pins_arduino.h"` (a plain Pico 2 pin map, no
+// board-specific differentiation at all). Sources consulted:
+// docs.wiznet.io W6300-EVB-Pico2 product page
+// (https://docs.wiznet.io/Product/Chip/Ethernet/W6300/w6300-evb-pico2),
+// which publishes a verbatim GPIO table:
+//   GPIO15 "Connected to INTn on W6300"
+//   GPIO16 "Connected to CSn on W6300"
+//   GPIO17 "Connected to SCLK on W6300"
+//   GPIO18 "Connected to IO0 (MOSI) on W6300 (QSPI)"
+//   GPIO19 "Connected to IO1 (MISO) on W6300 (QSPI)"
+//   GPIO20 "Connected to IO2 on W6300 (QSPI)"
+//   GPIO21 "Connected to IO3 on W6300 (QSPI)"
+//   GPIO22 "Connected to RSTn on W6300"
+//   GPIO25 "Connected to user LED"
+// plus the note "Pins GPIO15-GPIO22 are dedicated to W6300 Ethernet
+// communication and cannot be repurposed if using the Ethernet function."
+// Cross-checked against WIZnet's own WIZnet-PICO-C firmware example
+// (github.com/WIZnet-ioNIC/WIZnet-PICO-C) pin config for W6300-EVB-Pico2,
+// which independently confirms the identical assignment: PIO_IRQ_PIN=15,
+// PIN_CS=16, PIO_SPI_SCK_PIN=17, PIO_SPI_DATA_IO0_PIN=18,
+// PIO_SPI_DATA_IO1_PIN=19, PIO_SPI_DATA_IO2_PIN=20,
+// PIO_SPI_DATA_IO3_PIN=21, PIN_RST=22. No onboard push-button is
+// documented beyond the RP2350's built-in BOOTSEL (which, as on every
+// other RP2040/RP2350 board in this database, is not a normal GPIO and
+// is out of scope for this file - see the rpipico board.json precedent).
+//
+// GPIO15-22 alias-collision fix: this board's inherited generic rp2350
+// pins_arduino.h/common.h declared plain "D<n>" aliases for every one of
+// GPIO0-22 (so all eight would otherwise surface as ordinary
+// digital_input/digital_output/pwm_output pins), and additionally
+// happened to declare the *unrelated* Pico reference-design SPI0 bus
+// aliases MISO=16/SS=17/SCK=18/MOSI=19 on this exact GPIO range, which do
+// NOT describe this board's real wiring (GPIO16 is really CSn, GPIO17 is
+// really SCLK, GPIO18 is really MOSI/IO0, GPIO19 is really MISO/IO1 - see
+// table above). Fixed (2026-07-12, matching the RP2040-chip sibling
+// variants/rp2040/rp2040/wiznet_6300_evb_pico/pins_arduino.h) by making
+// this board's own pins_arduino.h self-contained: it no longer includes
+// ../generic/pins_arduino.h, and instead reproduces its declarations
+// directly with PIN_SPI0_MISO/MOSI/SCK/SS corrected to the real wiring
+// (SS/CSn=16, SCK=17, MOSI/IO0=18, MISO/IO1=19). This makes
+// build_boards.js's unconditional SS/MOSI/MISO/SCK -> spi_ss/spi_mosi/
+// spi_sck/spi_miso auto-tagging produce accurate labels instead of the
+// permuted/coincidental ones the plain-Pico2 template would have
+// produced. All eight GPIO15-22 entries below still drop
+// digital_input/digital_output/pwm_output entirely (set to a bare `[]`,
+// which is required - omitting the "capabilities" key instead would
+// fall through to this parser's default general-purpose derivation) so
+// none of them can be assigned as a plain I/O pin in the Designer; only
+// the single correct bus-role tag (now accurate) is auto-supplied for
+// GPIO16-19.
+{
+  "boardName": "RP2350",
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+  "family": "rp2040",
+  "inputOnlyGpios": [],
+  "connections": ["serial"],
+  "pinNotes": {},
+  "chipGpios": {
+    "15": { "capabilities": [], "note": "W6300 Ethernet chip interrupt (INTn / PIO_IRQ_PIN) - dedicated input line asserted by the onboard W6300 QSPI Ethernet controller to signal the RP2350, not general purpose. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIO_IRQ_PIN=15). See pfodWeb NOTE above re: the alias-collision gotcha." },
+    "16": { "capabilities": [], "note": "W6300 Ethernet chip select (CSn) - dedicated output line from the RP2350 to the onboard W6300 QSPI Ethernet controller, not general purpose. pins_arduino.h declares PIN_SPI0_SS=16 (corrected from the plain-Pico2 template's MISO=16), so this pin auto-tags 'spi_ss' below, matching its real CSn function. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIN_CS=16). See pfodWeb NOTE above." },
+    "17": { "capabilities": [], "note": "W6300 Ethernet chip QSPI clock (SCLK / PIO_SPI_SCK_PIN) - dedicated output line from the RP2350 to the onboard W6300 QSPI Ethernet controller, not general purpose. pins_arduino.h declares PIN_SPI0_SCK=17 (corrected from the plain-Pico2 template's SS=17), so this pin auto-tags 'spi_sck' below, matching its real SCLK function. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIO_SPI_SCK_PIN=17). See pfodWeb NOTE above." },
+    "18": { "capabilities": [], "note": "W6300 Ethernet chip QSPI data line 0 (MOSI/IO0 / PIO_SPI_DATA_IO0_PIN) - dedicated bidirectional line between the RP2350 and the onboard W6300 QSPI Ethernet controller, not general purpose. pins_arduino.h declares PIN_SPI0_MOSI=18 (corrected from the plain-Pico2 template's SCK=18), so this pin auto-tags 'spi_mosi' below, matching its real MOSI/IO0 function. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIO_SPI_DATA_IO0_PIN=18). See pfodWeb NOTE above." },
+    "19": { "capabilities": [], "note": "W6300 Ethernet chip QSPI data line 1 (MISO/IO1 / PIO_SPI_DATA_IO1_PIN) - dedicated bidirectional line between the RP2350 and the onboard W6300 QSPI Ethernet controller, not general purpose. pins_arduino.h declares PIN_SPI0_MISO=19 (corrected from the plain-Pico2 template's MOSI=19), so this pin auto-tags 'spi_miso' below, matching its real MISO/IO1 function. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIO_SPI_DATA_IO1_PIN=19). See pfodWeb NOTE above." },
+    "20": { "capabilities": [], "note": "W6300 Ethernet chip QSPI data line 2 (IO2 / PIO_SPI_DATA_IO2_PIN) - dedicated bidirectional line between the RP2350 and the onboard W6300 QSPI Ethernet controller, not general purpose. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIO_SPI_DATA_IO2_PIN=20)." },
+    "21": { "capabilities": [], "note": "W6300 Ethernet chip QSPI data line 3 (IO3 / PIO_SPI_DATA_IO3_PIN) - dedicated bidirectional line between the RP2350 and the onboard W6300 QSPI Ethernet controller, not general purpose. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIO_SPI_DATA_IO3_PIN=21)." },
+    "22": { "capabilities": [], "note": "W6300 Ethernet chip reset (RSTn / PIN_RST) - dedicated output line from the RP2350 to the onboard W6300 QSPI Ethernet controller, not general purpose. Confirmed via docs.wiznet.io W6300-EVB-Pico2 GPIO table and WIZnet-PICO-C firmware pin config (PIN_RST=22)." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Connected to user LED (docs.wiznet.io W6300-EVB-Pico2 GPIO table: GPIO25 'Connected to user LED'). Not aliased at all by this board's inherited generic rp2350 pins_arduino.h (its common.h deliberately omits a D25 alias for the same reason PIN_LED itself is a bare #define, never turned into a static-const alias), so without this entry GPIO25 would not appear as a pin at all. Active-high assumed by the same standard Raspberry Pi Pico/Pico2 reference-design LED convention already confirmed and applied to this database's rpipico board.json (GPIO25 anode via series resistor to GPIO25, cathode to GND) - this board's vendor documentation states it 'works basically the same as a Raspberry Pi Pico board' with Ethernet added, and no inverted-LED wiring is documented anywhere. digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040/RP2350 GPIO." }
+  },
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

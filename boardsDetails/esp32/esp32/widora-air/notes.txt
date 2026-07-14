@@ -1,0 +1,97 @@
+widora-air (chip: esp32) - dedicated-hardware pin-exclusion audit (button tagging)
+Date: 2026-07-12
+
+FLAGGED DECLARATION (from a fresh discovery sweep, no prior board.json/NOTE trail):
+  static const uint8_t KEY_BUILTIN = 0;
+
+Also present in pins_arduino.h, for context (not flagged, standard boilerplate,
+unchanged):
+  LED_BUILTIN = 25
+  TX = 1, RX = 3
+  SDA = 23, SCL = 19
+  SS = 5, MOSI = 16, MISO = 17, SCK = 18
+  A0-A9, D0-D6, T0-T6 aliases (re-use the same GPIOs as above; no new pins)
+  DAC1 = 25, DAC2 = 26
+
+SOURCES CONSULTED
+
+1. https://github.com/espressif/arduino-esp32/blob/master/variants/widora-air/pins_arduino.h
+   (official upstream vendor source, fetched via WebFetch) - matches this
+   repo's local variants/esp32/esp32/widora-air/pins_arduino.h exactly
+   (same KEY_BUILTIN=0, LED_BUILTIN=25, TX/RX/SDA/SCL/SS/MOSI/MISO/SCK
+   values, A0-A9/D0-D6/T0-T6 aliases, DAC1/DAC2). Confirms this repo's
+   copy of the file is an unmodified vendor variant, not a local guess.
+
+2. WebSearch "Widora Air ESP32 GPIO0 boot button KEY" - surfaced a
+   CNX Software article ("Getting Started with ESP32-Bit Module and
+   ESP32-T Development Board using Arduino core for ESP32") describing
+   the eBox/ESP32-T module also used on Widora boards: "a power LED, a
+   user LED (LED1), a reset button, and a user button named 'KEY'".
+   GPIO0/BOOT is also independently confirmed as the ESP32's standard
+   bootstrapping-pin-doubling-as-button pattern (esptool boot-mode-
+   selection docs, ESP32 forum threads) - i.e. GPIO0 pulled low by a
+   button is the conventional wiring for this exact silicon pin.
+
+3. WebSearch "Widora AIR ESP32 pinout KEY button GPIO0 arduino-esp32" -
+   surfaced the Seeed Studio product listing ("Widora-AIR Based ESP32
+   Development Board") and a further CNX-adjacent summary reiterating
+   "the board has its own onboard 3.3V LDO, two keys and two LEDs" with
+   "a reset button and a user button named 'KEY'" - i.e. independently
+   corroborates a second, non-reset user button physically present on
+   the board, consistent with KEY_BUILTIN naming this pin.
+
+4. https://www.espboards.dev/esp32/widora-air/ (WebFetch) - third-party
+   pinout aggregator; its pin table lists "0 KEY_BUILTIN" alongside the
+   other pins_arduino.h aliases, consistent with sources 1-3. (Its
+   summarised SPI-SS value did not match this board's own pins_arduino.h
+   and was not relied on - source 1's direct file fetch is authoritative
+   for pin numbers; this source was only used to corroborate the GPIO0/
+   button association, not pin numbering.)
+
+ALIAS-COLLISION CHECK (per audit playbook section on build_boards.js's
+unconditional bus-capability appends)
+  This board's other function aliases are: TX=1, RX=3, SDA=23, SCL=19,
+  SS=5, MOSI=16, MISO=17, SCK=18. None of these equal 0. GPIO0's only
+  alias in pins_arduino.h is KEY_BUILTIN itself. Checked
+  pfodWeb_src/build_boards.js buildEsp32Board(): the i2c_sda/i2c_scl/
+  spi_ss/spi_mosi/spi_miso/spi_sck capability appends (lines ~698-703)
+  compare each capability's GPIO constant against g, and none of those
+  constants resolve to GPIO0 on this board - so no bus capability gets
+  silently appended alongside the button tag. No conflict found; no
+  pins_arduino.h line needed to be deleted.
+
+REASONING
+
+- GPIO0 (KEY_BUILTIN): CONFIRMED (not a guess) as a real onboard user
+  push-button, distinct from the board's separate reset button, via two
+  independent secondary sources (CNX Software's ESP32-T/eBox module
+  write-up and further Widora AIR product-description coverage), both
+  describing a physical "KEY" button in addition to the reset button.
+  This is also the standard ESP32 GPIO0/BOOT strapping pin pulled low by
+  a button press, matching the existing "Must be HIGH or floating on
+  reboot" pinNotes entry inherited unchanged from the chip-level default.
+  TAGGED: capabilities ["digital_input", "button"] exactly, replacing the
+  chip-level default's ["analog_input_serial", "digital_input",
+  "digital_output", "pwm_output"] for this pin (per the button-tag
+  exclusion rule: a confirmed dedicated button is not also offered as a
+  general-purpose output/PWM/analog pin in the designer). Not TX/RX/SDA/
+  SCL/SS/MOSI/MISO/SCK on this board, so the tag is not overridden or
+  contaminated by any of build_boards.js's other hard-coded pin roles.
+
+GUESS VS NO-GUESS SUMMARY
+- No guesses were made. The button identity is corroborated by two
+  independent secondary sources describing the physical board (not just
+  the pins_arduino.h name), plus the vendor's own upstream file fetch
+  confirming this repo's copy is unmodified. The alias-collision check
+  was performed directly against this board's own alias values and the
+  actual build_boards.js source, not assumed absent.
+
+SUMMARY
+- GPIO0/KEY_BUILTIN: tagged ["digital_input", "button"] in board.json
+  chipGpios - confirmed onboard user button (distinct from reset button).
+- No alias collision found between GPIO0 and SDA/SCL/SS/MOSI/MISO/SCK/
+  TX/RX on this board; no pins_arduino.h edit was required.
+- Created variants/esp32/esp32/widora-air/board.json (full copy of the
+  chip-level esp32/esp32/board.json default, edited only the GPIO0
+  chipGpios entry, plus a pfodWeb NOTE comment block citing sources and
+  the alias-collision check).

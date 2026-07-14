@@ -1,0 +1,71 @@
+lolin_s2_mini - button/LED research notes
+==========================================
+
+Sources consulted
+------------------
+https://www.wemos.cc/en/latest/s2/s2_mini.html
+  Official WEMOS/LOLIN S2 Mini product page. Confirmed board identity and
+  linked to schematic PDF and pin diagram image; page text itself (as
+  fetched) did not spell out LED/button GPIOs in prose.
+
+https://www.wemos.cc/en/latest/_static/files/sch_s2_mini_v1.0.0.pdf
+  Official KiCad-exported schematic PDF (S2_mini.kicad_sch, rev v1.0.0).
+  THE key confirming source. Shows:
+    - LED1 (LED_0603_B) wired: GPIO15/XTAL_32K_P -> R5 (2k) -> LED1 -> GND.
+      GPIO15 sources current through the resistor and LED to ground, so the
+      LED lights when GPIO15 is driven HIGH (active-high).
+    - Two tactile switches SW_2x4x3.5: SW1 wired to EN (with R3 10k pull-up
+      to +3V3 and C14 100nF) - this is the RESET button, not a user button.
+      SW2 wired to GPIO0 (with R4 10k pull-up to +3V3) - this is the
+      standard ESP32 BOOT button: GPIO0 pulled HIGH normally, pulled to GND
+      when SW2 is pressed.
+    - No other switches/buttons and no other LEDs are present on the
+      schematic.
+
+https://github.com/wemos/docs/blob/master/docs/en/s2/s2_mini.rst
+  Official docs source (RST). Fetched but the summarized text did not add
+  LED/button GPIO detail beyond what the schematic PDF already confirmed.
+
+https://www.espboards.dev/esp32/lolin-s2-mini/
+  Third-party pinout reference. Its pinout table associates LED_BUILTIN
+  with GPIO15 (consistent with pins_arduino.h and the schematic) and its
+  diagram text mentions a "220 ohm... LED... GND" annotation near GPIO
+  labelling (likely OCR noise from the pinout image rather than a
+  contradicting resistor value - schematic PDF is authoritative on the
+  actual 2k resistor value, used only for LED presence corroboration, not
+  for resistor value or polarity).
+
+https://www.studiopieters.nl/s2-mini-pinout/
+  Third-party pinout guide. Confirms GPIO15 is labelled "XTAL_32K_P, LED"
+  with note "Onboard LED", and confirms no dedicated general-purpose user
+  button exists separate from EN (reset) and BOOT.
+
+Pins considered but NOT tagged
+-------------------------------
+None. Both candidate pins (GPIO0 BOOT button, GPIO15 LED) had solid
+schematic confirmation and were tagged - no guessing was required for
+either. GPIO0 is a strapping pin (pfodWeb pinNotes already documents "Must
+be HIGH for normal boot") but this is pre-existing chip-level documentation,
+not a reason to withhold the "button" tag - the same pattern (tagging
+GPIO0 BOOT button while keeping the existing strapping pinNotes entry) is
+already used on several sibling ESP32-S2 boards in this repo (Bee_Motion,
+deneyapmini, esp32s2-devkit-lipo-usb, adafruit_metro_esp32s2).
+
+Checked pins_arduino.h in the variant directory for TX/RX conflicts:
+  TX = 39, RX = 37. Neither GPIO0 nor GPIO15 coincides with TX/RX, so no
+  conflict with the build_boards.js TX/RX hard-reservation.
+
+Neither GPIO0 nor GPIO15 fell inside a chip-level pin-exclusion range -
+both already existed in the chip-level default board.json's chipGpios map
+(GPIO0 and GPIO15 both present), so no exclusion-reversal issue applies.
+
+Summary of what was tagged
+----------------------------
+Created new board.json for lolin_s2_mini (none existed previously), as a
+full copy of the esp32s2 chip-level default board.json, with:
+  - GPIO0 capabilities changed to ["digital_input", "button"]
+    (confirmed onboard BOOT pushbutton, SW2 in official schematic).
+  - GPIO15 capabilities changed to ["digital_output", "led_high",
+    "pwm_output"] (confirmed onboard LED1, active-high, official schematic;
+    pwm_output retained since it was present in the chip-level default for
+    GPIO15).

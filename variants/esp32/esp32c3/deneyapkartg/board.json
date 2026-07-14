@@ -1,0 +1,100 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+// Board: DENEYAP KART G (T3 Vakfi / Turkish Technology Team Foundation),
+// a wearable-technology education board with sewable pads, built on the
+// genuine ESP32-C3 chip. pins_arduino.h declares GPKEY=9 (also aliased
+// KEY_BUILTIN/BUILTIN_KEY/BT) plus PWM0=0/PWM1=1/PWM2=3. No board.json
+// override existed before this audit (used the chip-level esp32c3/
+// board.json default).
+//
+// TX/RX collision check (per this project's playbook precedent - the
+// sibling board `deneyapkart`, no "g" suffix, a different ESP32 (not
+// ESP32-C3) product, had its onboard RGB LED pins coincide with TX/RX
+// and had to be left untagged as a result): this board's pins_arduino.h
+// declares TX=21, RX=20 (ESP32-C3's default USB/UART0 pins). PWM0/PWM1/
+// PWM2 sit on GPIO0/1/3 - NO overlap with TX(21)/RX(20). GPKEY (GPIO9)
+// also does not overlap. So none of this board's tagged/flagged pins
+// collide with TX/RX here - confirmed by both the local pins_arduino.h
+// values and the vendor pinout table (see sources below), which
+// independently list RX=GPIO20, TX=GPIO21, PWM0=GPIO0, PWM1=GPIO1,
+// PWM2=GPIO3. No pins had to be left untagged for this reason.
+//
+// Sources consulted:
+//  - https://www.espboards.dev/esp32/deneyapkartg/
+//    Third-party board database pin-mapping table. Confirms: Button
+//    (GPKEY) = GPIO9; PWM0 = GPIO0, PWM1 = GPIO1, PWM2 = GPIO3; RX =
+//    GPIO20, TX = GPIO21 - matching this board's own pins_arduino.h
+//    exactly. (fetched via WebFetch)
+//  - https://deneyapkart.org/en/docs/deneyap-kart-g
+//    Official T3 Vakfi vendor documentation page. Describes a "General
+//    Purpose Button" onboard and states "All Digital Input/Output Pins
+//    Support PWM" (i.e. PWM0-4 are general-purpose PWM-capable signal
+//    pins, not wired to a dedicated peripheral). (fetched via WebFetch)
+//  - Web search corroboration (docs.deneyapkart.org / T3 Vakfi "Pin
+//    Tanimlamalari" family of pages, and independent ESP32-C3 hardware
+//    references): "GPKEY is the pin connected to the built-in general
+//    purpose button (BUT), used to put the system into manual upload
+//    mode, and is held at logic '1' (3.3V) with a 10K pull-up resistor."
+//    Also: "PWM0-PWM4 are pulse-width modulation square wave output
+//    pins, also designated PWM0 (A4), PWM1 (A5), PWM2 (A6)..." - i.e.
+//    general-purpose PWM header/sewable-pad pins, not dedicated to any
+//    fixed onboard peripheral.
+//
+// GPIO9 (GPKEY/KEY_BUILTIN/BUILTIN_KEY/BT): CONFIRMED onboard physical
+// button, per the vendor docs and espboards.dev pin table above.
+// Standard ESP32-C3 strapping pin (chip-level pinNotes "Must be HIGH for
+// normal boot" retained as-is - expected/documented for this exact pin,
+// same treatment as the adafruit_qtpy_esp32c3 and waveshare_esp32_c3_zero
+// precedents). Tagged capabilities ["digital_input","button"] only.
+//
+// Alias-conflict check (critical check found repeatedly this session):
+// this board's own pins_arduino.h declares SDA=8, SCL=2, SS=7, MOSI=6,
+// MISO=5, SCK=4. GPIO9 is not aliased as any of those - it is separately
+// aliased as D2=9, which is just a plain digital-pin label, not an SPI/
+// I2C role, so it does not contaminate GPIO9's capability list. No
+// pins_arduino.h edit was needed (unlike the earlier waveshare_esp32_c3_
+// zero case, where GPIO9 was also aliased SCL and the SCL line had to be
+// deleted).
+//
+// PWM0/PWM1/PWM2 (GPIO0/1/3): confirmed general-purpose PWM-capable
+// signal/sewable-pad pins (not wired to any dedicated onboard
+// peripheral), per the vendor docs above. Since they do not collide with
+// TX/RX on this board (see collision check above), no serial-only
+// forcing applies to them and no board.json change was warranted - they
+// already carry the full default chip-level capability set (analog_
+// input/digital_input/digital_output/pwm_output for GPIO0/1, digital_
+// input/digital_output/pwm_output for GPIO3) and are left as-is.
+//
+// See boardsDetails/esp32/esp32c3/deneyapkartg/notes.txt for the full
+// research trail.
+
+{
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

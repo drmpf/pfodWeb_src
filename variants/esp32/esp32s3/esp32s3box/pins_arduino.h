@@ -31,6 +31,10 @@ static const uint8_t T12 = 12;
 static const uint8_t T13 = 13;
 static const uint8_t T14 = 14;
 
+// pfodWeb NOTE: all pins below (Wire1 bus, TFT_*, I2S_*, PA_PIN, TS_IRQ)
+// are dedicated onboard hardware, excluded via board.json chipGpios
+// override. MUTE_PIN is a physical button, kept.
+
 // Wire1 for ES7210 MIC ADC, ES8311 I2S DAC, ICM-42607-P IMU and TT21100 Touch Panel
 #define I2C_SDA 8
 #define I2C_SCL 18

@@ -10,35 +10,36 @@
 #define USB_PRODUCT      "Nesso N1"
 #define USB_SERIAL       ""
 
-static const uint8_t TX = -1;
-static const uint8_t RX = -1;
+// pfodWeb NOTE: TX/RX deliberately NOT declared - upstream declares them
+// as -1 (this board has no default UART0 pins), which wraps to 255 as a
+// uint8_t and would otherwise leak a phantom "GPIO255" pin.
 
-static const uint8_t SDA = 10;
-static const uint8_t SCL = 8;
+// pfodWeb NOTE: SDA/SCL deliberately NOT declared - dedicated bus to the
+// onboard I2C GPIO expander that controls LORA_ENABLE/POWEROFF/
+// GROVE_POWER_EN/LCD_RESET/etc (see the ExpanderPinError class below).
 
-static const uint8_t MOSI = 21;
-static const uint8_t MISO = 22;
-static const uint8_t SCK = 20;
-static const uint8_t SS = 23;
+// pfodWeb NOTE: MOSI/MISO/SCK/SS deliberately NOT declared - dedicated
+// onboard LoRa radio SPI bus (SS shares the same GPIO23 as LORA_CS below).
 
 static const uint8_t D1 = 7;
 static const uint8_t D2 = 2;
 static const uint8_t D3 = 6;
 
-static const uint8_t IR_TX_PIN = 9;
+// pfodWeb NOTE: IR_TX_PIN deliberately NOT declared - dedicated onboard
+// IR blaster, not general-purpose.
 static const uint8_t BEEP_PIN = 11;
 
 static const uint8_t GROVE_IO_0 = 5;
 static const uint8_t GROVE_IO_1 = 4;
 
-static const uint8_t LORA_IRQ = 15;
-static const uint8_t LORA_CS = 23;
-static const uint8_t LORA_BUSY = 19;
+// pfodWeb NOTE: LORA_IRQ/CS/BUSY deliberately NOT declared - dedicated
+// onboard LoRa radio control lines.
 
-static const uint8_t SYS_IRQ = 3;
+// pfodWeb NOTE: SYS_IRQ deliberately NOT declared - dedicated interrupt
+// line for the onboard I2C GPIO expander (system power/control chip).
 
-static const uint8_t LCD_CS = 17;
-static const uint8_t LCD_RS = 16;
+// pfodWeb NOTE: LCD_CS/RS deliberately NOT declared - dedicated onboard
+// LCD display control lines.
 
 #if !defined(MAIN_ESP32_HAL_GPIO_H_) && defined(__cplusplus) /* && !defined(ARDUINO_CORE_BUILD) */
 

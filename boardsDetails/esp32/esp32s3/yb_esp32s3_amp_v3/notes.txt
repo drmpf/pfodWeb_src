@@ -1,0 +1,131 @@
+Board: yb_esp32s3_amp_v3 (YelloByte YB-ESP32-S3-AMP, hardware Rev 3.0, audio dev
+board with ESP32-S3, microSD slot, 2x MAX98357A I2S PCM Class-D amplifiers,
+PSRAM, WiFi, USB-C)
+Researched: 2026-07-12
+
+SOURCES CONSULTED
+-----------------
+- https://github.com/yellobyte/YB-ESP32-S3-AMP
+  Vendor (YelloByte) GitHub repo for the YB-ESP32-S3-AMP board. Confirms this
+  is a general-audio dev board: ESP32-S3-WROOM-1-N8R2, microSD slot, 2 x
+  MAX98357A 3W Class-D I2S amplifiers, CH334 USB hub + CH343 USB-UART bridge,
+  "two status LEDs" and "lots of GPIO pins for free usage".
+
+- https://github.com/yellobyte/YB-ESP32-S3-AMP/blob/main/Readme.md and raw
+  https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/Readme.md
+  README text (applies to the current/latest hardware revision sold today,
+  functionally unchanged across revisions per vendor's own retired-versions
+  folder naming): "One LED labeled 'P' is connected to the 3.3V rail to
+  indicate board power and the other LED labeled 'IO47' is connected to
+  GPIO47 which can be used as status LED." Also: "If solder bridge DAC_MUTE
+  is closed [default open] this pin can be used for muting the two audio
+  amplifiers: active when GPIO47 is HIGH or muted when GPIO47 is LOW."
+  Buttons: "One is labeled 'R' and resets the ESP32-S3 (shorts EN pin to
+  ground) and the other one is labeled 'B' and shorts GPIO0 to ground when
+  pressed. The latter is sometimes needed to force the board into boot
+  mode." Text alone did not state LED polarity (on vs off at HIGH) for
+  normal (non-mute) GPIO47 use, so the version-specific schematic was
+  consulted next (below) - this is the definitive source used for tagging.
+
+- https://api.github.com/repos/yellobyte/YB-ESP32-S3-AMP/contents/doc
+  Directory listing of the repo's doc/ folder. Found a
+  "retired_board_versions_V2_&_V3" subfolder containing revision-specific
+  schematics - IMPORTANT because this confirms the current top-level
+  schematic in doc/ is for a newer/different hardware revision than v2/v3,
+  so it was NOT used; the revision-specific schematic was used instead to
+  correctly audit this specific yb_esp32s3_amp_v3 variant, per the task's
+  instruction not to assume sibling variants are identical.
+
+- https://api.github.com/repos/yellobyte/YB-ESP32-S3-AMP/contents/doc/retired_board_versions_V2_%26_V3
+  Listing confirms dedicated "YB-ESP32-S3-AMP_Rev3_schematic_1_2.jpg" and
+  "..._Rev3_schematic_2_2.jpg" files exist for Rev 3 specifically (matching
+  this board directory's "_v3" suffix).
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/doc/retired_board_versions_V2_%26_V3/YB-ESP32-S3-AMP_Rev3_schematic_1_2.jpg
+  DEFINITIVE source, fetched and viewed directly as an image (title block
+  confirms "TITLE: YB-ESP32-S3-AMP", "REV: 3.0", "Date: 02.12.2024"). Three
+  clearly labeled sub-circuit blocks:
+    * "Reset Button": EN pin, R8 10k pull-up to 3V3, switch (RST_S1) to GND,
+      C5 220n. EN is not an ESP32-S3 GPIO - out of scope for chipGpios
+      tagging.
+    * "GPIO0 Button": GPIO0 -> R1 330R -> switch (BOOT_S1) -> GND. Standard
+      active-low pushbutton wired directly to a strapping-pin GPIO, exactly
+      matching this repo's established convention (see
+      boardsDetails/esp32/esp32s3/yb_esp32s3_eth/notes.txt and
+      yb_esp32s3_drv/notes.txt) for tagging a confirmed GPIO0 pushbutton as
+      "button".
+    * "Status LED (GPIO47)": GPIO47 -> LED (silkscreen "IO47", anode toward
+      GPIO47) -> R7 1k5 -> GND. Anode-to-GPIO / cathode-to-GND topology
+      means the LED is lit when GPIO47 is driven HIGH => active-high
+      (led_high).
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/doc/retired_board_versions_V2_%26_V3/YB-ESP32-S3-AMP_Rev3_schematic_2_2.jpg
+  Sheet 2/2, same Rev 3.0 title block. Confirms: MAX98357A I2S amplifier
+  section with the DAC_MUTE jumper (open by default) tied to GPIO47/MODE -
+  consistent with README's mute-function description, same physical GPIO47
+  net as the status LED (not a separate pin, no extra tagging implication).
+  Also confirms microSD card slot on GPIO10 (SD_CS) plus SPI2/FSPI bus -
+  consistent with the pin exclusions already recorded in board.json from
+  the earlier dedicated-hardware-exclusion audit pass. No other
+  buttons/LEDs found on this sheet.
+
+- Local file: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\yb_esp32s3_amp_v3\pins_arduino.h
+  LED_BUILTIN = 47 (corroboration only, not used as the basis for tagging).
+  TX = 43, RX = 44 - no collision with GPIO0 or GPIO47. SDA = 8, SCL = 9,
+  SS2/MOSI2/MISO2/SCK2 = 38/39/41/40 - none of these bus aliases touch
+  GPIO0 or GPIO47, so no alias-collision cleanup was needed for this pass
+  (checked per the mandatory SDA/SCL/SS/MOSI/MISO/SCK-collision rule).
+  Confirmed byte-for-byte identical to sibling
+  variants/esp32/esp32s3/yb_esp32s3_amp/pins_arduino.h and
+  yb_esp32s3_amp_v2/pins_arduino.h (all three declare LED_BUILTIN=47,
+  PIN_DAC_MUTE=47, same SDA/SCL/SPI2/analog/touch pin sets) - independently
+  re-derived here rather than assumed, per task instructions, and confirmed
+  via the Rev3-specific vendor schematic above (not merely inferred from
+  file identity).
+
+- Local file: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\yb_esp32s3_amp_v3\board.json
+  Pre-existing file from an earlier dedicated-hardware-exclusion audit pass
+  (I2S bus GPIO5/6/7, microSD SPI bus GPIO10/11/12/13 excluded from
+  chipGpios; SPI2 GPIO38/39/40/41 kept). Edited in place for this pass.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- 'P' power-indicator LED: not a candidate - README states it is wired
+  directly to the 3.3V rail as a fixed power-on indicator, not GPIO-driven.
+- Reset button 'R'/RST_S1: not a candidate - schematic confirms it shorts
+  EN (chip enable/reset) to GND, and EN is not a GPIO exposed in
+  chipGpios/pins_arduino.h.
+- No NeoPixel/addressable RGB LED found anywhere in the README or either
+  schematic sheet - GPIO47 is a plain single-color LED, not RGB_BUILTIN/
+  PIN_NEOPIXEL.
+- No other button or LED hardware found on either schematic sheet.
+- No judgment-call/best-guess tagging was needed this pass - both the
+  GPIO0 button and the GPIO47 LED were confirmed directly via the Rev
+  3.0-specific vendor schematic (not just README prose), which is the
+  strongest tier of evidence available and specific to this exact board
+  revision.
+
+WHAT WAS TAGGED (board.json edited in place)
+---------------------------------------------
+- GPIO0: capabilities changed from ["digital_input","digital_output",
+  "pwm_output"] to ["digital_input","button"] (confirmed onboard "GPIO0
+  Button" - R1 330R to switch to GND, Rev3 schematic sheet 1/2).
+- GPIO47: capabilities changed from ["digital_input","digital_output",
+  "pwm_output"] to ["digital_output","pwm_output","led_high"] (confirmed
+  onboard "Status LED (GPIO47)" - LED + R7 1k5 to GND, anode toward GPIO47,
+  active-high, Rev3 schematic sheet 1/2; pwm_output retained since it was
+  already present on this pin before tagging, per repo convention).
+- Two pfodWeb NOTE comments added at the top of board.json (after the
+  existing dedicated-hardware-exclusion NOTE) documenting both tags and
+  citing the Rev3-specific vendor schematic source.
+- pins_arduino.h: no changes required (no SDA/SCL/SS/MOSI/MISO/SCK alias
+  collision found on GPIO0 or GPIO47).
+
+SUMMARY
+-------
+Vendor/product confirmed as YelloByte YB-ESP32-S3-AMP, hardware Rev 3.0.
+Tagged GPIO0 as "button" (onboard BOOT pushbutton to GND) and GPIO47 as
+"led_high" (onboard "IO47" active-high status LED, which doubles as the
+MAX98357A DAC_MUTE control net on the same pin) - both confirmed via the
+Rev3-specific vendor schematic (not the generic/latest-revision doc/
+folder schematic, which is for a different hardware revision).

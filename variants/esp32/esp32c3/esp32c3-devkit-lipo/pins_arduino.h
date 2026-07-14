@@ -16,8 +16,20 @@ static const uint8_t TX = 21;
 static const uint8_t RX = 20;
 
 // define I2C pins
+// pfodWeb NOTE: SCL alias (was GPIO9) deleted - this is generic ESP32-C3
+// template boilerplate (matches espressif/arduino-esp32's generic
+// variants/esp32c3/pins_arduino.h SDA=8/SCL=9 default), never
+// vendor-confirmed as a real onboard I2C bus on this Olimex board. The
+// official OLIMEX ESP32-C3-DevKit-Lipo Rev C KiCad schematic instead
+// bus-aliases GPIO7\I2C_SDA and GPIO3\I2C_SCK (neither is GPIO8 or GPIO9),
+// and separately labels GPIO9 "GPIO9\USER_BUT" with a "USER Button" text
+// callout - so the boilerplate SCL=9 line was silently contaminating the
+// confirmed onboard USER_BUT button's capability list with "i2c_scl"
+// (build_boards.js appends i2c_scl to any GPIO matching the SCL alias,
+// unconditionally). SDA (GPIO8) left as-is - it collides only with
+// LED_BUILTIN, which is out of scope for this button-only audit; see
+// boardsDetails/esp32/esp32c3/esp32c3-devkit-lipo/notes.txt.
 static const uint8_t SDA = 8;
-static const uint8_t SCL = 9;
 // define SPI pins
 static const uint8_t SS = 7;
 static const uint8_t MOSI = 6;

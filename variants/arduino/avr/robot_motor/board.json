@@ -12,12 +12,6 @@
   // the build script derives them from the PIN_A0 / PIN_A<n> pattern.
   "family": "avr",
 
-  "defaultBaud": 115200,
-  "supportedBauds": [
-    300, 600, 1200, 2400, 4800, 9600, 14400, 19200,
-    28800, 38400, 57600, 115200
-  ],
-
   "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
   "dac": {},
   // ADC: ATmega32U4 has a 10-bit ADC (0–1023).  Default reference is
@@ -29,5 +23,71 @@
   "connections": ["serial"],
 
   "pinNotes": {},
-  "chipGpios": {}
+
+  // Pin-audit findings (2026-07-14), sourced from the board's own
+  // pins_arduino.h aliases plus the official arduino-libraries/Robot_Motor
+  // source (ArduinoRobotMotorBoard.cpp/.h) and the archived docs.arduino.cc
+  // Robot library reference. Full research trail:
+  // boardsDetails/arduino/avr/robot_motor/notes.txt.
+  //
+  // EXCLUDED (dedicated onboard hardware, capabilities: []):
+  //   D5  IN_A2, D6 IN_A1  — H-bridge motor driver inputs for the right
+  //                  motor, driven via analogWrite() in begin()/process().
+  //                  Dedicated actuator outputs.
+  //   D9  IN_B2, D10 IN_B1 — same, for the left motor.
+  //   D7 MUXA, D8 MUXB, D11 MUXC, A2/D20 MUX_IN — the onboard 3-bit analog
+  //                  mux that reads the fixed, built-in 5-way IR floor
+  //                  line-following sensor array (confirmed:
+  //                  `this->IRs.begin(MuxPins, MUX_IN, 3)` in begin(), and
+  //                  the official archived docs: "read the state of the 5
+  //                  floor sensors"). MUX_IN alone does not behave as a
+  //                  normal analog_input — its value only means something
+  //                  in combination with the MUXA/B/C address lines, and
+  //                  the whole circuit is dedicated to the fixed onboard
+  //                  sensor array, not general purpose.
+  //
+  // KEPT available, deliberately left undocumented here (no chipGpios
+  // entry — full default capabilities), per findings recorded in notes.txt:
+  //   D2/D3 SDA/SCL — general I2C bus (official docs: "Access ... an I2C
+  //                  port"), no isolated/dedicated onboard I2C consumer
+  //                  confirmed on this board.
+  //   D4(TK3/A6), D12(TK4/A11), A0(TK1), A1(TK2) — the board's 4 general
+  //                  TinkerKit input connectors (B_TK1..B_TK4 per the
+  //                  library header), genuine user expansion.
+  //   D13 MUXI     — declared and initialized (pinMode(INPUT);
+  //                  digitalWrite(LOW)) immediately next to the IR-sensor
+  //                  mux init code, but configured as a floating input and
+  //                  not otherwise referenced anywhere in the library
+  //                  source examined. Insufficient evidence to confirm
+  //                  whether it's a genuine 4th mux control/inhibit line or
+  //                  an unused/spare pin — left as NO CHANGE (available)
+  //                  per the never-guess policy.
+  //   D14 MISO, D15 SCK, D16 MOSI, D17 SS — standard SPI bus; unlike the
+  //                  Control board, no onboard SPI peripheral (no LCD/SD
+  //                  card on the Motor board) was found consuming this
+  //                  bus, so it's left available as a general-purpose bus.
+  //   A3 TRIM      — motor-trim potentiometer knob, plain analogRead(TRIM)
+  //                  — matches the "knob" KEEP example, left available.
+  //   A4 SENSE_A, A5 SENSE_B — per-motor current-consumption monitoring
+  //                  (official docs: "Monitor current consumption per
+  //                  motor") — matches the explicit "current/voltage/
+  //                  battery monitors" KEEP example in the pin-audit
+  //                  playbook, left available.
+  //   D17 (SS) — same RXLED0/RXLED1 active-low USB-activity-indicator
+  //                  convention as the Control board and plain Leonardo/
+  //                  Micro (see leonardo/board.json); left untagged for
+  //                  the same precedent-consistency reason. No distinct
+  //                  "LED1" alias is declared in this board's own file
+  //                  (unlike Control's), and no onboard-LED pin evidence
+  //                  was found beyond this standard USB indicator.
+  "chipGpios": {
+    "5":  { "capabilities": [], "note": "IN_A2 - H-bridge motor driver input (right motor). Dedicated actuator." },
+    "6":  { "capabilities": [], "note": "IN_A1 - H-bridge motor driver input (right motor). Dedicated actuator." },
+    "7":  { "capabilities": [], "note": "MUXA - address line for the onboard IR floor-sensor mux (with MUXB/MUXC/MUX_IN). Dedicated to the built-in line-following sensor array, not usable standalone." },
+    "8":  { "capabilities": [], "note": "MUXB - same IR floor-sensor mux address line as MUXA." },
+    "9":  { "capabilities": [], "note": "IN_B2 - H-bridge motor driver input (left motor). Dedicated actuator." },
+    "10": { "capabilities": [], "note": "IN_B1 - H-bridge motor driver input (left motor). Dedicated actuator." },
+    "11": { "capabilities": [], "note": "MUXC - same IR floor-sensor mux address line as MUXA/MUXB." },
+    "20": { "capabilities": [], "note": "MUX_IN (A2) - shared analog input for the IR floor-sensor mux; only meaningful together with the MUXA/B/C address lines. Dedicated to the built-in 5-way line-following sensor array." }
+  }
 }

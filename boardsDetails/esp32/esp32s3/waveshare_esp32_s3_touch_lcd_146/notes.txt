@@ -1,0 +1,106 @@
+Board: waveshare_esp32_s3_touch_lcd_146
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_lcd_146
+Product researched: Waveshare "ESP32-S3-Touch-LCD-1.46"
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.46
+  - WebFetch returned HTTP 403 Forbidden; could not read page content directly.
+
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.46
+  - Confirms board has two onboard side buttons: "PWR Button" (battery
+    power control button, software-supported) and "BOOT Button"
+    (standard boot/download mode button). Does NOT give exact GPIO
+    numbers. Confirms two LEDs: a "Power Indicator" and a "Charging
+    Indicator" - both described as status-only indicators tied to the
+    charging/power circuit, not user-controllable/programmable outputs,
+    and no GPIO/pin mapping is given for them (no mention of RGB or
+    NeoPixel LEDs on this board at all).
+
+https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.46/ESP32-S3-Touch-LCD-1.46-Sch.pdf
+  - HTTP 404 Not Found; schematic PDF not available at this path, could
+    not be consulted.
+
+https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.46
+  - Confirmed the vendor's product GitHub repo exists, containing
+    Arduino, ESP-IDF and Firmware directories, including
+    example/Arduino-3.1.1/examples/LVGL_Arduino/PWR_Key.h and
+    PWR_Key.cpp.
+
+https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-LCD-1.46/main/example/Arduino-3.1.1/examples/LVGL_Arduino/PWR_Key.h
+  - Defines `#define PWR_KEY_Input_PIN 6` (input pin for the PWR side
+    button) and `#define PWR_Control_PIN 7` (output pin, power
+    hold/enable line - not a button or LED).
+
+https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-LCD-1.46/main/example/Arduino-3.1.1/examples/LVGL_Arduino/PWR_Key.cpp
+  - Confirms PWR_KEY_Input_PIN (GPIO6) is set pinMode(INPUT) and read
+    via digitalRead(); code checks `if (!digitalRead(PWR_KEY_Input_PIN))`
+    i.e. active-LOW momentary pushbutton (pressed = LOW). This is a
+    genuine software-readable button, not a strapping/BOOT pin.
+
+Two general WebSearch queries (Waveshare wiki PWR button GPIO / onboard
+LED GPIO) were also run; both surfaced the docs.waveshare.com page
+above but no additional GPIO specifics beyond what's summarized above.
+
+IMPORTANT DISCREPANCY NOTED (for human review)
+------------------------------------------------
+This directory's own pins_arduino.h (variants/esp32/esp32s3/
+waveshare_esp32_s3_touch_lcd_146/pins_arduino.h) has
+USB_PRODUCT "ESP32-S3-Touch-LCD-1.85-Box" and USB_PID 0x8287 - i.e. it
+does NOT actually self-identify as "ESP32-S3-Touch-LCD-1.46" at all.
+This looks like an upstream copy-paste/generation error in the variant
+file set (spot-checked: the sibling waveshare_esp32_s3_touch_lcd_185_box
+directory's pins_arduino.h also has yet another mismatched
+USB_PRODUCT string, "ESP32-S3-Touch-LCD-2.1", and USB_PID 0x825B - so
+none of these three files' embedded product strings can be trusted at
+face value).
+However, this directory's electrical pin layout (SCL=10, SDA=11,
+TX=43, RX=44, SPI SS=34/MOSI=35/MISO=37/SCK=36) is IDENTICAL to the
+sibling waveshare_esp32_s3_lcd_146 directory, which was independently
+tagged earlier this session (GPIO6 button) using the SAME vendor GitHub
+repo (waveshareteam/ESP32-S3-Touch-LCD-1.46) as source of truth. Given
+the identical pinout and identical vendor source repo, GPIO6/GPIO7
+PWR button/control assignment was judged to apply to this directory as
+well. This is a judgment call bridging the mismatched embedded product
+string - flagged here explicitly for a human reviewer to double check
+if desired (e.g. by obtaining the actual 1.46 schematic PDF, which
+returned 404 during this research pass).
+
+PINS CONSIDERED BUT NOT TAGGED
+--------------------------------
+- GPIO7 (PWR_Control_PIN): output-only power-hold/enable line driven by
+  firmware to keep the board powered on; not a button or LED. Not
+  tagged - no guess made, this is clear from the source code function
+  names and usage (digitalWrite HIGH to stay on, LOW to shut down).
+- BOOT button: vendor docs (docs.waveshare.com) mention a "BOOT Button"
+  exists but give no GPIO number for it, and no schematic could be
+  fetched (404) to confirm. This is very likely the standard ESP32-S3
+  GPIO0 strapping/boot pin, which is a chip-level auto-boot pin already
+  excluded from user-taggable digital_input+button use by convention on
+  every other board in this repo (see "pinNotes" -> GPIO0 "Must be HIGH
+  for normal boot"). NOT tagged - left as a best-guess judgment call
+  for a human: if confirmed to be plain GPIO0, standard project
+  convention appears to leave strapping-pin BOOT buttons untagged, but
+  this was not tagged pending explicit confirmation.
+- Power Indicator LED / Charging Indicator LED: vendor docs explicitly
+  describe both as automatic status indicators driven by the
+  charging/power-management IC, not GPIO-driven / not user-controllable
+  outputs. NOT tagged - no GPIO evidence exists because these are
+  hardware-driven, not software-driven, so no capability tag applies by
+  design (this is not a guess - the vendor documentation directly states
+  these are non-programmable).
+- No RGB/NeoPixel LED is mentioned anywhere in the sources consulted for
+  this board. NOT tagged.
+- TX/RX check: this board's TX=43, RX=44 (per pins_arduino.h). GPIO6 and
+  GPIO7 do not conflict with TX/RX, so no TX/RX-reservation conflict
+  applies to the GPIO6 button tag.
+
+SUMMARY OF WHAT WAS TAGGED
+-----------------------------
+GPIO6 capabilities set to ["digital_input", "button"] (was
+["analog_input","digital_input","digital_output","pwm_output"] in the
+esp32s3 chip-level default). board.json created new for this directory
+(none existed previously) as a full copy of variants/esp32/esp32s3/
+board.json with only GPIO6 modified, plus a NOTE comment at the top
+documenting the source and the product-string discrepancy above.

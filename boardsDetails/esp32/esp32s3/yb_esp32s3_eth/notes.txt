@@ -1,0 +1,65 @@
+yb_esp32s3_eth board research notes
+====================================
+
+Sources consulted:
+
+1. https://github.com/yellobyte/YB-ESP32-S3-ETH
+   Vendor (YelloByte) GitHub repo for the YB-ESP32-S3-ETH board. Confirmed
+   this is the correct vendor for the "YB ESP32S3 ETH" / "Yellow Board"
+   family with onboard WIZnet W5500 Ethernet PHY, matching the existing
+   board.json W5500 pin-exclusion note (GPIO14/18/21).
+
+2. https://github.com/yellobyte/YB-ESP32-S3-ETH/blob/main/README.md
+   and raw https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-ETH/main/README.md
+   DEFINITIVE source for buttons and LEDs. Quoted text:
+     - "'R' button": resets the ESP32-S3 (shorts EN pin to ground).
+     - "'B' button": shorts GPIO0 to ground when pressed - "sometimes
+       needed to force the board into boot mode."
+     - "'P' LED": connected to the 3.3V rail to indicate board power
+       (fixed power indicator, not GPIO-driven).
+     - "'IO47' LED": connected to GPIO47, "can be used as status LED,
+       for debugging purposes etc." Example code shown using
+       Pin(47, Pin.OUT) with p0.on()/p0.off() turning the LED on/off,
+       confirming active-HIGH (HIGH = on).
+
+Local files reviewed:
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\yb_esp32s3_eth\pins_arduino.h
+  LED_BUILTIN = 47 (alias only - NOT used as basis for tagging, corroboration
+  only). TX = 43, RX = 44. Confirmed neither GPIO0 nor GPIO47 collides with
+  TX/RX, so both are safely taggable.
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\yb_esp32s3_eth\board.json
+  (pre-existing, from earlier pin-exclusion audit pass). Edited in place.
+  GPIO0 and GPIO47 both had existing chipGpios entries (not inside any
+  chip-level exclusion range). GPIO47 already carried pwm_output in its
+  prior capability set, so pwm_output was retained per the led_high tagging
+  rule.
+- Existing repo precedent reviewed for the GPIO0-boot-button convention:
+  C:\ai\aicode\pfodWeb\boardsDetails\esp32\esp32\ioxesp32\notes.txt and
+  C:\ai\aicode\pfodWeb\boardsDetails\esp32\esp32\honeylemon\notes.txt -
+  both establish that a GPIO0 pushbutton physically wired to GND (even if
+  its primary purpose is forcing boot mode) is tagged "button" in this
+  repo, while a pushbutton wired to EN/reset is not tagged (EN is not a
+  GPIO). The YB-ESP32-S3-ETH 'B' button matches the taggable case; the 'R'
+  button matches the not-taggable case.
+
+Pins considered but NOT tagged:
+- GPIO for 'R' reset button: not tagged. Not a judgment call - the README
+  explicitly states it shorts EN (chip enable/reset), which is not a GPIO
+  exposed to firmware, so it cannot carry a chipGpios capability tag.
+- 'P' power-indicator LED: not tagged. Not a judgment call - README states
+  it is wired directly to the 3.3V rail (fixed power-on indicator), not
+  driven by any GPIO.
+- No other candidate button/LED hardware was found on this board in the
+  vendor documentation. No NeoPixel/addressable RGB LED or discrete RGB
+  LED was mentioned anywhere in the README.
+- No pins were left as an uncertain/best-guess judgment call - both the
+  button and the LED were confirmed directly and unambiguously by the
+  vendor README text/example code, and both the not-tagged EN button and
+  not-tagged power LED are clear-cut exclusions per vendor documentation.
+
+Summary of what was tagged:
+- board.json edited in place: GPIO0 -> ["digital_input","button"] (confirmed
+  onboard 'B' pushbutton to GND) and GPIO47 -> ["digital_output","pwm_output",
+  "led_high"] (confirmed onboard 'IO47' active-high status LED), plus two
+  NOTE comments added after the existing W5500 exclusion NOTE, citing the
+  yellobyte vendor README.

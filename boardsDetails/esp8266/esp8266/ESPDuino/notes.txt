@@ -1,0 +1,265 @@
+pfodWeb board research notes
+Board variant directory: variants/esp8266/esp8266/ESPDuino/ (pins_arduino.h,
+LED_BUILTIN 16, header comment "Modified by Doit.am team www.doit.am")
+boards.txt entry: espduino.name=ESPDuino (ESP-13 Module), build.variant=ESPDuino
+Date researched: 2026-07-11
+
+=== Sources consulted ===
+
+1) DOIT / SmartArduino official schematic (same vendor as pins_arduino.h's
+   "Doit.am team" credit) — fetched and read directly as a PDF (raster
+   render, not just text-layer extraction):
+   https://github.com/SmartArduino/ESPboard/blob/master/espduino_shematic.pdf
+   (raw: https://raw.githubusercontent.com/SmartArduino/ESPboard/master/espduino_shematic.pdf)
+   Findings:
+   - Top-right of schematic: two independent pushbuttons.
+     * R17 (91 ohm) pulls nRST to GND — silkscreen S1/RST — chip reset
+       button, not a GPIO. No chipGpios entry exists for a reset pin, so
+       not tagged.
+     * R18 (91 ohm) pulls GPIO0 to GND, net/label "KEY_FLASH" — silkscreen
+       S2/KEY. This is a genuine onboard user pushbutton wired directly to
+       GPIO0.
+   - POWER section: two LEDs.
+     * RED LED: VCC33 -> R19 (2K) -> LED -> GND. Simple always-on
+       power-indicator LED across the 3.3V rail — NOT wired to any GPIO.
+       Matches user manual: "Red color LED is donated to power supply."
+     * BLUE LED: VCC33 -> R20 (2K) -> LED -> GPIO16. LED cathode ties to
+       GPIO16, so it lights when GPIO16 is driven LOW (active-low, GPIO16
+       sinks the current). Matches this board's own pins_arduino.h
+       `#define LED_BUILTIN 16`.
+   - "ADC Part" block: header pin "ADC_EX" (broken out on connector J4,
+     pin 1) feeds the ESP-13 module's native ADC/TOUT pin through a
+     two-resistor divider: R21 = 400K (1%) from ADC_EX to node "ADC",
+     R22 = 100K (1%) from that node to GND. This "ADC" node is the same
+     net as the ESP-13 chip's own ADC/TOUT pin (U2). Ratio =
+     (R21+R22)/R22 = 500K/100K = 5.0 exactly. Headers J1/J2/J3 (the other
+     GPIO breakout headers) do not expose a plain undivided "ADC" pin —
+     only J4 exposes "ADC_EX" — so ADC_EX is the pin an external analog
+     sensor actually connects to.
+
+2) DOIT/SmartArduino official User Manual (same product family — the
+   ESP8266-based Arduino-Uno-shield sold as "ESPDuino"/"ESP-13 Shield"):
+   "ESP8266-Based Serial WiFi Shield for Arduino — User Manual", July 2015,
+   Shenzhen Doctors of Intelligence & Technology (SZDOIT), doit.am /
+   smartarduino.com. Sell link cited in the doc:
+   http://www.smartarduino.com/esp8266-wifi-web-sever-shield-for-arduino_p94660.html
+   (fetched via https://pdf.direnc.net/upload/esp8266-esp13-serial-wifi-shield-datasheet.pdf,
+   a third-party mirror of the same vendor PDF — read directly as a raster
+   PDF, not just text-layer extraction)
+   Findings:
+   - Technical Specifications page: "KEY button: modes configuration" listed
+     as a hardware feature.
+   - Quick Start section: "press KEY button for more than 1 second" to force
+     the module into WiFi configuration mode — confirms KEY is a genuine,
+     physically-pressable user button (not merely a silkscreen label),
+     consistent with the schematic's GPIO0/KEY_FLASH finding above.
+   - "LED definition" page: "ESP8266-Based serial WiFi Shield has two LEDs.
+     Red color LED is donated to power supply. Blue LED is a
+     multi-functional LED" with a state table (blink patterns for data
+     comms / config mode / connecting / AP-STA mode) — confirms the two-LED
+     split (power-only red, GPIO-driven blue) matches the schematic.
+   - No mention of ADC/A0 voltage range or divider spec in this document
+     (technical spec list only covers WiFi/serial parameters) — ADC
+     evidence came from the schematic (source 1), not this manual.
+
+3) Arduino Forum thread (independent, hands-on secondary confirmation,
+   not used as primary evidence but cross-checked against the schematic):
+   https://forum.arduino.cc/t/esp13-shield-by-doit-is-there-a-schematic-for-this-anywhere/479363
+   A user reported no official schematic was available to them at the time
+   and, through their own hands-on testing, found "the blue onboard LED
+   connects to GPIO16 and operates in active-low mode" — independently
+   matches the schematic finding in source 1 above.
+
+4) GitHub wiki (background/context only, no new hard facts used):
+   https://github.com/SmartArduino/SZDOITWiKi/wiki/Arduino---ESPduino
+   Confirms "ESPduino is developed by Doit company based on the ESP8266
+   ESP-13 ... ESPduino=WiFi+Arduino UNO R3", i.e. this is the same product
+   as the ESP-13 Serial WiFi shield covered by sources 1 and 2. Links to
+   the schematic PDF used as source 1.
+
+5) espboards.dev pinout page (background only, no new hard facts used):
+   https://www.espboards.dev/esp8266/espduino/
+   Confirmed presence of "LED_BUILTIN" in the pin table (matches
+   pins_arduino.h) but had no GPIO-level detail beyond that; not relied on
+   for tagging.
+
+=== What was changed ===
+
+Created variants/esp8266/esp8266/ESPDuino/board.json (none existed before)
+as a full copy of the esp8266 chip-level default
+(variants/esp8266/esp8266/board.json), with:
+
+PART A (button/LED) — TAGGED:
+  - GPIO0: capabilities changed to ["digital_input","button"]. Confirmed
+    genuine onboard pushbutton (KEY_FLASH, silkscreen KEY/S2) directly via
+    the official DOIT schematic (source 1) and cross-confirmed via the
+    official user manual's "press KEY button for more than 1 second" config
+    procedure (source 2). Not this board's TX/RX pin (TX0=1, RX0=3).
+  - GPIO16: capabilities changed to ["digital_output","led_low"]. Confirmed
+    active-low onboard BLUE status LED directly via the official DOIT
+    schematic (source 1: VCC33 -> R20 2K -> LED -> GPIO16, cathode-to-GPIO
+    wiring = active-low), matching this board's own pins_arduino.h
+    LED_BUILTIN=16 and independently matching a hands-on forum report
+    (source 3). Not this board's TX/RX pin. No pwm_output added — GPIO16
+    has no PWM support on ESP8266 (RTC-domain pin) and the chip-level
+    default already excludes it.
+  - Red power LED (VCC33 -> R19 2K -> LED -> GND, schematic source 1) is
+    NOT wired to any GPIO — it is a simple always-on power indicator, so no
+    capability tag applies to it (and it isn't GPIO16 — confirmed the two
+    LEDs are on separate schematic nets).
+  - nRST reset button (S1/RST, source 1) is wired to the chip's reset pin,
+    not a GPIO — no chipGpios entry exists for it, so it was not tagged.
+
+PART B (ADC reference voltage) — CHANGED:
+  - adc.defaultRefVolts changed from the inherited chip-level "1.0" to
+    "5.0". Confirmed via the official DOIT schematic (source 1, "ADC Part"
+    block): the externally-exposed analog pin "ADC_EX" (header J4 pin 1)
+    feeds the ESP-13's native ADC/TOUT pin through a real onboard
+    two-resistor divider, R21=400K(1%) / R22=100K(1%), ratio
+    (400K+100K)/100K = 5.0 exactly. This is solid, directly-cited schematic
+    evidence of a real onboard divider extending the effective externally
+    exposed A0 pin's input range from the native 1.0V to 5.0V full-scale.
+
+pinNotes: chip-level text for GPIO0/16/17 was left in place (per
+instructions, existing notes are never deleted/replaced) with one short
+appended sentence each pointing at the NOTE comments above pinNotes for
+the schematic-confirmed specifics; GPIO2/GPIO15's chip-level pinNotes text
+were left completely unchanged (this board's power LED and reset button
+are not on those pins).
+
+=== Summary ===
+
+TAGGED ESPDuino: GPIO0 -> button (KEY_FLASH pushbutton, schematic-
+confirmed), GPIO16 -> led_low (active-low BLUE status LED, schematic-
+confirmed). ADC: defaultRefVolts changed 1.0 -> 5.0V (schematic-confirmed
+onboard 400K/100K divider on the externally-exposed ADC_EX/A0 pin). New
+board.json created (none existed before) as a full copy of the esp8266
+chip-level default with only these GPIOs/adc field modified.
+
+=== 2026-07-12: dedicated-hardware pin-exclusion audit (sections 1-6) ===
+
+Scope of this pass: a DIFFERENT, more thorough sweep than the button/LED/ADC
+pass above — checking whether any of this board's plain D0-D15 numbering
+aliases (or TX0/RX0) hide a GPIO wired to a fixed onboard peripheral (SD
+card, display, relay, dedicated I2C/SPI device) that should be EXCLUDED
+from the general-purpose pin picker, per the project's board-variant-pin-
+audit playbook.
+
+--- Sources consulted (this pass) ---
+
+1) variants/esp8266/esp8266/ESPDuino/pins_arduino.h (read in full). Declares
+   PIN_WIRE_SDA=4/PIN_WIRE_SCL=5 (SDA/SCL), D0-D5/D12-D15/D16 numbering
+   aliases, TX0=1/RX0=3, LED_BUILTIN=16. Includes ../generic/common.h,
+   which declares PIN_SPI_SS=15/PIN_SPI_MOSI=13/PIN_SPI_MISO=12/
+   PIN_SPI_SCK=14 (SS/MOSI/MISO/SCK) and PIN_A0=17.
+
+2) Same official DOIT/SmartArduino schematic used in the earlier audit,
+   re-examined page-by-page (rendered as an image, not just text-layer
+   extraction, so every block/label was actually read):
+   https://raw.githubusercontent.com/SmartArduino/ESPboard/master/espduino_shematic.pdf
+   Blocks present: USB (CH340G USB-serial bridge -> TX33/RX33 = GPIO1/
+   GPIO3, already forced serial_tx/serial_rx in board.json), ESP13 Part
+   (the module itself, pin-multiplex labels straight off the ESP8266
+   datasheet silkscreen: "GPIO15/MTDO/HSPICS/UART0_RTS" etc.), a strapping-
+   resistor network (R10-R16, all 10K, one per GPIO4/GPIO5/GPIO0/GPIO2/EN/
+   nRST/GPIO15 — standard boot-mode pull resistors, not a dedicated
+   peripheral), the two buttons and two LEDs documented in the earlier
+   pass, the ADC divider documented in the earlier pass, and a POWER
+   block with a buck converter (MP1482, VIN->VCC50) + LDO (NCP1117,
+   VCC50->VCC33) + an automatic USB-vs-VIN power source selector (T1
+   FDN340P MOSFET + U5 comparator/op-amp with R23/R24 divider sensing
+   VIN) — this selector is purely on the power rails (VCCUSB/VIN/VCC50),
+   not wired to any ESP8266 GPIO pin, so it is not GPIO-excludable; noting
+   it here per the task's request to document onboard power-select
+   circuitry even when not excludable. No jumper (physical/solder-bridge)
+   was found for this selection — it is fully automatic (comparator-driven
+   MOSFET), so there is no "jumper" to document beyond this note.
+   Header blocks J1/J2/J3/J4: plain breakout pins for every GPIO (GPIO4,
+   GPIO5, GPIO0, GPIO2, GPIO12-16, TX33/RX33, EN, nRST) plus power/ADC_EX
+   pins — no resistor network, level-shifter IC, or other component sits
+   between the ESP8266 pin and the header pin on any of J1/J2/J3. This
+   board outputs raw 3.3V logic straight to its Arduino-Uno-shaped header
+   positions — there is NO 3.3V<->5V level-shifting circuitry anywhere on
+   this board's digital I/O path, despite the Uno-shield form factor.
+   No SD card slot, no display connector, and no relay appear anywhere on
+   the schematic.
+
+--- The D15 "SS(SDA)" comment mystery (task's specific flag) ---
+
+pins_arduino.h line 44: `static const uint8_t D15 = 15; // SS(SDA)`.
+Investigated whether GPIO15 is genuinely wired as BOTH SPI SS and I2C SDA
+on this board, or whether the comment is a vendor error:
+
+- Schematic (source 2 above), ESP13 Part block: GPIO15's datasheet-label
+  pin-multiplex text reads "GPIO15/MTDO/HSPICS/UART0_RTS" — its documented
+  alternate hardware functions are HSPI chip-select (= SS) and UART0 RTS.
+  There is no SDA/I2C alternate function listed for this pin anywhere on
+  the schematic, and no I2C bus (pull-ups, dedicated SDA/SCL net labels)
+  appears on the schematic at all — this board's GPIO4/GPIO5 pins are
+  bare, unlabelled GPIO breakouts with no I2C-specific componentry, i.e.
+  the ESP8266 core's Wire library is purely software bit-banged and can be
+  retargeted (Wire.begin(sda,scl)) to any two pins by user sketch code —
+  it is a software-library default, not a hardware-wired bus on any pin,
+  GPIO4/5 included. Conclusion: "SS(SDA)" on the D15 line is a vendor
+  copy/paste artifact in pins_arduino.h, not a real dual-role pin. GPIO15
+  is genuinely SPI SS only (matches common.h's PIN_SPI_SS=15) — real
+  hardware SPI chip-select — with no fixed onboard SPI device connected to
+  it (per header inspection above, J1/J2/J3 route it to a plain breakout
+  pin, not to any onboard IC), so it stays general-purpose/KEEP.
+
+- Checked pfodWeb_src/build_boards.js's parser (parseEsp32Consts /
+  buildEsp32Board) to confirm this vendor comment cannot cause a silent
+  mis-tagging bug: the alias-extraction regex only matches the literal
+  `static (const|constexpr) uint8_t NAME = value;` declaration form — it
+  does not run any comment-stripping pass first, so in principle stray
+  text that happens to match that exact pattern anywhere in the file
+  (including inside a `//` comment) WOULD be parsed as a real alias (this
+  is why the task's note to never write old declaration syntax inside an
+  explanatory comment matters for future edits). However "// SS(SDA)" does
+  NOT match that declaration pattern (it's a bare word in a trailing
+  comment, no `static const uint8_t ... = ...;` shape), so it is inert —
+  confirmed by tracing the actual capability-assignment code: `sda` is
+  resolved from this file's own `PIN_WIRE_SDA (4)` (via SDA's declaration
+  on line 31), so `if (g === sda) caps.push('i2c_sda')` only fires for
+  GPIO4, never GPIO15; `ss` resolves to `PIN_SPI_SS (15)` from the
+  included common.h, so `if (g === ss) caps.push('spi_ss')` fires only for
+  GPIO15. GPIO4 and GPIO15 are numerically distinct, so no over-tagging
+  occurs in the generated JSON today. No code or data change was needed to
+  fix this — it was a documentation question, not a live bug.
+
+--- Policy applied / outcome ---
+
+No GPIO on this board is wired to a dedicated onboard SD card, display,
+relay, or other fixed peripheral beyond what the earlier button/LED/ADC
+pass already found and tagged. The D0-D5/D12-D16 D-numbering, TX0/RX0, and
+SS/MOSI/MISO/SCK aliases are all general board-level pin-numbering/alt-
+function convenience aliasing with no dedicated onboard consumer — per
+playbook section 3 these all stay KEEP. The D15 "SS(SDA)" comment is a
+harmless vendor documentation error (see above), not a hardware fact and
+not a parser bug, so no exclusion, no pins_arduino.h edit, and no
+board.json edit were made in this pass.
+
+NO CHANGE: variants/esp8266/esp8266/ESPDuino/board.json left exactly as
+written by the earlier button/LED/ADC audit. variants/esp8266/esp8266/
+ESPDuino/pins_arduino.h left completely unchanged (including the
+misleading "// SS(SDA)" comment — it is vendor-authored text describing
+real silicon, not a pfodWeb-authored note, and per project CLAUDE.md
+existing working files are not refactored/cleaned up without being asked).
+
+=== Summary (this pass) ===
+
+Dedicated-hardware pin-exclusion audit of ESPDuino: NO EXCLUSIONS.
+Confirmed via a full re-read of the official DOIT schematic (rendered
+visually) that no GPIO feeds a dedicated SD card, display, or relay, and
+that there is no 3.3V/5V level-shifting circuitry on the digital I/O
+headers despite the Uno-shield form factor. Found and documented an
+automatic USB-vs-VIN power-source-select circuit (MOSFET+comparator,
+power rails only, not GPIO-connected) per the task's request to note such
+circuitry even when non-excludable. Resolved the D15 "SS(SDA)" comment as
+a vendor copy/paste error (GPIO15's real datasheet alt-functions are
+HSPICS/UART0_RTS, no SDA) and confirmed via direct code trace of
+build_boards.js that this comment text does not and cannot cause the
+parser to mis-tag GPIO15 with i2c_sda (the regex only matches real
+declaration syntax, and this board's own real SDA resolves to GPIO4 via
+PIN_WIRE_SDA, a different pin number). No files under variants/ were
+modified in this pass.

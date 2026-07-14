@@ -1,0 +1,103 @@
+ttgo-lora32-v2 button/LED research notes
+=========================================
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32\ttgo-lora32-v2
+board.json already existed (override for boardName/displayName only, full copy of
+esp32/esp32/board.json otherwise). pins_arduino.h already existed.
+
+pins_arduino.h aliases found (NOT trusted as evidence per task rules, only used to
+pick candidate pins to go verify):
+  LED_BUILTIN = GPIO22   (== OLED_SCL, same pin as the I2C OLED clock line)
+  KEY_BUILTIN = GPIO0
+  TX = GPIO1, RX = GPIO3
+
+Sources consulted
+------------------
+1. https://raw.githubusercontent.com/Xinyuan-LilyGO/TTGO-LoRa-Series/master/LoRa/board_def.h
+   Official LilyGO (Xinyuan-LilyGO) repo, "board_def.h" used to select hardware
+   revision (LORA_V1_0_OLED / LORA_V1_2_OLED / LORA_V1_6_OLED / LORA_V2_0_OLED).
+   The LORA_V2_0_OLED block (OLED_SDA 21, OLED_SCL 22, OLED_RST -1, CONFIG_MOSI 27,
+   CONFIG_MISO 19, CONFIG_CLK 5, CONFIG_NSS 18, CONFIG_RST 23, CONFIG_DIO0 26,
+   SDCARD_MOSI 15, SDCARD_MISO 2, SDCARD_SCLK 14, SDCARD_CS 13) contains NO
+   #define for any BOARD_LED / LED pin and NO #define for any BUTTON_PIN. This is
+   the authoritative, board-revision-specific vendor pin definition file for V2.0
+   and it defines neither an LED nor a button, unlike later boards in LilyGO's
+   newer repo (see source 2) which explicitly declare both when present.
+   NOTE: this file also shows CONFIG_RST (LoRa radio reset) = GPIO23 for V2.0,
+   which conflicts with this variant's pins_arduino.h comment "LORA_RST 12 //
+   GPIO14 - SX1276 RST" - that is a LoRa-radio-pin discrepancy, unrelated to the
+   button/LED question in scope here, so left untouched and just noted for any
+   future reviewer.
+
+2. https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/master/examples/OLED/SSD1306SimpleDemo/utilities.h
+   Current/actively maintained LilyGO repo covering their whole LoRa32/T3 board
+   family. It has explicit #ifdef blocks per hardware revision, each with its own
+   BOARD_LED / BUTTON_PIN when the hardware has them, e.g.:
+     T-Beam:        BOARD_LED=4  (LED_ON=LOW), BUTTON_PIN=38
+     T3 V1.6:       BOARD_LED=25 (LED_ON=HIGH), no BUTTON_PIN
+     T3 V1.6 TCXO:  BOARD_LED=25 (LED_ON=HIGH), no BUTTON_PIN
+     T3 V3.0:       BOARD_LED=25 (LED_ON=HIGH), BUTTON_PIN=0
+   There is no "T3 V2.0" / LORA_V2_0_OLED block at all in this modern file - that
+   exact hardware revision has been dropped from LilyGO's actively maintained repo
+   (production apparently stopped for the very old V1.x/V2.0 boards), so this file
+   cannot directly confirm or deny an LED/button for V2.0, but it does show the
+   pattern that LilyGO explicitly documents BOARD_LED/BUTTON_PIN in vendor code
+   only for revisions that actually have them - reinforcing that source 1's
+   silence for V2.0 is meaningful, not just an oversight.
+
+3. https://www.espboards.dev/esp32/ttgo-lora32/
+   Third-party pinout/spec page. Explicitly states no onboard user LED or
+   push button is documented for this TTGO LoRa32-OLED board; the only LED
+   reference on the page is a generic "GPIO22 20-ohm LED" example that the
+   page attributes to a generic ESP32 DevKit illustration, not this board
+   specifically - not treated as evidence.
+
+4. https://microcontrollerslab.com/ttgo-lora32-sx1276-oled-board-pinout-getting-started-with-arduino-ide/
+   Third-party tutorial/pinout page. Mentions only an RST (reset) button and a
+   PRG/BOOT button used for entering flashing mode, plus an unspecified "power
+   LED" (power-indicator LED tied to the 3V3 rail, not a GPIO-controlled/
+   software-controllable LED). Does not give GPIO numbers for either button.
+
+5. General web search results (espboards.dev, community.lilygo.cc pinout thread
+   titles, meshtastic.org device list, meshtastic discourse thread titles) were
+   scanned via WebSearch for corroboration; none of them documented a dedicated
+   GPIO-addressable user LED or user button specific to the V2.0 (non-V2.1)
+   revision. The community.lilygo.cc "Full pinout for TTGO Lora32 V2.1-1.6.1"
+   thread is explicitly for the V2.1 revision, not V2.0, so it was not used as
+   evidence for this V2.0 board (per task instructions to verify specifically
+   for V2, since V1/V2.1 pin assignments differ).
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO22 (pins_arduino.h alias LED_BUILTIN): This pin is OLED_SCL (I2C clock for
+  the onboard SSD1306 OLED display), confirmed by source 1's official board_def.h
+  for LORA_V2_0_OLED. No vendor source shows a discrete LED wired to GPIO22, and
+  the official V2.0 pin file has no BOARD_LED define at all. The LED_BUILTIN alias
+  in pins_arduino.h is judged to be a mis-copied/generic template artifact (exactly
+  the kind of untrustworthy alias name the task instructions warned about) rather
+  than a real onboard LED. NOT TAGGED. No guess made - treated as "no LED".
+
+- GPIO0 (pins_arduino.h alias KEY_BUILTIN): GPIO0 is the universal ESP32
+  boot-strapping pin, and board.json's existing pinNotes already documents
+  "Must be HIGH or floating on reboot" for it, consistent with a PRG/BOOT
+  tactile button being wired here for entering flash mode (as mentioned
+  generically in source 4). However, no V2.0-specific vendor source (source 1's
+  official board_def.h) declares a BUTTON_PIN for LORA_V2_0_OLED, unlike the
+  newer T3 V3.0 board where LilyGO explicitly documents BUTTON_PIN=0 in their own
+  example code (source 2). Because the flashing/BOOT button function of GPIO0 is
+  present on essentially every ESP32 dev board as a byproduct of the chip's boot
+  ROM strapping (not evidence of a deliberately exposed "user button" input),
+  and no V2.0-specific vendor documentation confirms GPIO0 is intended/exposed as
+  a general-purpose user button distinct from the flash/reset button, this pin
+  was NOT tagged. This is a deliberate "no guess" decision per the task's
+  evidence bar, not a coin-flip judgment call - left for human review in case
+  someone can find V2.0-specific confirmation (e.g. an original product page or
+  physical unit silkscreen) that GPIO0's tactile button is documented/intended
+  for app use.
+
+Summary of what was tagged
+----------------------------
+NOTHING WAS TAGGED. No confirmable onboard user LED and no confirmable onboard
+user button (distinct from the universal GPIO0 flash/reset button) were found
+for the ttgo-lora32-v2 board via real vendor documentation. board.json was left
+unmodified (a "no NOTE, no change" outcome - no existing NOTE comment was
+touched, and no capability array was edited).

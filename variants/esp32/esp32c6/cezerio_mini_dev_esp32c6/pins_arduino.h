@@ -42,6 +42,4 @@ static const uint8_t A2 = 2;
 static const uint8_t A3 = 3;
 static const uint8_t A6 = 6;
 
-static const uint8_t MATRIX = 4;
-
 #endif /* Pins_Arduino_h */

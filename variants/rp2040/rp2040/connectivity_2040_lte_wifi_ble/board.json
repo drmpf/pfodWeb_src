@@ -1,0 +1,174 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "iLabs Connectivity 2040 LTE/WiFi/BLE" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This board's onboard WiFi/BLE
+  // co-processor is an ESP32-C3, reached over a plain UART (Serial1 /
+  // GPIO16-17) plus GPIO24/25 reset/boot-select control lines, driven
+  // via the WiFiEspAT AT-command library (confirmed by this board's own
+  // boards.txt entry: `connectivity_2040_lte_wifi_ble.build.extra_flags=
+  // -DWIFIESPAT2`) — NOT the native RP2040 + CYW43439 combo that Pico W /
+  // rp2040w-bucket boards use. Its onboard cellular modem (u-blox
+  // SARA-R412M, LTE-M/NB-IoT/eGPRS) is likewise reached over a plain UART
+  // (Serial2 / GPIO4-7) plus GPIO12-15 control lines, not an IP-capable
+  // native stack either. variants/rp2040/tcp.ino, http.ino and ble.ino are
+  // written against the native cyw43 WiFi.h stack, so they do not apply
+  // here — this board would need its own dedicated WiFiEspAT/AT-command
+  // modem .ino templates before it could genuinely offer tcp/http/ble
+  // connections. Plain "rp2040" (Serial only) is correct, matching the
+  // same reasoning already established for the challenger_2040_wifi
+  // (ESP8285 AT co-processor) and challenger_2040_lte (SARA-R4XX modem)
+  // siblings audited earlier this session.
+  //
+  // pfodWeb NOTE (WiFi-bucketing flag, 2026-07-13 audit): this board DOES
+  // have real onboard WiFi/BLE silicon (the ESP32-C3 co-processor,
+  // confirmed via iLabs' own datasheet) plus real onboard cellular
+  // silicon (SARA-R412M), unlike most other boards correctly left in the
+  // plain "rp2040" bucket for lacking any such hardware. It sits here
+  // deliberately because the mechanism differs from the native cyw43
+  // stack (UART-attached AT-command co-processor/modem vs. SPI-attached
+  // native radio) rather than through oversight. Flagging per this
+  // audit's standing instruction to surface (not silently fix) any
+  // WiFi-bucketing question — no chip-bucket move made in this task.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/NeoPixel tagging
+  // audit, 2026-07-13):
+  //
+  // Board: iLabs "RP2040 Connectivity" board (marketed/boards.txt name
+  // "Connectivity 2040 LTE/WiFi/BLE"), combining an RP2040 with an
+  // onboard u-blox SARA-R412M LTE-M/NB-IoT/eGPRS cellular modem AND an
+  // onboard ESP32-C3 WiFi/BLE co-processor on one 55mm x 42mm board.
+  //
+  // Sources consulted:
+  // 1. https://ilabs.se/connectivity-rp2040-lte-wifi-ble-datasheet/
+  //    (official iLabs datasheet, fetched directly) — confirms verbatim:
+  //    "GPIO19 (D19/LED_BUILTIN) is connected to the user LED. Setting
+  //    this pin high will light the on board green LED up." (active-high,
+  //    stated explicitly, not inferred); "GPIO16 (D16): TXD to ESP32
+  //    RXD", "GPIO17 (D17): RXD from ESP32 TXD", "GPIO24 (D24): ESP32
+  //    reset input", "GPIO25 (D25): ESP32 boot select pin (active-low for
+  //    programming mode)" (WiFi/BLE co-processor link); "GPIO4 (D4):
+  //    UART1 TXD", "GPIO5 (D5): UART1 RXD", "GPIO6 (D6): UART1 CTS",
+  //    "GPIO7 (D7): UART1 RTS", "GPIO12 (D12): DTR signal", "GPIO13
+  //    (D13): Power-on signal", "GPIO14 (D14): Reset signal", "GPIO15
+  //    (D15): Power supply control" (SARA-R412M modem link). No
+  //    NeoPixel/addressable RGB LED anywhere on the board. No dedicated
+  //    user pushbutton beyond the fixed-function reset and BOOT (BOOTSEL)
+  //    buttons.
+  // 2. https://www.cnx-software.com/2024/03/15/rp2040-connectivity-board-iot-solution-combining-lte-wi-fi-and-ble-into-a-single-platform/
+  //    and https://www.electronics-lab.com/ilabs-new-rp2040-connectivity-board-features-u-blox-sara-r412m-lte-cat-m1-nb-iot-and-esp32-modules/
+  //    (independent press coverage, via WebSearch) — corroborate: RP2040
+  //    + u-blox SARA-R412M (LTE Cat M1/NB-IoT) + ESP32-C3FN4 (WiFi/BLE),
+  //    vendor iLabs, no mention of any onboard NeoPixel or extra button.
+  // 3. This board's own pins_arduino.h
+  //    (variants/rp2040/rp2040/connectivity_2040_lte_wifi_ble/pins_arduino.h)
+  //    — already carries a prior-session "pfodWeb NOTE" (lines 54-57)
+  //    recording that GPIO4,5,16,17,24,25 (ESP32 link) and GPIO6,7,12,
+  //    13,14,15 (SARA-R4XX modem link) are deliberately excluded from the
+  //    `static const uint8_t Dn` alias list. Verified directly: the only
+  //    Dn aliases present are D0-D3, D8-D11, D18-D23, D26-D29 — none of
+  //    {4,5,6,7,12,13,14,15,16,17,24,25} appear anywhere. This already
+  //    fully excludes all twelve co-processor/modem-dedicated GPIOs from
+  //    the Designer's pin list with zero board.json involvement. GPIO19
+  //    (the LED) DOES carry a plain D19 alias, so it needs a chipGpios
+  //    entry to be tagged as an LED rather than left as a bare GPIO.
+  // 4. pfodWeb_src/build_boards.js (read directly, not executed) —
+  //    confirms the same allGpios/inPinsH mechanism already traced and
+  //    documented on the challenger_2040_lte sibling's board.json: a
+  //    chipGpios entry for a GPIO that is ALSO absent from pins_arduino.h
+  //    would needlessly re-add it as a bare "GPIO<n>" row carrying an
+  //    auto-appended "Check if available on board" note. Since GPIO4,5,
+  //    6,7,12,13,14,15,16,17,24,25 already lack pins_arduino.h aliases
+  //    (source #3 above), no chipGpios entries are added for them here —
+  //    matching the challenger_2040_lte precedent's carefully-traced
+  //    reasoning (not the earlier, inconsistent challenger_2040_wifi/nfc
+  //    audits that added redundant entries for already-unaliased pins).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/connectivity_2040_lte_wifi_ble/notes.txt
+  //
+  // Per-pin reasoning:
+  //   GPIO4  - UART1 TXD - SARA-R412M modem's dedicated UART TX line.
+  //            Not general-purpose. Already absent from pins_arduino.h
+  //            aliases; no chipGpios entry added (see above).
+  //   GPIO5  - UART1 RXD - SARA-R412M modem's dedicated UART RX line.
+  //            Same reasoning as GPIO4.
+  //   GPIO6  - UART1 CTS - SARA-R412M modem's hardware flow-control CTS
+  //            line. Same reasoning as GPIO4.
+  //   GPIO7  - UART1 RTS - SARA-R412M modem's hardware flow-control RTS
+  //            line. Same reasoning as GPIO4.
+  //   GPIO12 - DTR signal - SARA-R412M modem's DTR control line, driven
+  //            by the RP2040. Same reasoning as GPIO4.
+  //   GPIO13 - Power-on signal - SARA-R412M modem's power-on control
+  //            line, driven by the RP2040. Same reasoning as GPIO4.
+  //   GPIO14 - Reset signal - SARA-R412M modem's reset control line,
+  //            driven by the RP2040. Same reasoning as GPIO4.
+  //   GPIO15 - Power supply control - SARA-R412M modem's power-supply
+  //            LDO enable line, driven by the RP2040. Same reasoning as
+  //            GPIO4.
+  //   GPIO16 - TXD to ESP32 RXD - ESP32-C3 WiFi/BLE co-processor's
+  //            dedicated UART link (RP2040 TX side). Not general-purpose.
+  //            Same reasoning as GPIO4.
+  //   GPIO17 - RXD from ESP32 TXD - ESP32-C3 co-processor's dedicated
+  //            UART link (RP2040 RX side). Same reasoning as GPIO4.
+  //   GPIO24 - ESP32 reset input - ESP32-C3 co-processor's reset control
+  //            line, driven by the RP2040. Same reasoning as GPIO4.
+  //   GPIO25 - ESP32 boot select pin - ESP32-C3 co-processor's active-low
+  //            boot/programming-mode select line, driven by the RP2040.
+  //            Same reasoning as GPIO4.
+  //   GPIO19 - PIN_LED / LED_BUILTIN (D19 alias) - onboard general-
+  //            purpose user LED. Confirmed active-high directly by the
+  //            official iLabs datasheet's own wording ("Setting this pin
+  //            high will light the on board green LED up") — not an
+  //            inference. Tagged led_high; digital_input dropped to match
+  //            this repo's established precedent for dedicated onboard
+  //            LED pins; pwm_output kept since arduino-pico's
+  //            analogWrite() works on any RP2040 GPIO, enabling
+  //            brightness dimming.
+  //
+  // GPIO19 carries no SPI/I2C/other bus alias on this board (SPI0 lives
+  // on GPIO20-23, Wire0 on GPIO0-1 — confirmed by grepping the whole
+  // pins_arduino.h for SS/MOSI/MISO/SCK/SDA/SCL), so the build_boards.js
+  // unconditional bus-capability auto-append (the "confirmed button/LED
+  // pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK" bug class flagged for
+  // this audit) does not apply here — no pins_arduino.h edit was needed.
+  // Likewise, none of the twelve dedicated co-processor/modem GPIOs
+  // coincide with the SPI0/Wire0 pins either.
+  //
+  // Also confirmed: no onboard NeoPixel and no onboard user button
+  // (beyond the standard RP2040 reset/BOOTSEL buttons, not normal GPIOs,
+  // out of scope per the rpipico/board.json precedent) on this board —
+  // neither the iLabs datasheet nor independent press coverage mention
+  // either.
+  "chipGpios": {
+    "19": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN (D19 alias) — onboard general-purpose user LED. Confirmed active-high directly by the official iLabs datasheet's own wording (\"Setting this pin high will light the on board green LED up\")." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Matches this board's own local common.h
+  // (NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12u).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

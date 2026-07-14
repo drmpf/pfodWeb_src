@@ -9,12 +9,15 @@
 #define USB_PRODUCT      "ESP32-S3 PowerFeather"
 #define USB_SERIAL       ""
 
-static const uint8_t ALARM = 21;
-static const uint8_t INT = 5;
+// pfodWeb NOTE: ALARM(21)/INT(5)/EN(7) removed - confirmed dedicated to
+// the onboard fuel gauge alarm, battery charger interrupt, and Feather
+// Wing power-enable control respectively (vendor SDK
+// github.com/PowerFeather/powerfeather-sdk src/Mainboard/Mainboard.h and
+// docs.powerfeather.dev "Pins & Signals"). See board.json for full
+// per-pin reasoning and sources.
 
 static const uint8_t LED = 46;
 static const uint8_t BTN = 0;
-static const uint8_t EN = 7;
 
 static const uint8_t TX = 44;
 static const uint8_t RX = 42;
@@ -28,9 +31,11 @@ static const uint8_t SCK = 39;
 static const uint8_t SCL = 36;
 static const uint8_t SDA = 35;
 
-#define WIRE1_PIN_DEFINED 1
-static const uint8_t SCL1 = 48;
-static const uint8_t SDA1 = 47;
+// pfodWeb NOTE: WIRE1_PIN_DEFINED / SCL1(48) / SDA1(47) removed - this is
+// the SDK-managed STEMMA QT I2C bus (Wire1) used internally to talk to
+// the onboard fuel gauge and charger ICs; vendor docs explicitly state
+// "User code should not configure and use these IO, as doing so can
+// cause faulty behavior." See board.json for full reasoning and sources.
 
 static const uint8_t A0 = 10;
 static const uint8_t A1 = 9;

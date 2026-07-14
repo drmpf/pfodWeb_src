@@ -116,7 +116,9 @@ const DesignerEditMenu = (() => {
     if (!isInSubmenu) {
       const supported = DesignerEditConnection.supportedConnections(state.board);
       // Always use the actual selected connection's short label as the base.
-      const baseLabel = DesignerEditConnection.connectionLabels[state.connection] || state.connection;
+      // Serial always shows its fixed baud rate alongside the label.
+      const baseLabel = (DesignerEditConnection.connectionLabels[state.connection] || state.connection) +
+        (state.connection === 'serial' ? ('@' + state.baud) : '');
       // For single-transport boards, preserve any extra \n-delimited markup from
       // familyConnectionTypes (e.g. ccode/unlistedBoard add "\n<i>Use for non-Arduino boards").
       // Multi-transport boards just show the selected transport label.

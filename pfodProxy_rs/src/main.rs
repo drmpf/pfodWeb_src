@@ -24,6 +24,7 @@ mod ble;
 mod ble_names;
 mod validate;
 mod extrafonts;
+mod version;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -355,7 +356,7 @@ async fn main() {
 async fn handle_ping(State(app): State<Arc<state::AppState>>) -> impl IntoResponse {
     log::debug("[pfodProxy] /ping received");
     let tag = if app.password.is_some() { "pong_pw" } else { "pong" };
-    (StatusCode::OK, format!("{tag} {}", env!("CARGO_PKG_VERSION")))
+    (StatusCode::OK, format!("{tag} {}", version::VERSION))
 }
 
 /// Shutdown handler — called only by the "Close pfodProxy" button in
@@ -572,7 +573,7 @@ async fn connect_probe(port: u16) -> bool {
 
 fn print_banner(http_port: u16, has_password: bool) {
     println!();
-    println!("=== pfodProxy {} ===", env!("CARGO_PKG_VERSION"));
+    println!("=== pfodProxy {} ===", version::VERSION);
     println!("Listening on      : http://127.0.0.1:{http_port}");
     println!();
     println!("To listen on a different port, restart with the port number:");

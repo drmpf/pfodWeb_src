@@ -1,0 +1,86 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins beyond the chip-level
+  // default — GPIO12 (the BOOT/user button) is handled via chipGpios
+  // below instead (see rationale there), matching the
+  // ../pimoroni_tiny2040/board.json GPIO23 BOOTSEL precedent.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/NeoPixel re-verification,
+  // 2026-07-13):
+  //
+  // GPIO27 (PIN_NEOPIXEL) — the onboard NeoPixel data line, output-only.
+  // Tagged led_neopixel; pwm_output dropped per this session's
+  // NeoPixel-tagging convention (WS2812 is a bit-serial-protocol data
+  // line, not a PWM-dimmable pin) — matches ../waveshare_rp2040_zero
+  // GPIO16 precedent. Confirmed genuine WS2812-style addressable
+  // NeoPixel (not a plain LED) via Adafruit's own CircuitPython example
+  // (github.com/adafruit/Adafruit_Learning_System_Guides,
+  // QT2040_Trinkey/Digital_Input/code.py: `pixel = neopixel.NeoPixel(
+  // board.NEOPIXEL, 1)`) and learn.adafruit.com/adafruit-trinkey-qt2040
+  // ("Built-in RGB NeoPixel LED").
+  //
+  // GPIO12 (PIN_SWITCH / board.BUTTON) — RE-CLASSIFIED this session.
+  // The board.json this file previously carried described this pin as
+  // "a capacitive touch switch" and handled it via inputOnlyGpios; that
+  // description does not hold up against vendor documentation. It is
+  // in fact the board's mechanical BOOT/user pushbutton, read as a
+  // standard digital input:
+  //   - Adafruit's own CircuitPython example (same file as above) reads
+  //     it with `button = digitalio.DigitalInOut(board.BUTTON);
+  //     button.switch_to_input(pull=digitalio.Pull.UP)` then polls
+  //     `button.value` — the textbook mechanical-pushbutton pattern, not
+  //     touchio/capacitive touch.
+  //   - learn.adafruit.com/adafruit-trinkey-qt2040/pinouts: "the boot
+  //     button (labeled BOOT" — a physically-labeled, physically-pressed
+  //     button, usable in user code via board.BUTTON.
+  //   - docs.zephyrproject.org Trinkey QT2040 board page: "Boot/User
+  //     button: GPIO12", and confirms it "will pull down the QSPI
+  //     chip-select line (via a diode) for entering the built-in USB
+  //     bootloader at startup" — i.e. diode-shared with the BOOTSEL
+  //     function, same electrical pattern as ../pimoroni_tiny2040
+  //     GPIO23.
+  //   - Note: the "capacitive touch" claim likely originated from
+  //     confusion with Adafruit's other Trinkey products (Neo Trinkey,
+  //     Rotary Trinkey, etc.) which DO have genuine touchio capacitive
+  //     pads — this board (QT2040 Trinkey) does not.
+  //   Tagged digital_input + button. digital_output/pwm_output
+  //   deliberately omitted, matching the conservative precedent applied
+  //   to Tiny2040's diode-protected GPIO23 BOOTSEL pin: no vendor source
+  //   confirms it is electrically safe to drive this diode-coupled
+  //   QSPI-CS-shared line as an output.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_trinkeyrp2040qt/notes.txt
+  "chipGpios": {
+    "12": { "capabilities": ["digital_input", "button"], "note": "PIN_SWITCH / board.BUTTON — onboard BOOT/user pushbutton, diode-shared with the QSPI chip-select bootloader-select line (same pattern as ../pimoroni_tiny2040 GPIO23). Confirmed mechanical pushbutton (not capacitive touch) via Adafruit's own CircuitPython digital-input example (digitalio.DigitalInOut(board.BUTTON), pull-up) and docs.zephyrproject.org's Trinkey QT2040 board page. digital_output/pwm_output deliberately omitted — no vendor source confirms driving this diode-coupled line as an output is safe." },
+    "27": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard WS2812 addressable RGB LED, output-only. Confirmed via Adafruit's own CircuitPython example (neopixel.NeoPixel(board.NEOPIXEL, 1)) and learn.adafruit.com/adafruit-trinkey-qt2040 ('Built-in RGB NeoPixel LED')." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // No analog pins declared for this board (see pins_arduino.h note).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

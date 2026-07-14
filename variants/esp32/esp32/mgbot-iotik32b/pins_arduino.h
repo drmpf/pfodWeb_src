@@ -28,7 +28,11 @@ static const uint8_t SCL = 22;
 static const uint8_t SS = 5;
 static const uint8_t MOSI = 23;
 static const uint8_t MISO = 19;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: the default SCK alias was deleted - it pointed at the
+// same GPIO as this board's confirmed onboard LED, and build_boards.js
+// unconditionally attaches an spi_sck capability to any GPIO matching
+// the SCK alias, which was silently contaminating the LED's capability
+// list.
 
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
@@ -43,7 +47,8 @@ static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
 static const uint8_t A15 = 12;
 static const uint8_t A16 = 14;
-static const uint8_t A17 = 27;
+// pfodWeb NOTE: A17 (GPIO27) deliberately NOT declared - same GPIO as
+// the dedicated onboard IR receiver above.
 static const uint8_t A18 = 25;
 static const uint8_t A19 = 26;
 
@@ -54,7 +59,7 @@ static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
 static const uint8_t T6 = 14;
-static const uint8_t T7 = 27;
+// pfodWeb NOTE: T7 (GPIO27) deliberately NOT declared - same as A17 above.
 static const uint8_t T8 = 33;
 static const uint8_t T9 = 32;
 

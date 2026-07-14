@@ -1,0 +1,84 @@
+// pfodWeb NOTE (2026-07-12): per-board override for the DFRobot FireBeetle 2
+// ESP32-C6 (SKU DFR1075). Full copy of the chip-level
+// variants/esp32/esp32c6/board.json, with two additions from a
+// dedicated-hardware pin-exclusion + opportunistic button/LED/battery audit
+// (see boardsDetails/esp32/esp32c6/dfrobot_firebeetle2_esp32c6/notes.txt for
+// full source list):
+//  - GDI display connector (GDI_BLK/DC/RES/CS/SDCS/FCS/TCS/INT/BUSY_TE/
+//    SPI_SCLK/MOSI/MISO/SCL/SDA in this board's pins_arduino.h): NOT
+//    excluded. Confirmed via wiki.dfrobot.com/SKU_DFR1075_FireBeetle_2_
+//    Board_ESP32_C6 that GDI is an external plug-in connector ("for
+//    connecting a screen using a 18pin-FPC wire"), not a built-in display -
+//    same optional-accessory pattern as DFRobot's Beetle ESP32-C3 and
+//    FireBeetle 2 ESP32-C5. Unlike the FireBeetle 2 ESP32-S3 (where the
+//    GDI-exclusive signals DC/RES/CS/SDCS/FCS/TCS/INT/BUSY_TE have NO
+//    general-purpose alias - raw numeric literals only - and so were
+//    excluded), every GDI signal on THIS board resolves through an
+//    already-declared general D-pin alias (D2/D3/D6/D7/D11/D12/D13) or the
+//    shared SPI/I2C bus (SCK/MOSI/MISO/SCL/SDA) - i.e. these are ordinary
+//    header-broken-out GPIOs that only optionally double as display-connector
+//    signals when the accessory is plugged in. All left at chip defaults.
+//  - GPIO9 (D9) tagged "button" - confirmed onboard "BOOT" pushbutton
+//    ("IO9 / D9 / BOOT: Boot button (GPIO9)") via the same DFRobot wiki
+//    page. Also this chip's boot-mode strapping pin, matching this
+//    chip-level board.json's own pre-existing pinNotes "9": "Must be HIGH
+//    for normal boot". No SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias collides
+//    with GPIO9 in this board's pins_arduino.h (SDA=19, SCL=20, SS=5,
+//    MOSI=22, MISO=21, SCK=23, TX=16, RX=17) - checked.
+//  - GPIO0 documented, NOT excluded. Confirmed via the same DFRobot wiki
+//    page as the "Battery voltage detection pin" (used with the board's
+//    integrated lithium-battery charging/level-monitoring circuit and
+//    CN3165 solar power-management chip). Not aliased by any name in this
+//    board's pins_arduino.h (no A0 declared - A1..A4 start at GPIO2). No
+//    divider ratio or enable-pin requirement was found in the consulted
+//    sources (no example code snippet was retrievable), so - per this
+//    project's no-guess policy - capabilities are left unchanged and only
+//    a documentation note is attached; a user can still use GPIO0 as a
+//    plain GPIO if they are not relying on the battery-sense function.
+//  - LED_BUILTIN (GPIO15/D13, also GDI_BLK): DFRobot's wiki confirms
+//    "IO15/D13" as the onboard LED pin ("The default pin for the onboard
+//    LED is pin 15"), matching this board's own pins_arduino.h. No source
+//    consulted states active-high/active-low polarity, so no led_high/
+//    led_low tag was applied (unconfirmed - left for human review, per
+//    no-guess policy, same as dfrobot_firebeetle2_esp32e's precedent).
+{
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"],
+            "note": "Battery voltage detection pin (per DFRobot's FireBeetle 2 ESP32-C6 wiki) - used with the board's integrated lithium-battery charging/level-monitoring circuit. No divider ratio or enable-pin requirement found in consulted sources, so left fully available - see pfodWeb NOTE above." },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"],
+            "note": "Onboard \"BOOT\" pushbutton (per DFRobot's FireBeetle 2 ESP32-C6 wiki: \"IO9 / D9 / BOOT: Boot button\"). Also this chip's boot-mode strapping pin, see pinNotes above." },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

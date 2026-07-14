@@ -41,8 +41,8 @@
 #define SD_MISO 40
 #define SD_SCLK 41
 
-static const uint8_t SDA = 47;
-static const uint8_t SCL = 48;
+// pfodWeb NOTE: SDA/SCL not declared — shared with the onboard
+// touch/RTC/IMU chips, not a general expansion port (see board.json).
 
 // UART0 pins
 static const uint8_t TX = 43;

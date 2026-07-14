@@ -1,0 +1,111 @@
+Nebula_S3 - dedicated-hardware pin-exclusion audit + opportunistic NeoPixel tagging
+====================================================================================
+
+Sources consulted
+------------------
+https://github.com/espressif/arduino-esp32/pull/8257
+  "Add board: Nebula S3" by DocMonster7, merged 2023-05-31 (reviewer
+  P-R-O-C-H-Y). This is the upstream PR that introduced this board into
+  the arduino-esp32 core, and is the authoritative source of the board's
+  identity. The PR description/commit history confirms: onboard MPU-6050
+  IMU, onboard WS2812B addressable LED, battery connector. Commit history
+  explicitly adds "secondary sda1 and scl1" alongside the IMU support,
+  confirming GPIO2 (SDA1) / GPIO1 (SCL1) is the bus wired to the IMU.
+  Fetched the PR's file diff directly: the ORIGINAL vendor-submitted
+  pins_arduino.h contained only `LED_BUILTIN = 45`, `SDA1 = 2`,
+  `SCL1 = 1` plus boilerplate NUM_DIGITAL_PINS/interrupt macros - i.e.
+  the only board-specific hardware facts the author actually documented
+  are the LED GPIO and the SDA1/SCL1 IMU bus. Everything else in the
+  current local pins_arduino.h (primary SDA=12/SCL=13, SPI SS/MOSI/MISO/
+  SCK, D0-D18, A0-A5, the SOC_GPIO_PIN_COUNT+45 LED_BUILTIN encoding) was
+  added later by an Espressif maintainer pass that standardizes all
+  esp32s3 variant files to a common template - none of it is
+  board-specific documentation, it's generic GPIO-number aliasing
+  applied uniformly across many boards.
+
+https://docs.platformio.org/en/latest/boards/espressif32/nebulas3.html
+  PlatformIO board listing, "Kinetic Dynamics Nebula S3", ESP32-S3 @
+  240MHz, 4MB flash / 320KB RAM. Corroborates the board is a real,
+  distributed product (board ID "nebulas3"), consistent with the PR.
+
+WebSearch queries used: "Nebula S3 ESP32-S3 board pinout SDA1 SCL1",
+"Nebula S3 ESP32-S3 board schematic pins_arduino.h github",
+"Kinetic Dynamics Nebula S3 board github schematic",
+"espressif arduino-esp32 variants Nebula_S3 pins_arduino.h",
+"arduino-esp32 boards.txt Nebula_S3 name",
+""Nebula S3" board ESP32-S3 IMU sensor Kinetic Dynamics OR esp32s3
+onboard", "Nebula S3 DocMonster7 ESP32-S3 board pinout header IMU header
+MPU6050".
+  kineticdynamics.in (vendor site referenced by PlatformIO) failed to
+  resolve (DNS error) at fetch time - relied on the PR + PlatformIO
+  listing instead, which independently corroborate each other (same
+  IMU/LED/battery-connector description).
+
+Reasoning / decisions
+-----------------------
+1. GPIO2 (SDA1) / GPIO1 (SCL1) - secondary I2C (Wire1) bus.
+   EXCLUDED. Confirmed via the upstream PR that this bus was added
+   specifically to support the onboard MPU-6050 IMU - a communication
+   bus wired exclusively to a specific onboard chip, per the playbook's
+   EXCLUDE policy (not a general-purpose second I2C header - no
+   documentation anywhere describes it as user-accessible, and the
+   original vendor file only ever declared these two names next to the
+   LED, with no separate general-purpose SDA/SCL declared until the
+   later generic-template pass added the primary SDA=12/SCL=13 bus).
+   The primary SDA=12/SCL=13 (Wire0) bus is untouched and stays
+   general-purpose/KEEP.
+
+   Applying this exclusion required THREE changes, not just one, because
+   build_boards.js's buildEsp32Board() unions every pins_arduino.h alias
+   GPIO with the board.json chipGpios keys (see
+   project_board_variant_pin_audit_playbook.md section 4/gotcha list):
+     - Removed SDA1=2/SCL1=1 from pins_arduino.h.
+     - Removed D0=1/D1=2 from pins_arduino.h (same GPIOs, generic
+       template D-list aliases that would otherwise leak GPIO1/GPIO2
+       back into the pin list).
+     - Removed A4=1/A5=2 from pins_arduino.h (same GPIOs, generic
+       template A-list aliases, same leak risk).
+     - Removed "1" and "2" entries from chipGpios in the new per-board
+       board.json (chip-level default has both; board.json here is a
+       full copy of variants/esp32/esp32s3/board.json with these two
+       keys removed).
+
+2. Onboard NeoPixel / RGB LED - GPIO45.
+   `static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + 45;` plus
+   RGB_BUILTIN/RGB_BRIGHTNESS defines is the arduino-esp32 convention for
+   an onboard addressable RGB LED driven via neopixelWrite()/
+   rgbLedWrite() (real GPIO = LED_BUILTIN - SOC_GPIO_PIN_COUNT;
+   SOC_GPIO_PIN_COUNT=49 for ESP32-S3 per esp-idf
+   components/soc/esp32s3/include/soc/soc_caps.h, so 94-49=45). Matches
+   the identical pattern already tagged in this repo's
+   variants/esp32/esp32s3/waveshare_esp32_s3_zero (WS_RGB=21, same
+   SOC_GPIO_PIN_COUNT+n encoding, already tagged led_neopixel there).
+   Confirmed as a real onboard WS2812B LED via the upstream PR and the
+   PlatformIO board listing. It was NOT previously tagged in this
+   board's data (no prior board.json existed; chip-level default has
+   plain digital_input/digital_output/pwm_output for GPIO45).
+   TAGGED: GPIO45 -> ["digital_output", "led_neopixel", "pwm_output"]
+   (digital_input dropped - dedicated LED data line, same convention as
+   waveshare_esp32_s3_zero; pwm_output retained because it was already
+   present on this pin in the chip-level default).
+
+Flagged for future review (NOT fixed - out of scope for this task)
+---------------------------------------------------------------------
+- D9 = 27 in pins_arduino.h aliases GPIO27, which falls inside the
+  chip-level board.json's documented GPIO26-32 flash-pin exclusion range
+  (see variants/esp32/esp32s3/board.json comment). This is a pre-existing
+  leak unrelated to SDA1/SCL1/the LED (same union-of-aliases mechanism
+  described above) that predates this session's changes and isn't part
+  of what was flagged for this audit. Left as-is; flagging for a future
+  dedicated pass over this board (or a family-wide GPIO26-32 leak sweep).
+
+Summary
+--------
+Created variants/esp32/esp32s3/Nebula_S3/board.json (full copy of the
+chip-level default) excluding GPIO1/GPIO2 (dedicated onboard MPU-6050
+IMU I2C bus, confirmed via upstream PR #8257) and tagging GPIO45 as
+led_neopixel (confirmed onboard WS2812B LED, same encoding convention as
+waveshare_esp32_s3_zero). Edited pins_arduino.h to remove the SDA1/SCL1/
+D0/D1/A4/A5 aliases for GPIO1/GPIO2 so the exclusion actually takes
+effect (parser unions board.json chipGpios with every pins_arduino.h
+alias GPIO). No build commands were run per task instructions.

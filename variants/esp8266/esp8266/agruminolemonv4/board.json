@@ -1,0 +1,59 @@
+{
+  "boardName": "ESP8266",
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // plus this board's own pins_arduino.h comments (Agrumino Lemon v4 —
+  // a plant-watering/irrigation controller).
+  // pfodWeb NOTE: GPIO4 tagged "button" - confirmed via vendor source
+  // https://github.com/lifely-cc/agruminoLemon-libraries/blob/master/Agrumino.cpp
+  // (PIN_BTN_S1=4; pinMode(PIN_BTN_S1, INPUT_PULLUP); isButtonPressed()
+  // returns digitalRead(PIN_BTN_S1)==LOW - a real onboard user button).
+  // pfodWeb NOTE: GPIO2's "onboard LED" claim in pinNotes below was checked
+  // against the same vendor source and found INACCURATE - the real onboard
+  // LED is wired to IO0 of a PCA9536 I2C GPIO expander chip (accessed over
+  // the I2C bus that GPIO2/SDA carries), not directly driven by GPIO2 itself.
+  // GPIO2 was therefore left untagged as an LED pin - see notes.txt.
+  // pfodWeb NOTE: adc.defaultRefVolts changed from "1.0" to "5.25" - confirmed
+  // via vendor source (same URL as above): A0/GPIO17 has an onboard resistor
+  // voltage divider (BATTERY_VOLT_DIVIDER_Z1=1800 ohm, Z2=424 ohm) ahead of
+  // it for LiPo battery-voltage sensing; readBatteryVoltageSingleShot() computes
+  // volt = ((Z1+Z2)/Z2) * (analogRead(A0)/1024.0), i.e. full-scale raw ADC
+  // (1.0V native) maps to (1800+424)/424 = 5.2453V design full-scale.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. Wired to PIN_LEVEL (HIGH=Running, LOW=Program) on this board",
+    "2":  "Must be HIGH at boot. Wired to this board's I2C SDA and the onboard LED",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards). Also this board's onboard MOSFET switch control line — see chipGpios note",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM."
+  },
+
+  // Per-board override: GPIO12 (PIN_PUMP) and GPIO15 (PIN_MOSFET) are this
+  // board's dedicated water-pump relay and load-MOSFET switch outputs —
+  // fixed hardware actuators, not general-purpose GPIO (matches the
+  // heater/stepper/motor-driver-output exclusion policy). Removed
+  // entirely from the chip-level default map below.
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "button"], "note": "PIN_BTN_S1 — onboard button" },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_USB_DETECT — USB power presence sensor" },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_BATT_STAT — battery charge status sensor" },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "5.25" }
+}

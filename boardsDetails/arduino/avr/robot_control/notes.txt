@@ -1,0 +1,195 @@
+POST-REVIEW CORRECTION (2026-07-14, same day, follow-up pass)
+----------------------------------------------------------------
+User noticed the sibling robot_motor board showed zero pwm_output tags
+anywhere and asked why. Root cause: this board's own pins_arduino.h (a
+bespoke, non-#include-based header, unlike every other AVR variant which
+inherits digitalPinHasPWM via its #include chain) never defined the
+digitalPinHasPWM macro at all. build_boards.js's buildPwmPredicate()
+silently falls back to "no pin has PWM" whenever the macro is absent —
+so despite this file's own digital_pin_to_timer_PGM table confirming
+D3/D5/D6/D9/D10/D11/D13 are genuinely wired to hardware timers (TIMER0A/B,
+TIMER1A/B, TIMER3A, TIMER4A/D — identical set to the Leonardo variant,
+same chip), none of them were ever tagged pwm_output. Same bug found on
+robot_motor; confirmed via a targeted include-chain check that every
+other AVR board correctly inherits the macro and was unaffected.
+Fix: added `#define digitalPinHasPWM(p) ((p)==3||(p)==5||(p)==6||(p)==9||
+(p)==10||(p)==11||(p)==13)` to this file (verbatim copy of Leonardo's own
+macro), no board.json changes needed. Of this board's kept-available
+pins, D3/D6/D11/D13 now correctly show pwm_output (D5/D9/D10 are already
+excluded as dedicated BUZZ/LCD_CS/DC_LCD pins regardless of PWM
+capability, so unaffected). Verified via node build_boards.js (0 errors)
+and a direct dump of the generated pin list.
+
+Arduino Robot — Control board (robot_control) — pin audit notes
+=================================================================
+Date: 2026-07-14
+Chip: ATmega32U4, bespoke pins_arduino.h (NOT shared with Leonardo/Micro).
+
+SOURCES CONSULTED
+-----------------
+1. variants/arduino/avr/robot_control/pins_arduino.h (this board's own file) —
+   primary source. Contains named aliases (KEY, MUX_IN, MUXA/B/C/D, BUZZ,
+   POT, DC_LCD, LCD_CS, RST_LCD, CARD_CS, TKD0-TKD5, LED1) plus a register-
+   mapping comment table cross-referencing D<n>/A<n>/PORTx.
+
+2. https://github.com/arduino/docs-content/blob/main/content/retired/05.archived-libraries/Robot/Robot.md
+   — archived official Arduino docs for the Robot library. Confirmed
+   Control board component list: "160x120 pixel color screen", "5
+   momentary switches", "potentiometer", "512Kbit EEPROM", "speaker",
+   "compass", "3 I2C connectors", "8 TinkerKit input connectors". Confirms
+   the floor/line sensors ("5 floor sensors ... read via updateIR()") are
+   attributed to the MOTOR board's feature list, not Control's, in this
+   doc — see the cross-board note below.
+
+3. https://docs.arduino.cc/retired/getting-started-guides/Robot/ — could not
+   be fetched (empty response this session); not used.
+
+4. https://forum.arduino.cc/t/arduino-robot-pinout/349439 — community
+   thread. Key finding: "8 3-pin connectors marked M0-7 ... connected to a
+   74HC4067 Multiplexer IC, which in turn is connected to PD4 on the main
+   processor" — PD4 is exactly this board's MUX_IN (PIN_A6/D4). This is
+   the confirming evidence that the Control board's 4-address-line mux
+   (MUX_IN + MUXA/B/C/D) serves the general-purpose M0-M7 TinkerKit
+   expansion header, not a fixed onboard sensor.
+
+5. https://github.com/arduino-libraries/Robot_Control (official successor
+   library source, fetched via raw.githubusercontent.com):
+   - src/ArduinoRobot.cpp: `//TK sensors` comment immediately above
+     `uint8_t MuxPins[]={MUXA,MUXB,MUXC,MUXD}; Multiplexer::begin(MuxPins,
+     MUX_IN,4);` — confirms the mux's real purpose (TinkerKit expansion,
+     NOT a dedicated sensor). Also `pinMode(BUZZ,OUTPUT);` under a
+     `//piezo` comment — confirms BUZZ is the onboard speaker output pin.
+   - src/Sensors.cpp: `int RobotControl::knobRead(){ return
+     ::analogRead(POT); }` — confirms POT is a plain potentiometer analog
+     read, no special protocol. `uint16_t RobotControl::compassRead(){
+     return Compass::getReading(); }` — compass read is delegated to a
+     Compass class; no dedicated CS/reset pin found for it in this file,
+     consistent with it being an ordinary I2C device on the general bus
+     (matches the "3 I2C connectors" fact from source 2 — the bus is
+     explicitly general-purpose/expandable, not isolated).
+   - src/keyboard.cpp: confirms KEY is read via a single
+     `averageAnalogInput(KEY)` call, decoded against 5 fixed threshold
+     ranges (`pul_min[]={0,133,319,494,732}`, `pul_max[]={10,153,339,514,
+     752}`) to identify which of 5 buttons is pressed — a resistor-ladder
+     multi-button pad on one analog pin, not a discrete digital button.
+   - src/SdCard.cpp: confirms a chip-select pin is driven LOW at SD init
+     and SPI is configured in master mode (SPCR register) — corroborates
+     CARD_CS/MISO/MOSI/SCK usage for the onboard SD card slot.
+
+6. https://raw.githubusercontent.com/arduino-libraries/RobotIRremote/master/src/IRremoteTools.cpp
+   — example file: `int RECV_PIN = TKD2; // the pin the IR receiver is
+   connected to`. TKD2 is one of this board's general TinkerKit digital
+   connectors (A3/D21). This confirms the IR-remote-receiver feature is a
+   plug-in accessory wired to a general expansion pin, not fixed onboard
+   hardware requiring exclusion — matches the task brief's own wording
+   ("IR remote receiver, for a remote control accessory").
+
+CROSS-BOARD NOTE
+-----------------
+The task brief attributes the 5-way IR floor/line-following sensor array to
+this (Control) board. Source 2 (official archived docs) and source 5's
+sibling library (Robot_Motor, see boardsDetails/.../robot_motor/notes.txt)
+both indicate the floor sensors are actually read via the MOTOR board's own
+mux (`this->IRs.begin(MuxPins, MUX_IN, 3)` in ArduinoRobotMotorBoard.cpp,
+3-bit address, matching "5 floor sensors" ≤ 8 channels), not this board's.
+This Control board's own mux (4-bit address, MUX_IN=PD4) is independently
+confirmed (source 4 + source 5) to serve the 8 M0-M7 TinkerKit expansion
+connectors instead. Treated per the stronger, board-specific source
+evidence (4 and 5) rather than the brief's summary.
+
+PER-PIN REASONING
+------------------
+D0 (RX), D1 (TX) — Serial1 to the Motor board via the 10-pin inter-board
+  connector. Auto-reserved as serial_rx/serial_tx by build_boards.js's
+  TX/RX mechanism; no chipGpios entry needed or possible (not overridable).
+
+D2 (SDA), D3 (SCL) — general I2C bus. CONFIRMED not isolated: official docs
+  list "3 I2C connectors" (source 2), i.e. multiple external connectors
+  share this bus alongside the onboard compass. Per the pin-audit
+  playbook's KEEP policy ("General-purpose I2C/SPI buses without a
+  documented exclusive onboard consumer, even if only one device happens
+  to be attached"), left available. NO CHANGE.
+
+D4 (MUX_IN, alias of A6) — CONFIRMED (sources 4, 5) to be the TinkerKit
+  M0-M7 expansion mux's shared analog input. General-purpose. NO CHANGE.
+
+D5 (BUZZ) — CONFIRMED (source 5, `pinMode(BUZZ,OUTPUT)` under `//piezo`)
+  onboard speaker/buzzer output. EXCLUDED (capabilities: []).
+
+D6 (MUXA / TKD4, alias of A7) — CONFIRMED (sources 4, 5) TinkerKit mux
+  address line, dual-aliased as TKD4 (one of the 6 TinkerKit digital
+  connector pins). General-purpose. NO CHANGE.
+
+D7 (RST_LCD) — LCD reset line. Not independently re-verified beyond the
+  board's own unambiguous alias name and the well-documented "160x120
+  pixel color screen" (source 2); a reset line for a dedicated onboard
+  display has no other plausible function. EXCLUDED.
+
+D8 (CARD_CS, alias of A8) — CONFIRMED (source 5, SdCard.cpp chip-select
+  init + SPI master-mode config) SD card SPI chip-select. EXCLUDED.
+
+D9 (LCD_CS, alias of A9) — LCD SPI chip-select, by unambiguous alias name
+  (same confidence level as D7). EXCLUDED.
+
+D10 (DC_LCD, alias of A10) — LCD data/command select line, by unambiguous
+  alias name. EXCLUDED.
+
+D11 (MUXB) — CONFIRMED (sources 4, 5) TinkerKit mux address line.
+  General-purpose. NO CHANGE.
+
+D12 (MUXC / TKD5, alias of A11) — CONFIRMED TinkerKit mux address line,
+  dual-aliased as TKD5. General-purpose. NO CHANGE.
+
+D13 (MUXD) — CONFIRMED (source 5, the 4-pin `MuxPins[]={MUXA,MUXB,MUXC,
+  MUXD}` array) 4th TinkerKit mux address line. General-purpose. NO CHANGE.
+
+D14 (MISO), D15 (SCK), D16 (MOSI) — SPI bus. Both confirmed consumers on
+  this bus (LCD via LCD_CS, SD card via CARD_CS — sources above) are
+  onboard, always-attached, dedicated peripherals; no general-purpose SPI
+  header was found anywhere in the researched sources. EXCLUDED (all
+  three).
+
+D17 (SS, also aliased LED1 = "RX_Led" in this file's own comment) — same
+  TXLED0/TXLED1/RXLED0/RXLED1 active-low USB-activity-indicator macros
+  (TX_RX_LED_INIT etc.) already present, byte-for-byte identical, in the
+  plain Leonardo/Micro pins_arduino.h. leonardo/board.json (existing,
+  already-audited precedent in this repo) deliberately leaves this pin
+  untagged. No board-specific evidence was found in any Robot_Control
+  source file examined (Sensors.cpp, ArduinoRobot.cpp) that this LED is
+  driven by user-facing library code rather than only the USB core's
+  activity indicator — so, per the "match sibling precedent, don't guess"
+  policy, LEFT UNTAGGED (NO CHANGE), consistent with leonardo/micro.
+
+A0 (KEY, D18) — CONFIRMED (source 5, keyboard.cpp) a 5-way momentary-
+  switch pad read via a single analogRead() decoded against 5 fixed
+  voltage-ladder ranges. Does NOT fit this schema's "button" capability
+  (a single discrete active-hi/lo digital button) — tagging it "button"
+  would misrepresent a resistor-ladder multi-switch input as a simple
+  on/off pin. LEFT AS PLAIN ANALOG_INPUT, no chipGpios entry (no
+  exclusion — the raw analog data itself is legitimately readable/
+  displayable, matching pfodWeb's data-display use case; only the
+  "button" capability tag was withheld). NO GUESS MADE for a button tag.
+
+A1 (TKD0, D19), A2 (TKD1, D20), A3 (TKD2, D21), A4 (TKD3, D22) — general
+  TinkerKit digital-input connectors (source 2: doc lists "8 TinkerKit
+  input connectors" total, of which these 4 plus TKD4/TKD5 above account
+  for 6 directly-aliased ones). TKD2 (A3/D21) is also the specific pin the
+  official RobotIRremote example library wires an optional plug-in IR
+  remote receiver accessory to (source 6) — still general-purpose
+  expansion, not fixed hardware, so no exclusion. NO CHANGE (all four).
+
+A5 (POT, D23) — CONFIRMED (source 5, Sensors.cpp `knobRead()`) plain
+  analogRead(POT) potentiometer knob. Matches the pin-audit playbook's
+  explicit KEEP example ("current/voltage/battery monitors" / knob-style
+  analog readings). NO CHANGE.
+
+SUMMARY
+-------
+8 pins excluded (capabilities: []): D5 (BUZZ/speaker), D7 (RST_LCD), D8
+(CARD_CS), D9 (LCD_CS), D10 (DC_LCD), D14/D15/D16 (MISO/SCK/MOSI — shared
+LCD+SD SPI bus). All other pins (I2C bus, TinkerKit mux + TKD0-5 expansion
+connectors, KEY button pad, POT knob, D17 RXLED) left as NO CHANGE — no
+confirmed button/LED tag was applicable to any pin on this board; KEY's
+multi-switch analog-ladder nature specifically does not fit the schema's
+single-button tag, and D17 follows the existing leonardo/micro precedent
+of leaving the RXLED pin untagged.

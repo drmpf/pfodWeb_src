@@ -1,0 +1,113 @@
+Bee_S3 (Smart Bee Designs LLC "Bee S3", ESP32-S3) - button/LED capability-tagging audit
+==========================================================================================
+Date: 2026-07-12
+Task: Section 7a (button/LED capability-tagging pass) of the board-variant-pin-audit
+playbook. This board already has a board.json from an earlier dedicated-hardware-
+exclusion pass (excludes GPIO34/RGB_PWR); that pass never applied button/LED tagging.
+This session applies the tagging pass only.
+
+Vendor / product identity
+---------------------------
+- variants/esp32/esp32s3/Bee_S3/pins_arduino.h (local, vendor-derived) states:
+  USB_MANUFACTURER "Smart Bee Designs", USB_PRODUCT "BeeS3", USB_VID 0x303A,
+  USB_PID 0x8110. Confirmed identical to the upstream copy at
+  esp32_board_variants/variants/Bee_S3/pins_arduino.h (byte-for-byte match, diffed by eye).
+  This is the "Bee S3" (not to be confused with the sibling boards already in this repo:
+  Bee_Motion_S3, Bee_Motion_Mini, Bee_Data_Logger - same vendor, different products).
+
+pins_arduino.h contents relevant to this audit
+-------------------------------------------------
+- RGB_DATA = GPIO48 -> PIN_RGB_LED -> LED_BUILTIN/RGB_BUILTIN (new rgbLedWrite API).
+- A "pfodWeb NOTE" comment already present (from the earlier exclusion pass) states
+  RGB_PWR (GPIO34) is deliberately NOT declared - internal power-gate for the onboard
+  NeoPixel, not general-purpose. GPIO34 correctly remains absent from chipGpios in
+  board.json; not touched by this pass (out of scope, already handled).
+- No BOOT_BTN / BUTTON alias of any kind is defined anywhere in this file - contrast
+  with the sibling Bee_Motion_S3's pins_arduino.h, which explicitly declares
+  `static const uint8_t BOOT_BTN = 0;`. Bee_S3 has no such declaration.
+- Bus aliases present: TX=43, RX=44, SDA=37, SCL=36, SS=5, MOSI=35, MISO=38, SDO=35,
+  SDI=38, SCK=39. None of these equal 48, so tagging GPIO48 "led_neopixel" carries no
+  risk of build_boards.js's unconditional SDA/SCL/SS/MOSI/MISO/SCK bus-capability
+  contamination (checked per the playbook's repeated-this-session collision warning).
+
+Sources consulted
+-------------------
+- https://www.tindie.com/products/smartbee/bee-s3-esp32-s3/ - vendor (Smart Bee Designs
+  LLC) Tindie listing. Explicitly lists "RGB LED (for fun)" as a board feature. No
+  mention of any physical push button anywhere in the product description or
+  specifications.
+- https://www.espboards.dev/esp32/bee-s3/ - independent third-party pinout database.
+  Confirms GPIO48 = RGB_DATA, GPIO43 = TX, GPIO44 = RX, GPIO1 = VBAT_VOLTAGE, matching
+  this repo's own pins_arduino.h. (Note: this page's SPI-pin listing showed a
+  discrepancy — it labelled GPIO35 "RGB_PWR" rather than GPIO34; this repo's own
+  vendor-derived pins_arduino.h and the earlier exclusion-pass NOTE both agree the
+  actual RGB_PWR is GPIO34, so the espboards.dev SPI/RGB_PWR field appears to be a
+  scraping error and was not relied on for that value — only its GPIO48=RGB_DATA and
+  TX/RX/VBAT fields were used as corroboration, all of which match exactly.) No BOOT
+  or button pin listed on the page's pin-capability table.
+  "The full pinout table is incomplete... doesn't specify which pins correspond to
+  BOOT, RESET buttons, or confirm if there's a built-in LED beyond the RGB pins."
+- https://circuitpython.org/board/smartbeedesigns_bee_s3/ - official CircuitPython
+  board download page. Confirms board ships with a frozen "neopixel" module (consistent
+  with an onboard NeoPixel) but the fetched page text gave no explicit GPIO number and
+  no button/BUTTON pin mention.
+- https://github.com/strid3r21/BeeS3 - official documentation repo (designer:
+  strid3r21, same author as the Bee_Motion_Mini repo used in an earlier audit). Page
+  includes a pinout card image ("Pin-Card_for-github.jpg") not machine-readable via
+  WebFetch; repo metadata only (66 stars, 6 forks) was retrievable, no button/LED text.
+  Attempted https://raw.githubusercontent.com/strid3r21/BeeS3/main/README.md directly -
+  404 (default branch name or file path differs; not pursued further as three other
+  independent sources already gave a consistent answer).
+- https://www.hackster.io/news/smart-bee-designs-bee-s3-is-a-10-ultra-low-power-espressif-esp32-s3-development-board-29c157877051
+  and https://www.electronics-lab.com/smart-bee-designs-bee-s3-ultra-low-power-development-boards-make-it-an-affordable-option/
+  - both returned HTTP 403 Forbidden, not accessible via WebFetch.
+- WebSearch aggregation for "BeeS3 board.json OR pinout OR schematic GPIO button boot"
+  returned no board-specific hits (only generic/unrelated ESP32-C3/Raspberry Pi pinout
+  pages) - no independent source anywhere surfaced a physical button claim for this
+  specific board.
+
+Tagged
+-------
+- GPIO48 -> "led_neopixel" (capabilities changed from
+  ["digital_input","digital_output","pwm_output"] to
+  ["digital_output","pwm_output","led_neopixel"], dropping digital_input to match the
+  established um_tinys3/Bee_Motion_S3 led_neopixel tagging convention). Confirmed via
+  pins_arduino.h RGB_DATA=48, corroborated by the Tindie vendor listing ("RGB LED (for
+  fun)") and the independent espboards.dev pinout table (GPIO48=RGB_DATA). Not
+  TX(43)/RX(44)/SDA(37)/SCL(36)/SS(5)/MOSI(35)/MISO(38)/SCK(39), so no bus-alias
+  collision risk from build_boards.js.
+
+Considered but NOT tagged
+----------------------------
+- No GPIO tagged "button". Unlike the sibling Bee_Motion_S3 (which explicitly declares
+  `BOOT_BTN = GPIO0` in its own pins_arduino.h and was confirmed via CNX Software/
+  Tindie/GitHub sources in an earlier audit), the Bee_S3 pins_arduino.h defines no
+  BOOT_BTN or BUTTON alias whatsoever. All three accessible independent sources
+  (Tindie, espboards.dev, CircuitPython board page) are silent on any physical button
+  for this board. This is a deliberate no-guess decision consistent with the
+  um_tinys3 precedent noted in this board's own pre-existing board.json NOTE comment:
+  absence of a vendor-declared alias plus absence of any corroborating third-party
+  documentation means GPIO0 is left completely untagged (still carries its normal
+  strapping-pin pinNotes warning "Must be HIGH for normal boot", unchanged). A human
+  reviewer with access to the vendor's schematic/pinout card image
+  (Pin-Card_for-github.jpg, linked from https://github.com/strid3r21/BeeS3) could
+  confirm/deny a physical BOOT button and its GPIO if desired - most ESP32-S3 dev
+  boards do have one, but this repo's policy (per um_tinys3 notes) is to tag only on
+  confirmed vendor/independent documentation, not general ESP32-S3 category assumption.
+- GPIO34 (RGB_PWR / NeoPixel power gate) - NOT reconsidered; already excluded from
+  chipGpios by the earlier dedicated-hardware-exclusion pass (pre-existing NOTE at top
+  of board.json). Out of scope for this tagging-only task, left untouched.
+- No bus-alias-contamination fix was needed: checked all of SDA/SCL/SS/MOSI/MISO/SDO/
+  SDI/SCK against GPIO48 (the only pin tagged this pass) - no collision, so no
+  boilerplate alias line needed deleting from pins_arduino.h.
+
+Summary of changes made
+--------------------------
+variants/esp32/esp32s3/Bee_S3/board.json: tagged GPIO48 capabilities to
+["digital_output","pwm_output","led_neopixel"] (onboard NeoPixel/RGB LED data pin,
+confirmed via vendor Tindie listing + independent espboards.dev pinout). Added a
+pfodWeb NOTE comment documenting the reasoning. No button tag applied - no vendor or
+independent source documents a physical button on this specific board, and
+pins_arduino.h itself defines no BOOT_BTN/BUTTON alias (unlike the sibling
+Bee_Motion_S3). No pins_arduino.h edits were needed (no bus-alias collision found for
+the tagged pin). No build commands were run.

@@ -1,0 +1,120 @@
+esp32s3_powerfeather - dedicated-hardware pin-exclusion audit (2026-07-12)
+===========================================================================
+
+Board: "ESP32-S3 PowerFeather" (PowerFeather / powerfeather.dev) - a
+Feather-format, solar/LiFePO4/Li-ion/LiPo power-management ESP32-S3 dev
+board with an onboard battery charger IC and fuel gauge IC. Chip: esp32s3.
+No prior board.json override existed; chip-level default at
+variants/esp32/esp32s3/board.json was used as the base.
+
+Sources consulted
+------------------
+1. Official docs (source markdown, fetched directly via raw GitHub, more
+   reliable than the rendered/summarized site):
+   https://raw.githubusercontent.com/PowerFeather/powerfeather-docs/main/docs/hardware/esp32s3.md
+   - "Pins & Signals" section, tables: "User-Managed Fixed IO", "Free IO",
+     "SDK-Managed Fixed IO", "Special Function".
+2. Vendor Arduino/ESP-IDF SDK source (authoritative pin definitions):
+   https://raw.githubusercontent.com/PowerFeather/powerfeather-sdk/main/src/Mainboard/Mainboard.h
+   (Pin struct, ~lines 109-114) and
+   https://raw.githubusercontent.com/PowerFeather/powerfeather-sdk/main/src/Mainboard/Mainboard.cpp
+   (confirms `_i2cPort = 1` -> Wire1 used for onboard PMIC/fuel-gauge I2C).
+3. https://github.com/PowerFeather/powerfeather-demo (LED usage check -
+   none found; SDK/demo never drives GPIO46, it's left for user sketches).
+4. https://github.com/PowerFeather/esphome-powerfeather (LED polarity
+   check - no GPIO46 config found in example YAMLs).
+5. This repo's precedent for confirmed-dedicated secondary I2C buses:
+   variants/esp32/esp32s3/Nebula_S3/board.json (SDA1/SCL1 -> onboard IMU)
+   and variants/esp32/esp32s3/alfredo-nou3/board.json (Wire1 -> onboard
+   IMUs), and for restricted button tagging:
+   variants/esp32/esp32c6/esp32c6-evb/board.json (GPIO9 ["digital_input",
+   "button"]).
+
+Per-pin reasoning
+------------------
+GPIO21 (ALARM) - EXCLUDED. Mainboard.h: `ALARM = GPIO_NUM_21; // Battery
+fuel gauge alarm`. Docs confirm "Battery Fuel Gauge Alarm Input"; the
+fuel gauge (LC709204F on V1 / MAX17260 on V2) pulls this pin low on
+alarm conditions. Dedicated PMIC signal, not general GPIO. Confidence:
+high.
+
+GPIO5 (INT) - EXCLUDED. Mainboard.h: `INT = GPIO_NUM_5; // Battery charge
+interrupt`. Docs confirm "Battery Charger Interrupt Input" from the
+onboard charger IC (BQ25628E on V2). Confidence: high.
+
+GPIO7 (EN) - EXCLUDED. Mainboard.h: `EN = GPIO_NUM_7; // FeatherWings
+enable/disable (read)`. Docs list it under "Special Function": "Feather
+Wing Enable Output" - a board-power-control signal (used to emulate
+standard-Feather EN behavior: disabling 3V3/VSQT load switches, entering
+deep-sleep), not a free digital I/O. Confidence: high.
+
+GPIO46 (LED) - KEPT (chip-level default capabilities unchanged), note
+added. Mainboard.h: `LED = GPIO_NUM_46; // User LED`. Docs: "Green User
+LED Output", RTCIO7. Confirmed as the onboard status LED. Polarity
+(active-high vs active-low) could NOT be confirmed from any available
+source - the SDK never drives this pin (searched Mainboard.cpp/.h, the
+powerfeather-demo repo, and esphome-powerfeather example YAMLs, no
+GPIO46/LED gpio_set_level or digitalWrite call found; it's left entirely
+to user sketch code). Per this repo's policy of not guessing polarity
+(e.g. esp8266/wifiduino GPIO2 precedent), left WITHOUT a led_high/led_low
+tag. GPIO46 is also a documented ESP32-S3 strapping pin (chip-level
+pinNote "Must be LOW or floating on reboot", unchanged/unrelated to this
+finding). Confidence: high (identity), none (polarity - intentionally
+untagged).
+
+GPIO0 (BTN) - KEPT, tagged ["digital_input","button"] (restricted set,
+dropping digital_output/pwm_output since it's a dedicated button input
+line). Mainboard.h: `BTN = GPIO_NUM_0; // User button`. Docs: "User
+Button Input", RTCIO0. GPIO0's existing chip-level strapping pinNote
+("Must be HIGH for normal boot") is unrelated and left unchanged.
+Confidence: high.
+
+GPIO43 (TX0) - KEPT unchanged (not an alias of TX/RX). Confirmed as a
+genuinely distinct physical pin from this board's TX=GPIO44/RX=GPIO42.
+The official docs place TX0 explicitly in the "Free IO" table ("IO
+signals not connected to anything on-board; user code is free to
+configure and use these for any purpose") despite its "Serial Log
+Output" Feather-compatibility label - it is the ESP32-S3's default
+hardware UART0 pin, used by default for the SDK boot/log console, but
+vendor-documented as user-repurposable general GPIO. No exclusion
+applied. Confidence: high.
+
+GPIO48 (SCL1) / GPIO47 (SDA1) - EXCLUDED. Docs place these under
+"SDK-Managed Fixed IO": "STEMMA QT I2C SCL"/"SDA", with the explicit
+warning "User code should not configure and use these IO, as doing so
+can cause faulty behavior." Mainboard.cpp confirms this is Wire1
+(`_i2cPort = 1`), used internally by the SDK to communicate with the
+onboard fuel gauge and charger ICs (this bus is also physically exposed
+on the board's STEMMA QT connector, but the SDK already owns/initializes
+it). Matches this repo's precedent for excluding a dedicated internal
+PMIC/sensor I2C bus (Nebula_S3, Alfredo-NoU3). Confidence: medium-high.
+
+Alias-collision check
+-----------------------
+Checked all 8 flagged GPIOs (21, 5, 46, 0, 7, 43, 48, 47) against this
+board's primary-bus consts: SS=-1 (invalid/unused), MOSI=40, MISO=41,
+SCK=39, SCL=36, SDA=35, TX=44, RX=42. No collisions - none of the
+flagged GPIOs coincide with a primary-bus alias, so no risk of
+build_boards.js's unconditional SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+capability-append contaminating the edited chipGpios entries.
+
+Files changed
+--------------
+- variants/esp32/esp32s3/esp32s3_powerfeather/board.json (new - full copy
+  of chip-level default with chipGpios entries for GPIO 5/7/21/47/48
+  removed, GPIO0 retagged to ["digital_input","button"], GPIO46 given an
+  explanatory note).
+- variants/esp32/esp32s3/esp32s3_powerfeather/pins_arduino.h (edited -
+  deleted the ALARM/INT/EN static const aliases and the SCL1/SDA1 +
+  WIRE1_PIN_DEFINED block, per the parser-union gotcha requiring the
+  alias to be removed in addition to the chipGpios entry).
+
+One-line summary
+------------------
+Confirmed via vendor SDK source + official docs: GPIO21/ALARM (fuel-gauge
+alarm), GPIO5/INT (charger interrupt), GPIO7/EN (Feather Wing power
+enable), and GPIO48+47/SCL1+SDA1 (SDK-managed PMIC I2C bus, Wire1) are
+all dedicated onboard-hardware pins and were EXCLUDED; GPIO0/BTN (user
+button) and GPIO46/LED (user LED, polarity unconfirmed - left untagged)
+were KEPT; GPIO43/TX0 was confirmed general-purpose ("Free IO" per
+vendor docs) and left unchanged.

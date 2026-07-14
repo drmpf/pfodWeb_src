@@ -1,0 +1,108 @@
+esp32-poe - button/LED capability-tagging audit (section 7a)
+==============================================================
+
+Board: Olimex ESP32-PoE (chip: esp32). This board already had a board.json
+override from an earlier dedicated-hardware-exclusion pass (Ethernet PHY
+pins GPIO0/2/5/12/14/15/18/19/21/22/23/25/26/27 already excluded, per the
+existing top-of-file comment in board.json). That pass never applied
+button/LED tagging - this session's task was to do that specifically for
+GPIO34 (KEY_BUILTIN) and check for any onboard LED.
+
+Sources consulted:
+
+1. https://github.com/OLIMEX/ESP32-POE (official Olimex open-hardware repo
+   for this exact board). Downloaded the official KiCad schematic source
+   directly: HARDWARE/ESP32-PoE-hardware-revision-M1/ESP32-PoE_Rev_M1.kicad_sch
+   (latest hardware revision, M1) via raw.githubusercontent.com and grepped
+   it as plain text (primary/authoritative source for this audit - actual
+   EDA schematic source, not a rendered PDF).
+   - Net label "GPI34\BUT1" appears at three schematic locations, tying
+     the ESP32 module's GPI34/ADC1_CH6/RTC_GPIO4 pin (pin 6 of the WROOM
+     symbol) to a component named BUT1.
+   - Component BUT1: lib_id "OLIMEX_Buttons:SIDE_WTCM-TR(3x4)", part
+     value "IT1185AU2" - a genuine SMD tactile pushbutton, not a jumper
+     or test point. A second, separate button component RST1 (same part
+     type) exists nearby for the EN/reset line - confirms BUT1 is the
+     distinct "user button", RST1 is the "reset button" (both listed in
+     Olimex's product page feature list).
+   - Resistor R48 is positioned immediately next to the third "GPI34\BUT1"
+     label (same schematic coordinates), consistent with independent
+     web sources describing a 10k pull-up resistor on this net.
+   - Four LED components found in the schematic: PWR1 (red, power),
+     CHRG1 (yellow, LiPo charge status), ACT1 (yellow, Ethernet activity),
+     LNK1 (green, Ethernet link). None of these were found wired to any
+     ESP32 GPIO net in the schematic - they sit on the PoE/power-supply
+     and Ethernet-PHY sections of the circuit, consistent with them being
+     fixed hardware status indicators, not user-controllable LEDs.
+
+2. WebSearch aggregate results (espboards.dev pin-mapping table, Olimex
+   forum posts, ESP32-PoE schematic summaries) independently corroborate:
+   "GPIO34 is connected to the user button and has a 10K pull-up
+   resistor", and separately, that this board has "4 on-board status
+   LEDs that are not connected to the ESP32 directly and can't be
+   controlled programmatically" (power, charge, link, activity) - matches
+   the schematic finding above.
+
+3. This board's own vendor pins_arduino.h
+   (variants/esp32/esp32/esp32-poe/pins_arduino.h): declares
+   `static const uint8_t KEY_BUILTIN = 34;` and TX=1/RX=3. No
+   LED_BUILTIN is declared anywhere in this file - consistent with the
+   schematic/search finding that no onboard LED is GPIO-addressable on
+   this board.
+
+4. Sibling board precedent: esp32-gateway (same Olimex Ethernet/PoE
+   product family, already audited this session) confirmed GPIO34 as a
+   real onboard user button via Olimex's own vendor GPIO pinout PDF and
+   tagged it ["digital_input","button"], dropping the chip-default
+   analog_input tag. Same policy applied here, now independently
+   verified for this specific board (ESP32-PoE) rather than assumed by
+   family resemblance alone.
+
+Reasoning / decisions:
+
+- GPIO34 (KEY_BUILTIN): KEPT, retagged from the chip-default
+  ["analog_input","digital_input"] to ["digital_input","button"].
+  Confirmed as a genuine onboard user pushbutton (BUT1) by the official
+  Olimex KiCad schematic source (net label "GPI34\BUT1", dedicated
+  button component IT1185AU2, adjacent pull-up resistor R48), and
+  corroborated by independent web sources. GPIO34 is input-only on
+  classic ESP32 (already in inputOnlyGpios: [34,35,36,37,38,39]), so no
+  digital_output/pwm_output capability was added; analog_input was
+  dropped in favour of the plain button tag, matching the policy applied
+  to sibling board esp32-gateway.
+
+- LED: NOT TAGGED. No LED_BUILTIN is declared in this board's
+  pins_arduino.h. The schematic shows four onboard LEDs (PWR1 power,
+  CHRG1 LiPo charge, ACT1 Ethernet activity, LNK1 Ethernet link), none
+  of which are wired to an ESP32 GPIO - they are fixed hardware status
+  indicators outside firmware control, matching independent web-source
+  confirmation ("4 on-board status LEDs that are not connected to the
+  ESP32 directly and can't be controlled programmatically"). Nothing to
+  tag; correctly out of scope.
+
+- Alias-collision check (per audit step 4 - build_boards.js
+  unconditionally appends spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/
+  i2c_scl capabilities for any GPIO matching this board's own
+  SS/MOSI/MISO/SCK/SDA/SCL consts, regardless of chipGpios exclusions):
+  this board's pins_arduino.h declares only SDA=13 and
+  SCL=33-if-PSRAM-else-16 (SS/MOSI/MISO/SCK are deliberately NOT
+  declared - see the existing pfodWeb NOTE already in this board's
+  pins_arduino.h explaining MOSI/MISO/SCK match the fixed onboard
+  microSD SDMMC 1-bit pins and were left undeclared). Neither SDA (13)
+  nor SCL (33 or 16) collides with GPIO34, and neither collides with any
+  already-excluded pin, so no alias deletions were needed this pass.
+
+- board.json: existing content/comments preserved; only added a new
+  pfodWeb NOTE paragraph (dated to this tagging pass) after the existing
+  top-of-file comment, and changed the single "34" chipGpios entry's
+  capabilities array in place.
+
+Summary: Confirmed via the official Olimex KiCad schematic (Rev.M1) that
+GPIO34 (KEY_BUILTIN) is a genuine onboard user button (BUT1, with pull-up
+R48) on the ESP32-PoE - independently verified for this specific board,
+not just inherited from the esp32-gateway sibling. Retagged GPIO34 to
+["digital_input","button"] in board.json. Confirmed no onboard LED is
+GPIO-addressable on this board (four status LEDs are all hardwired
+indicators, not connected to ESP32 GPIOs) - no LED tag added, correctly
+out of scope. No SPI/I2C alias collisions found; no pins_arduino.h edits
+needed. board.json existing comments/content preserved, only appended to.

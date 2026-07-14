@@ -1,0 +1,75 @@
+Board: m5stack_unit_cams3 (variants/esp32/esp32s3/m5stack_unit_cams3)
+Product: M5Stack Unit CamS3 (small ESP32-S3 camera unit)
+Date researched: 2026-07-11
+
+SOURCES CONSULTED
+
+https://docs.m5stack.com/en/unit/Unit-CamS3
+  Official product page for this exact board (Unit CamS3, not the 5MP
+  variant). PinMap table lists a "Programmable LED" / "Built-in
+  programmable indicator light" wired to G14. No physical button is
+  listed anywhere on the page.
+
+https://docs.m5stack.com/en/guide/wifi_camera/m5unitcams3/m5unitcams3
+  Getting Started guide. Mentions "LED control" as a web-config feature
+  but does not give GPIO number or polarity detail beyond what the
+  product page already gave. No button mentioned.
+
+https://docs.m5stack.com/en/homeassistant/camera/unit_cams3_5mp
+  ESPHome/Home Assistant integration doc for the sibling product "Unit
+  CamS3-5MP" (same GPIO14 LED circuit as far as could be determined).
+  Configures GPIO14 as a switch with "inverted: true", i.e. the pin is
+  driven LOW to turn the LED on - active-low. Used as corroborating
+  (not primary) evidence for polarity, since it is technically the 5MP
+  sibling product's docs, not this exact board's docs.
+
+https://templates.blakadder.com/m5stack_unitcams3.html
+  Community Tasmota template for "M5Stack Unit CamS3 OV2640 Camera
+  (U174)". GPIO14 is mapped to Tasmota component "Led_i" - the "_i"
+  suffix is Tasmota's inverted/active-low LED component. Second
+  independent corroborating source for active-low polarity on GPIO14.
+
+https://github.com/m5stack/UnitCamS3-UserDemo
+  Official M5Stack firmware/demo repo for this board. Repo overview and
+  README were checked; README does not itself contain GPIO/LED code
+  (would require browsing into /firmware source files for a literal
+  digitalWrite call, which was not done - the three sources above were
+  judged sufficient corroboration for polarity).
+
+https://github.com/RobertNeat/M5Stack-UnitCamS3
+  Found via search (community ESP32-CAM web-server project for this
+  board); not fetched/used as a source - listed here only because it
+  appeared in search results and was considered but not needed.
+
+PINS CONSIDERED BUT NOT TAGGED
+
+- No button GPIO was tagged. No source (official M5Stack product page,
+  getting-started guide, or the two integration docs) mentions any
+  physical button on this unit. This is a small bare camera unit with
+  no enclosure controls - concluded (not a guess) that there is no
+  onboard button to tag.
+
+- GPIO14 was tagged as the LED (see below). No other candidate LED pin
+  was found or considered - GPIO14 appears consistently across all
+  sources as the single indicator LED pin for this board family.
+
+- No TX/RX conflict applies: this board's pins_arduino.h declares
+  TX=43, RX=44 (checked via grep of pins_arduino.h); GPIO14 does not
+  coincide with either, so the tag is not at risk of being silently
+  discarded by build_boards.js's TX/RX reservation.
+
+- No chip-level pin-exclusion conflict: GPIO14 has a normal chipGpios
+  entry in the ESP32-S3 chip-level default board.json (not in the
+  26-32/33-37/19-20 excluded ranges), so tagging it does not reverse
+  any pre-existing exclusion.
+
+WHAT WAS TAGGED
+
+GPIO14 -> ["digital_output", "pwm_output", "led_low"] (pwm_output kept
+because it was already present on GPIO14 in the chip-level default).
+No board.json existed for this board prior to this pass, so a full
+copy of variants/esp32/esp32s3/board.json (chip-level ESP32-S3
+default) was created with only GPIO14's capabilities modified - no
+per-board pin-exclusion audit (e.g. removing dedicated camera sensor
+pins from chipGpios) was performed in this pass; that remains open
+for a future pass if desired.

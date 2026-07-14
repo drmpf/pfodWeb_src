@@ -1,0 +1,106 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Pintronix PinMax" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins confirmed on this
+  // board (see pfodWeb NOTE below — no vendor documentation exists at
+  // all, so nothing beyond the chip-level default is asserted here).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. boards.txt declares no WiFi
+  // radio for this board (plain "rp2040" chip bucket, single VID/PID
+  // pair for CDC serial + UF2/picotool upload, no cyw43 references).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-13): NO CHANGE — chipGpios deliberately left empty.
+  //
+  // Board: "Pintronix PinMax" — added to earlephilhower/arduino-pico by
+  // community contributor "deltaford" in PR #2286 ("Add PinMax board"),
+  // merged 2024-07-20 (commit 80196d570ba675defc909ac02669b593e883010c).
+  // That PR's own description contains no board-description text, no
+  // vendor/manufacturer link, and no mention of onboard LED/button/
+  // NeoPixel hardware — the only review comment on record
+  // (from the core maintainer, earlephilhower) flagged that the
+  // submitted variant header was initially missing the standard
+  // PIN_SERIAL1_TX/RX and PIN_SERIAL2_TX/RX defines, which were then
+  // added to match the template every other plain-RP2040 board uses.
+  // This board's variants/rp2040/rp2040/pintronix_pinmax/pins_arduino.h
+  // declares only the same generic aliases as the stock template
+  // (PIN_LED, PIN_SERIAL1/2_TX/RX, PIN_SPI0_*, PIN_WIRE0_SDA/SCL) with
+  // no board-specific comment, no datasheet citation (unlike rpipico's
+  // own header, which cites the official Pico datasheet), and no
+  // button or NeoPixel alias of any kind.
+  //
+  // Sources consulted (WebSearch/WebFetch, 2026-07-13) — none of which
+  // produced authoritative vendor documentation for this specific
+  // board:
+  //  1. github.com/earlephilhower/arduino-pico — boards.txt entry,
+  //     tools/json/pintronix_pinmax.json, the PR/commit history above:
+  //     confirms the board exists as a supported Arduino target (USB
+  //     VID 0x2e8a / PID 0x9101, the shared Raspberry Pi Trading Ltd
+  //     VID used by every arduino-pico board) but contains no hardware
+  //     description.
+  //  2. WebSearch for "Pintronix PinMax", "Pintronix RP2040", and
+  //     "PinMax board Pintronix product page" returned no vendor
+  //     product page, datasheet, schematic, or pinout diagram anywhere
+  //     on the web.
+  //  3. tindie.com/stores/pintronix/ — a real Tindie storefront named
+  //     "PINTRONIX" (Borlänge, Sweden) exists and sells virtual-pinball
+  //     "Pinscape" controller/expansion hardware (PS Pinscape Controller
+  //     Kit, PWM MOSFET/LED Driver Pinscape Expansion Boards, RJ45
+  //     breakouts, fuse-holder boards, a rotary-encoder kit) — but this
+  //     storefront's product catalog contains NO product named "PinMax",
+  //     and its existing Pinscape controller kit is built on an NXP
+  //     FRDM-KL25Z board, not RP2040. It could not be confirmed whether
+  //     this Tindie seller is even the same "Pintronix" as this board's
+  //     name, or an unrelated namesake; either way no PinMax product
+  //     was found in its listings.
+  //  4. The PR author's GitHub username ("deltaford") could not be
+  //     linked to any personal repository, product page, or store
+  //     describing a "PinMax" board.
+  //
+  // Given no authoritative source describes this board's actual
+  // physical hardware (no confirmation an onboard LED even physically
+  // exists at GPIO27, let alone its drive polarity; no button or
+  // NeoPixel aliases are declared at all), this audit's rule to report
+  // NO CHANGE rather than guess from an alias name alone applies in
+  // full. GPIO27 (PIN_LED) is left at its full chip-default derived
+  // capabilities (digital_input/digital_output/pwm_output, plus
+  // analog_input since GPIO26-28 fall in the RP2040's ADC range) —
+  // exactly as it already builds today with the chip-level empty
+  // chipGpios fallback. No SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug
+  // applies either: PIN_LED=27 does not coincide with any of this
+  // board's own SPI0 (16/17/18/19) or Wire0 (4/5) pins.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/pintronix_pinmax/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other plain RP2040 board (this board's pins_arduino.h declares no
+  // custom analog pins, falling back to generic/common.h's default,
+  // which is also why GPIO27/PIN_LED sits in the default A0-A2 analog
+  // range).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

@@ -1,0 +1,46 @@
+Board: heltec_capsule_sensor_v3 (Heltec Capsule Sensor V3), chip esp32s3
+Date: 2026-07-14 (documentation backfill - findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- Vendor pins_arduino.h for this board - basis for excluding GPIO1/3-5
+  (dedicated onboard GPS UART+reset+PPS), GPIO8-11 (LoRa SPI bus), GPIO12-14
+  (LoRa RST/BUSY/DIO0), GPIO21 (Vext power-gate), GPIO36 (battery-ADC enable
+  FET); also source of USER_BUTTON=18 alias and LED0/LED1 (GPIO33/34) and
+  LED_BUILTIN/RGB_BUILTIN (GPIO48) aliases.
+- Meshtastic firmware variant.h for this exact board - confirms BUTTON_PIN 18,
+  active high, no pullup.
+- Heltec schematic "Key input" net - corroborates GPIO18 as the onboard user
+  button, matching USER_BUTTON=18 in vendor pins_arduino.h.
+
+Per-pin findings:
+- GPIO0, 2, 6, 7, 15, 16, 17, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48: left
+  at the plain chip-level default capability set (no board-specific note).
+  GPIO48 (LED_BUILTIN/RGB_BUILTIN alias in vendor pins_arduino.h) has no
+  corroborating schematic/firmware evidence of an onboard LED, so it was not
+  tagged.
+- GPIO1, 3, 4, 5: excluded (removed from chipGpios entirely) - dedicated
+  onboard GPS UART+reset+PPS lines, per vendor pins_arduino.h.
+- GPIO8, 9, 10, 11: excluded (removed from chipGpios entirely) - dedicated
+  onboard LoRa SPI bus, per vendor pins_arduino.h.
+- GPIO12, 13, 14: excluded (removed from chipGpios entirely) - dedicated
+  onboard LoRa RST/BUSY/DIO0 lines, per vendor pins_arduino.h.
+- GPIO18: tagged ["digital_input", "button"]. Confirmed onboard user button
+  (BUTTON_PIN 18, active high, no pullup) per Meshtastic firmware variant.h
+  for this exact board and Heltec's schematic "Key input" net; matches
+  USER_BUTTON=18 in vendor pins_arduino.h.
+- GPIO21: excluded (removed from chipGpios entirely) - dedicated onboard Vext
+  power-gate pin, per vendor pins_arduino.h.
+- GPIO33, 34: excluded (removed from chipGpios entirely) - schematic LED1/LED2
+  (matches LED0/LED1 in vendor pins_arduino.h), confirmed onboard LEDs but
+  already excluded from chipGpios by an earlier pin-audit pass, not modified
+  in this pass.
+- GPIO36: excluded (removed from chipGpios entirely) - dedicated onboard
+  battery-ADC enable FET, per vendor pins_arduino.h.
+
+Summary: GPIO18 tagged button (onboard user button, active high, no pullup,
+confirmed via Meshtastic firmware and Heltec schematic); GPS UART/reset/PPS
+(GPIO1/3-5), LoRa SPI bus (GPIO8-11), LoRa RST/BUSY/DIO0 (GPIO12-14), Vext
+power-gate (GPIO21), and battery-ADC enable FET (GPIO36) excluded as
+dedicated hardware; GPIO33/34 (onboard LEDs) already excluded by an earlier
+pass and left unchanged; GPIO48 (LED_BUILTIN alias) left untagged for lack
+of corroborating evidence.

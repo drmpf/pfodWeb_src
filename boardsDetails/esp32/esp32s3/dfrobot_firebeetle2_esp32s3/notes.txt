@@ -1,0 +1,128 @@
+Board: dfrobot_firebeetle2_esp32s3 (DFRobot FireBeetle 2 ESP32-S3 (N4), SKU DFR1145)
+Audit date: 2026-07-12
+Chip: esp32s3
+Task: section 7a button/LED capability-tagging pass. board.json already existed from an
+earlier dedicated-hardware-exclusion pass (GDI connector) - that pass never applied
+button/LED tagging, which is what this pass does.
+
+SOURCES CONSULTED
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\dfrobot_firebeetle2_esp32s3\pins_arduino.h
+  (read in full)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\dfrobot_firebeetle2_esp32s3\board.json
+  (existing board.json from the prior GDI-exclusion pass, read in full)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\board.json (chip-level default, read for
+  the un-excluded chipGpios baseline)
+- C:\ai\aicode\pfodWeb\variants\esp32\boards.txt (dfrobot_firebeetle2_esp32s3.* entries -
+  confirms this variant is a generic "DFRobot Firebeetle 2 ESP32-S3" build, no SKU-specific
+  board.build.board override active; flash 4/8/16MB selectable, default 4MB, matching the
+  N4 SKU DFR1145 rather than the N16R8-with-camera DFR0975)
+- https://wiki.dfrobot.com/dfr1145/ (WebFetch, two passes - primary source, official DFRobot
+  wiki for "FireBeetle 2 ESP32-S3 (N4) Dual-core IoT Microcontroller"): pin table confirms
+  "LED GPIO21" and "User Key GPIO47" and "Boot Key GPIO0" (quoted from the page's hardware
+  overview / "Other Pin" table)
+- https://wiki.dfrobot.com/_SKU_DFR1145_FireBeetle_2_ESP32_S3_N4_IoT_development_board
+  (WebFetch - alternate URL alias for the same product page, cross-checked, same pin-table
+  content: "21/D13 onboard LED pin", "47/D14 onboard button pin" labeled "User Key",
+  "Boot Key GPIO0" - no discrepancies)
+- https://wiki.dfrobot.com/dfr1154/docs/21380 and https://wiki.dfrobot.com/dfr1145/docs/20948
+  (WebFetch - Getting Started / blink-example guide pages): both give the onboard-LED blink
+  example as `int led = 21; ... digitalWrite(led,HIGH); delay(1000); digitalWrite(led,LOW);`
+  matching LED_BUILTIN=GPIO21 in this board's pins_arduino.h, but neither page states in
+  prose which state (HIGH or LOW) is the "on" state - the blink loop toggles both states
+  and is not by itself proof of polarity. No button pin numbers found on these two pages.
+  docs/20948 explicitly confirmed: "the guide ... does not explicitly state whether the LED
+  is active-high or active-low."
+- https://www.espboards.dev/esp32/dfrobot-firebeetle2-esp32s3/ (WebFetch, two passes) -
+  third-party pinout aggregator. First pass agreed with the wiki (GPIO47="User Key"/D14,
+  GPIO0="Boot Key"/D14... "Boot Key"). Second pass on the SAME URL returned a conflicting,
+  wrong claim that GPIO47 is "D13"/"LED_BUILTIN" - directly contradicted by this board's own
+  pins_arduino.h (D13=GPIO21, D14=GPIO47) and by the vendor wiki. Treated as unreliable/
+  inconsistent and NOT relied upon for any decision below; wiki.dfrobot.com used as the sole
+  authoritative source per this project's stated precedent for the DFRobot product line.
+- WebSearch "DFRobot FireBeetle 2 ESP32-S3 wiki.dfrobot.com onboard LED button pinout" and
+  "DFR1145 FireBeetle 2 ESP32-S3 N4 pinout LED blink example digitalWrite" (discovery passes,
+  also surfaced the generic "hold BOOT, press RST, release BOOT" download-mode procedure
+  common to all ESP32-S3 boards, corroborating GPIO0's dual role as both the boot-mode
+  strapping pin and the physical Boot Key pushbutton)
+- Sibling files read for precedent comparison:
+  boardsDetails/esp32/esp32p4/dfrobot_firebeetle2_esp32p4 (referenced in task brief; no
+  notes.txt actually existed yet at that path this session, but the corresponding
+  variants/esp32/esp32p4/dfrobot_firebeetle2_esp32p4/board.json was read directly and shows
+  the "button" tag convention: GPIO35 -> ["digital_input","button"], and "led_high" tag
+  convention for a confirmed-polarity LED)
+  boardsDetails/esp32/esp32c6/dfrobot_firebeetle2_esp32c6/notes.txt,
+  boardsDetails/esp32/esp32c5/dfrobot_firebeetle2_esp32c5/notes.txt,
+  boardsDetails/esp32/esp32/dfrobot_firebeetle2_esp32e/notes.txt (sibling DFRobot FireBeetle
+  2 audits from this same session/wave - established: (a) wiki.dfrobot.com is authoritative
+  for this product line, (b) BOOT-strap pushbuttons that ARE named/documented get tagged
+  "button" even though they're also strapping pins, (c) no-guess policy on LED polarity -
+  leave untagged unless a source states the on/off drive level explicitly)
+  variants/esp32/esp32s3/um_pros3/board.json (exact precedent: GPIO0 tagged
+  ["digital_input","button"] for a confirmed onboard BOOT/user pushbutton - matches the
+  capability-list shape applied here)
+
+FINDINGS
+1. Onboard LED: GPIO21 (LED_BUILTIN, D13, also GDI_BLK - the GDI connector's optional
+   backlight-enable line). Confirmed via wiki.dfrobot.com/dfr1145/ pin table ("LED GPIO21")
+   and cross-checked via the alternate URL alias for the same page. Confirmed to be a plain
+   LED, not WS2812/NeoPixel - no source anywhere (wiki pages, blink-example pages, product
+   description) mentions addressable/smart-LED functionality, and the blink example uses a
+   single digitalWrite() to a single pin (no data-protocol timing), consistent with a plain
+   LED. No source states active-high/active-low drive polarity - the blink example code
+   toggles digitalWrite HIGH then LOW with no prose stating which state is "on". Per this
+   project's no-guess policy (same outcome reached for dfrobot_firebeetle2_esp32c6 and
+   dfrobot_firebeetle2_esp32c5's own LED_BUILTIN pins), NO led_high/led_low tag applied -
+   left as an explicit unconfirmed item for human review. GPIO21 was already present
+   (KEEP, not excluded) in the existing board.json from the prior GDI-exclusion pass.
+
+2. Onboard button #1 - "Boot Key": GPIO0 (D9 in this board's pins_arduino.h). Confirmed via
+   wiki.dfrobot.com/dfr1145/ pin table ("Boot Key GPIO0"), also referenced generically in the
+   standard "hold BOOT, click RST, release BOOT" download-mode recovery procedure common to
+   this vendor's guides. GPIO0 is simultaneously this chip's boot-mode strapping pin (chip-
+   level board.json pinNotes already carries "Must be HIGH for normal boot" - left unchanged).
+   Tagged capabilities -> ["digital_input","button"] (dropped digital_output/pwm_output),
+   matching this repo's established convention for confirmed onboard BOOT pushbuttons
+   (um_pros3 GPIO0, dfrobot_firebeetle2_esp32p4 GPIO35, dfrobot_firebeetle2_esp32c6 GPIO9,
+   dfrobot_firebeetle2_esp32c5 GPIO28).
+
+3. Onboard button #2 - "User Key": GPIO47 (D14 in this board's pins_arduino.h). Confirmed via
+   wiki.dfrobot.com/dfr1145/ pin table ("User Key GPIO47", also phrased "47/D14 onboard
+   button pin"), cross-checked via the alternate URL alias for the same page - a SECOND,
+   dedicated user-accessible pushbutton distinct from the Boot Key. Not a strapping pin, no
+   pinNotes entry needed. Tagged capabilities -> ["digital_input","button"] (dropped
+   digital_output/pwm_output), same convention as GPIO0 above.
+
+4. Battery voltage sense: no source consulted (wiki.dfrobot.com/dfr1145/ pages, blink-example
+   guide pages, boards.txt) mentions any battery-voltage-detection pin or LiPo circuit for
+   this SKU - out of scope, no change. (Unlike the ESP32-C6/C5 FireBeetle 2 siblings, this N4
+   board's wiki pages gave no indication of an onboard battery-monitoring circuit.)
+
+5. Alias-collision check (per task step 4, checked repeatedly this session): confirmed
+   neither GPIO0 (Boot Key) nor GPIO47 (User Key) nor GPIO21 (LED_BUILTIN/GDI_BLK) is also
+   aliased as SDA(1)/SCL(2)/SS(10)/MOSI(15)/MISO(16)/SCK(17)/TX(43)/RX(44) anywhere in this
+   board's pins_arduino.h. GPIO21's only other alias is GDI_BLK (a backlight-enable output
+   for the optional GDI display connector, not a shared-bus signal), which does not grant
+   any bus capability via build_boards.js. No contamination found; no pins_arduino.h edits
+   were needed for this pass.
+
+6. GDI connector exclusion (GPIO3/7/9/12-14/18/38): unchanged from the prior pass - already
+   correctly excluded from chipGpios in the existing board.json as dedicated,
+   no-general-alias GDI display-connector-only signals (DC/RES/CS/SDCS/FCS/TCS/INT/BUSY_TE).
+   Re-verified against the full pins_arduino.h this session; no discrepancy found, no change
+   made.
+
+APPLIED
+- Edited variants/esp32/esp32s3/dfrobot_firebeetle2_esp32s3/board.json:
+    - chipGpios["0"].capabilities -> ["digital_input","button"] (Boot Key pushbutton)
+    - chipGpios["47"].capabilities -> ["digital_input","button"] (User Key pushbutton)
+    - Added pfodWeb NOTE header comment lines documenting both button tags and the
+      confirmed-but-untagged LED (GPIO21, polarity unconfirmed).
+  No other chipGpios entries changed. No pins_arduino.h edit needed (no boilerplate
+  bus-alias collision found on any of the three candidate pins). No build commands run.
+
+SUMMARY: GPIO0 (Boot Key) and GPIO47 (User Key) both confirmed as real onboard pushbuttons
+via DFRobot's own wiki (two independent URL aliases, consistent) and tagged "button";
+LED_BUILTIN (GPIO21) confirmed as a plain (non-NeoPixel) onboard LED but left untagged for
+polarity (no source states active-high/active-low, human review needed); no alias
+contamination found on any of the three pins; no pins_arduino.h edits required; existing
+GDI-connector exclusions from the prior pass re-verified and left unchanged.

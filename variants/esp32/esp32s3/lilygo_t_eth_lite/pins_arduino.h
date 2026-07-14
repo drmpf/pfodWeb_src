@@ -16,7 +16,8 @@ static const uint8_t SS = 4;
 static const uint8_t MISO = 5;
 static const uint8_t MOSI = 6;
 static const uint8_t SCK = 7;
-static const uint8_t SD_SS = 42;
+// pfodWeb NOTE: SD_SS (GPIO42) deliberately NOT declared - dedicated
+// onboard microSD card chip-select.
 
 // Analog
 static const uint8_t A2 = 3;

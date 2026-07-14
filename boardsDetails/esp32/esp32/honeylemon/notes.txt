@@ -1,0 +1,57 @@
+honeylemon board.json tagging research notes
+==============================================
+
+Board: HONEYLemon (esp32/esp32/honeylemon), boards.txt display name "HONEYLemon"
+(board.build.board = HONEYLEMON). pins_arduino.h: LED_BUILTIN=2, BUILTIN_KEY=0,
+TX=1, RX=3.
+
+Sources consulted
+-----------------
+- https://docs.platformio.org/en/latest/boards/espressif32/honeylemon.html
+  General PlatformIO board page (xtensa/esp32, upload protocols). No pinout,
+  LED, or button hardware detail.
+- https://github.com/jackrobotics/HONEYLemon
+  Official vendor Arduino library repo for this exact board (linked from the
+  vendor's own product docs below). Landing page only; links to product site
+  https://lemon.honey.co.th.
+- https://lemon.honey.co.th (and /llms.txt index)
+  Vendor product/documentation site for the "HONEYLemon Platform" (two board
+  variants: "Lemon: MASTER V1" and "Lemon: Lemon32"). Confirms library usage
+  but page text itself did not list GPIO numbers.
+- https://lemon.honey.co.th/blogs/basic/basic-002-button.md
+  Shows lemon.onClick()/onLongClick()/onDoubleClick() button API but does not
+  state the GPIO number in the doc text itself (had to check library source).
+- https://lemon.honey.co.th/blogs/basic/basic-003-set-led-color-rgb-rgb-led.md
+  Shows lemon.setColorLED(no_led 1-6, r, g, b) / setBrightnessLED() API - a
+  6-LED addressable RGB array, but again did not state the GPIO number in the
+  doc text itself (had to check library source).
+- https://raw.githubusercontent.com/jackrobotics/HONEYLemon/master/src/HONEYLemon.h
+  DEFINITIVE: `#define PIN_USERBTN 0` and `#define PIN_LED 2` (also
+  PIN_SDCARD=13, PIN_BUZZER=27, not relevant here).
+- https://raw.githubusercontent.com/jackrobotics/HONEYLemon/master/src/HONEYLemon.cpp
+  DEFINITIVE: begin() calls `LED.addLeds<NEOPIXEL, PIN_LED>(_leds, 6);` -
+  confirms GPIO2 is a NeoPixel (WS2812-style addressable) data pin driving
+  6 onboard RGB LEDs via the bundled FastLED library, NEOPIXEL chipset.
+- https://raw.githubusercontent.com/jackrobotics/HONEYLemon/master/src/lib/TridentTD_EasyButton/TridentTD_EasyButton.cpp
+  DEFINITIVE: constructor does `pinMode(0, INPUT_PULLUP)`, `_button.pin = 0`,
+  and `PRESSED` is defined as `LOW` - confirms GPIO0 is a real onboard
+  pushbutton, active-low, matching PIN_USERBTN=0.
+
+Pins considered and NOT tagged
+-------------------------------
+None. Both candidate pins (GPIO0 button, GPIO2 NeoPixel LED data) were
+confirmed via the official vendor Arduino library source code (not just
+pins_arduino.h alias names) and neither coincides with this board's TX(1)/
+RX(3) pins, so both were tagged with high confidence. No guesswork was
+required for either pin.
+
+What was tagged
+----------------
+Created variants/esp32/esp32/honeylemon/board.json (none existed before) as
+a full copy of the chip-level esp32/esp32/board.json default, with:
+  - GPIO0 capabilities changed to ["digital_input", "button"]
+  - GPIO2 capabilities changed to ["digital_output", "led_neopixel", "pwm_output"]
+    (pwm_output retained because it was present in GPIO2's original chip-level
+    capability set)
+plus a pfodWeb NOTE comment block at the top of the file citing the sources
+above.

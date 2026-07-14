@@ -1,0 +1,71 @@
+// pfodWeb NOTE (2026-07-12): per-board override for the Pcbcupid GLYPH C6.
+// Full copy of the chip-level variants/esp32/esp32c6/board.json, with three
+// additions from a dedicated-hardware pin-exclusion + opportunistic
+// button/LED audit (see boardsDetails/esp32/esp32c6/Pcbcupid_GLYPH_C6/notes.txt
+// for full source list):
+//  - GPIO0 (BAT_MEASURE/MSR/BAT_VOLT_PIN in this board's own pins_arduino.h):
+//    documented, NOT excluded. Confirmed via PCB Cupid's own docs/forum:
+//    this is an OPTIONAL battery-voltage-sense input - the 200k:200k
+//    resistor divider ahead of it is only connected when the "MSR" solder
+//    pads on the back of the board are bridged/shorted by the user; by
+//    default the pin is a plain general-purpose analog/digital GPIO with no
+//    divider attached at all. Matches this project's own "battery/voltage
+//    monitor = KEEP" policy - left fully available in the pin picker with a
+//    documentation note only. adc.defaultRefVolts is NOT changed board-wide
+//    (still "3.3") because the divider affects only this one optional pin
+//    when bridged, not the board's other analog-capable pins (GPIO1-6) -
+//    see the note on the "0" entry below for the derived battery-voltage
+//    math a user would need if they do bridge MSR.
+//  - GPIO14 tagged "led_low" - confirmed onboard "User LED0", GPIO0.14,
+//    GPIO_ACTIVE_LOW, via the official Zephyr RTOS board definition
+//    (zephyr/boards/pcbcupid/glyph_c6/glyph_c6_hpcore.dts, gpio-leds node).
+//    Matches this board's own pins_arduino.h LED_BUILTIN=14 declaration.
+//  - GPIO9 tagged "button" - confirmed onboard "Boot" pushbutton,
+//    GPIO0.9, GPIO_ACTIVE_LOW with GPIO_PULL_UP, via the same Zephyr
+//    gpio-keys node. Matches this chip-level board.json's own pre-existing
+//    pinNotes "9": "Must be HIGH for normal boot" (ESP32-C6 boot-mode
+//    strapping pin - same pattern as other confirmed ESP32-family BOOT
+//    buttons in this codebase, e.g. esp32s2/sensebox_mcu_esp32s2). No TX/RX
+//    conflict: this board's TX/RX are GPIO16/17.
+{
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"],
+            "note": "BAT_MEASURE/MSR/BAT_VOLT_PIN in this board's pins_arduino.h. Optional onboard battery-voltage sense: a 200k:200k resistor divider (1:2 ratio) is connected ahead of this pin ONLY when the \"MSR\" solder pads on the back of the board are bridged - normally this pin is a plain general-purpose analog/digital GPIO. If MSR is bridged, battery voltage = analogRead(A0)/4095 * 3.3V * 2 (approx - PCB Cupid's own forum notes real-world ESP32 ADC nonlinearity may need an empirical calibration factor around 1.1-1.15x). Confirmed via learn.pcbcupid.com Power Management/Pinouts docs and forum.pcbcupid.com \"Glyph C6 Battery Measurement issue\" thread." },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"],
+            "note": "Onboard \"Boot\" pushbutton (active-low, internal pull-up) - confirmed via Zephyr RTOS's official glyph_c6_hpcore.dts gpio-keys node (&gpio0 9, GPIO_ACTIVE_LOW). Also this chip's boot-mode strapping pin, see pinNotes above." },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_output", "pwm_output", "led_low"],
+            "note": "Onboard \"User LED0\" (active-low) - confirmed via Zephyr RTOS's official glyph_c6_hpcore.dts gpio-leds node (&gpio0 14, GPIO_ACTIVE_LOW). Matches this board's own pins_arduino.h LED_BUILTIN=14." },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

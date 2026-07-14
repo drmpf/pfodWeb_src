@@ -1,0 +1,97 @@
+Board: mant1s (Silicognition ManT1S — ESP32-PICO-V3-02 board with onboard
+Microchip/Microsemi LAN867x 10BASE-T1S single-pair-Ethernet PHY, crowd-
+funded via Crowd Supply, upstreamed Arduino/ESPHome support), chip esp32
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\mant1s\
+
+2026-07-14 INDEPENDENT VERIFICATION PASS (batch B of 8)
+========================================================
+Task: confirm or correct the existing GPIO0-as-Ethernet-PHY-clock
+exclusion against REAL external vendor documentation, not just the
+board's own pins_arduino.h (which is all the prior pass had cited).
+
+Sources consulted this pass:
+- https://github.com/espressif/arduino-esp32/pull/11848 — the actual
+  merged PR (by "xorbit", the Silicognition/ManT1S board designer) that
+  added this board's official upstream Arduino-ESP32 core support.
+  Confirms this variant was "tested on master on a prototype ManT1S rev
+  4" and depends on the separate LAN867x PHY driver PR (#11843). This is
+  the authoritative, manufacturer-authored, Espressif-reviewed-and-merged
+  source for this board's pin configuration — effectively the vendor's
+  own "official GitHub repo" contribution, reviewed independently by
+  Espressif maintainers before merge.
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/mant1s/pins_arduino.h
+  — fetched fresh this session directly from the upstream repo (not just
+  the local copy) to confirm it is unchanged/un-tampered:
+    #define ETH_PHY_ADDR  0
+    #define ETH_PHY_POWER -1
+    #define ETH_PHY_MDC   8
+    #define ETH_PHY_MDIO  7
+    #define ETH_PHY_TYPE  ETH_PHY_LAN867X
+    #define ETH_CLK_MODE  ETH_CLOCK_GPIO0_IN
+  Matches this repo's local copy exactly.
+- https://esphome.io/components/ethernet/ — ESPHome's own official
+  Ethernet component documentation, which has a dedicated ManT1S
+  configuration example independent of the arduino-esp32 PR above:
+  `clk: pin: number: GPIO0, mode: CLK_EXT_IN`, MDC=GPIO8, MDIO=GPIO7,
+  with an explicit note that "ignore_pin_validation_error options are
+  required for the MDC and MDIO pins" because the board uses an
+  ESP32-PICO-V3-02 module where GPIO7/8 are available for non-flash use
+  (unlike typical ESP32-WROOM modules where 6-11 are flash-reserved).
+  This is a SECOND, independent official source (a different project's
+  own maintained documentation, not just re-stating the arduino-esp32
+  PR) confirming the exact same GPIO0/7/8 assignment.
+- https://www.crowdsupply.com/silicognition/mant1s — campaign page;
+  returned HTTP 403 when fetched directly (bot-wall), so not used as
+  primary evidence — recorded as a dead end.
+- https://www.cnx-software.com/2025/12/03/silicognition-mant1s-esp32-board-t1s-single-pair-ethernet-for-automation-and-robotics/
+  and https://www.hackster.io/news/silicognition-s-mant1s-is-a-micropython-powered-gadget-for-easy-single-pair-ethernet-projects-da6d866c0f83
+  — press coverage; confirms the board's general existence, LAN867x PHY,
+  and that "the schematics for the ManT1S board will be made available
+  after the [crowdfunding] campaign closes" — i.e. no public schematic
+  PDF exists yet for this board as of this audit. Neither mentions a
+  button or LED. Recorded honestly: no schematic-level confirmation is
+  currently possible, and no evidence of an onboard button/LED was found
+  anywhere (consistent with "unpopulated headers for GPIOs" / bare
+  board description — no LED/button claim to confirm or refute).
+
+Per-pin findings (re-confirmed):
+- GPIO0: EXCLUDED (removed from chipGpios and from pinNotes). CONFIRMED
+  via TWO independent official sources beyond the vendor's own
+  pins_arduino.h: (1) the merged, Espressif-reviewed arduino-esp32 core
+  PR #11848 authored by the board's own designer, and (2) ESPHome's
+  independently-maintained official Ethernet component documentation,
+  which describes the identical GPIO0 Ethernet-clock/GPIO7-MDIO/GPIO8-MDC
+  configuration for this specific board.
+- GPIO7, GPIO8 (MDIO/MDC): NOT separately excluded in this board's
+  board.json — already absent from the ESP32-classic chip-level default
+  (flash-reserved GPIO6-11 range on typical modules). Note: ESPHome's
+  own docs indicate GPIO7/8 are NOT actually flash-reserved on this
+  board's specific ESP32-PICO-V3-02 module (hence needing
+  `ignore_pin_validation_error`) — meaning the reason these pins are
+  currently absent (inherited chip-level flash-reserved default) may be
+  technically the wrong REASON for this specific module, but the
+  OUTCOME (excluded) is still correct, since GPIO7/8 are independently
+  confirmed to be this board's dedicated Ethernet MDIO/MDC lines
+  regardless. No board.json change made since the practical result
+  (excluded) was already correct; documented here for a future reviewer.
+- GPIO1-5, 12-15, 18, 19, 21-23, 25-27, 32-39 (all remaining chip-default
+  GPIOs): left unchanged — no button/LED evidence found anywhere in the
+  sources consulted (see above), and no schematic exists yet to check
+  further. Genuinely NO CHANGE, not a guess.
+
+RESULT: Existing finding CONFIRMED via two independent, genuinely
+external, official sources (Espressif-merged upstream PR by the board's
+own designer, and ESPHome's separately-maintained component docs). No
+correction needed. board.json's chipGpios content is unchanged; only the
+top-of-file comment and this notes.txt were updated with the real
+citations, plus the GPIO7/8 reasoning caveat above.
+
+Summary: GPIO0 excluded as the dedicated onboard LAN867X Ethernet PHY
+clock input, now confirmed via two independent official sources beyond
+the vendor's own pins_arduino.h (the merged arduino-esp32 PR by the
+board's designer, and ESPHome's own Ethernet component documentation).
+GPIO7/8 (MDIO/MDC) remain correctly excluded via the base chip default,
+though the true reason is this board's own dedicated Ethernet interface
+rather than generic flash-reservation — no functional change needed.
+No public schematic exists yet (crowdfunded board, schematics promised
+post-campaign); no button/LED found in any source, so none was tagged.

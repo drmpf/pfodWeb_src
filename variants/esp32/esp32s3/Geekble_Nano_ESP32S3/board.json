@@ -1,0 +1,181 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Geekble nano ESP32-S3 (Geekble / SooDragon, Korean maker-education
+  // brand), ESP32-S3FH4R2 module in an Arduino-Nano-compatible form factor.
+  // pins_arduino.h declares SW_BUILTIN=0, RTS=45, CTS=D3(6), DTR=A0(1),
+  // DSR=D4(7), plus #define PIN_I2S_SCK/FS/SD/SD_OUT/SD_IN pointing at
+  // D7(10)/D8(17)/D9(18)/D10(21) - none of these were individually reviewed
+  // before this audit; the board previously had no per-board override and
+  // used the chip-level esp32s3/board.json default unchanged.
+  //
+  // Sources consulted:
+  //  - https://github.com/SooDragon/Geekble-nano-ESP32S3
+  //    Official hardware repo for this exact board (KiCad schematic,
+  //    pinmap image, footprints). Author "SooD" also authored the upstream
+  //    espressif/arduino-esp32 PR #11005 that added this variant.
+  //  - https://raw.githubusercontent.com/SooDragon/Geekble-nano-ESP32S3/main/PinMap/Geekble%20nano%20PinMap.png
+  //    Official pinmap diagram (downloaded and visually inspected). Shows
+  //    "SW_BUILTIN"/"BOOT"/"PULL-UP" labels tied to pin B1/GPIO0, right next
+  //    to a physical "BOOT" pushbutton drawn near the USB-C connector.
+  //    RTS/CTS/DTR/DSR do NOT appear anywhere on this diagram - GPIO45 is
+  //    not broken out on the main Nano-style header at all (only on the
+  //    secondary expansion header, unlabelled), and D3/D4/A0 are shown as
+  //    plain digital/analog pins with no serial-control annotation. D7-D10
+  //    are likewise shown as plain digital pins with no I2S/audio labels.
+  //  - https://raw.githubusercontent.com/SooDragon/Geekble-nano-ESP32S3/main/Schematic/Geekble_nano_Ver.2.5_Schematic.png
+  //    Official KiCad schematic (downloaded and visually inspected).
+  //    Confirms: (1) GPIO0/BOOT net is wired to a real tactile switch SW2
+  //    with a 10k pull-up to 3V3 - matches the pinmap's BOOT button. A
+  //    second switch SW1 (also 10k pull-up) resets via CHIP_PU/EN, not a
+  //    GPIO. (2) USB D+/D- go straight from the USB-C receptacle to
+  //    GPIO20/GPIO19 (native USB-CDC/JTAG-serial peripheral built into the
+  //    ESP32-S3 chip) - there is NO separate USB-UART bridge IC (no
+  //    CP2102/CH340/etc.) anywhere on the board, so there is no physical
+  //    circuit for RTS/CTS/DTR/DSR flow-control lines to connect to in the
+  //    first place. GPIO45 appears only as a bare broken-out pad (silkscreen
+  //    H44) with no other connections. GPIO1/6/7 (A0/D3/D4) are likewise
+  //    bare broken-out pads. (3) No microphone, speaker, amplifier, or audio
+  //    codec IC is present anywhere in the schematic - the only populated
+  //    ICs are the buck-boost regulator (TPS630701), the 3.3V LDO
+  //    (ME6217C33M5G), and the ESP32-S3FH4R2 module itself.
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/arduino_nano_nora/pins_arduino.h
+  //    Cross-checked against the official Arduino Nano ESP32 (u-blox
+  //    NORA-W106) variant, which is the template this board's Nano-style
+  //    pin-naming was evidently modelled on: that file maps RTS to
+  //    "LED_BLUE" (an LED, not a serial-control signal) - confirming the
+  //    RTS/CTS/DTR/DSR aliases in this pin-naming family are inherited
+  //    decorative/compatibility names, not evidence of dedicated wiring on
+  //    every board that reuses the naming pattern.
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/Geekble_Nano_ESP32S3/pins_arduino.h
+  //    Upstream espressif/arduino-esp32 copy of this exact variant's
+  //    pins_arduino.h - byte-identical to this project's copy, confirming
+  //    no local drift and that RTS=45/CTS=D3/DTR=A0/DSR=D4/PIN_I2S_* are the
+  //    real, current upstream declarations for this board.
+  //
+  // Per-pin decisions:
+  //  - GPIO0 (SW_BUILTIN): KEEP as a pin, but RETAG - confirmed onboard
+  //    physical BOOT pushbutton (SW2 + 10k external pull-up per schematic;
+  //    "BOOT"/"SW_BUILTIN"/"PULL-UP" per pinmap). Not this board's TX/RX
+  //    (TX=D1=GPIO43, RX=D0=GPIO44 per pins_arduino.h). Standard ESP32-S3
+  //    boot-strapping pin doubling as a user button, same pattern as most
+  //    ESP32-S3 dev boards. Tagged ["digital_input","button"] only; the
+  //    chip-level "Must be HIGH for normal boot" pinNotes entry is retained.
+  //  - GPIO45 (RTS): REVIEWED, KEPT unchanged. Not wired to any onboard
+  //    USB-serial auto-reset circuit - this board has no discrete USB-UART
+  //    bridge chip at all (native-USB only, D+/D- on GPIO19/20, already
+  //    excluded at chip level). Schematic shows GPIO45 as a bare broken-out
+  //    pad. "RTS" is an inherited alias name from the Nano-style pin-naming
+  //    template, not evidence of dedicated hardware on this board. Chip-
+  //    level pinNotes["45"] "Must be LOW or floating on reboot" (strapping
+  //    pin warning) retained unchanged.
+  //  - GPIO6/D3 (CTS), GPIO7/D4 (DSR), GPIO1/A0 (DTR): REVIEWED, KEPT
+  //    unchanged for the same reason as GPIO45 above - no onboard USB-UART
+  //    bridge exists on this board for these flow-control aliases to
+  //    control; schematic shows all three as plain broken-out digital/
+  //    analog pads with no dedicated circuitry.
+  //  - PIN_I2S_SCK/D7 (GPIO10), PIN_I2S_FS/D8 (GPIO17),
+  //    PIN_I2S_SD/PIN_I2S_SD_OUT/D9 (GPIO18), PIN_I2S_SD_IN/D10 (GPIO21):
+  //    REVIEWED, KEPT unchanged. These are #define aliases (not
+  //    "static const uint8_t" pin declarations) pointing at D7-D10, which
+  //    are already ordinary chip-level GPIOs; no onboard microphone,
+  //    speaker, amplifier, or audio codec exists on this board per the
+  //    schematic - this is a general-purpose I2S pin grouping for the
+  //    user's own external I2S hardware, not a dedicated onboard peripheral.
+  //    No board.json or pins_arduino.h change needed.
+  //
+  // No pins_arduino.h edits were made - no pin on this board was found to be
+  // wired to dedicated onboard hardware requiring exclusion.
+  //
+  // See boardsDetails/esp32/esp32s3/Geekble_Nano_ESP32S3/notes.txt for the
+  // full research trail.
+
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32S3" -> designer/boards/ESP32S3/ESP32S3.json -> const ESP32S3Data = {...}
+  "boardName": "ESP32S3",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32-S3 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32-S3 has no hardware DAC.
+  "dac": {},
+
+  // ADC: ESP32-S3 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation settable via analogSetAttenuation()
+  // for 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  // ESP32S3: every exposed GPIO is bidirectional — no input-only pins.
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Reference: ESP32-S3 Technical Reference Manual — Strapping Pins.
+  "pinNotes": {
+    "0":  "Must be HIGH for normal boot",
+    "3":  "Must be LOW or floating on reboot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32-S3 chip.  GPIOs 26-32 (flash),
+  // 33-37 (octal flash/PSRAM), and 19-20 (USB) are excluded.  GPIOs 22-25
+  // do not exist in this chip's silicon.  No DAC on this chip.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  //
+  // pfodWeb NOTE: GPIO0 retagged ["digital_input","button"] for this board -
+  // confirmed onboard BOOT pushbutton, see audit notes above. All other
+  // entries are unchanged from the chip-level default (reviewed, kept -
+  // see per-pin decisions above for GPIO45/6/7/1/10/17/18/21).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "38": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "39": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "40": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "41": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "42": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "43": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "44": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "45": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "46": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "47": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "48": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

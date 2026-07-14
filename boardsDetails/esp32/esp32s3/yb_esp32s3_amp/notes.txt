@@ -1,0 +1,72 @@
+yb_esp32s3_amp - button/LED capability research notes
+======================================================
+
+Sources consulted:
+- https://github.com/yellobyte/YB-ESP32-S3-AMP
+  Vendor (YelloByte, Thomas J.) GitHub repo for the "YB-ESP32-S3-AMP" board -
+  "audio dev board with ESP32-S3, microSD, 2 x MAX98357A 3W Amplifier, PSRAM,
+  WiFi and USB-C". Confirms vendor identity and board family (same "YB-"
+  vendor line as sibling yb_esp32s3_dac already audited this project).
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/Readme.md
+  Raw README. Confirms two indicators: "One LED labeled 'P' is connected to
+  the 3.3V rail to indicate board power" (not GPIO-driven, out of scope) and
+  a status LED labeled 'IO47' connected to GPIO47, which "can be used as
+  status LED"; also dual-purpose as amplifier mute control: "If solder bridge
+  DAC_MUTE is closed [default open] this pin can be used for muting the two
+  audio amplifiers: active when GPIO47 is HIGH or muted when GPIO47 is LOW"
+  (consistent with active-high signal sense). Also documents two pushbuttons:
+  'R' (resets ESP32-S3 by shorting EN to GND) and 'B' (shorts GPIO0 to GND,
+  "sometimes needed to force the board into boot mode", used in combination
+  with 'R' for manual upload-mode entry).
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/doc/YB-ESP32-S3-AMP_schematic_1-2.jpg
+  Schematic sheet 1/2, fetched and read as an image directly (WebFetch's text
+  summarizer could not parse the JPEG, so the saved binary was opened with
+  the Read tool instead). Contains a "Status LED (GPIO47)" block: GPIO47 ->
+  LED (silkscreen "IO47 LED") -> R7 (5k1) -> GND, confirming the LED lights
+  when GPIO47 is driven HIGH (active-high), a single plain (non-addressable)
+  LED - no NeoPixel/RGB signaling present anywhere on this schematic sheet.
+  Also contains a "GPIO0 Button" block: GPIO0 -> pushbutton (labeled
+  BOOT/VAL_S1) -> GND, and a separate "Reset Button" block (EN -> pushbutton
+  -> GND via R3 10k pull-up + C5 100n debounce), matching the README's
+  description. Same layout/values as sibling yb_esp32s3_dac's schematic.
+
+Pin(s) considered but NOT tagged:
+- GPIO0 ("B" / BOOT pushbutton, shorts GPIO0 to GND). Standard ESP32-S3
+  strapping-pin boot button, wired identically to most dev boards' flash-mode
+  button and to sibling yb_esp32s3_dac's equivalent pin. The vendor README
+  documents it ONLY in the context of forcing the board into boot/upload mode
+  (combined with the EN reset button) - never described as a general-purpose
+  "user button" for application use. Decision: left untagged (capabilities
+  unchanged: digital_input/digital_output/pwm_output) for human review,
+  consistent with the yb_esp32s3_dac precedent - the hardware is real and
+  could plausibly be read as a button in a sketch, but vendor documentation
+  does not confirm that intended usage.
+- "P" power-indicator LED: not GPIO-driven (wired directly to the 3.3V rail
+  per the README), so there is no GPIO to tag - correctly out of scope.
+
+Bus-alias collision check (build_boards.js unconditionally appends bus
+capabilities for any GPIO aliased as SDA/SCL/SS/MOSI/MISO/SCK regardless of
+chipGpios):
+- Checked full pins_arduino.h: SDA=8, SCL=9, SS2=38, MOSI2=39, MISO2=41,
+  SCK2=40 (SPI2 "for public usage"). GPIO47 (the tagged LED pin) does NOT
+  appear as any bus alias anywhere in this file - no collision, no lines
+  needed deleting for this pass. (Earlier dedicated-hardware-exclusion pass
+  already removed the primary SS/MOSI/MISO/SCK GPIO10-13 declarations and the
+  I2S_BCLK/LRCLK/DOUT GPIO5-7 declarations for the onboard microSD/amp buses,
+  per the pfodWeb NOTE comments already present in pins_arduino.h and
+  board.json header.)
+
+What was tagged:
+- GPIO47 -> capabilities changed from ["digital_input","digital_output",
+  "pwm_output"] to ["digital_output","pwm_output","led_high"] (single-color
+  active-high status LED, confirmed via vendor README + schematic sheet 1/2).
+  Same pin also functions as DAC_MUTE control via an optional solder bridge
+  (default open) per the vendor pins_arduino.h comment - this does not change
+  the LED tagging, since with the solder bridge open (default/shipped state)
+  GPIO47 only drives the LED. Not TX/RX (board's TX=43, RX=44 per
+  pins_arduino.h), so no TX/RX-reservation conflict.
+
+Summary: Vendor confirmed as YelloByte YB-ESP32-S3-AMP. Applied led_high tag
+to GPIO47 (status LED "IO47", active-high, confirmed via README + schematic).
+GPIO0 BOOT button left untagged pending human review, matching sibling
+yb_esp32s3_dac precedent. No bus-alias collisions found for GPIO47.

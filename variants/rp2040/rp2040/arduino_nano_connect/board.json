@@ -1,0 +1,210 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Arduino Nano RP2040 Connect" (variants/rp2040/boards.txt,
+  // arduino_nano_connect.name=).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // pfodWeb NOTE (WiFi chip-bucketing, 2026-07-13 audit): this is
+  // Arduino's own official "Nano RP2040 Connect" board and it DOES carry
+  // real onboard WiFi/BLE silicon (a u-blox NINA-W102 module, itself an
+  // ESP32-based radio co-processor) - yet it correctly lives in the
+  // plain "rp2040" chip bucket, not "rp2040w"
+  // (variants/rp2040/rp2040w/, reserved for boards using the native
+  // RP2040 + CYW43439 combo, e.g. Pico W/2W). This is deliberate, not a
+  // miscategorization: the NINA-W102 is reached over a dedicated SPI1
+  // link (WiFiNINA library's SPI-command protocol against the
+  // co-processor's own firmware), architecturally incompatible with the
+  // native cyw43 SPI-attached-radio stack that
+  // variants/rp2040/tcp.ino, http.ino and ble.ino are written against -
+  // this board would need its own dedicated WiFiNINA-protocol .ino
+  // templates before the Designer could offer tcp/http/ble connections
+  // for it, which is a larger feature-scope change, out of scope for
+  // this pin-tagging/exclusion audit. Same reasoning/precedent as
+  // challenger_2040_wifi/board.json (ESP8285 UART co-processor, also
+  // correctly left in the plain "rp2040" bucket). This board's own
+  // pins_arduino.h already carried a top-of-file pfodWeb NOTE stating
+  // the identical rationale before this audit began. Flagging per this
+  // audit's standing instruction to surface (not silently move) any
+  // WiFi-bucketing question - no chip-bucket move was made.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/button audit,
+  // 2026-07-13):
+  //
+  // Board: Arduino "Nano RP2040 Connect" (official Arduino board,
+  // ABX00053) - onboard u-blox NINA-W102 WiFi/BLE co-processor, onboard
+  // LSM6DSOX 6-axis IMU, onboard MP34DT06JTR PDM microphone, onboard
+  // ATECC608A crypto/authenticator chip, and a single-color onboard
+  // status LED (separate from the NINA-side RGB LED).
+  //
+  // Sources: this board's own pins_arduino.h (already carries a
+  // detailed top-of-file pfodWeb NOTE + inline comment enumerating the
+  // 7 NINA-dedicated GPIOs that are deliberately NOT declared as any Dn
+  // alias at all - GPIO2/3/8/9/10/11/14); Arduino's own official pinout
+  // diagram (content.arduino.cc/assets/Pinout_NanoRP2040_latest.pdf)
+  // and full schematic (content.arduino.cc/assets/ABX00053-schematics.pdf,
+  // sheet TOP.SchDoc, V3.4); WebSearch cross-reference (independently
+  // confirms the same 7 NINA GPIOs: "GPIO14 (NINA_SCK), GPIO11
+  // (NINA_SDO), GPIO8 (NINA_SDI), GPIO9 (NINA_CS), GPIO10 (NINA_ACK),
+  // GPIO2 (NINA_GPIO0), and GPIO3 (NINA_RESETN)"); and this board's own
+  // rp2040_board_variants/variants/arduino_nano_connect/PinArduino.txt
+  // (original ArduinoCore-mbed variant table, sourced from
+  // github.com/arduino/ArduinoCore-mbed).
+  //
+  // NINA-W102 SPI/reset/handshake pins (GPIO2, 3, 8, 9, 10, 11, 14):
+  // already fully excluded by this board's own pins_arduino.h simply
+  // never declaring a Dn alias for any of them (confirmed by inspection
+  // - D20/D24-D29 are the only gap in an otherwise-contiguous D0-D23
+  // sequence) - build_boards.js's alias-driven parser therefore never
+  // sees these GPIOs at all, so no chipGpios override is needed or
+  // possible for them (there is nothing to override). No action taken
+  // here; this was already correct before this audit.
+  //
+  // RGB LED (LEDR/LEDG/LEDB): confirmed via this board's own
+  // rp2040_board_variants/variants/arduino_nano_connect/nina_pins.h and
+  // nina_pins.cpp that these are NinaPin objects (pin numbers 25/26/27
+  // in the NINA-W102's OWN internal ESP32-style GPIO numbering, not
+  // RP2040 GPIO numbers), routed entirely through the WiFiNINA SPI
+  // co-processor protocol (special pinMode/digitalWrite/analogWrite
+  // overloads, not RP2040 digitalWrite()). Independently confirmed by
+  // the schematic (RGB LED "DL3" wired directly to the NINA-W102
+  // module's own RMII_RXD0/RMII_RXD1/RMII_CRSDV pins, not to any RP2040
+  // GPIO pin) and by WebSearch ("The onboard RGB LED is connected to
+  // the ESP32 in the NINA-W102 module... you will need to use the
+  // WiFiNINA Library"; confirmed active-low/common-anode: "LED are off
+  // when the digital state is HIGH and on when the digital state is
+  // LOW"). Since this repo's chipGpios capability tagging is keyed by
+  // RP2040 GPIO number and the RGB LED is not wired to any RP2040 GPIO
+  // at all, it is out of scope for this board.json - same category of
+  // "no pin to attach a capability to" as the BOOTSEL-button precedent
+  // already documented in rpipico/board.json. NOT tagged
+  // led_r_high/led_g_high/led_b_high because there is no RP2040 GPIO to
+  // attach those tags to.
+  //
+  // Single-color onboard "L" LED (schematic ref "DL1", green,
+  // PIN_LED/LED_BUILTIN = D13 = GPIO6): this one IS a genuine RP2040
+  // GPIO. Confirmed via this board's own pins_arduino.h
+  // (`#define PIN_LED (D13)` / `#define LED_BUILTIN PIN_LED`), the
+  // official Arduino pinout diagram (labels the D13/GPIO6 position with
+  // the "LED_BUILTIN" callout using the diagram's own teal "LED" color
+  // key), and the schematic (DL1 green LED + R2 330-ohm series
+  // resistor). Tagged active-high, matching this repo's established
+  // rpipico/board.json and wiznet_5500_evb_pico/board.json precedent
+  // for the "digitalWrite(LED_BUILTIN, HIGH); // LED on" idiom
+  // universal across classic-Arduino-form-factor boards (WebSearch:
+  // "the board also has an orange LED connected to I/O pin 13, this is
+  // the 'built-in' LED common to most Arduino boards" - i.e. the
+  // typical/default active-high behaviour, explicitly contrasted
+  // against the RGB LED's non-typical active-low behaviour in the same
+  // source). digital_input dropped, pwm_output kept (arduino-pico's
+  // analogWrite() works on any RP2040 GPIO) per the same precedent.
+  //
+  // GPIO6/D13 bus-collision bug-class check: this board's own
+  // pins_arduino.h also aliases D13/GPIO6 as PIN_SPI0_SCK (the SPI0
+  // bus's clock line, exposed on the physical header as the SCK pin).
+  // This IS the exact "confirmed LED pin also aliased as an SPI bus
+  // role" bug class this audit specifically checks for - but here it is
+  // NOT a spurious/accidental collision to fix by removing the #define
+  // (unlike the adafruit_feather_scorpio precedent, where the colliding
+  // bus was genuinely spare). SPI0 (MISO=D12/GPIO4, MOSI=D11/GPIO7,
+  // SCK=D13/GPIO6, SS=D10/GPIO5) is this board's primary user-facing
+  // SPI bus, exposed on the physical Nano-form-factor header exactly
+  // like every classic Arduino Uno/Nano board, where pin 13 has always
+  // dual-served as both LED_BUILTIN and SCK by deliberate, well-known
+  // hardware design (using hardware SPI on a classic Nano/Uno-shaped
+  // board has always visibly flickered the LED as a side effect - this
+  // is expected, documented behaviour, not a design defect). No
+  // pins_arduino.h edit made. build_boards.js will auto-append the
+  // spi_sck capability on top of the led_high/pwm_output/digital_output
+  // capabilities declared below, matching the real dual-role hardware.
+  //
+  // PDM microphone (MP34DT06JTR) - GPIO22 (D22, PIN_PDM_DIN, mic data
+  // out) and GPIO23 (D23, PIN_PDM_CLK, mic clock in): confirmed via
+  // this board's own pins_arduino.h defines, the official schematic
+  // (MICROPHONE block, U8 MP34DT06JTR, "CLK"/"DOUT" nets =
+  // PDMCLK/PDMDIN = GPIO23/GPIO22), and WebSearch/Adafruit CircuitPython
+  // pinout cross-reference (board.MICROPHONE_DATA / MICROPHONE_CLOCK).
+  // These two GPIOs are declared as ordinary Dn aliases in this board's
+  // pins_arduino.h (unlike the NINA pins) but are, per the source
+  // variant's own PinArduino.txt, grouped under "Internal pins" (not
+  // exposed on any physical header) and hard-wired exclusively to the
+  // onboard PDM microphone - no legitimate general-purpose role.
+  // capabilities: [] (no SPI/I2C/etc alias exists on either pin for
+  // build_boards.js to auto-append, so this fully empties them, matching
+  // the wiznet_5500_evb_pico GPIO20/21 "chip-driven, no bus alias"
+  // precedent).
+  //
+  // IMU interrupt line - GPIO24 (D21, no #define name given in this
+  // board's pins_arduino.h beyond the bare Dn alias): confirmed via the
+  // original ArduinoCore-mbed source's own PinArduino.txt comment
+  // ("// IMU IRQ" against p24), corroborated by the schematic showing an
+  // "INT1" net (matching the LSM6DSOXTR's own INT1 pin) routed near the
+  // RP2040. Same "Internal pins" grouping as the PDM mic pins above -
+  // not exposed on any physical header, chip-driven interrupt line
+  // consumed internally by the Arduino_LSM6DSOX library. capabilities:
+  // [] for the same reasons as GPIO22/23 above.
+  //
+  // IMU (LSM6DSOX) + crypto (ATECC608A) shared I2C bus - GPIO12
+  // (D18, PIN_WIRE0_SDA) and GPIO13 (D19, PIN_WIRE0_SCL): CONSIDERED for
+  // exclusion but NOT excluded. The schematic confirms both the onboard
+  // LSM6DSOXTR IMU and the onboard ATECC608A crypto/authenticator chip
+  // are wired to this exact I2C bus (schematic nets "A4/SDA~"/"A5/SCL~"
+  // run directly to both U9 LSM6DSOXTR and U4 ATECC608A-MAHDA-T, plus
+  // 4.7k pull-up resistors R9/R10). However, this is also this board's
+  // one and only standard exposed I2C bus - the SAME two physical pins
+  // are the official pinout's own "A4/SDA" and "A5/SCL" header
+  // positions (labelled as ordinary orange "Digital Pin"/"Analog Pin"
+  // entries in Arduino's own pinout diagram, not the grey "Internal
+  // Pin" category used for the NINA/PDM/IMU-IRQ pins above), and
+  // Arduino's own official documentation and countless tutorials
+  // instruct users to wire additional external I2C peripherals to
+  // A4/A5 on this exact board. An I2C bus natively supports multiple
+  // devices sharing the same two wires by design (unlike an SPI CS/RST
+  // line or a PDM data/clock pair), so the onboard IMU+crypto chip
+  // sharing this bus does not preclude ordinary general-purpose use.
+  // Left at full chip-default capabilities (no chipGpios entry) -
+  // digital_input/digital_output/pwm_output remain available, with
+  // wire_sda/wire_scl auto-appended by build_boards.js as normal.
+  //
+  // No onboard user pushbutton beyond the standard RESET button
+  // (schematic ref "PB1", wired to the RESETN net, not a readable GPIO)
+  // - confirmed by the schematic; matches the "no onboard button"
+  // finding already recorded for the other RP2040 boards in this family
+  // audit.
+  "chipGpios": {
+    "6": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN (schematic ref DL1, green) - onboard user LED, confirmed active-high. Also aliased as PIN_SPI0_SCK (D13) - a deliberate, expected dual-role matching every classic Arduino Uno/Nano-form-factor board's pin-13 LED+SCK sharing, not a bug; spi_sck capability is auto-supplied by build_boards.js on top of these." },
+    "22": { "capabilities": [], "note": "PIN_PDM_DIN - onboard MP34DT06JTR PDM microphone's data output line. Internal pin (not on any physical header), not general-purpose." },
+    "23": { "capabilities": [], "note": "PIN_PDM_CLK - onboard MP34DT06JTR PDM microphone's clock input line. Internal pin (not on any physical header), not general-purpose." },
+    "24": { "capabilities": [], "note": "IMU IRQ - onboard LSM6DSOXTR IMU's INT1 interrupt output, read internally by the Arduino_LSM6DSOX library. Internal pin (not on any physical header), not general-purpose." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference - same as every
+  // other RP2040 board. This board exposes 4 analog channels (A0-A3 =
+  // GPIO26-29), matching NUM_ANALOG_INPUTS=4 in its pins_arduino.h.
+  // (A4-A7 in this board's own header labelling are NINA-side ADC
+  // channels reached via the WiFiNINA analogRead(NinaPin) overload, not
+  // real RP2040 analog_input GPIOs - out of scope for this chip-level
+  // adc block, same reasoning as the RGB LED above.)
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

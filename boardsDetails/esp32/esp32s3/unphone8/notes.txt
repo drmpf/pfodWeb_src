@@ -1,0 +1,74 @@
+unphone8 board.json capability audit — research notes
+=======================================================
+Board directory audited: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\unphone8
+pins_arduino.h in that directory: LED_BUILTIN=13, TX=37, RX=36, no board.json existed prior to this audit.
+Confirmed this is the correct, exact directory (sibling "unphone9" was NOT touched).
+
+Sources consulted
+------------------
+https://www.espboards.dev/esp32/unphone8/ — auto-generated pinout page; states "LED_BUILTIN mapped to pin 14" (conflicts with the actual pins_arduino.h in this repo, which says 13) and lists no button or RGB/NeoPixel GPIOs at all. Low-confidence/auto-scraped source, not used as evidence.
+
+https://gitlab.com/hamishcunningham/unphonelibrary/-/raw/main/unPhone.h — official unPhone Arduino library (vendor: Hamish Cunningham / University of Sheffield unPhone project). Defines board pin constants (BUTTON1/2/3, LED_RED, LED_GREEN, LED_BLUE, POWER_SWITCH, IR_LEDS, etc.) but ONLY inside `#if UNPHONE_SPIN == 7` and `#elif UNPHONE_SPIN >= 9` blocks. There is NO case for `UNPHONE_SPIN == 8` — meaning the vendor's own library leaves button/LED pins completely undefined when built for spin 8. This is the single most important finding: even the hardware vendor does not have a confirmed/maintained pin mapping for spin 8 button/LED wiring in their current library.
+
+https://gitlab.com/hamishcunningham/unphonelibrary/-/raw/main/unPhone.cpp — confirmed same SPIN==7 / SPIN>=9 gating pattern used throughout implementation (version(), begin(), etc.), no SPIN==8 branch anywhere.
+
+https://github.com/espressif/arduino-esp32/pull/7109 (and #7058) — PR adding unphone8/unphone9 board defs to arduino-esp32. Confirms boards.txt build flags: unphone8 → `-DBOARD_HAS_PSRAM -DUNPHONE_SPIN=8`, unphone9 → `-DBOARD_HAS_PSRAM -DUNPHONE_SPIN=9`. Confirms this variant folder (TX=37/RX=36 pins_arduino.h) is genuinely the "spin 8" board target.
+
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/unphone8/pins_arduino.h and .../unphone9/pins_arduino.h — fetched both directly and diffed by hand. unphone8: TX=37, RX=36, LED_BUILTIN=13. unphone9: TX=43, RX=44, LED_BUILTIN=13 (identical value). The identical LED_BUILTIN=13 across both variants strongly suggests this is copy-pasted boilerplate from a shared template rather than a spin-8-specific confirmed hardware fact — per task rules, LED_BUILTIN aliases must not be used as sole tagging evidence, and this cross-variant duplication reinforces that caution.
+
+https://docs.platformio.org/en/latest/boards/espressif32/unphone8.html — PlatformIO board manifest for unphone8: confirms MCU is ESP32-S3 (not classic ESP32), ~7.94MB flash, ~2.31MB RAM, 240MHz. No pin/LED/button detail given.
+
+https://gitlab.com/api/v4/projects/hamishcunningham%2Funphone/repository/tree?path=doc&ref=master — listed the vendor hardware-schematics repo's doc/ folder. Found schematic PDFs for spin4, spin5, spin6v2, spin9, spin9a, plus a general undated schematic — but NO schematic PDF specific to "spin 8" exists in this repo.
+
+https://gitlab.com/hamishcunningham/unphone/-/raw/master/doc/spin78pincomparison.ods — downloaded and parsed (ODS/XML) directly. This spreadsheet compares "Spin 8 ESP32-WROOM-32E 4MB" against "Spin 9 ESP32-S3-WROOM-1-N8R8". It lists Spin-8-column pin assignments including BUTTON1=IO33, BUTTON2=IO35, BUTTON3=IO34, LEDR=IO13 (via IO13_IR_LED_EN,LEDR) and UART2 TX/RX on IO16/IO17. HOWEVER: this spreadsheet's "Spin 8" is explicitly built on classic ESP32-WROOM-32E silicon, NOT ESP32-S3 — this directly contradicts the confirmed PlatformIO manifest (ESP32-S3) and the confirmed pins_arduino.h in this repo (TX=37/RX=36, which are ESP32-S3-only usable pins; GPIO36/37 are input-only on classic ESP32 and could not serve as a UART TX/RX pair there). Conclusion: this "Spin 8" spreadsheet describes an earlier/different hardware prototype than the ESP32-S3-based board that Arduino/PlatformIO ship today as "unphone8". Its pin numbers (33/35/34/13/16/17) are NOT applicable evidence for the board being audited here and were NOT used for tagging.
+
+https://gitlab.com/api/v4/projects/hamishcunningham%2Funphonelibrary/repository/branches — checked for a branch that might add explicit SPIN==8 support (found a branch literally named "ditch-unavailable-spins"). Fetching unPhone.h from that branch returned no content (branch does not contain the file, or file was removed) — no additional SPIN==8 pin evidence found there.
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO13 (LED_BUILTIN per this board's own pins_arduino.h; also appears as LED_RED in unPhone.h's SPIN>=9 block): NOT TAGGED. This is a pins_arduino.h alias, which the task rules explicitly forbid using as sole evidence. It is also identical across unphone8 and unphone9's pins_arduino.h files (looks like copy-paste boilerplate, not spin-8-specific confirmation), and the vendor's own unPhone.h library provides no defined LED_RED for UNPHONE_SPIN==8. No independent schematic confirms GPIO13 is wired to an LED on the spin-8 (ESP32-S3) board. This is a genuine "unsure — no guess made" case for human review; a reviewer with access to the actual spin-8 ESP32-S3 schematic (not found in the vendor's doc/ repo) could confirm or refute this.
+- GPIO33 / GPIO35 / GPIO34 (BUTTON1/2/3 per the spin78pincomparison.ods "Spin 8" column): NOT TAGGED, and deliberately not re-added even as a guess. Two independent reasons: (1) that spreadsheet's "Spin 8" is confirmed classic-ESP32 hardware, not the ESP32-S3 hardware this board directory actually targets, so the mapping doesn't transfer; (2) GPIO33-37 fall inside the ESP32-S3 chip-level pin-exclusion range (octal flash/PSRAM reservation) in the parent esp32s3/board.json's chipGpios, so even if the mapping were valid these GPIOs currently have no chipGpios entry and per task rules must not be re-added (that would reverse a pre-existing chip-level exclusion, out of scope for this task).
+- GPIO16 / GPIO17 (UART2 TX/RX per the same "Spin 8" spreadsheet, labelled as schematic TX/RX pins): NOT applicable — this board's actual confirmed TX/RX (per its own pins_arduino.h) are GPIO37/GPIO36, not 16/17, again indicating the spreadsheet describes different (earlier, classic-ESP32) hardware than the board being audited. Not tagged; not a candidate for LED/button in any case.
+- No NeoPixel/addressable RGB LED GPIO was found documented anywhere for spin 8 specifically (unPhone.h's `rgb()` method exists generically but its pin wiring for spin 8 hardware is unconfirmed for the same reasons as GPIO13/LED_RED above).
+
+Summary of what was tagged
+----------------------------
+NOTHING WAS TAGGED. No board.json was created or modified for unphone8. The vendor's own firmware library (unPhoneLibrary's unPhone.h/.cpp) has no defined button/LED pin mapping for UNPHONE_SPIN==8, and the only document that names specific "Spin 8" button/LED GPIOs describes a different (classic ESP32, not ESP32-S3) hardware revision than the board actually shipped/targeted by this variant directory. Confirmable evidence tying a specific GPIO on THIS ESP32-S3-based unphone8 board to a button or LED could not be found. Recommend human review with access to an actual spin-8 (ESP32-S3) schematic if one exists, to confirm or refute GPIO13 (LED) and/or GPIO33/34/35 (buttons, noting the latter three fall in the chip's octal-flash/PSRAM exclusion range regardless).
+
+
+=======================================================
+ADDENDUM (2026-07-12): dedicated-hardware pin-EXCLUSION audit
+=======================================================
+Follow-up pass, separate task from the button/LED tagging audit above: checking pins_arduino.h for
+display/touch/sensor bus pins that ought to be EXCLUDED from chipGpios (per the KEEP-vs-EXCLUDE policy),
+as opposed to the earlier pass's KEEP+tag question for buttons/LEDs.
+
+VERDICT: NO CHANGE. No board.json override created. pins_arduino.h left untouched.
+
+Re-read pins_arduino.h in full (60 lines). Confirmed it contains ONLY generic Arduino role aliases:
+  USB_VID/USB_PID (not pins), LED_BUILTIN=13, TX=37/RX=36, SDA=1/SCL=2, SS=3/MOSI=39/MISO=40/SCK=38,
+  A0..A19 analog-channel aliases, T1..T14 touch-channel aliases.
+There is no TFT_CS/TFT_DC/TOUCH_INT/TOUCH_CS/BATT_ADC/IMU_SDA-style dedicated-peripheral naming anywhere
+in the file — nothing that maps to a specific onboard display, touchscreen, IMU, or battery-sense circuit
+by name. This is consistent with, and reinforced by, the button/LED audit above: even the vendor's own
+unPhoneLibrary has no confirmed SPIN==8 pin mapping, so there is no independently-documented peripheral
+wiring for THIS specific board target either.
+
+Additional source fetched this pass: raw.githubusercontent.com/espressif/arduino-esp32/master/variants/
+unphone8/pins_arduino.h — the current upstream vendor file. Confirmed byte-for-byte equivalent in content
+to the local copy (same USB_VID/PID, same LED_BUILTIN=13, same TX/RX/SDA/SCL/SS/MOSI/MISO/SCK values,
+same A0-A19/T1-T14 tables). This proves the local file is the genuine, unmodified vendor BSP file, not a
+stripped placeholder hiding real pins — it simply never contained peripheral-specific declarations,
+because (per the button/LED audit's finding re: unPhoneLibrary) the vendor keeps that wiring in the
+separate application library, not the Arduino core's pins_arduino.h.
+
+Also checked: no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias-collision risk applies here, because that check
+only matters when tagging a candidate GPIO with a new non-bus capability (e.g. marking a button pin
+KEEP+tag) — since nothing is being excluded or tagged in this pass, there is no candidate pin whose
+capabilities could be silently contaminated by build_boards.js's blanket bus-alias logic.
+
+One-line summary: pins_arduino.h for unphone8 is the genuine, unmodified vendor file containing only
+generic bus/analog/touch aliases (confirmed byte-identical to the current upstream espressif/arduino-esp32
+source) — no dedicated display/touch/battery/IMU pin names are declared here to exclude, consistent with
+the earlier button/LED audit's finding that no vendor-confirmed spin-8 peripheral pin map exists at all;
+confirmed false positive, no board.json override, no pins_arduino.h edits needed.

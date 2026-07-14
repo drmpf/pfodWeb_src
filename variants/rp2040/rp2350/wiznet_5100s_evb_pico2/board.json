@@ -1,0 +1,88 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — this board's boards.txt
+  // entry sets it to "WIZnet W5100S-EVB-Pico2".
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same pin-declaration style as RP2040 — see variants/rp2040/rp2350/board.json.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only, matching the chip-level default.
+  // This board's onboard WIZnet W5100S adds Ethernet/TCP capability via
+  // an external SPI chip (not an on-chip radio like the "rp2040w"
+  // bucket's cyw43 boards), which is out of scope for this GPIO-focused
+  // audit — left as the chip-level default rather than guessing at a
+  // "tcp"/"http" connections change that wasn't requested.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2350 board audit, 2026-07-12): this board's own
+  // pins_arduino.h is just `#include "../generic/pins_arduino.h"` (plain
+  // Pico 2 pinout, PIN_SPI0_MISO/MOSI/SCK/SS = GPIO16/19/18/17), so
+  // without this file every GPIO gets full general-purpose capabilities
+  // regardless of onboard wiring — see variants/rp2040/rp2350/board.json's
+  // "chipGpios: {}" comment for why the RP2040/RP2350 family needs a
+  // per-board override to correct this (unlike ESP32/ESP8266's pruned
+  // chip-level map).
+  //
+  // Confirmed via WIZnet's own docs (docs.wiznet.io/Product/Chip/Ethernet/W5100S/w5100s-evb-pico2),
+  // which state verbatim: "GPIO16, GPIO17, GPIO18, GPIO19, GPIO20, GPIO21
+  // are connected to W5100S inside the board. These pins enable SPI
+  // communication with W5100S to use Ethernet function... If you are
+  // using the Ethernet function, these pins cannot be used for any other
+  // purpose." Per-signal table on the same page: GPIO16=MISO, GPIO17=CSn,
+  // GPIO18=SCLK, GPIO19=MOSI, GPIO20=RSTn, GPIO21=INTn. Cross-referenced
+  // against the sibling W5100S-EVB-Pico (RP2040) documentation page
+  // (docs.wiznet.io/Product/Chip/Ethernet/W5100S/w5100s-evb-pico), which
+  // states the identical GPIO16-21 SPI0/RSTn/INTn assignment for the
+  // non-RP2350 sibling board.
+  //
+  // GPIO25 (PIN_LED/LED_BUILTIN) is confirmed by the same WIZnet
+  // W5100S-EVB-Pico2 doc page as the plain onboard user LED ("GPIO25
+  // Connected to user LED"), NOT shared with the W5100S pins, board
+  // pinout otherwise "the same pinout as the Raspberry Pi Pico2 board" —
+  // tagged led_high to match this project's established precedent for
+  // the same GPIO25 LED (see variants/rp2040/rp2040/rpipico/board.json
+  // and the sibling variants/rp2040/rp2350/wiznet_5500_evb_pico2/board.json
+  // created in this same audit wave), confirmed active-high via a
+  // WIZnet W5100S-EVB-Pico2 community LED example using
+  // `digitalWrite(LEDPIN, HIGH)` (LEDPIN = GPIO25) to turn the LED on —
+  // same simple resistor-LED-to-GP25 circuit as the classic Pico/Pico2.
+  //
+  // No onboard button exists on this evaluation board — WIZnet docs list
+  // only the LED, the W5100S SPI/RESET/INT pins, VBUS-sense (GPIO24) and
+  // ADC3/VSYS-sense (GPIO29, both standard RP2350 Pico2 features, out of
+  // scope for this board-specific Ethernet-hardware audit), and the
+  // standard RP2350 BOOTSEL/RUN pins (RUN/PIN30 resets the chip when
+  // shorted low — not a numbered GPIO, and not a user pushbutton).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/wiznet_5100s_evb_pico2/notes.txt
+  "chipGpios": {
+    "16": { "capabilities": [], "note": "W5100S MISO (SPI0 RX) - onboard Ethernet chip's dedicated SPI data line, not general-purpose. spi_miso capability is auto-supplied by build_boards.js from this board's SPI0 MISO alias." },
+    "17": { "capabilities": [], "note": "W5100S CSn/SS (SPI0 chip-select) - onboard Ethernet chip, not general-purpose. spi_ss capability is auto-supplied by build_boards.js from this board's SPI0 SS alias." },
+    "18": { "capabilities": [], "note": "W5100S SCLK (SPI0 clock) - onboard Ethernet chip, not general-purpose. spi_sck capability is auto-supplied by build_boards.js from this board's SPI0 SCK alias." },
+    "19": { "capabilities": [], "note": "W5100S MOSI (SPI0 TX) - onboard Ethernet chip, not general-purpose. spi_mosi capability is auto-supplied by build_boards.js from this board's SPI0 MOSI alias." },
+    "20": { "capabilities": [], "note": "W5100S RSTn - onboard Ethernet chip's dedicated reset line, driven by the Ethernet library during init. Not general-purpose." },
+    "21": { "capabilities": [], "note": "W5100S INTn - onboard Ethernet chip's interrupt output, read internally by the Ethernet library. Not general-purpose." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard user LED, active-high. WIZnet docs confirm this board's pinout matches the plain Raspberry Pi Pico 2 (GPIO25 = onboard LED, not shared with the W5100S pins); active-high polarity confirmed via a WIZnet W5100S-EVB-Pico2 community example using digitalWrite(LEDPIN, HIGH) to turn the LED on (same simple LED circuit as the classic Pico)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as the chip-level default.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

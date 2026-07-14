@@ -1,0 +1,111 @@
+pandabyte_xc3m - dedicated-hardware pin-exclusion audit notes
+================================================================
+
+Board directory: variants/esp32/esp32c3/pandabyte_xc3m
+No board.json existed prior to this task; created as a full copy of the
+esp32c3 chip-level default board.json (variants/esp32/esp32c3/board.json)
+with only GPIO6 and GPIO7 capabilities modified (see NOTE comments at the
+top of board.json).
+
+pins_arduino.h aliases found (as originally shipped):
+  LED_BUILTIN    = GPIO5
+  RGB_BUILTIN    = GPIO6
+  BUTTON_BUILTIN = GPIO7
+  TX = GPIO21, RX = GPIO20
+  SDA = GPIO1, SCL = GPIO0
+  SS = GPIO3, MOSI = GPIO6, MISO = GPIO5, SCK = GPIO4
+  (A0-A4 and D0-D10/D18/D19 are plain positional aliases, no conflicts)
+
+Sources consulted
+------------------
+1. https://www.pandabyte.in/product-page/pandabyte-xc3m-esp32-c3-microcontroller-board-arduino-compatible
+   Official PandaByte.in product page for the xC3m. Peripherals section
+   states verbatim: "Switches: RST, FLASH, and User Programmable buttons"
+   and "LED: Programmable Single Color and RGB LEDs". Product description
+   also states the board "includes a programmable single-color LED, an
+   onboard push button, and an RGB LED, allowing users to test and
+   prototype easily." Confirms three distinct onboard components exist
+   (single-color LED, RGB LED, user button) but gives no GPIO numbers, no
+   LED drive polarity, and no wiring/schematic detail.
+
+2. https://github.com/espressif/arduino-esp32/pull/12220
+   "PandaByte Dev Board Support" - PR merged into the official Espressif
+   arduino-esp32 core (merged 2026-01-12 by me-no-dev), adding
+   variants/pandabyte_xc3m/pins_arduino.h among 5 PandaByte boards
+   (x32, xC3m, xS3, xC5, xC6). The PR's board-bringup test-results table
+   for the xC3m specifically records:
+     Blink (digitalWrite)          PASS
+     Blink RGB (FastLED)           PASS
+     Digital Input (Switch)        PASS
+     Serial CDC (USB)              PASS
+     WiFi (WiFiClient)             PASS
+     I2C (BMP280, ADXL345)         PASS
+     SPI (BMP280, ADXL345)         PASS
+   This is real vendor-submitted, hardware-verified confirmation that
+   GPIO6 drives a real addressable RGB LED via FastLED (WS2812-style,
+   matches the pfodWeb "led_neopixel" capability) and GPIO7 is a real
+   digital-input switch. The listed "SPI (BMP280, ADXL345)" PASS does NOT
+   specifically confirm GPIO6 is wired as the header's default hardware
+   MOSI line - sensor test sketches commonly specify explicit SPI pins
+   rather than relying on the pins_arduino.h SPI/MOSI/MISO/SCK/SS block,
+   and this exact SDA/SCL/SS/MOSI/MISO/SCK/A0-A4/D0-D10 block is
+   boilerplate duplicated verbatim across all 5 PandaByte board variants'
+   pins_arduino.h files (confirmed identical numbering pattern across
+   x32/xc3m/xs3 as reviewed for sibling boards in this audit wave), so it
+   was not treated as board-specific, per-pin-verified evidence.
+
+3. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/pandabyte_xc3m/pins_arduino.h
+   Confirmed the merged upstream file matches this repo's local
+   pins_arduino.h byte-for-byte in content, prior to this audit's edit
+   (LED_BUILTIN=5, RGB_BUILTIN=6, BUTTON_BUILTIN=7, TX=21, RX=20,
+   SDA=1, SCL=0, SS=3, MOSI=6, MISO=5, SCK=4).
+
+4. General arduino-esp32 core documentation on RGB_BUILTIN / rgbLedWrite()
+   / neopixelWrite() (esp32-hal-rgb-led.h) - confirms "RGB_BUILTIN" is a
+   core-wide convention specifically for a single-wire addressable
+   WS2812-type LED, matching the "led_neopixel" capability rather than a
+   discrete 3-pin R/G/B LED.
+
+Critical alias-collision check (GPIO6 / GPIO7 vs SDA/SCL/SS/MOSI/MISO/SCK/TX/RX)
+-----------------------------------------------------------------------------
+GPIO6 (RGB_BUILTIN) was ALSO aliased as MOSI in the original
+pins_arduino.h. Since build_boards.js reads the SDA/SCL/SS/MOSI/MISO/SCK/
+TX/RX constants directly from pins_arduino.h and unconditionally appends
+the matching bus capability to whatever GPIO they point at - regardless
+of what chipGpios says - this MOSI alias would have silently added an
+unconfirmed "spi_mosi" capability onto the confirmed NeoPixel pin. Given
+this MOSI/MISO/SCK/SS block is generic boilerplate duplicated across all
+five PandaByte board variants (not board-specific verified wiring), and
+it directly conflicts with the vendor-confirmed RGB LED on the same pin,
+the "static const uint8_t MOSI = 6;" line was DELETED from
+pins_arduino.h (not commented out), with a plain-English NOTE comment
+added in its place (deliberately not repeating the literal deleted
+declaration text, since build_boards.js's parser is comment-blind and
+would re-match it even inside a // comment).
+GPIO7 (BUTTON_BUILTIN) carries no other alias in this file (TX=21, RX=20,
+SDA=1, SCL=0, SS=3, MISO=5, SCK=4 - none point at GPIO7) - no collision,
+no change needed there.
+
+Pins considered but NOT tagged
+-------------------------------
+GPIO5 (LED_BUILTIN, single-color LED): out of scope for this audit (task
+only covers RGB_BUILTIN/BUTTON_BUILTIN). Also, no source found states
+whether this LED is wired active-high or active-low, so it would not
+have been tagged even if in scope. Left at chip-default capabilities.
+Note GPIO5 is also aliased MISO in pins_arduino.h; that alias was left
+untouched since GPIO5/MISO is not part of this audit's flagged pins and
+was not observed to conflict with any RGB_BUILTIN/BUTTON_BUILTIN tag.
+
+Summary of changes made
+-------------------------
+- variants/esp32/esp32c3/pandabyte_xc3m/pins_arduino.h: deleted the
+  "MOSI = 6" alias line (collided with the confirmed RGB LED pin); added
+  a plain-English NOTE comment explaining the removal.
+- variants/esp32/esp32c3/pandabyte_xc3m/board.json: created as a full
+  copy of the esp32c3 chip-level default, with:
+    GPIO6 -> ["digital_output", "led_neopixel", "pwm_output"]
+    GPIO7 -> ["digital_input", "button"]
+  Confidence: HIGH for both tags - confirmed by an independent vendor
+  product page (PandaByte.in) AND a merged, vendor-submitted upstream PR
+  with a board-specific hardware test table, agreeing on both pin
+  identities.

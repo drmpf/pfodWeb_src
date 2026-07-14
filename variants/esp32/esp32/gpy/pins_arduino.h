@@ -52,7 +52,8 @@ static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
 static const uint8_t A15 = 12;
 static const uint8_t A16 = 14;
-static const uint8_t A17 = 27;
+// pfodWeb NOTE: A17 (GPIO27) deliberately NOT declared - same GPIO as
+// the dedicated onboard LTE modem's LTE_WAKE pin above.
 static const uint8_t A18 = 25;
 static const uint8_t A19 = 26;
 
@@ -63,7 +64,7 @@ static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
 static const uint8_t T6 = 14;
-static const uint8_t T7 = 27;
+// pfodWeb NOTE: T7 (GPIO27) deliberately NOT declared - same as A17 above.
 static const uint8_t T8 = 33;
 static const uint8_t T9 = 32;
 

@@ -48,15 +48,15 @@
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
-// BHI260,PCF85063,AXP2101,DRV2605L share I2C Bus
-static const uint8_t SDA = 3;
-static const uint8_t SCL = 2;
-
-// Default sd cs pin
-static const uint8_t SS = SD_CS;
-static const uint8_t MOSI = 34;
-static const uint8_t MISO = 33;
-static const uint8_t SCK = 35;
+// pfodWeb NOTE: this is a fully-integrated smartwatch — SDA/SCL (GPIO2/3)
+// is an internal-only I2C bus shared by 4 built-in chips (BHI260 sensor
+// hub, PCF85063 RTC, AXP2101 PMU, DRV2605L haptic driver), not a general
+// expansion connector, so deliberately NOT declared as pins here.
+// SS/MOSI/MISO/SCK (GPIO21/33/34/35) are the SPI bus shared by the LoRa
+// radio and onboard microSD — also deliberately NOT declared. See this
+// board's own board.json chipGpios override for the full pin-exclusion
+// list (touch/display/GPS/audio/PMU control — everything on this device
+// except TX/RX/GPIO0/15/16).
 
 #define GPS_TX  (TX)
 #define GPS_RX  (RX)

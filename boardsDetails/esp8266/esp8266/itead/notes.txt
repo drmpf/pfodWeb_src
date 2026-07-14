@@ -1,0 +1,211 @@
+itead (ITEAD Sonoff) board variant — research notes
+Date: 2026-07-11
+
+Scope: variants/esp8266/esp8266/itead/ is the shared build.variant directory
+for ALL boards.txt "sonoff" submodels: sonoffBasic, sonoffS20, sonoffSV,
+sonoffTH (boards.txt lines ~3383-3403, sonoff.build.variant=itead).
+pins_arduino.h in this directory defines, unconditionally (outside any
+ARDUINO_ESP8266_SONOFF_* #if block):
+  static const uint8_t BUILTIN_BUTTON = 0;
+  static const uint8_t BUILTIN_RELAY  = 12;
+  #define BUTTON_BUILTIN (0)
+  #define LED_BUILTIN    (13)
+  #define RELAY_BUILTIN  (12)
+So GPIO0/12/13 assignments are common to every Sonoff model built from
+this one variant file; the per-model #if blocks only vary I2C SCL/SDA pin
+choices (GPIO4/5/14), which don't affect this task.
+
+URLs consulted and what each told me:
+
+1. https://templates.blakadder.com/sonoff_basic.html
+   (blakadder Tasmota device-template reference, widely used as the
+   community standard for Sonoff GPIO pinouts since ITEAD's own product
+   pages no longer document GPIO assignments in detail)
+   - Tasmota GPIO table: GPIO00 = "Button1", GPIO12 = "Relay1",
+     GPIO13 = "Led1i". The trailing "i" on "Led1i" is Tasmota's own
+     notation meaning the output is inverted/active-low.
+   - No ADC/analog pin listed among the header pins (3V3/Rx/Tx/GND only).
+
+2. https://tasmota.github.io/docs/devices/Sonoff-Basic/
+   (official Tasmota documentation for the device family)
+   - Confirms the same GPIO00=button / GPIO12=relay / GPIO13=LED
+     assignment holds across the Basic R1/R2/R3 hardware revisions.
+   - R2/R3 note: GPIO14 header pad replaced by GPIO02 on later revisions
+     (does not affect GPIO0/12/13, so not relevant to the tagged pins).
+   - No ADC/analog header pin mentioned for any revision.
+
+3. Web search "Sonoff Basic GPIO13 LED inverted" (multiple aggregated
+   sources: Tasmota GitHub issue discussion, community forum threads)
+   - Explains the Sonoff Basic's onboard LED is driven through a
+     transistor/MOSFET rather than a plain GPIO-through-resistor, which
+     is why Tasmota assigns the inverted "Led1i" template value instead
+     of the non-inverting "Led1" used on boards without a driver
+     transistor. This corroborates GPIO13 = active-low.
+
+4. Web search "Sonoff Basic ADC pin exposed teardown schematic no
+   analog" (aggregated: Let's Control It forum "sonoff wifi / analog
+   input" thread, NotEnoughTech Sonoff Basic R3 teardown, Tasmota GitHub
+   issue #1015)
+   - Consistent conclusion across sources: the ESP8266's TOUT/ADC (A0)
+     pin is NOT broken out to any header or pad on stock Sonoff Basic/
+     S20/SV/TH hardware. One thread describes soldering a wire directly
+     to the bare chip pin (under the RF-module footprint) as the only
+     way to access it — i.e. not a documented/intended board feature.
+   - Matches the product's purpose: these are mains-power relay
+     switches with no analog-sensing header, unlike sensor-oriented
+     boards (NodeMCU, D1 Mini) that expose A0 with a resistor divider.
+
+Considered but not tagged/changed:
+- GPIO2: default esp8266 pinNotes already flags it as "commonly wired to
+  the on-board LED on dev boards" (inherited generic chip-level note) —
+  left untouched since no source ties GPIO2 to any LED/button on the
+  Sonoff Basic/S20/SV/TH specifically (that generic note is about other
+  boards, e.g. NodeMCU); nothing on this board uses GPIO2 for status
+  indication per any consulted source.
+- GPIO4/5/14 (I2C SCL/SDA, board-model-dependent per the #if blocks in
+  pins_arduino.h) — not a button, LED, or relay on any submodel; left
+  as plain digital_input/digital_output/pwm_output, unchanged.
+- GPIO12 (relay): confirmed as RELAY_BUILTIN / Tasmota "Relay1" (no "i"
+  suffix, i.e. active-high, not inverted). Per this repo's established
+  policy, a relay is a plain on/off actuator and is the whole reason to
+  use this board with pfodWeb, so it is kept fully available
+  (digital_input/digital_output/pwm_output, unchanged from chip default)
+  and deliberately NOT tagged "button" or any "led_*" capability, since
+  it is neither.
+- GPIO1/GPIO3: confirmed as this board's hardware UART0 TX0/RX0 (used by
+  the Serial pfod connection) via the shared esp8266 chip-level default —
+  none of the tagged/considered pins (0, 12, 13) collide with these, so
+  no conflict with build_boards.js's hard TX/RX reservation.
+- ADC (A0 / GPIO17 synthetic slot): considered updating defaultRefVolts
+  to reflect an onboard divider (as done for NodeMCU/D1 Mini/ESPino
+  elsewhere in this repo), but ALL consulted sources agree the ADC pin
+  is not exposed on stock Sonoff Basic/S20/SV/TH hardware at all — there
+  is no header/pad to apply a reference voltage to, let alone a divider.
+  Left at the inherited chip-level default of 1.0V and documented this
+  explicitly in board.json rather than silently leaving it unexplained.
+
+Summary: Created variants/esp8266/esp8266/itead/board.json (none existed
+before) as a copy of the esp8266 chip-level default with GPIO0 tagged
+["digital_input","button"], GPIO13 tagged ["digital_output","pwm_output",
+"led_low"], and GPIO12 (relay) left untagged/available per policy; ADC
+left unchanged at 1.0V since this board does not expose the analog pin.
+
+================================================================
+Date: 2026-07-12
+Scope: dedicated-hardware pin-exclusion audit (later, more thorough pass
+than the button/LED/ADC pass above) — investigating a multi-product SCL/
+SDA ambiguity found in this variant's pins_arduino.h.
+
+Finding: pins_arduino.h declared "SCL" TWICE with different values, each
+gated by a different product macro:
+  - ARDUINO_ESP8266_SONOFF_SV: SCL = GPIO5
+  - ARDUINO_ESP8266_SONOFF_TH or ARDUINO_ESP8266_SONOFF_BASIC: SCL = GPIO14
+It also declared "SDA" once (GPIO4), gated by SV or TH only — not
+declared at all for BASIC.
+
+Root cause confirmed as GENUINE per-product hardware difference, not a
+vendor source bug: build_boards.js's parser (parseEsp32Consts in
+pfodWeb_src/build_boards.js) is comment-blind and #if-blind — it scans
+every `static const uint8_t NAME = value;` occurrence in the file in
+textual order and, for repeated names, the LAST occurrence overwrites
+earlier ones (this "last wins" behaviour is intentional elsewhere, e.g.
+for legacy-branch-in-#if / current-branch-in-#else patterns, but breaks
+down here because SV/TH/BASIC are not a legacy-vs-current pair, they are
+three coequal, still-sold products). Since the TH/BASIC block (GPIO14)
+appears textually after the SV block (GPIO5), consts.SCL resolved to 14
+for the single shared "itead" board entry, unconditionally, regardless
+of which physical product a Designer user actually has.
+
+This IS an active bug in the generated output (not just a documentation
+gap): build_boards.js's buildEsp32Board() unconditionally appends the
+"i2c_scl" capability to whichever GPIO equals consts.SCL (line ~699,
+`if (g === scl) caps.push('i2c_scl')`), and this executes regardless of
+whether board.json's chipGpios entry for that pin already exists. So the
+generated designer board data was silently tagging GPIO14 as SCL for
+every itead-based board — right for Sonoff TH/Basic, WRONG for Sonoff SV
+(whose real SCL is GPIO5, which received no I2C tag at all).
+
+Sources consulted to confirm the hardware difference is real (not a file
+bug) and get exact values:
+  - https://tasmota.github.io/docs/devices/Sonoff-SV/ and
+    https://templates.blakadder.com/sonoff_SV.html — Sonoff SV device docs.
+  - https://wiki.iteadstudio.com/Sonoff_SV — ITEAD's own wiki: Sonoff SV
+    breakout header pinout is 3V3/TX/RX/GND/GPIO4/GPIO5/GPIO14, i.e. SV
+    exposes GPIO4, GPIO5 AND GPIO14 all as generic breakout I/O pins (it
+    is "almost the same as Sonoff Basic R1, but ... has more usable GPIO
+    pins" and two extra status LEDs) — corroborating why the vendor core
+    chose GPIO5 as SV's default Wire SCL pin (it's simply one of the
+    header pins actually broken out).
+  - https://community.home-assistant.io/t/sonoff-sv-what-are-the-other-gpio-pins-for/205703
+    and search aggregate confirming "Sonoff SV has more usable GPIO pins
+    than the Sonoff Basic R1, including GPIO4, GPIO5, and GPIO14."
+  - https://templates.blakadder.com/sonoff_TH.html and
+    https://tasmota.github.io/docs/devices/Sonoff-TH/ — Sonoff TH's
+    2.5mm sensor jack is wired to GPIO14 (used for the DS18B20/AM2301
+    external sensor), explaining why TH's default Wire SCL pin is GPIO14
+    rather than GPIO5 — different header/jack hardware than SV.
+  - Search aggregate on ESP8266 default I2C pins: "By default, the I2C
+    library uses pin 4 as SDA and pin 5 as SCL" — confirms GPIO4/GPIO5 is
+    the ESP8266 Arduino core's stock default Wire pin pair, which is
+    exactly what the SV branch of this file uses unmodified; TH/Basic
+    override the default specifically because GPIO5 is not the pin they
+    want used (GPIO14's sensor jack takes priority on those products).
+  - https://github.com/arendst/Tasmota/issues/4418 ("No GPIO14 pad on
+    Sonoff Basic PCB") — confirms newer Sonoff Basic R2/R3 (ESP8285-based)
+    don't even break out GPIO14 to a physical pad at all; GPIO02 is used
+    instead on those revisions. This further confirms per-product/
+    per-revision divergence is a real, ongoing hardware fact for this
+    shared "itead" variant directory, not a one-off vendor typo.
+
+Conclusion: there is no single correct SCL (or SDA) value for the
+"itead" variant as a whole — it genuinely differs by physical product,
+and the shared board.json/pins_arduino.h pair for "itead" has no way to
+know which of the three products a given Designer user has. Following
+the same established policy already applied elsewhere this session
+(variants/esp8266/esp8266/espino/pins_arduino.h) for this exact class of
+problem, both SDA and SCL were changed in pins_arduino.h to the
+unresolvable sentinel value -1 (`static const uint8_t SDA = -1;` /
+`static const uint8_t SCL = -1;`), replacing the four conditional
+#if blocks entirely (deleted, not commented out). The parser's numeric-
+literal regex only matches `\d+` (no minus sign), so a "-1" assignment
+simply fails to parse and consts.SDA/consts.SCL are left undefined —
+no i2c_sda/i2c_scl capability gets auto-appended to any GPIO for this
+board at all, which is the safe/neutral outcome given three different,
+still-current products share this one entry.
+
+Critical check performed: does GPIO14 (the value the parser was
+wrongly resolving SCL to) collide with any of the already-tagged
+GPIO0(button)/GPIO12(relay)/GPIO13(LED) pins? No — GPIO14 is a distinct
+GPIO number from all three, so there was no direct same-pin capability
+collision. The bug was a wrong-value mislabeling of GPIO14 itself (and a
+missing label on SV's real GPIO5), not a collision with the tagged
+button/relay/LED pins. GPIO0/12/13 were independently re-checked in this
+pass and confirmed still declared unconditionally (outside any
+ARDUINO_ESP8266_SONOFF_* #if block) in pins_arduino.h, so they remain
+correct and unaffected by the SCL/SDA fix and by this whole multi-
+product ambiguity.
+
+Files changed this pass:
+  - variants/esp8266/esp8266/itead/pins_arduino.h — replaced the two
+    conditional SCL blocks and the one conditional SDA block with a
+    single unconditional SDA=-1 / SCL=-1 pair (with explanatory comment
+    that avoids writing any parseable "static const uint8_t NAME =
+    value;" shape, per this repo's comment-blind-parser precaution).
+  - variants/esp8266/esp8266/itead/board.json — appended a "DEDICATED-
+    HARDWARE SWEEP" paragraph to the existing pfodWeb NOTE block
+    documenting this fix and its reasoning; no chipGpios/pinNotes
+    entries needed changing since none of them referenced i2c_sda/
+    i2c_scl in the first place (that capability was being added purely
+    by the parser at build time from the now-fixed pins_arduino.h
+    aliases).
+
+One-line summary: itead's pins_arduino.h declared two genuinely
+different, still-current-product SCL values (Sonoff SV=GPIO5 vs Sonoff
+TH/Basic=GPIO14) plus a SV/TH-only SDA=GPIO4, which the ifdef-blind
+parser was resolving to GPIO14-as-SCL for every product (an active,
+confirmed mislabeling bug affecting SV in particular); fixed by setting
+SDA/SCL to the unresolvable -1 sentinel in pins_arduino.h so no
+i2c_sda/i2c_scl capability is auto-attached to any pin on this shared,
+multi-product board entry — GPIO0/12/13 button/relay/LED tags were
+re-confirmed unconditional and unaffected, with no collision against
+GPIO14.

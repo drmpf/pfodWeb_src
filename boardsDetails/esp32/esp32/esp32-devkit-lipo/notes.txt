@@ -1,0 +1,145 @@
+Board: esp32-devkit-lipo (chip: esp32)
+Directory: variants/esp32/esp32/esp32-devkit-lipo/
+Audit date: 2026-07-12
+Task: dedicated-hardware pin-exclusion audit, flagged for TX1/RX1/TX2/RX2
+      (GPIO33/25/19/18) declared in pins_arduino.h with "Ext1 pin 8/9" /
+      "Ext2 pin 9" comments.
+
+SOURCES CONSULTED
+-----------------
+1. https://github.com/OLIMEX/ESP32-DevKit-LiPo
+   Confirms this is Olimex's ESP32-DevKit-LiPo OSHW board (KiCAD source,
+   pin-to-pin compatible with Espressif ESP32-DevKitC, plus LiPo charger).
+
+2. https://raw.githubusercontent.com/OLIMEX/ESP32-DevKit-LiPo/master/DOCS/ESP32-DevKit-LiPo-user-manual.pdf
+   Official User's Manual, rev 1.0, Dec 2024. Most useful single source.
+   - p.3: feature list - ESP32-WROOM-32E module, Reset button, micro-USB,
+     built-in LiPo charger + connector, "Battery measurement and external
+     power sense circuits", two GPIO header columns.
+   - p.4: three hardware variants exist - ESP32-DevKit-LiPo (WROOM, no
+     PSRAM - this is the one matching our pins_arduino.h, which has no
+     PSRAM-related GPIO16/17 exclusions), ESP32-DevKit-LiPo-EA (external
+     antenna), ESP32-WROVER-DevKit-LiPo (WROVER + PSRAM, separate variant
+     not present in our tree).
+   - p.6: board-layout photo explicitly labels the two full-length GPIO
+     pin header columns "EXT1" (left) and "EXT2" (right) - this is a
+     direct match/confirmation for the "Ext1 pin 8"/"Ext2 pin 9" comments
+     in pins_arduino.h. Also shows "Reset button RST1" and "Battery
+     charger LED" as fixed, non-GPIO board features.
+   - p.8 (section 5, pinout description): "The board has battery power
+     sense and battery power measurement optional feature, that can be
+     enabled by modifying the state of jumpers BAT_PWR_E1, PWR_SENS_E1,
+     and BAT_SENS_E1. Close them (solder the pads together) to enable
+     both functions, on pins GPI35 and GPI39." -> confirms these two
+     pins carry an OPTIONAL, OFF-BY-DEFAULT sense function (solder-jumper
+     gated), not a fixed dedicated wiring.
+   - p.9 (section 7.2.2): Arduino board-manager entry name is literally
+     "OLIMEX ESP32-DevKit-LiPo" - ties this board directly to the
+     "esp32-devkitlipo" boards.txt id whose build.variant= is
+     "esp32-devkit-lipo" (our target directory).
+
+3. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32-devkit-lipo/pins_arduino.h
+   Confirmed our local pins_arduino.h is byte-identical to the current
+   upstream Espressif Arduino-ESP32 core file for this exact variant id.
+   No staleness found.
+
+4. https://raw.githubusercontent.com/espressif/arduino-esp32/master/boards.txt
+   (via the local copy at variants/esp32/boards.txt, grepped directly)
+   esp32-devkitlipo.name=OLIMEX ESP32-DevKit-LiPo
+   esp32-devkitlipo.build.variant=esp32-devkit-lipo
+   esp32-devkitlipo.build.board=ESP32_DEVKIT_LIPO
+   No PSRAM by default (menu.PSRAM.disabled = "Disabled (WROOM)" is the
+   default option) - consistent with the WROOM (non-WROVER) manual variant.
+
+5. https://www.olimex.com/Products/IoT/ESP32/ESP32-DevKit-LiPo/resources/ESP32-WROVER-DevKit-Lipo-GPIOs.pdf
+   DEAD END for pin-mapping purposes on this exact variant - this PDF
+   documents the *WROVER* sibling board's full pinout diagram, which is a
+   different physical board/variant than our plain WROOM
+   "esp32-devkit-lipo". It shows standard 2-row header pin numbering (no
+   "EXT1"/"EXT2" labels), and interestingly cites GPI34 (not GPI35) for
+   BAT_SENS_E1 - a different pin than the plain-WROOM manual's GPI35.
+   Not used as evidence for this board; the board's own official user
+   manual (source 2) was trusted instead since it's the correct product.
+
+6. https://www.espboards.dev/esp32/esp32-devkitlipo/
+   Low-confidence aggregator claiming "GPIO2 connected to built-in LED
+   with 220-ohm resistor" - NOT corroborated by the official Olimex
+   manual (which shows no software-controllable LED, only a
+   charger-status LED wired to the charge IC) or by pins_arduino.h (no
+   LED_BUILTIN or similar alias present). Treated as unreliable /
+   likely confused with a different generic "ESP32 DevKit" clone board
+   that this aggregator site also covers; NOT acted on.
+
+7. https://thepihut.com/products/olimex-esp32-devkit-lipo-esp32-development-board
+   Retailer listing mentions a "User button" - also not corroborated by
+   the official manual (which only documents a Reset button, RST1, wired
+   to hard-reset via EN). Likely retailer copy imprecision (reset button
+   described loosely as "user button" since it's user-accessible). Not
+   acted on - no GPIO number for any such button was found anywhere.
+
+FINDINGS AND DECISIONS
+-----------------------
+TX1=33, RX1=25, TX2=19, RX2=18 ("Ext1 pin 8/9", "Ext2 pin 8/9"):
+  KEEP (general purpose). Confirmed general-purpose GPIO header pins
+  broken out on the board's own EXT1/EXT2 pin columns, matching the
+  manual's board-layout photo. The TX1/RX1/TX2/RX2 #defines are just a
+  naming convenience for wiring an external UART device to those header
+  pins via Serial1/Serial2 - not a sign of fixed onboard hardware. No
+  onboard consumer (radio module, SD card, display) was found anywhere
+  in the sourced documentation. chipGpios entries for 18/19/25/33 left
+  unchanged from the chip-level default.
+
+GPIO18/19 also alias SCK/MISO (static const SCK=18, MISO=19 already
+present in pins_arduino.h - default VSPI bus pins):
+  Checked per the new "hidden bus alias" parser-collision instruction -
+  build_boards.js unconditionally appends spi_sck/spi_miso capabilities
+  for whatever GPIO equals the SCK/MISO consts, regardless of chipGpios.
+  Since no exclusion was applied to GPIO18/19 (both stay KEPT as general
+  GPIOs), this collision is a non-issue here - there's nothing to
+  "silently contaminate" since we never intended to exclude these pins.
+  Confirmed no onboard SPI device (SD card, display, radio) exists on
+  this board that these default VSPI pins would need protecting from
+  user reassignment for - they're just the chip's usual default VSPI
+  pin choice, unused by any onboard peripheral.
+
+Reset button (RST1): NOT a GPIO - hard-resets the module via EN. No
+  button capability tag applies (section 7a n/a, not a pin at all).
+
+Battery-charger LED ("CHARGING" silkscreen): driven directly by the
+  charger IC's own status output pin, not by a chip GPIO. No
+  LED_BUILTIN or equivalent alias exists in pins_arduino.h. No LED
+  capability tag applies (section 7a n/a).
+
+GPIO35 (BAT_SENS_E1) / GPIO39 (PWR_SENS_E1) - optional battery-voltage
+  and external-power-present sense circuits:
+  KEEP as plain analog-input-only GPIOs (matches playbook policy for
+  battery/voltage-monitor analog pins - these are exactly the kind of
+  reading pfodWeb's own UI is meant to display). NOT excluded because
+  the manual explicitly states the sense function only activates if the
+  user solders the corresponding jumper pad closed - it is OFF by
+  default, so out-of-the-box these are ordinary ADC-only GPIOs (already
+  correctly restricted to analog_input/digital_input only via the
+  chip-level inputOnlyGpios list, since they're in the 34-39 input-only
+  range). Added two informational-only pinNotes entries (no capability
+  change) documenting the optional jumper-gated sense function, citing
+  the manual. Exact jumper-to-pin mapping (BAT_SENS_E1 -> GPIO35 vs
+  PWR_SENS_E1 -> GPIO39) is inferred from context (battery pin numbered
+  lower than power-present pin, consistent with the WROVER sibling
+  PDF's PWR_SENS_E1->GPI39 mapping) since the plain-WROOM manual states
+  both pins together ("...on pins GPI35 and GPI39") without an explicit
+  per-jumper table - flagged as an inference, not a directly-quoted fact,
+  in case a future reviewer finds a source that states it more
+  precisely.
+
+SUMMARY
+-------
+No pin exclusions were warranted on this board. TX1/RX1/TX2/RX2 are
+confirmed general-purpose EXT1/EXT2 header pins, not dedicated onboard
+hardware. Created board.json (full copy of the esp32/esp32 chip-level
+default, chipGpios unchanged) solely to add two informational pinNotes
+entries for the optional, off-by-default battery/power-sense pins
+(GPIO35/GPIO39) plus a `// pfodWeb NOTE:` research-trail comment citing
+the sources above. No onboard button or LED GPIO was found, so section
+7a (button/LED capability tagging) is not applicable to this board.
+pins_arduino.h was left unmodified (no exclusion needed, so nothing to
+delete).

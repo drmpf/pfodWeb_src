@@ -12,14 +12,16 @@ static const uint8_t RXD2 = 16;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 5;
-static const uint8_t MOSI = 23;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 18;
-
-static const uint8_t G23 = 23;
-static const uint8_t G19 = 19;
-static const uint8_t G18 = 18;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard TFT (ILI9342C) + microSD shared SPI bus (confirmed via the
+// official M5Stack Arduino library's Config.h: MOSI=23/MISO=19/CLK=18
+// exactly match). The display is typically always active whenever the
+// M5Stack library runs, so this bus isn't safely shareable the way an
+// optional peripheral's bus would be (see board.json chipGpios
+// override, which also excludes CS/DC/RST/backlight/SD-CS pins that
+// aren't even declared in this file). SDA/SCL (GPIO21/22) stay kept -
+// confirmed via M5Stack docs as genuinely shared with the external
+// Grove Port A connector, not internal-only.
 static const uint8_t G3 = 3;
 static const uint8_t G16 = 16;
 static const uint8_t G21 = 21;
@@ -33,7 +35,6 @@ static const uint8_t G26 = 26;
 static const uint8_t G1 = 1;
 static const uint8_t G17 = 17;
 static const uint8_t G22 = 22;
-static const uint8_t G5 = 5;
 static const uint8_t G13 = 13;
 static const uint8_t G0 = 0;
 static const uint8_t G34 = 34;

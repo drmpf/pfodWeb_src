@@ -66,8 +66,8 @@ static const uint8_t RGB_DATA = 40;
 #define RGB_BUILTIN    (RGB_DATA + SOC_GPIO_PIN_COUNT)
 #define RGB_BRIGHTNESS 64
 
-static const uint8_t RGB_PWR = 39;
-static const uint8_t LDO2 = 39;
+// pfodWeb NOTE: RGB_PWR/LDO2 (GPIO39) deliberately NOT declared -
+// internal power-control line, not general-purpose.
 static const uint8_t LED = 13;
 
 #endif /* Pins_Arduino_h */

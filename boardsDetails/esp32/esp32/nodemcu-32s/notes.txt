@@ -1,0 +1,171 @@
+nodemcu-32s board research notes
+=================================
+
+UPDATE (this session): supersedes the "NOTHING was tagged" conclusion
+recorded below from a prior audit pass. This session's task explicitly
+directs applying this project's established GPIO0 BOOT-button tagging
+policy (see "Final determination" section at the end) - the prior pass's
+policy call to leave GPIO0 untagged is now understood to be an outlier
+inconsistent with the majority precedent already set elsewhere in this
+repo (see espino32 and ioxesp32 board.json, both of which tag a paired
+BOOT+EN GPIO0 pushbutton as "button"). GPIO2/LED_BUILTIN remains untagged
+per the reasoning below (unchanged - no reliable onboard-LED evidence).
+
+pins_arduino.h (for reference only, NOT used as confirming evidence per task rules):
+  LED_BUILTIN = 2
+  KEY_BUILTIN = 0
+  TX = 1, RX = 3
+  SDA = 21, SCL = 22, SS = 5, MOSI = 23, MISO = 19, SCK = 18
+  (GPIO0 is not aliased to any of SDA/SCL/SS/MOSI/MISO/SCK/TX/RX in this
+  file - checked explicitly this session per the alias-contamination rule
+  in build_boards.js, which unconditionally appends bus capabilities
+  [serial_tx/rx, spi_ss/mosi/miso/sck, i2c_sda/scl] to whichever GPIO each
+  of those aliases points at, independent of chipGpios in board.json. No
+  such alias touches GPIO0 here, so no line needed deleting from
+  pins_arduino.h and no bus-capability contamination applies to the
+  GPIO0 button tag.)
+
+Sources consulted
+------------------
+1. https://www.waveshare.com/w/upload/4/46/Nodemcu-esp-c3-32s-kit-schematics.pdf
+   Downloaded and read directly (PDF). This is an official Ai-Thinker schematic
+   ("NodeMCU-32", V1.3, 2020/1/7, www.ai-thinker.com) for the ESP-32S-module
+   breakout board sold under the NodeMCU-32/NodeMCU-32S family name. It is the
+   strongest primary source found. Findings:
+     - "KEY" block: two push buttons - S1 on EN/CHIP_PU (reset) and S2 on IO0,
+       each with its own pull-up resistor to VDD3V3 and switch to GND. This is
+       the classic paired EN-reset + BOOT/flash-mode button pair, wired
+       directly to the module's real GPIO0 pin (module pin 25) - i.e. the
+       KEY_BUILTIN=0 alias corresponds to this BOOT button. S2 is a genuine
+       physical pushbutton wired to GPIO0.
+     - No LED is shown connected to GPIO2 (module pin 24) anywhere in the
+       schematic. GPIO2 is only broken out to a header pin.
+     - The schematic does show LED footprints: LED3 (RGB5050) wired to the
+       header's "IO3/IO4/IO5" alias pins, and LED4/LED5 wired to "IO18/IO19".
+       However this sheet appears to be a shared/kit reference schematic with
+       multiple optional footprints (several components, e.g. VT1/VT2/R1/R2,
+       are explicitly marked NC/not-populated), and no independent product
+       documentation for "NodeMCU-32S" mentions an onboard RGB or status LED,
+       nor gives GPIO numbers for one. The "IOx" labels used near these LEDs
+       are ambiguous - on this sheet "IO0"-"IO10" are used elsewhere as
+       sequential header-alias labels for the ADC-capable pins (not equal to
+       real GPIO numbers), so IO3/IO4/IO5 there do NOT reliably mean real
+       GPIO3/4/5. Not enough certainty to identify real GPIO numbers or
+       confirm these LEDs are even populated on the shipped board.
+
+2. https://www.espboards.dev/esp32/nodemcu-32s/
+   Fetched and inspected raw HTML directly (not just the summarized result)
+   to confirm the text was genuinely present on the page (it was, not a tool
+   hallucination). The page's pin table has a row: LED_BUILTIN | GPIO2 |
+   output | "On-board user LED (active-LOW)". This is a secondary
+   aggregator/SEO database site, not primary vendor documentation, and its
+   claim directly CONTRADICTS finding #1 (the real Ai-Thinker schematic shows
+   no LED wired to GPIO2 at all). Because this page's claim cannot be
+   reconciled with the authoritative schematic, and given no other source
+   corroborates a GPIO2 LED with a GPIO number, this claim was NOT trusted.
+   The same page's narrative text also mentions "the board comes with an EN
+   (reset) button and a BOOT (IO0) button" - consistent with finding #1's KEY
+   block, confirming GPIO0 is a real, physically-wired BOOT pushbutton.
+
+3. https://www.waveshare.com/wiki/NodeMCU-32S
+   Product wiki intro line: "NodeMCU-32S ESP32 Development Board, WiFi /
+   Bluetooth / UART / Keys / Extension Headers". Only links out to
+   Ai-Thinker docs and USB drivers; no LED/button GPIO detail given directly.
+   Confirms the board has "Keys" (plural - EN + BOOT) but no LED mention.
+
+4. https://mischianti.org/esp32-nodemcu-32s-esp-32s-kit-high-resolution-pinout-datasheet-and-specs/
+   Fetched raw HTML and searched for LED/GPIO0/GPIO2/button mentions - none
+   found. Page only gives generic ESP32 chip specs and links to datasheet
+   PDFs; no board-specific onboard-LED or button GPIO details.
+
+5. https://wiki.geekworm.com/NodeMCU-32S
+   No onboard LED/button/GPIO detail found (per WebFetch summary of the page).
+
+6. https://docs.ai-thinker.com/en/esp32/boards/nodemcu_32s and
+   https://docs.ai-thinker.com/_media/esp32/docs/nodemcu-32s_product_specification.pdf
+   Both attempted (curl + WebFetch). The docs.ai-thinker.com site is a
+   JS-rendered SPA (VitePress) that returns only an empty shell to a plain
+   HTTP fetch/no-JS tool - could not retrieve actual content. Not used as
+   evidence either way.
+
+7. https://docs.cirkitdesigner.com/component/27089ba2-3690-c710-1af3-78df558fde63/nodemcu-32s
+   Explicitly states no onboard LED/button is documented; example code shows
+   connecting an EXTERNAL LED to GPIO2, implying no onboard LED on this
+   board per this source.
+
+8. https://es.scribd.com/document/869562230/NodeMCU-32S-V1-1
+   Fetched; only page layout/metadata retrievable, no usable schematic detail
+   extracted, not used as evidence.
+
+9. (this session) WebSearch "NodeMCU-32S ESP32 board BOOT button GPIO0 EN
+   reset button schematic" - confirmed general convention: "The NodeMCU-32S
+   board comes with an EN (reset) button and a BOOT (IO0) button ... The BOOT
+   button is connected to GPIO0, which pulls GPIO0 low when pressed."
+   Corroborates findings #1 and #2. Also surfaced
+   https://docs.espressif.com/projects/esptool/en/latest/esp32/advanced-topics/boot-mode-selection.html
+   (Espressif's own esptool docs), confirming GPIO0-pulled-LOW-by-button is
+   the standard, universal ESP32 BOOT/flash-mode-select mechanism.
+
+10. (this session) Reviewed sibling boards' board.json/notes.txt as
+    project-convention precedent:
+    C:/ai/aicode/pfodWeb/variants/esp32/esp32/espino32/board.json - GPIO0
+      tagged "button" ("ESP32 program/BOOT buttons are universally wired to
+      GPIO0, active-low, per Espressif's esptool boot-mode-selection docs").
+    C:/ai/aicode/pfodWeb/variants/esp32/esp32/ioxesp32/board.json - GPIO0
+      tagged "button" from a vendor schematic showing the identical paired
+      BOOT(IO0)+EN(reset) switch topology found in finding #1 above for
+      nodemcu-32s.
+    These establish that in this project a GPIO0 BOOT pushbutton IS tagged
+    "button" even when paired with a separate EN/reset button - the earlier
+    node32s precedent (GPIO0 left untagged for the same paired-switch
+    reasoning) is the outlier, not the norm.
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO2 (LED_BUILTIN alias): NOT tagged. The pins_arduino.h alias name alone
+  is explicitly disallowed as evidence per task rules. The one source
+  claiming an onboard LED here (espboards.dev, source #2) is a secondary
+  aggregator and its claim conflicts with the authoritative Ai-Thinker
+  schematic (source #1), which shows no LED connected to GPIO2 at all - only
+  a bare header breakout. Given the primary schematic evidence contradicts
+  the LED claim, and no other source corroborates a specific GPIO for an
+  onboard LED, this was deliberately NOT tagged (no guess made either way -
+  the schematic evidence, if anything, points to "no LED" rather than
+  "uncertain polarity").
+
+- GPIO3/GPIO4/GPIO5 and GPIO18/GPIO19 (possible RGB/status LED footprints
+  seen in schematic source #1, block "LED" and "LED3 RGB5050"): NOT
+  considered as real tagging candidates. The "IOx" labels used near these
+  components on that schematic sheet are ambiguous/overloaded (used
+  elsewhere on the same sheet as non-GPIO sequential header aliases), several
+  nearby components are marked NC (not populated), and no independent
+  product page for "NodeMCU-32S" mentions an RGB or status LED at all. This
+  is a case of genuinely insufficient evidence - no guess was made.
+
+Final determination (this session)
+------------------------------------
+GPIO0 (KEY_BUILTIN): KEEP, tagged exactly ["digital_input","button"].
+Confirmed via the official Ai-Thinker schematic (source #1) and generic
+ESP32 BOOT-button convention (sources #2, #9) that GPIO0 carries a genuine
+onboard pushbutton (S2), paired with a separate EN/reset button (S1). Per
+this project's established convention (source #10 - espino32, ioxesp32),
+a paired BOOT+EN GPIO0 pushbutton IS tagged "button" here.
+Checked for alias contamination: GPIO0 is not assigned to SDA/SCL/SS/MOSI/
+MISO/SCK/TX/RX anywhere in this board's pins_arduino.h (those all sit on
+different GPIO numbers), so build_boards.js's unconditional bus-capability
+append does not affect GPIO0 - the ["digital_input","button"] capability
+list stays clean.
+GPIO2 (LED_BUILTIN): left untagged, unchanged from the prior pass - see
+"Pins considered but NOT tagged" above.
+
+Summary
+-------
+board.json created at
+C:/ai/aicode/pfodWeb/variants/esp32/esp32/nodemcu-32s/board.json (no prior
+board.json existed) as a full copy of the chip-level default board.json
+with GPIO0 -> ["digital_input","button"], plus a NOTE comment citing the
+Ai-Thinker schematic, Espressif esptool docs, and the espino32/ioxesp32
+in-repo precedent. GPIO2 (LED_BUILTIN) intentionally left untagged - no
+reliable board-specific LED evidence found. No pins_arduino.h alias lines
+required deletion (no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias touches GPIO0
+on this board).

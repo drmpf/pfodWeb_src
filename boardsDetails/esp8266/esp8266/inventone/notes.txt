@@ -1,0 +1,244 @@
+Invent One - research notes
+Board directory: variants/esp8266/esp8266/inventone/
+Board identity: "Invent One" by inventone.ng (Nigeria, "InventTech"/IOLab) - an
+Arduino-compatible ESP8266 dev board built around Ai-Thinker's ESP-12F module,
+80MHz/3.3V logic, CH340G USB-UART bridge, "nodemcu" reset method. Added to the
+esp8266/Arduino core in 2018 via a vendor-submitted PR. Vendor's own website
+and blog are very thin (mostly beginner breadboard tutorials, no schematic PDF
+or pinout diagram was ever published) and the project appears abandoned per a
+2019 GitHub comment from a third party ("it seems that Invent One project is
+down... no boards can be seen"), confirmed by inventone.ng's near-empty
+homepage.
+
+URLs consulted:
+
+1. https://github.com/esp8266/Arduino/pull/5286 (original vendor PR that added
+   this board, "support new board (invent one)", opened/merged 2018-10-28 by
+   github user inventvictor)
+   - PR description just linked https://inventone.ng and https://blog.inventone.ng,
+     no hardware detail beyond that.
+   - Fetched the raw diff (patch-diff.githubusercontent.com/.../5286.diff).
+     This is the PRIMARY SOURCE for the board's original vendor-authored
+     pins_arduino.h and boards.txt/doc/boards.rst text:
+     - doc/boards.rst addition: "The Invent One is an Arduino-compatible
+       Wi-Fi development board powered by Ai-Thinker's ESP-12F, clocked at
+       80 MHz at 3.3V logic. It has an onboard ADC (PCF8591) so that you can
+       have multiple analog inputs to work with."
+     - The vendor's ORIGINAL pins_arduino.h (variants/inventone/pins_arduino.h
+       in the diff) declared:
+         static const uint8_t A0 = 0;
+         /*Analog pins for Onboard ADC*/
+         static const uint8_t A1 = 1;
+         static const uint8_t A2 = 2;
+         static const uint8_t A3 = 3;
+         static const uint8_t A4 = 4;
+       i.e. A0..A4 = GPIO0..GPIO4 (== D2, TX, D4/LED_BUILTIN, D6, D5 in this
+       board's own D-numbering) - these are PCF8591 I2C ADC channel indices
+       (0-4), NOT ESP8266 GPIO numbers, and NOT the chip's native analog pin
+       (which is a dedicated, non-GPIO pin - GPIO17/A0 in this repo's
+       chipGpios numbering). This is a PRIMARY-SOURCE CONFIRMATION of the
+       PCF8591-external-ADC claim noted by the earlier pin-exclusion audit
+       (which had only a secondary/community source) - directly from the
+       vendor's own submitted file, corroborated by the doc/boards.rst text
+       above.
+   - PR comment thread (fetched via GitHub API, all comments read) covered
+     only the reset-button/CH340G upload workflow (needing a manual press of
+     the physical RESET button before each upload when not using the
+     "nodemcu" two-transistor auto-reset circuit) and the project's apparent
+     abandonment - no mention of any GPIO-mapped user button or onboard LED
+     beyond the LED_BUILTIN=2 alias already in the file.
+
+2. https://www.espboards.dev/esp8266/inventone/ - aggregator page. Reported
+   LED_BUILTIN on pin 2 and "analog-capable" pins 0-4, but this is derived
+   directly from the same pins_arduino.h file (auto-generated aggregator, not
+   independent vendor documentation) - per project rule, NOT relied on to
+   confirm a physical onboard LED.
+
+3. https://docs.platformio.org/en/latest/boards/espressif8266/inventone.html -
+   PlatformIO board-DB page. Only hardware specs (flash/RAM/MCU), no
+   button/LED/ADC circuit detail. Linked back to inventone.ng.
+
+4. https://inventone.ng and https://blog.inventone.ng - vendor site. Current
+   live homepage (fetched) is a near-empty single-page app with no technical
+   content. Used Wayback Machine (web.archive.org) to retrieve historical
+   snapshots instead (WebFetch tool blocks archive.org directly, so raw HTML
+   was downloaded via curl and grepped/read locally):
+   - Archived 2018-11-18 homepage (web.archive.org/web/20181118071558) - only
+     marketing copy ("Invent One is a platform for prototyping IoT enabled
+     devices"), no pinout/schematic/hardware section.
+   - Archived blog post "Button Controlled LED"
+     (web.archive.org/web/20190723195841/https://blog.inventone.ng/button-controlled-led):
+     a breadboard tutorial wiring an EXTERNAL push button + external LED to
+     GPIO13/GPIO12 (D7/D8) via a breadboard, with its own circuit diagram
+     image. This is a user-wired EXTERNAL button/LED project, not an onboard
+     component - does not confirm any onboard button or LED.
+   - Archived blog post "How to set up Invent One with Arduino Software"
+     (web.archive.org/web/20190723203346/.../how-to-set-up-invent-one-with-arduino-software):
+     walks through installing the ESP8266 board package and running the
+     stock ESP8266 "Blink" example sketch (which uses LED_BUILTIN). Also
+     notes that if you pick "ck" reset mode instead of "nodemcu", you must
+     manually ground D2 (=GPIO0), press the physical RESET button, then
+     release D2 before uploading - confirms a physical RESET button exists,
+     but that ties to the chip's RST pin, not a GPIO, so it is not
+     tag-able and is not evidence of a separate "user/flash" button on a
+     GPIO. Running "Blink" successfully is suggestive but not conclusive
+     photographic/schematic proof that GPIO2 drives a physical onboard LED
+     (vs. LED_BUILTIN just being copy-pasted as a placeholder alias, as
+     happens on several other thin vendor board files in this repo) -
+     Wayback CDX index of blog.inventone.ng (200+ URLs) was searched for a
+     dedicated "pinout"/"schematic"/"hardware"/"spec" page; none exists.
+   - No schematic, board photo with silkscreen labels, or datasheet PDF was
+     ever found published by this vendor, on the live site, in the Wayback
+     history, or linked from the GitHub PR.
+
+Considered but not tagged/changed:
+- GPIO2 (LED_BUILTIN alias) - no independent vendor schematic/photo found
+  confirming a physical onboard LED at this pin; alias name alone is
+  explicitly disallowed as evidence per project rules. NOT tagged.
+- GPIO0 (D2) - only documented role found is the "ck" reset-mode flash-mode
+  workaround (ground D2, press RESET, release D2), which is standard
+  ESP8266 boot-strapping behavior already captured generically in the
+  chip-level board.json's pinNotes, not evidence of a dedicated
+  GPIO-mapped user/flash pushbutton on this specific board. NOT tagged.
+- No onboard RGB/NeoPixel LED evidence found either.
+- GPIO17/native A0 (this repo's synthetic "A0" ADC slot) - considered
+  whether this board's analog input maps here, but the vendor's own
+  original pins_arduino.h (see PR diff above) never declares any alias for
+  GPIO17/native-A0 at all - it only declares A0-A4 as PCF8591 channel
+  indices on GPIO0-4. So this board's analog input is fully routed through
+  the external PCF8591 chip; the native ESP8266 ADC pin is simply unused/
+  unexposed by this vendor's pin file. No resistor-divider on the native
+  ADC pin could exist to document, because the native ADC pin isn't wired
+  out on this board's silkscreen/header at all (per the only primary source
+  available). Current repo's pins_arduino.h (from an earlier session)
+  already correctly omits PIN_A0/A1-A4 declarations with a NOTE explaining
+  this, and that NOTE is now corroborated by a primary source (the vendor's
+  original file + doc/boards.rst PCF8591 text) rather than just a secondary
+  one. Left as-is; did not feel a NOTE update was needed since the existing
+  wording already independently reaches the same correct conclusion.
+- No board.json exists for this board and none was created, since no target
+  GPIO's capabilities needed to change on either Part A or Part B - per the
+  task instructions a board.json is only created when there is a GPIO to
+  modify.
+
+PART A SUMMARY: NO CHANGE. No real vendor schematic, board photo, or
+datasheet was found (live site is nearly content-free and the project is
+reportedly abandoned; Wayback history was searched exhaustively). The
+LED_BUILTIN=2 alias in pins_arduino.h is the only "evidence" available and
+per project rules that alone is not sufficient to tag a physical LED. No
+onboard button (beyond the physical RESET button, which isn't a taggable
+GPIO) was documented anywhere. board.json left uncreated (chip-level default
+still applies).
+
+PART B SUMMARY: NO CHANGE, ADC stays at the inherited chip-level default
+(1.0V). Primary-source confirmation obtained (vendor's original PR diff +
+doc/boards.rst) that this board's analog input capability is provided
+entirely by an external I2C PCF8591 ADC chip (channels 0-4 mapped onto
+GPIO0-4), not by the ESP8266's own native ADC pin - the native ADC pin is not
+even broken out/aliased in this vendor's pins_arduino.h, so there is no
+native-ADC divider to discover or document. This confirms (with a primary
+rather than secondary source) the conclusion an earlier session had already
+encoded into this board's pins_arduino.h comment.
+
+---
+
+[2026-07-12] Dedicated-hardware pin-exclusion audit (full section 1-6 sweep,
+distinct from the earlier button/LED/ADC-divider pass above)
+
+Trigger: this board surfaced in a fresh discovery sweep only for the
+ordinary D0-D9 Wemos-style numbering aliases and RX=3 - flagged for
+confirmation that nothing beyond the already-documented external PCF8591
+was missed, since the two passes above were scoped to button/LED/ADC only,
+not a full "which GPIOs are dedicated to onboard hardware" sweep.
+
+Sources consulted (in addition to the ones already listed above, which were
+re-used rather than re-fetched where still valid):
+- Re-fetched https://patch-diff.githubusercontent.com/raw/esp8266/Arduino/pull/5286.diff
+  (same primary-source PR already identified in the earlier pass) and asked
+  specifically whether any file in the diff (boards.txt, doc/boards.rst,
+  package_esp8266com_index.template.json, tools/boards.txt.py,
+  variants/inventone/pins_arduino.h) mentions any onboard peripheral other
+  than the PCF8591 - SD card, display/OLED/LCD, relay, or any other chip.
+  Result: only the PCF8591 ADC is mentioned anywhere in the diff; no SD
+  card, display, relay, or other onboard chip is referenced in any of the
+  five changed files. No new dedicated-hardware peripheral found.
+- Read the current repo pins_arduino.h in full (61 lines). Contents:
+  PIN_WIRE_SDA=2/PIN_WIRE_SCL=14 (-> SDA=2, SCL=14), LED_BUILTIN=2,
+  D1-D9 Wemos-style aliases (D1=15,D2=0,D3=14,D4=2,D5=5,D6=4,D7=13,D8=12,
+  D9=16), RX=3, TX=1, and the existing pfodWeb NOTE (lines 49-56)
+  explaining why PIN_A0/A1-A4 are deliberately NOT declared. No other
+  declarations present.
+- Checked the chip-level chipGpios default
+  (variants/esp8266/esp8266/board.json): GPIO0,2,4,5,12,13,14,15 all carry
+  only {digital_input, digital_output, pwm_output}; GPIO1/3 are forced to
+  serial_tx/serial_rx; GPIO16 is digital-only (no PWM); GPIO17 (the
+  synthetic native-A0 slot) is the only chipGpios entry with
+  analog_input. No board.json override exists for inventone (confirmed via
+  Glob - none found), so this chip-level default applies unmodified.
+- Verified the A0-A4 "PCF8591 channel index" question (task step 3) against
+  build_boards.js (pfodWeb_src/build_boards.js) directly, not just by
+  re-reading the existing NOTE: A0-A4 are NOT declared anywhere in this
+  board's pins_arduino.h (confirmed again by the full-file read above), so
+  they cannot add a phantom GPIO0-4 "analog_input" tag or a bogus
+  out-of-range "A0..A4" pin to the generated board JSON - there is nothing
+  for the parser to pick up. Additionally, and as a belt-and-braces check
+  (not required since the aliases aren't declared, but verified for
+  completeness): even if this board's own pins_arduino.h *did* still carry
+  the vendor's original `A0=0 ... A4=4` declarations, build_boards.js's
+  ESP8266-family code path (family has a non-empty chipGpios map) sources
+  each pin's capabilities from the chip-level chipGpios entry first
+  (`if (chipEntry && chipEntry.capabilities) caps = ...` at
+  build_boards.js ~line 681) and only falls back to alias-name-based
+  analog_input inference (the `/^A\d+$/` regex at ~line 686) when no
+  chipGpios entry exists for that GPIO - which is never true for ESP8266's
+  GPIO0-5/12-17. So this family's parser mechanics provide a second,
+  independent reason a declared "A0" alias on a plain digital GPIO could
+  never mis-tag it as analog_input here, on top of the deliberate omission
+  already in the file. No real GPIO is being misrepresented as a
+  non-existent one, and no non-existent GPIO is being exposed either - the
+  PCF8591's channel indices (0-4) are correctly absent from the Designer's
+  pin list entirely, exposed only implicitly as an ordinary digital
+  capability on GPIO0/2/4/5 (their real ESP8266 function), with no
+  "analog"-labelled pin standing in for them.
+- Critical bus-misattachment check (task step 4): searched the file for
+  every SDA/SCL/SS/MOSI/MISO/SCK/TX/RX-style alias.
+  - SDA=2/SCL=14 come from this board's own explicit `#define
+    PIN_WIRE_SDA (2)` / `#define PIN_WIRE_SCL (14)` (single-hop numeric
+    defines, not a multi-level macro chain, so build_boards.js's
+    known "two-hop #define chain silently drops the pin" gotchas
+    (playbook section 5.5) does not apply here). These are also this
+    board's genuine I2C bus, which is what the onboard PCF8591 ADC chip is
+    physically attached to. I2C is inherently multi-drop and the
+    PCF8591 is not documented anywhere (vendor PR, boards.rst, or blog)
+    as requiring exclusive use of the bus, so per playbook section 3's
+    KEEP policy ("General-purpose I2C/SPI buses without a documented
+    exclusive onboard consumer") this bus stays available - not an
+    EXCLUDE case. No misattachment: GPIO2/GPIO14 correctly get
+    i2c_sda/i2c_scl tags matching their real, board-declared function.
+  - No PIN_SPI_MOSI/MISO/SCK/SS (or bare MOSI/MISO/SCK/SS aliases) appear
+    anywhere in this file - nothing for the parser to misattach on the SPI
+    side.
+  - TX=1/RX=3 match the ESP8266 hardware UART0 pins that build_boards.js
+    already force-reserves at the chip level (chipGpios GPIO1/3 carry
+    serial_tx/serial_rx directly) regardless of this board's own alias -
+    the board's own declared values agree with the forced default, so
+    there is no conflicting/duplicate serial-role assignment here either.
+  - Conclusion: no bus-capability misattachment risk found on this board.
+
+Mechanism/outcome: NO CHANGE to pins_arduino.h or board.json. No
+board.json was created (none needed - no GPIO's capability set requires
+correction from the chip-level default). This confirms, with two
+additional independent checks beyond the earlier pass (peripheral-list
+re-review of the primary-source PR diff, and a parser-mechanics trace of
+the A0-A4/SDA-SCL/TX-RX aliasing), that the earlier pass's NO CHANGE
+conclusion for both Part A and Part B was correct and complete - no new
+dedicated hardware, no phantom analog pin, and no bus misattachment was
+missed.
+
+ONE-LINE SUMMARY: Full pin-exclusion sweep confirms NO CHANGE - PR diff
+re-review found no SD/display/relay/other peripheral beyond the already-
+documented PCF8591; A0-A4 remain correctly undeclared (not real GPIOs, and
+even if declared could not mis-tag analog_input under this family's
+chipGpios-priority parser path); SDA=2/SCL=14 correctly reflect this
+board's genuine multi-drop I2C bus (kept per policy) with no TX/RX/SPI
+alias conflicts found.

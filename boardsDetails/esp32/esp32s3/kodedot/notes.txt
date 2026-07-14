@@ -1,0 +1,42 @@
+kodedot (variants/esp32/esp32s3/kodedot) - button/LED capability audit
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+https://kode.diy/
+  - Vendor landing page for "Kode Dot" - confirms product identity (ESP32-S3-based pocket maker device with AMOLED, IO expander, addressable LED). Used to locate official docs site.
+
+https://docs.kode.diy/en/introduction
+  - Docs index; confirmed existence of dedicated "Buttons" and "Addressable LED" pages plus an "ESP32-S3" and "IO Expander" page.
+
+https://docs.kode.diy/llms.txt
+  - Doc-site sitemap; gave exact URLs for the Buttons and Addressable LED pages used below.
+
+https://docs.kode.diy/en/kode-dot/buttons.md
+  - Official vendor page. States the device has 6 buttons total: 4 D-pad + 2 independent buttons.
+  - 5 of the 6 route through a TCA95XX_16BIT IO expander over I2C (SCL GPIO47 / SDA GPIO48, addr 0x20) at EXP6/7/8/9/11 - none of these have a direct GPIO and so are out of scope for chip-level GPIO tagging.
+  - The "Up/top" button is wired DIRECTLY to ESP32-S3 GPIO0 and is explicitly described as controlling the BOOT state of the ESP32-S3 - i.e. it is the BOOT/strapping button, active LOW. This matches pins_arduino.h's `BUTTON_TOP 0 // GPIO00 - BOOT * active-LOW` comment and BUTTON_BOTTOM -1 ("via IO expander * no direct GPIO").
+
+https://docs.kode.diy/en/kode-dot/addresable-led.md
+  - Official vendor page. Confirms the onboard addressable LED is a WS2812B (NeoPixel-compatible), 2mm x 2mm, single-wire (1-Wire) data protocol, connected to GPIO4 on the ESP32-S3. Matches pins_arduino.h's `NEOPIXEL_PIN 4 // GPIO04 - WS2812` and `LED_BUILTIN NEOPIXEL_PIN`.
+
+https://github.com/kodediy
+  - Vendor GitHub org; listed example/driver repos (kodedot_SharedExamples, kodedot_examples, esp_lcd_co5300, esp_lcd_touch_cst820, kode_MAX31329, kode_BQ27220, arduino-esp32 fork). Used only to confirm the docs site and org are the authoritative vendor source; did not need to inspect individual repo schematics since the docs.kode.diy pages already gave explicit pin-level confirmation.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- IO-expander buttons (Left/Up/Right/Down D-pad + "Down" independent button) - EXP6, EXP7, EXP8, EXP9, EXP11 on the TCA95XX_16BIT expander. These are NOT ESP32 GPIOs (no direct chip pin), so they cannot be represented in chipGpios at all. No guess made; simply out of scope for this board.json (chip-level GPIO tagging only). No human review needed - this is a hard technical fact, not a judgment call.
+- No other GPIO was considered a plausible LED/button candidate. GPIO0 (button) and GPIO4 (NeoPixel) were the only two confirmed onboard-indicator/control GPIOs on this board per vendor docs.
+
+TX/RX CONFLICT CHECK
+---------------------
+pins_arduino.h: TX = 43, RX = 44. Neither GPIO0 nor GPIO4 coincides with TX/RX, so no conflict - both tags apply cleanly.
+
+EXISTING PIN-EXCLUSION CHECK
+------------------------------
+Both GPIO0 and GPIO4 already had chipGpios entries in board.json (i.e. neither falls inside the pre-existing chip-level pin-exclusion ranges noted in the file's header comment for this board: 5,6,7 / 47,48 / 8,9,10,15,16,17). No re-adding of excluded pins was necessary.
+
+WHAT WAS TAGGED
+-----------------
+- GPIO0: capabilities changed to exactly ["digital_input", "button"] (button - BOOT button, active LOW, direct to ESP32-S3).
+- GPIO4: capabilities changed to ["digital_output", "led_neopixel", "pwm_output"] (WS2812B addressable RGB LED; pwm_output retained because it was already present in the pin's prior capability set). analog_input capability, which was present on GPIO4 before, was dropped per the led_neopixel tagging rule (only digital_output/led_neopixel/pwm_output are permitted for a NeoPixel pin).

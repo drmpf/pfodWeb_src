@@ -16,10 +16,8 @@ static const uint8_t SCL = 9;
 #define LORA_BUSY   40  //BUSY
 #define LORA_DIO1   4   //DIO
 
-static const uint8_t LORA_SS = 10;
-static const uint8_t LORA_MOSI = 6;
-static const uint8_t LORA_MISO = 5;
-static const uint8_t LORA_SCK = 7;
+// pfodWeb NOTE: LORA_SS/MOSI/MISO/SCK (GPIO10/6/5/7) deliberately NOT
+// declared - dedicated onboard LoRa radio SPI bus.
 
 static const uint8_t SS = 17;
 static const uint8_t MOSI = 11;

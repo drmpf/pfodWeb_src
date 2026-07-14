@@ -1,0 +1,194 @@
+Board: d1_mini32 (chip: esp32) — Wemos/LOLIN D1 Mini ESP32 (34x25mm D1-mini
+form factor, ESP32-WROOM-32 module)
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\d1_mini32\
+Audit date: 2026-07-12
+Task: dedicated-hardware pin-exclusion audit, flagged for:
+  static const uint8_t _VBAT = 35;  // battery voltage
+  #define BAT_VOLT_PIN _VBAT
+  static const uint8_t RXD = 3;
+  static const uint8_t TXD = 1;
+Sibling board d32 (also this wave) has an identical `_VBAT = 35` line;
+verified independently per task instructions rather than assumed identical.
+
+FILES REVIEWED
+--------------
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32\d1_mini32\pins_arduino.h (36 lines, read in full)
+- C:\ai\aicode\pfodWeb\esp32_board_variants\variants\d1_mini32\pins_arduino.h (upstream copy, identical)
+- C:\ai\aicode\pfodWeb\esp32_board_variants\variants\d32\d32_core.h (36 lines, read in full — the
+  `#include <../d32/d32_core.h>` this board's pins_arduino.h pulls in)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32\board.json (chip-level default, read in full)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32\d32_pro\board.json + pins_arduino.h (sibling
+  board using the same d32_core.h, for comparison — d32_pro DOES have a
+  confirmed onboard TFT/SD system, unrelated to this board)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32\d1_uno32\board.json + notes.txt (in-codebase
+  precedent for GPIO2 led_high polarity on the Wemos D1-series ESP32 family)
+- C:\ai\aicode\pfodWeb\pfodWeb_src\build_boards.js (parser — read the ESP32 alias-resolution
+  and bus-capability-appending logic, lines ~439-724, to verify the
+  SDA/SCL/SS/MOSI/MISO/SCK/TX/RX collision-check mechanism)
+
+pins_arduino.h includes `d32_core.h`, which declares (among others):
+  TX=1, RX=3, SDA=21, SCL=22, SS=5, MOSI=23, MISO=19, SCK=18,
+  A0..A19, T0..T9, DAC1=25, DAC2=26
+d1_mini32's own pins_arduino.h then declares:
+  LED_BUILTIN=2, _VBAT=35 (BAT_VOLT_PIN), D0=26 D1=22 D2=21 D3=17 D4=16
+  D5=18 D6=19 D7=23 D8=5, RXD=3, TXD=1
+
+RXD/TXD CHECK (task item 3)
+----------------------------
+RXD=3 and TXD=1 are exactly equal to the primary RX=3/TX=1 constants from
+d32_core.h — same GPIOs, not new pins. build_boards.js's ESP32 parser
+special-cases `g === rx` / `g === tx` by GPIO number (not by alias name), so
+these are already correctly treated as the board's serial_rx/serial_tx pins
+regardless of the extra RXD/TXD alias names. Confirmed harmless, ignored as
+instructed.
+
+_VBAT / BAT_VOLT_PIN RESEARCH (GPIO35)
+----------------------------------------
+Web research on the real "Wemos/LOLIN D1 Mini32" / "WEMOS D1 MINI ESP32"
+board (34x25mm, ESP32-WROOM-32, D1-mini shield-compatible footprint):
+
+- https://newscrewdriver.com/2022/09/03/wemos-d1-mini-esp32-derivative/
+  Detailed hands-on teardown/review specifically of this exact board. Does
+  NOT mention a LiPo battery connector, charging circuit, VBAT, or GPIO35
+  battery-sense function anywhere. Only mentions GPIO35 (alongside 34/36/39)
+  as one of the four input-only ADC pins ("SVP is IO36, and SVN is IO39...
+  two of four input-only pins").
+- https://www.espboards.dev/esp32/d1-mini32/
+  Product page. "_VBAT" appears only as a pin-diagram label; page explicitly
+  has no further detail on a divider/circuit. No mention of "JST", "LiPo",
+  or "charge" anywhere on the page (checked directly).
+- https://homeding.github.io/boards/mini/d1mini.htm
+  D1-mini-compatible board catalog. No entry or detail found for this
+  specific ESP32 D1 Mini board's battery circuitry.
+- https://www.wemos.cc/en/latest/d1/index.html
+  WEMOS's own documentation site lists only D1 mini / D1 mini Pro / D1 mini
+  Lite (all ESP8266). No ESP32 "D1 mini32" product page exists on the
+  official WEMOS/LOLIN docs site at all — this board appears to be an
+  earlier/third-party-manufactured ESP32 D1-mini-footprint board, not an
+  officially documented WEMOS product line member (same situation found for
+  d1_uno32 in an earlier audit pass this session).
+- By contrast, the sibling boards d32 / d32_pro (which share this exact
+  `_VBAT = 35` line via the same d32_core.h header) ARE confirmed via
+  official WEMOS documentation (wemos.cc/en/latest/d32/d32.html) to have a
+  "Lithium battery interface, 500mA Max charging current" (JST PH2.0
+  connector) plus community-documented (esp32.com forum, multiple threads)
+  onboard resistor divider on GPIO35 (~100k/100k or ~47k/100k reported by
+  different posters — exact value not consistently confirmed even for d32
+  itself). Both official schematic PDFs (sch_d32_v1.0.0.pdf) fetched but
+  returned undecoded binary content — not independently machine-verifiable
+  this session, but the presence of a battery connector on d32/d32_pro is
+  independently confirmed via wemos.cc's own product-feature text.
+
+CONCLUSION: d1_mini32 and d32/d32_pro are confirmed to be genuinely
+different physical products despite sharing the `_VBAT`/`BAT_VOLT_PIN`
+software declaration (inherited from the same shared d32_core.h header).
+No source found for d1_mini32 confirms an onboard LiPo connector, charging
+circuit, or voltage-divider network feeding GPIO35 on this specific board —
+the _VBAT alias appears to be inherited boilerplate from the shared header
+rather than a wired battery-sense circuit unique to this board's design.
+
+KEEP POLICY APPLIED: GPIO35 stays a plain analog-input-only GPIO, unchanged
+from the chip-level default (already correctly restricted to
+analog_input/digital_input via the chip's inputOnlyGpios list, since GPIO35
+is in the 34-39 input-only range). No ADC reference correction was applied
+(3.3V * (R_series+R_shunt)/R_shunt formula) since no divider ratio could be
+confirmed as genuinely present on THIS board — per task instructions, "if
+not found, leave chip default and just document." Added a pinNotes["35"]
+entry to board.json documenting the _VBAT label and the absence of a
+confirmed onboard divider, so a Designer user is not misled into thinking a
+raw GPIO35 reading is a calibrated battery voltage on this particular board.
+
+ALIAS-COLLISION CHECK (task item 4, critical)
+------------------------------------------------
+Checked whether GPIO35 (_VBAT, the candidate pin) is also aliased anywhere
+in this file (including via the d32_core.h include) as
+SDA/SCL/SS/MOSI/MISO/SCK/TX/RX, which build_boards.js appends
+unconditionally regardless of chipGpios (see buildEsp32Board(), lines
+698-703 of build_boards.js). d32_core.h's bus aliases are:
+  SDA=21, SCL=22, SS=5, MOSI=23, MISO=19, SCK=18, TX=1, RX=3
+None of these equal 35 — no collision for the battery pin. GPIO35 keeps its
+plain analog_input/digital_input capability set with no risk of an
+unintended i2c_sda/spi_ss/etc capability being silently appended.
+
+Also checked GPIO2 (the LED pin newly tagged this pass, see below) against
+the same list — 2 is not among {21,22,5,23,19,18,1,3} either, so no
+collision there.
+
+Noted for completeness (no action needed): D1-D8 on this board DO
+numerically coincide with the d32_core.h bus aliases (D2=21=SDA, D1=22=SCL,
+D8=5=SS, D7=23=MOSI, D6=19=MISO, D5=18=SCK) — these are the ESP32's own
+standard default I2C/VSPI pin-mux choices, broken out as ordinary D-pins on
+this board, not evidence of an onboard I2C/SPI peripheral consuming them.
+Since no exclusion is being applied to any of D1/D2/D5/D6/D7/D8, this is a
+non-issue per the same reasoning already used for esp32-devkit-lipo's
+GPIO18/19 SCK/MISO check this session — nothing is being "silently
+contaminated" because these pins were never intended to be restricted;
+build_boards.js's bus-capability tags on them are simply a (harmless,
+correct) bonus reflecting genuine chip-level default wiring.
+
+SECTION 7a — OPPORTUNISTIC BUTTON/LED CHECK
+-----------------------------------------------
+LED: LED_BUILTIN = GPIO2 is declared in pins_arduino.h. Confirmed as a real
+onboard LED (not vestigial) via the newscrewdriver.com teardown, which
+states explicitly: "The onboard LED illuminates when GPIO2 is high instead
+of ESP8266's onboard LED which shines when GPIO2 is low" — i.e. active-HIGH,
+opposite of the ESP8266 D1 mini's LED polarity. This is corroborated by:
+  - The in-codebase precedent at d1_uno32/board.json + doitESPduino32/board.json,
+    which independently established GPIO2 = led_high (active-high) across
+    the Wemos D1-series / DEVKIT-V1-clone ESP32 board family.
+  - Generic Wemos "D1 R32" blink examples using digitalWrite(pin, HIGH) to
+    turn the LED on.
+This conflicts with a single low-confidence claim from espboards.dev
+("On-board blue LED (active-LOW)"), but espboards.dev has already been
+flagged as an unreliable/uncorroborated aggregator source on other boards
+audited this session (um_tinypico's DotStar GPIO22 claim, esp32-devkit-lipo's
+GPIO2 LED claim) — both times its lone claim was contradicted by more
+authoritative sources and not acted on. Applying the same standard here: the
+direct hands-on teardown of this exact board plus the sibling-board
+precedent (2 independent, consistent sources) outweigh the single
+espboards.dev claim. GPIO2 tagged "led_high" in the new board.json,
+capabilities changed from the chip default
+  ["analog_input_serial", "digital_input", "digital_output", "pwm_output"]
+to
+  ["digital_output", "led_high", "pwm_output"]
+(dropping analog_input_serial/digital_input, matching the established
+exclusivity convention from d1_uno32/doitESPduino32). GPIO2 keeps its
+existing boot-strapping pinNote ("Must be LOW or floating at boot"),
+unchanged.
+
+Button: Only physical buttons found in any source (espboards.dev,
+newscrewdriver.com teardown) are RST (hard reset via EN, not a GPIO) and
+BOOT/IO0 (flash-mode strapping button on GPIO0). Per the established
+convention in this codebase (no ESP32/esp32-family board audited this
+session — doitESPduino32, d1_uno32, esp32-devkit-lipo — has ever tagged the
+BOOT/IO0 strapping pin as "button"), GPIO0 is NOT tagged. It keeps its
+existing generic capability set and its "Must be HIGH or floating on
+reboot" pinNote, unchanged.
+
+board.json OVERRIDE CREATED
+-------------------------------
+C:\ai\aicode\pfodWeb\variants\esp32\esp32\d1_mini32\board.json — full copy
+of the chip-level esp32/esp32/board.json default, with two changes:
+  1. GPIO2 capabilities -> ["digital_output", "led_high", "pwm_output"]
+     (confirmed onboard LED, see Section 7a above).
+  2. pinNotes["35"] added — informational text documenting that _VBAT/
+     BAT_VOLT_PIN on GPIO35 has no confirmed onboard battery-sense circuit
+     on this specific board (see _VBAT research above). No capability
+     change for GPIO35 (already correctly analog_input/digital_input-only
+     via chip-level inputOnlyGpios).
+A pfodWeb NOTE comment at the top of the file records both changes and
+sources. All other chipGpios entries, inputOnlyGpios, connections, and the
+strapping-pin pinNotes are unchanged from the chip-level default.
+pins_arduino.h was left unmodified — no exclusion was warranted, so there
+was nothing to delete.
+
+ONE-LINE SUMMARY
+------------------
+d1_mini32: RXD/TXD confirmed harmless aliases of RX/TX (no new pins); GPIO35
+(_VBAT) confirmed as inherited d32_core.h boilerplate with NO onboard
+battery connector/divider found for this specific board (unlike its d32/
+d32_pro siblings) — kept as a plain analog-input GPIO with a documenting
+pinNote, no ADC correction applied; GPIO2 (LED_BUILTIN) confirmed as a real
+active-high onboard LED and newly tagged "led_high"; no alias/bus-capability
+collisions found for either candidate pin; board.json override created,
+pins_arduino.h left unmodified.

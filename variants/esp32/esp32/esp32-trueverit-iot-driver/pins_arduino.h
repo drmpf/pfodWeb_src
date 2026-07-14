@@ -21,7 +21,11 @@ static const uint8_t SDA = 15;
 static const uint8_t SS = 5;
 static const uint8_t MOSI = 23;
 static const uint8_t MISO = 32;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: SCK alias deliberately removed here - it duplicated the
+// generic ESP32 dev-module default (SCK=18) verbatim while this board's
+// own LED_BUILTIN is also GPIO18; no vendor source confirms a real,
+// separate SPI clock signal on this pin, so the alias was dropped to
+// avoid falsely tagging the onboard-LED pin with an SPI bus capability.
 
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;

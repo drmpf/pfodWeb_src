@@ -1,0 +1,94 @@
+Board: um_edges3_d (Unexpected Maker EdgeS3[D], chip esp32s3)
+Directory: variants/esp32/esp32s3/um_edges3_d/
+
+SOURCES CONSULTED
+- variants/esp32/esp32s3/um_edges3_d/pins_arduino.h (this repo's copy)
+- Raw upstream file at
+  https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/um_edges3_d/pins_arduino.h
+  — fetched and confirmed byte-for-byte identical in content to the local
+  copy (same USB_VID/PID, same SS/MOSI/MISO/SDO/SDI/SCK block, no
+  comments near the SPI aliases). This confirms the local file is the
+  genuine, unmodified upstream Espressif/Unexpected Maker variant file.
+- https://esp32s3.com/edges3d.html — Unexpected Maker's own "Introducing
+  the EdgeS3[D]" product page: ESP32-S3-PICO module, 8MB QSPI flash +
+  2MB extra QSPI PSRAM, 512K SRAM, M.2 B-Key edge connector exposing
+  29+8 GPIO via an onboard IO expander, LiPo battery charging with an
+  I2C battery fuel gauge for voltage monitoring, no RGB LED (comparison
+  table marks RGB LED as absent versus other UM boards).
+- https://help.unexpectedmaker.com (battery-voltage knowledge-base
+  articles) — confirms UM's general pattern of a battery voltage-divider
+  IO per board (varies per board, check that board's pinout card) but
+  for EdgeS3[D] specifically the product page describes an I2C fuel
+  gauge, not a raw ADC divider pin, and no such pin is declared in this
+  board's pins_arduino.h.
+- variants/esp32/esp32s3/board.json (chip-level default) — its existing
+  comment already documents GPIO26-32 (flash), GPIO33-37 (octal
+  flash/PSRAM) and GPIO19-20 (USB) as chip-wide exclusions from
+  chipGpios, sourced from Espressif ESP-IDF documentation.
+- variants/esp32/esp32s3/um_nanos3/pins_arduino.h and board.json —
+  sibling Unexpected Maker board used as a style precedent for the
+  "pfodWeb NOTE" comment format; also confirms the same
+  SS/MOSI/MISO/SDO/SDI/SCK-at-GPIO34-37 block is a recurring vendor
+  boilerplate pattern across UM ESP32-S3 boards (that sibling board was
+  NOT touched by this task — out of scope — but the same alias-leak
+  risk exists there and is worth a future pass).
+
+FINDINGS: SDO (GPIO35) / SDI (GPIO37)
+The vendor pins_arduino.h declares:
+  SS = 34, MOSI = 35, MISO = 37, SCK = 36, SDO = 35, SDI = 37
+SDO and SDI are simply this vendor header's alternate names for the same
+physical MOSI/MISO pins (SDO = "Serial Data Out" = MOSI = GPIO35, SDI =
+"Serial Data In" = MISO = GPIO37) — not a separate dedicated peripheral
+bus. This alternate naming is common in Espressif's own ESP32-S3
+reference variants and is not EdgeS3[D]-specific.
+
+More importantly, all four GPIOs referenced by this SPI alias block
+(34, 35, 36, 37) fall inside the GPIO33-37 range the chip-level
+board.json already excludes chip-wide as reserved for octal
+flash/PSRAM use on ESP32-S3. That chip-level board.json already omits
+34-37 from chipGpios entirely.
+
+CRITICAL ALIAS-COLLISION FOUND AND FIXED
+Despite chipGpios omitting GPIO34-37, build_boards.js's ESP32 parser
+(buildEsp32Board in pfodWeb_src/build_boards.js) builds its GPIO set as
+the UNION of chipGpios keys AND every GPIO referenced by a pins_arduino.h
+alias (aliasesByGpio). Because SS/MOSI/MISO/SCK were still declared on
+GPIO34/35/36/37 in this board's header, those four pins would have been
+silently re-added as user-selectable pins (digital_input, digital_output,
+pwm_output, plus spi_ss/spi_mosi/spi_miso/spi_sck tags) even though the
+chip-level config intentionally excludes them as internal PSRAM/flash
+bus lines. This is the exact "chipGpios exclusion is contaminated by an
+unconditionally-appended bus alias" bug pattern flagged for this audit.
+
+FIX APPLIED
+- Deleted the SS/MOSI/MISO/SDO/SDI/SCK declaration block (GPIO34-37)
+  entirely from um_edges3_d/pins_arduino.h and replaced it with a plain-
+  English "pfodWeb NOTE" comment (no literal re-statement of the deleted
+  declarations, and no commented-out old lines, per the rule that
+  build_boards.js's regex parser is comment-blind and would still match
+  a `//`-prefixed declaration).
+- Created um_edges3_d/board.json as a full copy of the chip-level
+  esp32s3/board.json default. No chipGpios entries needed to change
+  (34-37 were already absent from the chip default), but a board-level
+  file was still required so this variant carries its own explanation
+  and is self-contained/consistent with how other audited UM boards
+  (e.g. um_nanos3) are structured.
+
+OTHER CHECKS (button / LED / battery — section 7a)
+No button, standalone LED, or NeoPixel alias is declared anywhere in
+this board's pins_arduino.h (no RGB_DATA/LED_BUILTIN/BUTTON-style
+constants at all, unlike um_nanos3/um_tinys3/um_pros3 which do declare
+an onboard NeoPixel). This matches the vendor product page, which lists
+"no RGB LED" for EdgeS3[D] in its board-comparison table. No battery-
+sense GPIO is declared either — EdgeS3[D] reads battery status via an
+I2C fuel gauge (uses SDA/SCL, already tagged), not a dedicated ADC pin.
+No opportunistic capability tagging was applicable.
+
+SUMMARY (one line)
+EdgeS3[D]'s SDO/SDI are just SPI MOSI/MISO aliases on GPIO35/37, which
+along with SS(34)/SCK(36) sit inside the chip's excluded
+octal-flash/PSRAM GPIO33-37 range; the aliases were deleted from
+pins_arduino.h (not just left unexploited in chipGpios) to close an
+alias-driven leak in build_boards.js, and a board.json was added as a
+documented copy of the chip default with no other capability changes
+needed (no button/LED/battery pins present on this board to tag).

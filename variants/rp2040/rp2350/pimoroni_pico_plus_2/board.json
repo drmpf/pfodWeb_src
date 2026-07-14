@@ -1,0 +1,166 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Pimoroni PicoPlus2" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins confirmed on this
+  // board beyond the chip-level default.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // RP2350B-based Pico Plus 2 — no onboard radio, unlike the separate
+  // Pimoroni Pico Plus 2 W which lives in the "rp2040w" chip bucket
+  // instead.
+  "connections": ["serial"],
+
+  // RP2040/RP2350 boot from an internal ROM/BOOTSEL, not GPIO-driven
+  // flash-mode strapping pins like ESP32/ESP8266 — no boot-time
+  // restrictions to flag at the chip level.
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family audit, button/LED/NeoPixel
+  // tagging + dedicated-hardware pin exclusion, 2026-07-13):
+  //
+  // Board: "Pimoroni Pico Plus 2" (PIM724, RP2350B — the 48-GPIO
+  // variant — 16MB flash, 8MB PSRAM, USB-C, full-size Pico-shape
+  // header). This board's own pins_arduino.h (variants/rp2040/rp2350/
+  // pimoroni_pico_plus_2/pins_arduino.h) declares `#define PIN_LED
+  // (25u)` / `#define LED_BUILTIN PIN_LED` as plain #defines (no
+  // `static const uint8_t` peer alias — unlike most other boards'
+  // LED_BUILTIN, which usually IS a static-const alias), and declares
+  // `#define RP2350_PSRAM_CS (47u)` for the onboard PSRAM chip-select,
+  // also a plain #define with no static-const alias anywhere. No
+  // PIN_BUTTON alias of any kind is declared.
+  //
+  // Sources consulted (WebSearch/WebFetch, 2026-07-13):
+  //  1. shop.pimoroni.com/en-us/products/pimoroni-pico-plus-2 (official
+  //     product page, fetched directly): "The user LED is wired to
+  //     GP25, just like on an ordinary Pico" and "The BOOT button can
+  //     be used as a user button and is wired to GP45 and active low."
+  //     Also confirms "8MB of PSRAM", USB-C, Qw/ST (I2C) connector,
+  //     SP/CE (SPI) connector, 3-pin debug connector, separate Reset
+  //     button. No NeoPixel/addressable RGB LED of any kind mentioned
+  //     anywhere on the page.
+  //  2. www.adafruit.com/product/6244 (PIM724 US distributor listing,
+  //     fetched directly, republishes Pimoroni's own product copy):
+  //     independently corroborates both facts verbatim — "wired to
+  //     GP25, just like an ordinary Pico" and "wired to GP45 and active
+  //     low" — and likewise lists only a plain "User LED" among its
+  //     controls/indicators, no NeoPixel/RGB LED.
+  //  3. www.pishop.us/product/pimoroni-pico-plus-2/ (reseller mirror of
+  //     Pimoroni's product copy, fetched directly): confirms the same
+  //     "Reset button / BOOT button (also functions as user button) /
+  //     User LED indicator" feature list — again a single plain LED,
+  //     no addressable/RGB LED mentioned.
+  //  4. WebSearch across multiple independent vendor/reseller listings
+  //     (Kiwi Electronics, The Pi Hut, Botland) and this board's own
+  //     pins_arduino.h/boards.txt: all consistent with the above; none
+  //     surface a NeoPixel/WS2812 pin for this specific (non-W) board.
+  //     NOTE: the parent task description mentioned "a NeoPixel" for
+  //     this board, but no vendor source found confirms one exists on
+  //     the plain Pico Plus 2 (only a single-color "User LED" is
+  //     documented everywhere) — per this audit's own guidance to
+  //     "report NO CHANGE rather than guess", no led_neopixel tag is
+  //     added here. (For comparison, the WiFi-equipped Pico Plus 2 W
+  //     sibling, in the separate rp2040w chip bucket, was not
+  //     investigated as part of this task.)
+  //
+  // Per-pin findings:
+  //   GPIO25 (PIN_LED / LED_BUILTIN) — onboard user LED, confirmed
+  //     active-high ("just like on an ordinary Pico", matching this
+  //     repo's already-established rpipico/rpipico2 GPIO25 precedent).
+  //     #define-only in this board's pins_arduino.h with no
+  //     static-const peer alias, so build_boards.js's alias-sweep
+  //     regex (`static const uint8_t NAME = ...`) never picks GPIO25
+  //     up automatically — added here purely via chipGpios, matching
+  //     the same mechanism already used for rpipico/rpipico2/
+  //     pimoroni_tiny2350 GPIO25. Tagged digital_output + pwm_output +
+  //     led_high — pwm_output kept since arduino-pico's analogWrite()
+  //     works on any RP2040/RP2350 GPIO, enabling LED brightness
+  //     dimming. No SPI/I2C alias collision on GPIO25 (this board's
+  //     SPI0/SPI1/Wire0/Wire1 pins are GPIO32-35, 12-15, 4-5, 6-7 —
+  //     GPIO25 is untouched), so no build_boards.js bus-capability
+  //     contamination is possible here.
+  //   GPIO45 — BOOT button. NOT declared in this board's
+  //     pins_arduino.h at all (no PIN_BUTTON alias, and outside the
+  //     declared NUM_DIGITAL_PINS=33 / PINS_COUNT=33 range), but
+  //     confirmed via all three vendor/reseller sources above ("The
+  //     BOOT button can be used as a user button and is wired to GP45
+  //     and active low"). Added purely via chipGpios (matches the
+  //     general "GPIO absent from pins_arduino.h but present in
+  //     chipGpios" mechanism already used for pimoroni_tiny2040 GPIO23
+  //     and pimoroni_tiny2350 GPIO23). Tagged digital_input + button
+  //     only — digital_output/pwm_output deliberately omitted, matching
+  //     this repo's established conservative precedent for BOOT/DFU-
+  //     select lines (pimoroni_tiny2040 GPIO23, pimoroni_tiny2350
+  //     GPIO23, u-blox EVK-NORA-W10 GPIO0): no vendor source confirms
+  //     it is electrically safe to drive this line as an output. No
+  //     SPI/I2C alias collision on GPIO45 either (same pin list as
+  //     above).
+  //   GPIO47 (RP2350_PSRAM_CS) — onboard 8MB PSRAM chip-select,
+  //     confirmed via this board's own pins_arduino.h
+  //     (`RP2350_PSRAM_CS (47u)`) and the vendor-documented "8MB of
+  //     PSRAM" spec. UNLIKE the sparkfun_thingplusrp2350 PSRAM
+  //     precedent (variants/rp2040/rp2040w/sparkfun_thingplusrp2350/
+  //     board.json), this pin needs NO chipGpios override here: it is
+  //     declared only as a bare `#define`, with no `static const
+  //     uint8_t` peer alias anywhere in this board's pins_arduino.h
+  //     (unlike sparkfun_thingplusrp2350, where the PSRAM CS pin was
+  //     ALSO exposed as a D<n> alias via generic/common.h, which is
+  //     what caused it to be auto-swept with full capabilities and
+  //     need suppressing). build_boards.js's buildEsp32Board() only
+  //     adds a GPIO to the routable pin set from (a) a resolved
+  //     `static const uint8_t` alias, or (b) an explicit chipGpios key
+  //     — GPIO47 satisfies neither here, so it is already correctly
+  //     absent from the generated pin list with no board.json change
+  //     needed. Adding a chipGpios entry for it would in fact be
+  //     counter-productive: chipGpios keys ARE unconditionally added to
+  //     the routable-pin set (see build_boards.js's `allGpios` union),
+  //     so an empty-capabilities override would introduce a previously-
+  //     absent inert "GPIO47" pin into the Designer where none exists
+  //     today — the opposite of the desired exclusion. Left untouched;
+  //     documented here (and in notes.txt) so a future auditor doesn't
+  //     mistake the omission for a missed finding. Also note: this
+  //     board's own SPI0 pins (PIN_SPI0_MISO/MOSI/SCK/SS = GPIO32/35/
+  //     34/33) and NUM_DIGITAL_PINS=33 both sit right at/above the
+  //     same "extended" GPIO-numbering range as GPIO47 — consistent
+  //     with the RP2350B's 48-GPIO physical pad count, of which only
+  //     GPIO0-29ish are broken out to the Pico-shape header and the
+  //     rest (30-47) are used internally for QSPI flash/PSRAM signalling.
+  //
+  // No SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies: this
+  // board's own pins_arduino.h declares PIN_SPI0_MISO=32/MOSI=35/
+  // SCK=34/SS=33, PIN_SPI1_MISO=12/MOSI=15/SCK=14/SS=13,
+  // PIN_WIRE0_SDA=4/SCL=5, PIN_WIRE1_SDA=6/SCL=7 — none of which
+  // coincide with GPIO25 (LED) or GPIO45 (BOOT button), so
+  // build_boards.js's unconditional SS/SDA/SCL/MOSI/MISO/SCK alias
+  // auto-append never fires on either tagged pin here.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/pimoroni_pico_plus_2/notes.txt
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard user LED, GP25, active-high ('just like on an ordinary Pico'). #define-only in this board's pins_arduino.h (no static-const alias), so not auto-swept by build_boards.js; added explicitly. Confirmed via shop.pimoroni.com and adafruit.com product pages (see pfodWeb NOTE above)." },
+    "45": { "capabilities": ["digital_input", "button"], "note": "BOOT button — not declared in this board's pins_arduino.h at all (no PIN_BUTTON alias). Confirmed via shop.pimoroni.com/adafruit.com/pishop.us product pages: 'The BOOT button can be used as a user button and is wired to GP45 and active low.' digital_output/pwm_output deliberately omitted — no vendor source confirms driving this line as output is safe (same conservative precedent as pimoroni_tiny2040/pimoroni_tiny2350 GPIO23 BOOTSEL and u-blox EVK-NORA-W10 GPIO0)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO40-42 on this board's own numbering
+  // — see pins_arduino.h), 12-bit ADC — matches the chip-level default.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

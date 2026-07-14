@@ -1,0 +1,123 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Degz Robotics Suibo Rp2040" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins confirmed on this
+  // board (see pfodWeb NOTE below).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. boards.txt declares no WiFi radio
+  // for this board (plain "rp2040" chip bucket, USB CDC + UF2/picotool
+  // upload only).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-13): NO CHANGE — chipGpios deliberately left empty.
+  //
+  // Board: "Degz Suibo RP2040" — a real, commercially documented product
+  // from Degz Robotics (Turkey), an underwater-ROV control board (dual-
+  // core RP2040, 8MB flash, LSM6DS3 IMU, QMC6310 compass, RS485/I2C/SPI/
+  // UART, 8-motor driver outputs), sold as "Degz Robotics Suibo Rp2040"
+  // in the Arduino IDE board list. Vendor wiki: wiki.degzrobotics.com
+  // (Turkish-language documentation).
+  //
+  // This board's own variants/rp2040/rp2040/degz_suibo/pins_arduino.h is
+  // BYTE-IDENTICAL (diffed directly) to variants/rp2040/rp2040/rpipico/
+  // pins_arduino.h — i.e. it declares only the plain stock Raspberry Pi
+  // Pico template's aliases (PIN_LED=25u, PIN_SERIAL1/2_TX/RX, SPI0
+  // MISO=16/MOSI=19/SCK=18/SS=17, SPI1 MISO=12/MOSI=15/SCK=14/SS=13,
+  // Wire0 SDA=4/SCL=5, Wire1 SDA=26/SCL=27) with no board-specific
+  // comment or datasheet citation, and includes the shared
+  // ../generic/common.h fallback (confirmed via direct read — the sibling
+  // degz_suibo/common.h file present in this board's own directory is
+  // NOT included by pins_arduino.h and appears to be unused/orphaned
+  // scaffolding left over from board creation, not a wired-in header).
+  //
+  // Crucially, the vendor's OWN published pinout for the real Suibo
+  // RP2040 board (wiki.degzrobotics.com, WebFetch'd 2026-07-13) documents
+  // a DIFFERENT SPI/I2C pin layout than this repo's pins_arduino.h:
+  //   Vendor wiki: UART GP0(TX)/GP1(RX); I2C GP2(SCL)/GP3(SDA); SPI
+  //   GP6(MISO)/GP7(MOSI)/GP16(SCK)/GP17(CS); PWM-capable GP15/19/20/21/
+  //   22/23/24; ADC GP29; general-purpose GP10-13.
+  //   This repo's file: SPI0 MISO=16/MOSI=19/SCK=18/SS=17 (different
+  //   GPIOs entirely from the vendor's SPI list); Wire0 SDA=4/SCL=5
+  //   (different from the vendor's GP2/GP3 I2C).
+  // This mismatch strongly suggests this variant's pins_arduino.h was
+  // scaffolded from the generic Pico template and never corrected against
+  // the real Suibo schematic, rather than being a hand-verified hardware
+  // pinout — the same "unmodified template, PIN_LED inherited rather than
+  // confirmed" red flag already established as disqualifying in this
+  // family's audit precedents (see pintronix_pinmax/board.json). Rewriting
+  // the SPI/Wire pin *definitions* themselves is out of scope for this
+  // button/LED/NeoPixel capability-tagging audit (only chipGpios
+  // capability overrides are in scope), but it directly undermines
+  // confidence that PIN_LED=25u/GPIO25 reflects the real board's onboard
+  // LED, since the file's other pin claims are already shown to conflict
+  // with the vendor's own documentation.
+  //
+  // The vendor wiki's own GPIO table (the list above) never mentions
+  // GPIO25 for anything at all — not as an LED, not as PWM-capable, not
+  // in any category. The wiki does separately state "Programmable LEDs
+  // are located on the board" (no GPIO given) and, per a different wiki
+  // sub-page, that "GPIO 0 represents the Tx LED, and GPIO 1 represents
+  // the Rx LED" while ALSO noting "The status LED does not light up on v1
+  // Suibo boards" — internally inconsistent/hardware-revision-dependent,
+  // and GP0/GP1 are this board's own UART0 TX/RX lines (PIN_SERIAL1_TX/
+  // RX), so any such LEDs would be passive UART-activity indicators wired
+  // in series with the serial lines, not digitalWrite()-controllable
+  // GPIO outputs — the same out-of-scope category as the passive "power
+  // LED" already excluded on other boards in this family (e.g.
+  // sea_picro's separate passive power LED). No GPIO number is
+  // authoritatively tied to a plain user-controllable onboard LED
+  // anywhere in the vendor's documentation.
+  //
+  // No button alias of any kind (PIN_BUTTON/PIN_USRKEY/etc) is declared
+  // in this board's pins_arduino.h. The vendor wiki mentions only a
+  // RESET button and a BOOT button, both dedicated hardware
+  // reset/bootloader circuits (same as every other RP2040 board's
+  // BOOTSEL/reset button in this repo — not digitalRead()-able GPIOs).
+  //
+  // No NeoPixel/WS2812 alias (no PIN_NEOPIXEL or similar) is declared
+  // anywhere in this board's pins_arduino.h.
+  //
+  // Given (a) no vendor-confirmed GPIO for a plain onboard LED, (b) the
+  // one PIN_LED=25u alias present is inherited from an evidently
+  // unmodified generic template whose other pin claims already conflict
+  // with the vendor's own documented pinout, and (c) no button or
+  // NeoPixel alias exists to consider, this audit's rule ("if you cannot
+  // find authoritative vendor documentation, report NO CHANGE rather than
+  // guess from the alias name alone") applies in full. GPIO25 is left at
+  // its full chip-default derived capabilities (digital_input/
+  // digital_output/pwm_output) — unchanged from today's build output. No
+  // SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies either: GPIO25
+  // does not coincide with any of this file's own SPI0/SPI1/Wire0/Wire1
+  // pins.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/degz_suibo/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board using the shared generic/common.h fallback.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

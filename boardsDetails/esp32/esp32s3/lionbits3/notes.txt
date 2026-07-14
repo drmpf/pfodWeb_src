@@ -1,0 +1,65 @@
+lionbits3 (Lion:Bit S3 STEM Dev Board) - button/LED GPIO research notes
+========================================================================
+
+Sources consulted:
+- https://docs.platformio.org/en/latest/boards/espressif32/lionbits3.html
+  PlatformIO board page for "lionbits3" (ESP32-S3, 240MHz, 4MB flash, 320KB RAM).
+  Confirms board naming/identity but has no GPIO/pinout/button/LED detail.
+- https://github.com/LionBit-STEM-Board
+  Official vendor GitHub org for Lion:Bit S3. Two repos: lionBit-STEM-library
+  and an arduino-esp32 fork. Org page itself has no hardware detail.
+- https://raw.githubusercontent.com/LionBit-STEM-Board/lionBit-STEM-library/main/lionbitsupport.h
+  Official vendor support library source. Contains:
+  `Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, RGBLED, NEO_GRB + NEO_KHZ800);`
+  i.e. a single WS2812-type addressable pixel wired to the RGBLED pin,
+  controlled via setupRGB()/setRGBColor()/fadeRGB(). CONFIRMS GPIO48
+  (RGBLED in this board's pins_arduino.h) is a NeoPixel, not a discrete
+  RGB LED and not a simple single-color LED.
+- https://raw.githubusercontent.com/LionBit-STEM-Board/lionBit-STEM-library/main/README.md
+  Vendor library README explicitly calls it "the onboard NeoPixel RGB LED"
+  and "the buzzer pin" (buzzer on GPIO8, matches pins_arduino.h BUZZER=21?
+  no - README example uses pinMode(8,...)/playTone(8,...), which matches
+  this board's AD1/A6 = GPIO7 area, not further pursued - buzzer is out of
+  scope for this task, LED/button only). No mention anywhere of onboard
+  buttons/switches or button-handling functions in the library.
+- https://lionbit.cc/shop.html and https://lionbit.cc/docs/what-is-lionbit/
+  Vendor marketing/shop and "what is Lion:Bit" pages. Both list the board's
+  onboard components as "LCD display, RGB LED, buzzer, and LDR as internal
+  sensors" - notably buttons/switches are NOT included in this feature list
+  on the vendor's own site.
+- WebSearch: "LionBit S3 board GPIO48 RGB LED WS2812", "LionBits3 ESP32-S3
+  board pinout schematic", "lionbit ESP32 S3 board buy", "LionBit S3
+  pins_arduino.h github", "SWITCH_A SWITCH_B lionbit esp32", "lionbit s3
+  dev board review unboxing buttons" - used to locate the above sources and
+  to search specifically for confirmation of SWITCH_A/SWITCH_B as physical
+  onboard buttons. No vendor documentation, schematic, product photo,
+  review, or library code confirming SWITCH_A (GPIO46) / SWITCH_B (GPIO47)
+  as physical onboard pushbuttons was found anywhere.
+
+Pins considered but NOT tagged:
+- GPIO46 (SWITCH_A) and GPIO47 (SWITCH_B): named "SWITCH_A"/"SWITCH_B" in
+  this board's pins_arduino.h, which per task rules is not sufficient
+  evidence on its own. No vendor doc, schematic, or library code found
+  confirming these are physical onboard pushbuttons (as opposed to, e.g.,
+  labelled breakout pins for external switches/Grove connectors, which
+  would fit the STEM/education kit design of this board). The vendor's
+  own official feature list (lionbit.cc) omits buttons/switches entirely
+  when describing onboard components (LCD, RGB LED, buzzer, LDR only).
+  Made NO guess here - left untagged for human review; existing
+  capabilities (digital_input/digital_output/pwm_output) left unchanged.
+- GPIO0 (LED_BUILTIN alias in pins_arduino.h): GPIO0 on ESP32-S3 is a
+  strapping/boot-mode pin (this board's own board.json pinNotes already
+  says "Must be HIGH for normal boot"). It is very commonly used as a
+  BOOT/FLASH pushbutton on ESP32-S3 dev boards rather than an LED, which
+  directly contradicts the "LED_BUILTIN" alias name. Per task rules, alias
+  names like LED_BUILTIN must not be trusted without independent vendor
+  confirmation. No vendor documentation, schematic, or library code found
+  describing GPIO0 as either an LED or a button on this specific board.
+  Made NO guess here - left untagged for human review.
+
+Summary of what was tagged:
+- GPIO48 tagged led_neopixel (["digital_output","pwm_output","led_neopixel"])
+  - confirmed onboard single-data-pin WS2812-type addressable RGB LED via
+  official LionBit-STEM-Board GitHub library (lionbitsupport.h using
+  Adafruit_NeoPixel(1, RGBLED, ...) and README calling it "the onboard
+  NeoPixel RGB LED"). No TX/RX conflict (this board's TX=GPIO1, RX=GPIO3).

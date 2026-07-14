@@ -1,0 +1,129 @@
+Board: Seeed Studio XIAO RP2040 (chip: rp2040)
+Directory: variants/rp2040/rp2040/seeed_xiao_rp2040/
+Audit date: 2026-07-13
+Part of the ongoing RP2040/RP2350 family button/LED/NeoPixel audit
+(RP2040 audited so far: rpipico, adafruit_qtpy, seeed_xiao_rp2040 [this file]).
+
+SUMMARY
+-------
+Applied a new per-board board.json (chip-level rp2040/rp2040/board.json
+defaults, verbatim, + chipGpios additions) tagging the board's 3-channel
+direct-drive user LED (GPIO16/17/25, active-low) and its separate onboard
+addressable NeoPixel (GPIO12 data, GPIO11 power-gate). No pins_arduino.h
+edit was needed (no button/LED/NeoPixel GPIO collides with any SPI/I2C/
+Serial bus alias on this board). No button tag applied — BOOT button is
+the standard RP2040 dedicated QSPI-CS BOOTSEL silicon trick, not a normal
+GPIO, and Reset is a hard MCU reset line; neither is readable via
+digitalRead().
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h
+   (variants/rp2040/rp2040/seeed_xiao_rp2040/pins_arduino.h) — declares:
+     PIN_LED = PIN_LED_R = 17, PIN_LED_G = 16, PIN_LED_B = 25,
+     LED_BUILTIN = PIN_LED
+     PIN_NEOPIXEL = 12, NEOPIXEL_POWER = 11
+   D0-D10 alias GPIO 26,27,28,29,6,7,0,1,2,4,3 — none of GPIO11/12/16/17/25
+   are aliased to any D-pin; all five are internal-only GPIOs, requiring
+   an explicit chipGpios entry to surface at all (chip-level chipGpios is
+   deliberately empty for the rp2040 family — see ../../board.json).
+   SPI0: MOSI=3, MISO=4, SCK=2 (SS not pinned out, sentinel 31u). Wire0:
+   SDA=6, SCL=7. No collision with any LED/NeoPixel GPIO found.
+
+2. wiki.seeedstudio.com/XIAO-RP2040/ (official Seeed "Getting Started"
+   guide) — Hardware Overview lists "User LED (3 Colors) x1", "Power LED
+   x1", "RGB LED x1", "Reset Button x1", "Boot Button x1". Pinout table
+   explicitly maps:
+     RGB LED      -> GPIO12
+     USER_LED_R   -> GPIO17
+     USER_LED_G   -> GPIO16
+     USER_LED_B   -> GPIO25
+   This independently corroborates the pins_arduino.h #defines exactly,
+   and confirms GPIO12's "RGB LED" is a distinct component (NeoPixel)
+   from the 3-channel "User LED" on GPIO16/17/25 — i.e. this board has
+   BOTH kinds of onboard LED, not one masquerading as the other.
+   Boot button described only as "Enters bootloader mode when held during
+   connection" — BOOTSEL-style phrasing, unlike the Adafruit QT Py
+   RP2040's BOOT button docs which explicitly say "This button is also
+   usable as an input in code, on pin board.BUTTON". This confirms the
+   XIAO's Boot button follows the standard dedicated-QSPI-CS RP2040
+   reference design (see source 4), not a normal switch-to-GPIO button.
+
+3. WebSearch aggregate (TinyGo machine/xiao-rp2040 reference, NuttX
+   seeed-xiao-rp2040 board docs, Seeed/Arduino community forum threads
+   incl. forum.seeedstudio.com "XIAO RP2040 RGB LED (on-off)") —
+   consistently confirms:
+     a) GPIO12 = WS2812-compatible addressable NeoPixel data line; GPIO11
+        = its power-enable pin, which must be "configured as an output
+        and set to True" by sketch code — i.e. manually gated, NOT
+        auto-driven by the Arduino core (same pattern already established
+        in this repo for adafruit_qtpy GPIO11 / adafruit_itsybitsy
+        GPIO16).
+     b) The 3-channel user LED (GPIO16/17/25) is active-low: "set the
+        associated pin LOW to turn the LED on" (independently confirmed
+        by NuttX board docs and Seeed forum guidance).
+
+4. github.com/earlephilhower/arduino-pico (master),
+   variants/seeed_xiao_rp2040/pins_arduino.h — verbatim source matching
+   this repo's own copy of the file; no button/BOOTSEL GPIO alias
+   declared anywhere. Generic RP2040 BOOTSEL reference-design sourcing
+   (multiple independent RP2040 hardware-design references): BOOTSEL is
+   wired to the QSPI flash chip-select line (QSPI_SS_N) with a pull-up to
+   3V3 and a button to GND through a series resistor; the RP2040 samples
+   this pin only during the boot ROM sequence, then the QSPI peripheral
+   drives it during normal operation — it is not a normal GPIO readable
+   via digitalRead(), same silicon mechanism as the official Raspberry Pi
+   Pico's BOOTSEL button (already documented in the rpipico board.json
+   note in this repo).
+
+PER-PIN REASONING
+------------------
+GPIO17 (PIN_LED / PIN_LED_R / LED_BUILTIN): CONFIRMED onboard user LED,
+  red channel, active-low. Tagged ["digital_output","pwm_output",
+  "led_low"]. pwm_output retained since arduino-pico's analogWrite()
+  works on any RP2040 GPIO 0-29 (chip-level board.json note), enabling
+  brightness dimming. No bus-alias collision (checked against
+  MOSI=3/MISO=4/SCK=2/SDA=6/SCL=7).
+
+GPIO16 (PIN_LED_G): CONFIRMED onboard user LED, green channel,
+  active-low. Tagged ["digital_output","pwm_output","led_low"]. Same
+  sourcing/reasoning as GPIO17. No bus-alias collision.
+
+GPIO25 (PIN_LED_B): CONFIRMED onboard user LED, blue channel,
+  active-low. Tagged ["digital_output","pwm_output","led_low"]. Same
+  sourcing/reasoning as GPIO17. No bus-alias collision.
+
+GPIO12 (PIN_NEOPIXEL): CONFIRMED onboard single addressable NeoPixel
+  (WS2812) data line, output-only. Tagged ["digital_output",
+  "led_neopixel"] — matches this repo's adafruit_qtpy GPIO12 /
+  adafruit_itsybitsy GPIO17 precedent (no digital_input/pwm_output;
+  NeoPixel protocol timing is driven via the RP2040 PIO peripheral, not
+  analogWrite/digitalRead). No bus-alias collision.
+
+GPIO11 (NEOPIXEL_POWER): CONFIRMED internal-only NeoPixel power-gate
+  line, manually driven HIGH by sketch code, not auto-driven by the
+  Arduino core. No D-pin alias exists for it in this board's
+  pins_arduino.h, so under the RP2040 "empty chip-level chipGpios, a GPIO
+  needs an alias (or an explicit chipGpios entry) to surface at all"
+  mechanism, it simply does not appear as a pin — matching this repo's
+  repo-wide NEOPIXEL_POWER exclusion precedent (adafruit_qtpy,
+  adafruit_qtpy_esp32, adafruit_qtpy_esp32s2/s3, adafruit_itsybitsy_esp32,
+  adafruit_itsybitsy_rp2040). NO chipGpios entry added — intentional, not
+  an oversight.
+
+BOOT button / Reset button: NO chipGpios entry. BOOT is the RP2040's
+  dedicated QSPI-CS BOOTSEL silicon trick (same as the official
+  Raspberry Pi Pico, see rpipico board.json precedent), read only via a
+  special ROM/SDK routine, not digitalRead(). Reset is a hard MCU reset
+  line. Neither maps to a normal GPIO number, so out of scope for this
+  repo's GPIO-keyed capability tagging (not a missed tag).
+
+pins_arduino.h: NO EDIT — no LED/NeoPixel GPIO collides with any SPI0
+  (MOSI=3, MISO=4, SCK=2) or Wire0 (SDA=6, SCL=7) alias on this board.
+
+RESULT
+------
+Created variants/rp2040/rp2040/seeed_xiao_rp2040/board.json (new file,
+chip-level defaults + chipGpios entries for GPIO12, 16, 17, 25). Verified
+valid JSON via manual `//`-comment stripping + JSON.parse (no build
+scripts run, per task instructions).

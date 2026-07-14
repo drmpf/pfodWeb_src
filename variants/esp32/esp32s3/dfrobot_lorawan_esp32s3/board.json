@@ -1,0 +1,90 @@
+// pfodWeb NOTE: excludes GPIO5/6/7/10 - dedicated onboard LoRa radio SPI
+// bus (LORA_SS/MOSI/MISO/SCK). Excludes GPIO40/41/42 - LoRa BUSY/RST/
+// ANTPWR control lines. Excludes GPIO4 - LoRa DIO1. Excludes
+// GPIO14/15/16 - dedicated onboard TFT display control lines (TFT_DC/
+// RST/BL, never aliased elsewhere). The general SPI bus (SS=17/MOSI=11/
+// MISO=13/SCK=12) stays available - TFT_CS reuses the same GPIO17 as SS,
+// suggesting the vendor intends this bus to double as general-purpose.
+//
+// pfodWeb NOTE (button/LED tagging pass, 2026-07-12): this board.json
+// already had the dedicated-hardware exclusions above from an earlier
+// pass, but never had button/LED tagging applied. Applied now, board
+// identified as DFRobot SKU DFR1195 "LoRaWAN ESP32-S3 Dev Board" (SX1262
+// LoRa radio, 0.96" LCD, physical buttons - matches this file's LORA_*/
+// TFT_* defines and LED_BUILTIN=21 exactly):
+//  - GPIO21 (LED_BUILTIN) tagged "led_high" - vendor wiki
+//    (wiki.dfrobot.com/dfr1195/) confirms "LED light, connected to
+//    GPIO21" as a plain LED (not NeoPixel; no separate NEOPIXEL/RGB
+//    define exists in this file either). Polarity not stated explicitly
+//    by the vendor (no "active low"/"active high" wording found on the
+//    wiki or in the official getting-started Blink example at
+//    wiki.dfrobot.com/dfr1195/docs/22839, which is the plain
+//    pinMode(led,OUTPUT)/digitalWrite(led,HIGH)/delay/digitalWrite(led,LOW)
+//    pattern with no polarity comment). Tagged led_high on the strength
+//    of (a) the vendor's own tutorial demonstrating HIGH as the first/
+//    "on" state for this exact GPIO on this exact board, and (b) ESP32/
+//    ESP32-S3 dev-board onboard LEDs are conventionally wired active-high
+//    (anode-to-GPIO through resistor to GND), unlike the ESP8266 NodeMCU
+//    convention - no contradicting source found. Flag for re-check if a
+//    schematic surfaces later.
+//  - GPIO18 (Key1) tagged "button" - vendor wiki confirms "Key1: Button
+//    1, connected to GPIO18"; a second independent wiki summary states
+//    "the main controller can be proactively woken up via a button
+//    connected to IO18 to collect and send data" (wake-button use),
+//    corroborating it as a genuine user-accessible pushbutton. GPIO18 has
+//    no other role in this file (not LoRa/TFT/bus-aliased - see SDA=8/
+//    SCL=9/SS=17/MOSI=11/MISO=13/SCK=12/TX=43/RX=44 above, none match).
+//  - GPIO0 (Key2) tagged "button" - vendor wiki: "Key2: Button 2,
+//    connected to GPIO0. Press this button and reset the device to enter
+//    boot mode; it can be used as a normal button after the system
+//    starts." Standard BOOT-strap-button topology, consistent with this
+//    chip's own pinNotes "0": "Must be HIGH for normal boot" (unchanged).
+//    Matches established precedent (e.g. waveshare_esp32_s3_touch_lcd_28)
+//    of tagging a confirmed BOOT/user-dual-role button as "button".
+//  - RST (hardware reset button) - not mapped to any GPIO per the vendor
+//    wiki, not taggable, left alone.
+//  - Charge indicator LED - vendor wiki describes a separate "charging
+//    status indicator" (off/no power or full; steady on/charging) with
+//    no GPIO assignment given - almost certainly wired directly to the
+//    battery-charger IC's status pin, not an MCU GPIO. Not taggable, left
+//    alone.
+// See boardsDetails/esp32/esp32s3/dfrobot_lorawan_esp32s3/notes.txt for
+// the full research trail and sources.
+{
+  "boardName": "ESP32S3",
+  "displayName": "ESP32-S3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH for normal boot",
+    "3":  "Must be LOW or floating on reboot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "button"] },
+    "21": { "capabilities": ["digital_output", "led_high", "pwm_output"] },
+    "38": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "39": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "43": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "44": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "45": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "46": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "47": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "48": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

@@ -96,8 +96,9 @@
 static const uint8_t TX = WF4_P1_TX_PIN;
 static const uint8_t RX = WF4_P1_RX_PIN;
 
-static const uint8_t SDA = WF4_BM8563_I2C_SDA;
-static const uint8_t SCL = WF4_BM8563_I2C_SCL;
+// pfodWeb NOTE: SDA/SCL not declared as pins — this is the dedicated I2C
+// bus for the onboard BM8563 RTC chip, not a general expansion port (see
+// this board's own board.json chipGpios override).
 
 // there is no dedicated SPI connector on board, but SPI could be accessed via PCB holes
 static const uint8_t SS = WF4_S2_DATA_PIN;

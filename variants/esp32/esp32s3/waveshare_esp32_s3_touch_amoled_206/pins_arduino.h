@@ -54,9 +54,9 @@
 #define BAT_ADC      33
 #define BAT_VOLT_PIN BAT_ADC
 
-// Def for I2C that shares the IMU I2C pins
-static const uint8_t SDA = 15;
-static const uint8_t SCL = 14;
+// pfodWeb NOTE: SDA/SCL not declared — per this board's own comment
+// this I2C bus is shared with the onboard touch/RTC/IMU chips, not a
+// general expansion port (see board.json chipGpios override).
 
 // UART0 pins
 static const uint8_t TX = 43;

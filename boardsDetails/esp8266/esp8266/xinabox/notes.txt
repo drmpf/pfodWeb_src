@@ -1,0 +1,180 @@
+XinaBox CW01 (ESP8266 Wi-Fi Core, ESP-12F) — board variant research notes
+Board dir: variants/esp8266/esp8266/xinabox/
+Date: 2026-07-11
+
+SOURCES CONSULTED
+
+1. https://github.com/xinabox/CW01 (official XinaBox GitHub repo, "Setup of xCHIP CW01")
+   - README pin table confirms an onboard discrete RGB LED:
+       RGB LED Red   = GPIO 12
+       RGB LED Green = GPIO 13
+       RGB LED Blue  = GPIO 5
+     These match this board's own pins_arduino.h aliases exactly:
+     LED_RED=12, LED_GREEN=13, LED_BUILTIN=5.
+   - Also lists I2C SCL=14, SDA=2 (xBUS I2C connector pins).
+   - No mention of any onboard button.
+   - No mention of A0/analog pin at all — A0 is not listed among the
+     module's exposed/documented pins.
+   - Repo contents: examples/CW01_WiFi_Connect/, extras/ (product photo),
+     README.md, LICENSE.md — no schematic PDF found in the repo.
+
+2. https://xinabox.cc/blogs/in-the-news/getting-started-for-arduino-ide-users-programming-cw01-esp8266-to-drive-red-green-and-blue-leds
+   (official XinaBox blog, "Getting started for Arduino IDE users -
+   Programming CW01 to drive Red, Green and Blue LEDs")
+   - Provides the official example sketch:
+       #define RED 12
+       #define GREEN 13
+       #define BLUE 5
+       pinMode(RED/GREEN/BLUE, OUTPUT);
+       digitalWrite(RED, HIGH);  // turns LED on
+       digitalWrite(RED, LOW);   // turns LED off
+     This confirms active-high (common-cathode) drive for all three
+     channels — HIGH lights the LED, LOW turns it off.
+   - Direct WebFetch of this URL failed (TLS cert mismatch: xinabox.cc
+     resolves to a cert for *.cloudns.net); content was instead obtained
+     via WebSearch's own page summarization of the same URL, which
+     quoted the full example sketch verbatim.
+
+3. https://xinabox.cc/products/cw01 and https://wiki.xinabox.cc/CW01_-_ESP8266_Wi-Fi_Core
+   (official product page and wiki)
+   - Direct WebFetch failed for both (xinabox.cc TLS cert mismatch;
+     wiki.xinabox.cc DNS did not resolve from this environment).
+   - WebSearch summaries of these pages state: "Arduino-compatible Wi-Fi
+     development board powered by an ESP-12F, clocked at 80MHz at 3.3V
+     logic... has an onboard RGB LED and 3 xBUS connection ports."
+     No button, no ADC/divider details surfaced in the summaries.
+
+4. https://docs.platformio.org/en/latest/boards/espressif8266/xinabox_cw01.html
+   - Only generic MCU/flash/RAM specs (ESP8266, 80MHz, 4MB flash, 80KB
+     RAM). No pin/button/ADC detail.
+
+5. Other searches tried but unproductive (no CW01-specific results):
+   - "xinabox CW01 push button / user button / reset button"
+   - "xinabox CW01 schematic ADC A0 voltage divider 3.3V"
+   - "xinabox CW01 A0 analog resistor divider"
+   - github.com/xinabox org code search (requires GitHub sign-in, not
+     accessible to WebFetch)
+   - Related pages found for the CW02 (a different, similar XinaBox
+     core) show the same active-high RGB LED pattern but on different
+     GPIOs (25/26/27) — used only as corroborating context, not as
+     evidence for CW01 itself; not cited in board.json.
+
+CONSIDERED BUT NOT CHANGED
+
+- Button: no vendor documentation (GitHub README, product page, wiki,
+  blog posts) mentions any onboard pushbutton/reset button on the CW01
+  itself. XinaBox's xChip design philosophy keeps "core" modules like
+  the CW01 minimal — buttons are supplied by separate xChips (e.g. a
+  dedicated input xChip) connected over the xBUS I2C-style connector,
+  not wired directly to this module's own GPIOs. No "button" capability
+  tag was added anywhere.
+
+- ADC / defaultRefVolts: no vendor schematic, wiki, or README was found
+  describing a resistor-divider network on A0. In fact the CW01's own
+  official pin table (GitHub README) does not list A0 among the module's
+  documented/exposed pins at all — unlike NodeMCU/D1 Mini, which
+  explicitly document a 3.3V-range divider on A0. Given no positive
+  evidence either way, defaultRefVolts was left at the conservative
+  inherited chip-level default of 1.0V (no board.json ADC override
+  needed beyond the full-copy baseline).
+
+- GPIO2 and GPIO0 chip-level pinNotes ("Commonly wired to the on-board
+  LED"/"FLASH/BOOT button on dev boards") are generic chip-level
+  boilerplate carried over from the base board.json; they do NOT apply
+  to this specific board (this board's LEDs are on 5/12/13, and no
+  button was confirmed at all) and were left as-is/unchanged since they
+  are chip-level notes, not board-specific claims of a button/LED at
+  those pins for the CW01.
+
+- TX/RX check: GPIO1 (TX) and GPIO3 (RX) are hard-reserved by
+  build_boards.js. The tagged LED pins (5, 12, 13) do not conflict with
+  either.
+
+SUMMARY
+
+Created variants/esp8266/esp8266/xinabox/board.json (none existed
+before) as a full copy of the esp8266 chip-level default, tagging
+GPIO12/13/5 as a confirmed active-high discrete RGB LED
+(led_r_high/led_g_high/led_b_high). No button tag added (no vendor
+evidence of an onboard button). ADC defaultRefVolts left at the
+inherited 1.0V chip default (no vendor evidence of a voltage divider on
+A0; A0 isn't even documented as an exposed pin on this module).
+
+====================================================================
+[2026-07-12] Dedicated-hardware pin-exclusion audit (second, more
+thorough pass) — re-verification + fresh sweep
+====================================================================
+
+CONTEXT: earlier in this same session, a network-wide contamination
+sweep (across many boards, not specific to this audit) found and fixed
+a real bug on this exact board: pins_arduino.h used to
+`#include "../generic/common.h"`, and that shared file's default MISO
+alias pointed at GPIO12 and MOSI at GPIO13 — exactly this board's
+confirmed LED_RED (12) and LED_GREEN (13) channels. build_boards.js
+(pfodWeb_src/build_boards.js, ~line 698-703) attaches spi_miso/spi_mosi
+capabilities to whichever GPIO numbers match the parsed MISO/MOSI
+consts, so both LED channels were silently getting bogus SPI
+capability tags alongside their correct led_r_high/led_g_high tags.
+
+1. RE-VERIFIED THE FIX IS IN PLACE AND CORRECT:
+   - Read the full current variants/esp8266/esp8266/xinabox/pins_arduino.h.
+   - Confirmed it no longer includes "../generic/common.h" — it is now
+     self-contained.
+   - Confirmed MISO and MOSI are not declared anywhere in the file (so
+     build_boards.js's `consts.MISO`/`consts.MOSI` come back undefined
+     and can never equal GPIO 12 or 13).
+   - Confirmed SS=15, SCK=14, A0=17 were reproduced directly (these do
+     not collide with GPIO5/12/13 or with each other's roles), and that
+     LED_RED=12, LED_GREEN=13, LED_BUILTIN=5 are unchanged.
+   - Confirmed board.json's chipGpios entries for "5", "12", "13" carry
+     only {digital_input, digital_output, pwm_output, led_*_high} — no
+     spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl anywhere on those
+     three pins. Traced build_boards.js's alias-capability logic
+     (consts.sda=2, scl=14, ss=15, sck=14, mosi=undefined, miso=undefined)
+     and confirmed none of those equal 5, 12, or 13, so no contamination
+     path remains. Fix is CORRECT AND COMPLETE — no further change to
+     pins_arduino.h was needed.
+
+2. FRESH LOOK FOR OTHER DEDICATED ONBOARD PERIPHERALS (button, second
+   LED, sensor, etc.) beyond what the first pass already tagged:
+   - Re-fetched https://github.com/xinabox/CW01 directly (WebFetch) and
+     also https://raw.githubusercontent.com/xinabox/CW01/master/README.md.
+     Both confirm the README's pin table is exactly: RGB LED Red=12,
+     RGB LED Green=13, RGB LED Blue=5, I2C SCL=14, I2C SDA=2. No button,
+     no reset pin, no second peripheral of any kind is mentioned in the
+     actual README text.
+   - A WebSearch summary surfaced a recurring snippet claiming the CW01
+     "has breadboard-friendly breakout pins with in-built LED, two
+     reset/flash buttons and a user programmable button." This phrase
+     was checked against the actual README content (fetched directly,
+     above) and is NOT present there — it reads as generic/templated
+     marketplace boilerplate picked up by the search index (identical
+     wording recurs across unrelated search summaries with no specific
+     source cited), not board-specific documentation. Direct source
+     fetch is trusted over the search snippet; no button capability was
+     added on this basis.
+   - Also found (WebSearch summary, generic ESP8266 boot info, not
+     CW01-specific): "Connect bootstrapping resistors to GPIO0, GPIO2,
+     GPIO15 according to the schematics" — this restates standard
+     ESP8266 strapping-pin behavior already covered by this board's
+     inherited chip-level pinNotes for GPIO0/GPIO2/GPIO15; it is not
+     evidence of a board-specific button or peripheral and required no
+     change.
+   - No schematic PDF is published in the GitHub repo (contents remain:
+     examples/CW01_WiFi_Connect/, extras/ product photo, README.md,
+     LICENSE.md).
+
+3. CONCLUSION: NO CHANGE beyond the fix already applied earlier this
+   session. pins_arduino.h and board.json both re-confirmed correct:
+   GPIO5/12/13 = RGB LED only (no SPI/I2C contamination), GPIO2/14 =
+   I2C SDA/SCL, GPIO15 = SS, GPIO14 = SCK (shared with SCL, both valid
+   per vendor data), GPIO17 = A0 (no divider evidence, stays at
+   inherited 1.0V). No onboard button found in any authoritative
+   (direct-fetched) source. No board.json edits were required.
+
+SUMMARY (this pass): Confirmed the same-session common.h-include fix on
+this board's pins_arduino.h is complete and correctly prevents
+spi_miso/spi_mosi contamination of GPIO12/13. Fresh vendor-README
+re-check (direct fetch, not search-summary) found no additional
+dedicated peripheral (no button) beyond the RGB LED already tagged.
+No file changes made in this pass.

@@ -10,8 +10,9 @@ static const uint8_t LED_BUILTIN = 0;  //GPIO0,
 static const uint8_t SWITCH_A = 46;  //GPIO46,
 static const uint8_t SWITCH_B = 47;  //GPIO47,
 //Wifi and Bluetooth LEDs
-static const uint8_t WIFI_LED = 38;
-static const uint8_t BT_LED = 37;
+// pfodWeb NOTE: WIFI_LED/BT_LED (GPIO38/37) deliberately NOT declared -
+// same GPIOs as the dedicated onboard TFT display's RST/DC lines below,
+// which take priority (required whenever the display is active).
 
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;
@@ -59,32 +60,13 @@ static const uint8_t AD1 = 7;  //IO,GPIO7,ADC1_CH6,TOUCH7,MCPWM
 static const uint8_t SDA = 40;  //GPIO40;
 static const uint8_t SCL = 41;  //GPIO41;
 
-/* Hardware HSPI */
-static const uint8_t MOSI = 35;  //GPIO35;
-static const uint8_t MISO = 37;  //GPIO37;
-static const uint8_t SCK = 36;   //GPIO36;
-static const uint8_t SS = 34;    //GPIO34;
-static const uint8_t SDO = 35;   //GPIO35;
-static const uint8_t SDI = 37;   //GPIO37;
-//----------------------------------
-
-static const uint8_t TFT_RST = 38;   //GPIO38;
-static const uint8_t TFT_SCLK = 35;  //GPIO35;
-static const uint8_t TFT_CS = 42;    //GPIO42;
-static const uint8_t TFT_DC = 37;    //GPIO37;
-static const uint8_t TFT_MOSI = 36;  //GPIO36;
-
-static const uint8_t LCD_A0 = 37;          //GPIO37,
-static const uint8_t LCD_BACK_LIGHT = 45;  //GPIO45,
-static const uint8_t DAC1 = 21;            //GPIO21,
+// pfodWeb NOTE: MOSI/MISO/SCK/SS/SDO/SDI ("Hardware HSPI"), TFT_RST/
+// SCLK/CS/DC/MOSI, LCD_A0/LCD_BACK_LIGHT, and the lowercase rst/sclk/cs/
+// dc/mosi duplicates deliberately NOT declared - all dedicated onboard
+// 128x128 ST7735 display pins (GPIO34-38/42/45), not general-purpose
+// (see board.json chipGpios override).
+static const uint8_t DAC1 = 21;  //GPIO21,
 //LCD additional pins
-
-//Adafruit 128*128 ST7735 Driver New
-static const uint8_t rst = 38;
-static const uint8_t sclk = 35;
-static const uint8_t cs = 42;
-static const uint8_t dc = 37;
-static const uint8_t mosi = 36;
 
 #define VP 36  //GPIO36,
 #define VN 39  //GPIO39,

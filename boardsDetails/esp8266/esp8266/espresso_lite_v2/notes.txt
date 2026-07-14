@@ -1,0 +1,316 @@
+espresso_lite_v2 - button/LED + ADC research notes
+====================================================
+
+Context: "ESPresso Lite 2.0" (a.k.a. "ESPresso Lite V2.0"), a Malaysian-
+market ESP8266 board from Cytron Technologies x ESPert. Distinct from the
+sibling espresso_lite_v1 directory ("ESPresso Lite 1.0"/"Beta") - NOT
+touched in this pass. This board's own pins_arduino.h has
+`#define LED_BUILTIN 2`, while v1's has `#define LED_BUILTIN 16` - the two
+revisions genuinely differ, confirming the task brief's warning not to
+assume v1's wiring carries over to v2. No board.json existed for this
+directory before this pass.
+
+Sources consulted
+------------------
+variants/esp8266/esp8266/espresso_lite_v2/pins_arduino.h (already in repo)
+  `#define ESPRESSO_LITE_VERSION 2`, `#define LED_BUILTIN 2`. No BUTTON
+  alias present (per task brief, this alone is NOT treated as proof of an
+  LED - it only motivated further investigation).
+
+variants/esp8266/esp8266/espresso_lite_v1/board.json (sibling, read-only,
+NOT edited)
+  Already contains a prior session's confirmed v1 findings (LED=GPIO16,
+  BUTTON=GPIO2, both active-low) and, critically, a citation of the
+  official ESPert Arduino library source with the exact V2 override values
+  (LED=2, BUTTON=13). This was the lead that directed the rest of this
+  session's research - but the library source was independently re-fetched
+  and read directly below rather than trusted blindly.
+
+https://github.com/JimmySoftware/ESPert/blob/master/src/ESPert.cpp
+  (fetched raw via raw.githubusercontent.com and read directly)
+  THE key confirming source for both LED and BUTTON. This is the official
+  Arduino library Cytron/ESPert publish and recommend for these boards.
+  Read directly:
+    - Global defaults (used for v1 / unrecognized board): `ESPERT_PIN_LED
+      = 16; ESPERT_PIN_BUTTON = 2;`
+    - `ESPert::init()`: resolves `ESPertBoardType` from build macros -
+      `#ifdef ARDUINO_ESP8266_ESPRESSO_LITE_V2` (also a lowercase variant
+      `ARDUINO_ESP8266_espresso_lite_v2` "wait for the new release to fix
+      this issue") sets `ESPertBoardType = ESPERT_BOARD_ESPRESSO_LITE2`.
+      When `ESPertBoardType == ESPERT_BOARD_ESPRESSO_LITE2`:
+      `ESPERT_PIN_LED = 2; ESPERT_PIN_BUTTON = 13;` - this is the V2
+      override branch.
+    - `ESPert_Button::init()`: `pinMode(buttonPin, (mode==-1) ?
+      INPUT_PULLUP : mode)`. `isOn()`: `bool buttonPressed = (status ==
+      LOW)`. Confirms GPIO13 is a plain active-low pushbutton with an
+      internal pull-up, on V2.
+    - `ESPert_LED::init()`: `pinMode(ledPin, OUTPUT); off();`.
+      `ESPert_LED::set(bool state)`: for every board type except the
+      unrelated ESP201, `digitalWrite(ledPin, state ? LOW : HIGH)` - LED
+      "on" drives the pin LOW, i.e. active-low. Confirms GPIO2 LED is
+      active-low, matching pins_arduino.h's LED_BUILTIN=2.
+  Cross-checked the macro chain: boards.txt has
+  `espresso_lite_v2.build.board=ESP8266_ESPRESSO_LITE_V2`, and the
+  Arduino-ESP8266 core convention is to define `ARDUINO_<build.board>`,
+  giving `ARDUINO_ESP8266_ESPRESSO_LITE_V2` - exactly the macro tested in
+  ESPert.cpp's `#ifdef`. This confirms the V2 branch is the one that
+  applies to this exact variant directory, not a different/older board ID.
+
+https://github.com/CytronTechnologies/Espresso-Lite-v2.0-TestJig
+  (repo tree listed via GitHub API, then the board firmware .ino fetched
+  raw and read directly)
+  Espresso-Lite-TestJig-Board.ino - Cytron's own official manufacturing
+  test-jig firmware, flashed onto every V2 board on the production line to
+  verify hardware before shipping. Independently corroborates the LED
+  finding without relying on the ESPert library at all:
+    - `setup()`: `pinMode(2, OUTPUT); digitalWrite(2, HIGH);` - LED forced
+      off at boot (HIGH = off, i.e. active-low).
+    - SoftAP test ('F' command handler): blinks GPIO2 six times via
+      alternating `digitalWrite(2, LOW)` / `digitalWrite(2, HIGH)` with
+      200ms delays, as a visual pass/fail indicator - this is a real
+      on-board LED, not a coincidental pin toggle.
+  No GPIO13 (or any button) reference found in this firmware - the test
+  jig drives the board's pins from an external RPi2 test fixture rather
+  than reading the onboard user button, so its absence here is expected
+  and not evidence against the ESPert library's GPIO13 finding.
+
+Retailer / spec pages checked for a button/LED GPIO number or an ADC
+voltage-range statement (none found; used only to look for corroboration
+or contradiction, not as the basis for any tag):
+  https://www.cytron.io/p-espresso-lite-v2.0 (WebFetch: 403 Forbidden,
+    Cloudflare-protected - could not read directly)
+  https://www.jsumo.com/espresso-lite-v20 - "One Reset button, two User
+    Programmable buttons"; "Integrated 10-bit ADC" (WROOM-02 chip spec,
+    no voltage-range qualifier); no onboard LED mentioned; no GPIO numbers
+    for anything.
+  https://store.open-electronics.org/Espresso-Lite-V2-0 - "A reset button
+    and two user-programmable buttons"; "10 bit AD converter" (again just
+    the chip spec); no onboard LED mentioned; no GPIO numbers.
+  https://www.espboards.dev/esp8266/espresso-lite-v2/ - auto-generated
+    pinout page, essentially just echoes pins_arduino.h (LED_BUILTIN=2,
+    SDA=4, SCL=5); no button GPIO, no ADC voltage-range statement.
+  https://www.cytron.io/tutorial/getting-started-espresso-lite-v2-0
+    (formerly tutorial.cytron.io) - Cloudflare JS challenge page, could
+    not be fetched by WebFetch or curl (no browser JS execution
+    available). Wayback Machine has NO archived snapshot of this URL
+    (checked via the archive.org "available" API - empty result).
+  http://beta.espressolite.com/ , http://www.espressolite.com/blog/ ,
+    http://learn.espressolite.com/ - the original vendor's own domains.
+    beta.espressolite.com no longer resolves (DNS failure). www.
+    espressolite.com/blog/ returns an invalid-SSL/Cloudflare 526 error via
+    HTTPS (curl over plain HTTP got a 200 but WebFetch requires HTTPS and
+    fails). learn.espressolite.com does not resolve (DNS failure). These
+    sites, which hosted the getting-started guide that gave V1's
+    button/LED/ADC info in the sibling espresso_lite_v1 board.json, appear
+    to now be largely defunct for V2-specific content.
+  https://github.com/esp8266/Arduino/pull/1621/files (WebFetch could not
+    render the diff body - only the surrounding PR description text about
+    v1.0 vs v2.0 auto-load/auto-program came through, no pin-level detail).
+  https://hackaday.io/project/10461-espresso-lite-v20 and hackster.io -
+    project overview text only, no schematic files or GPIO tables visible
+    to the fetch tool (Hackster returned 403).
+
+Pins considered but NOT tagged / changed
+------------------------------------------
+GPIO0: commonly a BOOT/FLASH button on many ESP8266 dev boards (see
+generic pinNote), but no source found for V2 specifically confirms a
+physical pushbutton on GPIO0 - V2's headline feature is "auto-load/auto-
+program function, eliminating the previous need to reset the board
+manually", which strongly implies flash-mode entry is driven
+electronically (DTR/RTS through a USB-serial chip, same pattern as the
+WEMOS D1 Mini) rather than by a discrete button. No "button" tag applied
+to GPIO0 - not a guess, and consistent with the "auto-load" feature
+description, though not independently schematic-confirmed either way.
+
+ADC / A0 (GPIO17 synthetic slot): V1's own vendor blog explicitly stated
+"this pin ... can only take in maximum of 3.3V", which V1's board.json
+used to justify defaultRefVolts="3.3". No equivalent statement, schematic,
+or resistor-value source was found for V2 specifically - all V2 retailer/
+spec pages checked above just repeat the WROOM-02 chip's generic "10-bit
+ADC" spec with no voltage-range qualifier, and the ESPert library source
+has zero analog-pin references. Per the task's explicit instruction ("if
+no divider found or can't confirm, leave at 1.0V and document"),
+defaultRefVolts was left at the chip-level "1.0" default rather than
+copying V1's "3.3" value across - the two revisions are documented
+separately elsewhere (LED/button GPIOs) precisely because they differ, so
+assuming the analog circuit is identical without evidence would contradict
+the same caution.
+
+GPIO13 was already present in the chip-level board.json's chipGpios map
+(as digital_input/digital_output/pwm_output) before this board-specific
+file was created; tagging it "button" here removes digital_output/
+pwm_output from its capability list for this board only, following the
+Button-tag convention used by the sibling espresso_lite_v1/board.json
+(GPIO2 tagged `["digital_input", "button"]` there, dropping
+digital_output/pwm_output the same way).
+
+Checked pins_arduino.h in this variant directory for TX/RX conflicts: TX=1
+(UART0 TX0), RX=3 (UART0 RX0), both forced at chip level. Neither GPIO2
+(LED) nor GPIO13 (button) coincides with either, so no conflict with the
+build_boards.js TX/RX hard-reservation.
+
+Summary
+--------
+TAGGED: GPIO2 -> ["digital_output","pwm_output","led_low"] (onboard LED,
+active-low, confirmed via the official ESPert Arduino library source
+(GitHub) plus Cytron's own V2 manufacturing test-jig firmware (GitHub) -
+both read directly, both board-V2-specific, independent of pins_arduino.h
+though they corroborate its LED_BUILTIN=2).
+GPIO13 -> ["digital_input","button"] (onboard USER button, active-low,
+INPUT_PULLUP - confirmed via the same official ESPert library source's
+V2-specific branch, `ESPertBoardType == ESPERT_BOARD_ESPRESSO_LITE2`).
+Created variants/esp8266/esp8266/espresso_lite_v2/board.json as a full
+copy of the esp8266 chip-level default with only GPIO2 and GPIO13
+modified (no board.json existed before this pass).
+ADC: NO CHANGE - defaultRefVolts left at the chip-level "1.0" default. No
+V2-specific schematic, spec page, or library source confirms an on-board
+resistor divider or an extended analog input voltage range (unlike V1,
+whose own vendor blog explicitly claimed a 3.3V max for its AD pin) -
+documenting absence of evidence rather than guessing or copying V1's
+value.
+
+===========================================================================
+2026-07-12: dedicated-hardware pin-exclusion audit (full sweep, this pass)
+===========================================================================
+
+Context / why this pass exists
+-------------------------------
+This is a separate, more thorough pass than the button/LED tagging pass
+documented above. The task brief flagged this board for the same
+version-selector-macro concern already found to hide real bugs on two
+sibling boards this session (espresso_lite_v1 and espectro): a `#define
+ESPRESSO_LITE_VERSION 2` line that could, in principle, sit alongside an
+`#if`/`#else` branch pair that build_boards.js's comment-blind,
+ifdef-blind, last-wins parser resolves incorrectly.
+
+Sources consulted
+------------------
+variants/esp8266/esp8266/espresso_lite_v2/pins_arduino.h (this board's own
+file, read in full before any change)
+  No `#if`/`#ifdef`/`#else`/`#endif` structure anywhere in this file.
+  ESPRESSO_LITE_VERSION is a plain, single, unconditional `#define` used
+  only as an informational/version-identifying macro - it is never tested
+  by any `#if` in this file, so there is no branch-selection ambiguity of
+  the kind found on espresso_lite_v1/espectro. Confirmed by also diffing
+  against esp8266_board_variants/variants/espresso_lite_v2/pins_arduino.h
+  (the raw upstream import copy) - byte-for-byte identical content, so
+  nothing was lost or altered on import either. CONCLUSION: no
+  version-branch ambiguity exists on this specific board; this file is
+  genuinely a single, simple, unconditional declaration set, unlike the
+  siblings that motivated this check.
+
+variants/esp8266/esp8266/generic/common.h (shared header this board's
+pins_arduino.h included before this pass)
+  Read in full. Declares, unconditionally: `PIN_SPI_SS (15)`,
+  `PIN_SPI_MOSI (13)`, `PIN_SPI_MISO (12)`, `PIN_SPI_SCK (14)`, and peer
+  `static const uint8_t` aliases SS/MOSI/MISO/SCK for each, plus `PIN_A0
+  (17)` -> `static const uint8_t A0`. THIS is where the real, non-obvious
+  bug in this pass was found: PIN_SPI_MOSI's value, 13, is the exact same
+  GPIO number already confirmed (in the section above) as this board's
+  onboard USER button.
+
+pfodWeb_src/build_boards.js (read directly, not assumed from the
+playbook's summary, to confirm the exact mechanism before editing anything)
+  Confirmed the specific code path at issue: `buildEsp32Board()` first
+  builds each pin's capability list from a board.json chipGpios override
+  when present (`caps = CAP_ORDER.filter(c => chipSet.has(c))` - GPIO13's
+  override there is `["digital_input","button"]`), but immediately
+  afterwards, UNCONDITIONALLY and regardless of any chipGpios override,
+  runs four lines that each append an SPI-role capability whenever a
+  GPIO's number matches the resolved MOSI/MISO/SCK/SS constant. There is
+  no config flag or board.json field that can suppress this - the only
+  way to stop a given GPIO from picking up an unwanted SPI-role
+  capability is to make sure that GPIO number is never resolved as the
+  corresponding SPI alias name in the flattened pins_arduino.h source in
+  the first place. This exactly matches gotcha entries already documented
+  in project_board_variant_pin_audit_playbook.md section 4/5 (an
+  already-tagged hardware-identity pin can still be silently
+  "recontaminated" by a shared header's unconditional alias) and is the
+  same fix pattern already applied to variants/esp8266/esp8266/
+  agruminolemonv4/pins_arduino.h in an earlier pass this session (see that
+  board's own notes.txt) - self-contained rewrite, drop the one colliding
+  alias, keep the rest.
+
+docs/pfodWeb-variants-guide.html (read the relevant sections directly to
+confirm before rewriting the file)
+  Confirmed `variants/` content is Designer-metadata-only - "Nothing
+  under variants/ ships in pfodWeb.html" and these files are parsed, not
+  compiled against any real toolchain, for this project's purposes. This
+  made the self-contained-rewrite fix (dropping the shared common.h
+  include for this one board) a safe, contained edit with no effect
+  outside this board's own generated JSON.
+
+What was found and fixed
+--------------------------
+1. Version-branch ambiguity: NOT found. This board's pins_arduino.h has no
+   conditional-compilation structure at all - checked and ruled out, not
+   assumed.
+
+2. Real bug found instead, matching the task's critical check 5 (GPIO2/
+   GPIO13 alias-collision check): GPIO13, this board's confirmed onboard
+   USER button (tagged in the section above), was ALSO being resolved by
+   the parser as the chip's hardware SPI MOSI line, purely because this
+   board's pins_arduino.h pulled in the shared generic/common.h header
+   that declares that alias unconditionally for every ESP8266 board
+   regardless of what that GPIO is actually used for on any specific
+   board. Net effect before this fix: GPIO13's generated capability list
+   silently carried an extra SPI-role capability alongside "button",
+   which is both misleading (the Designer's pin picker would present
+   GPIO13 as available for a user's own SPI MOSI wiring) and physically
+   wrong (that pin is committed to the onboard button, not general SPI
+   use, on this board).
+   FIX APPLIED: converted this board's pins_arduino.h to a fully
+   self-contained file (no longer includes ../generic/common.h) that
+   reproduces every other definition from that shared header directly,
+   but omits only the one alias declaration that named the SPI-MOSI
+   define - the SS/MISO/SCK aliases (GPIO15/12/14) and the A0 alias
+   (GPIO17) are all still declared exactly as before, since no dedicated
+   onboard use was found for any of those three GPIOs. A NOTE comment was
+   added directly above the kept SS/MISO/SCK lines explaining the
+   omission in plain English (no code-style declaration syntax used in
+   the comment, and nothing commented-out - written this way specifically
+   because the parser is comment-blind and would otherwise re-match a
+   literal reproduction of the removed line, which was caught and
+   corrected during this same pass before finalizing).
+   board.json was also updated: a new pfodWeb NOTE paragraph was added
+   near the top documenting this finding, and confirming (by explicit
+   enumeration) that no other alias on this board - SDA=4, SCL=5, SS=15,
+   MISO=12, SCK=14, TX=1, RX=3 - collides with either GPIO2 (LED) or
+   GPIO13 (button). chipGpios/pinNotes entries for GPIO2/GPIO13 were left
+   as-is (still correct); only the new explanatory NOTE paragraph was
+   added.
+
+3. Other dedicated onboard peripherals beyond LED/button: none found.
+   Re-checked pins_arduino.h and common.h line-by-line for any other
+   declaration name (SDA/SCL/SS/MISO/SCK/A0/EXTERNAL_NUM_INTERRUPTS/
+   NUM_DIGITAL_PINS/NUM_ANALOG_INPUTS/the isFlashInterfacePin etc. macros)
+   - all are ordinary chip-generic conventions already covered by the
+   chip-level board.json's chipGpios map, not board-specific dedicated
+   hardware. No new candidate GPIOs identified.
+
+4. GPIO2/GPIO13 alias-collision check (explicitly required by the task
+   brief): GPIO2 does not coincide with any of SDA(4)/SCL(5)/SS(15)/
+   MISO(12)/SCK(14)/TX(1)/RX(3) - clean, no contamination. GPIO13 DID
+   coincide with MOSI before this pass's fix (see above) - this was the
+   one real finding of this whole sweep.
+
+Files written this pass
+-------------------------
+- variants/esp8266/esp8266/espresso_lite_v2/pins_arduino.h (rewritten
+  self-contained, MOSI alias omitted, explanatory NOTE comment added)
+- variants/esp8266/esp8266/espresso_lite_v2/board.json (new pfodWeb NOTE
+  paragraph added near the top; no chipGpios/pinNotes values changed)
+- this notes.txt (this section appended)
+
+One-line summary
+-----------------
+No version-branch #if/#else ambiguity exists in this board's
+pins_arduino.h (checked and ruled out, unlike sibling espresso_lite_v1/
+espectro). Real bug found and fixed instead: GPIO13 (the confirmed
+onboard button) was also silently resolving as the shared common.h's
+hardware SPI MOSI alias, contaminating its capability list with an
+unwanted spi_mosi tag regardless of the board.json button override -
+fixed by converting pins_arduino.h to a self-contained file that keeps
+SS/MISO/SCK/A0 but omits the one colliding MOSI alias, plus a
+board.json NOTE documenting it. No other dedicated onboard hardware
+found; GPIO2 (LED) confirmed clean of any alias collision.

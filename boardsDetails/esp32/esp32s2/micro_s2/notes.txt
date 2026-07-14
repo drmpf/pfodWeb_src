@@ -1,0 +1,72 @@
+micro_s2 (MicroDev microS2, ESP32-S2) - button/LED capability tagging research notes
+=====================================================================================
+
+Sources consulted
+------------------
+1. https://www.hackster.io/news/microdev-s-micros2-packs-an-esp32-s2-microcontroller-into-a-tiny-module-size-form-factor-6baace1a1b5c
+   News article confirming the board is by "MicroDev" and has "a blue LED, a NeoPixel
+   RGB LED" onboard. Identified the real vendor (MicroDev) behind the pins_arduino.h
+   USB_MANUFACTURER "microDev" / USB_PRODUCT "microS2" strings.
+
+2. https://github.com/microDev1/microS2 (official vendor repo)
+   Confirms board name, features list, and links to docs/examples. Confirms "dedicated
+   Reset and Boot buttons that can also serve as user input".
+
+3. https://github.com/microDev1/microS2/blob/main/README.md
+   States "Blue led (IO21)" and "Neopixel (IO33)" explicitly in the features list.
+
+4. https://circuitpython.org/board/microdev_micro_s2/
+   CircuitPython board download page; restates "NeoPixel RGB LED on IO33 and a blue
+   LED on IO21, along with dedicated Reset and Boot buttons".
+
+5. https://github.com/microDev1/microS2/wiki
+   Attempted fetch for schematic/polarity details - wiki pages failed to load content
+   (no additional info obtained beyond README).
+
+6. https://raw.githubusercontent.com/microDev1/microS2/main/examples/HelloWorld/code.py
+   Official vendor example: `led = digitalio.DigitalInOut(LED)` ... `led.value = True`
+   turns the LED on (board module alias LED -> IO21). Consistent with active-high but
+   on its own a symmetric blink doesn't strictly prove polarity.
+
+7. https://raw.githubusercontent.com/microDev1/microS2/main/examples/Counter/code.py
+   Also drives IO21 LED via digitalio, consistent with example 6.
+
+8. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/espressif/boards/microdev_micro_s2/pins.c
+   Official upstream Adafruit CircuitPython board definition (independent secondary
+   source, not the Arduino pins_arduino.h aliases). Confirms:
+     BUTTON   -> pin_GPIO0
+     LED      -> pin_GPIO21
+     NEOPIXEL -> pin_GPIO33
+   This matches pins_arduino.h (BUTTON_BUILTIN=0, LED_BUILTIN=21, PIXEL_BUILTIN=33)
+   via a fully independent vendor-submitted source, satisfying the "not purely from
+   pins_arduino.h alias names" requirement.
+
+9. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/espressif/boards/microdev_micro_s2/mpconfigboard.h
+   Defines `MICROPY_HW_LED_STATUS (&pin_GPIO21)` and `MICROPY_HW_NEOPIXEL (&pin_GPIO33)`.
+   Does NOT define MICROPY_HW_LED_STATUS_INVERTED.
+
+10. https://raw.githubusercontent.com/adafruit/circuitpython/main/supervisor/shared/status_leds.c
+    Shows `#ifndef MICROPY_HW_LED_STATUS_INVERTED #define MICROPY_HW_LED_STATUS_INVERTED (0) #endif`
+    and the drive logic `common_hal_digitalio_digitalinout_set_value(&single_color_led,
+    (rgb_adjusted > 0) ^ MICROPY_HW_LED_STATUS_INVERTED)`. Since micro_s2's
+    mpconfigboard.h leaves the INVERTED flag undefined (defaults to 0/not-inverted),
+    this confirms the blue LED on GPIO21 is driven HIGH to turn on, i.e. active-high.
+
+Pins considered but NOT tagged
+-------------------------------
+None. All three candidate pins (GPIO0 button, GPIO21 blue LED, GPIO33 NeoPixel) were
+confirmable via independent vendor/CircuitPython documentation, are present in the
+chip-level chipGpios (no pre-existing pin-exclusion conflict), and are not the board's
+TX/RX pins (TX=43, RX=44 per pins_arduino.h, no overlap). No best-guess/judgment calls
+were required - all three were positively confirmed by an independent source beyond
+the Arduino pins_arduino.h alias names.
+
+Summary of tags applied
+-------------------------
+Created C:\ai\aicode\pfodWeb\variants\esp32\esp32s2\micro_s2\board.json (no board.json
+previously existed) as a full copy of the esp32s2 chip-level default board.json with:
+  GPIO0  -> ["digital_input", "button"]              (onboard BOOT pushbutton)
+  GPIO21 -> ["digital_output", "led_high", "pwm_output"]   (onboard blue LED, active-high)
+  GPIO33 -> ["digital_output", "led_neopixel", "pwm_output"] (onboard NeoPixel RGB LED)
+pwm_output was retained on GPIO21/GPIO33 because it was already present in the
+chip-level default capability set for those pins.

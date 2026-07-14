@@ -30,12 +30,9 @@
 #define PIN_BUTTON4 11
 #define PIN_BUTTON5 0  // BOOT0 switch
 
-static const uint8_t EPD_BUSY = 5;
-static const uint8_t EPD_RESET = 6;
-static const uint8_t EPD_DC = 7;
-static const uint8_t EPD_CS = 8;
-
-static const uint8_t ACCEL_IRQ = 9;
+// pfodWeb NOTE: EPD_BUSY/RESET/DC/CS (GPIO5/6/7/8) and ACCEL_IRQ (GPIO9)
+// deliberately NOT declared - dedicated onboard E-ink display + accelerometer
+// (see board.json chipGpios override).
 
 static const uint8_t BUTTON_A = PIN_BUTTON1;
 static const uint8_t BUTTON_B = PIN_BUTTON2;
@@ -50,27 +47,24 @@ static const uint8_t SPEAKER_SHUTDOWN = 16;
 static const uint8_t SDA = 33;
 static const uint8_t SCL = 34;
 
-static const uint8_t SS = 8;
-static const uint8_t MOSI = 35;
-static const uint8_t SCK = 36;
-static const uint8_t MISO = 37;
+// pfodWeb NOTE: SS/MOSI/SCK/MISO deliberately NOT declared - same E-ink
+// display SPI bus as EPD_CS(8)/MOSI(35)/SCK(36)/MISO(37) above.
 
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 #define TX1 TX
 #define RX1 RX
 
+// pfodWeb NOTE: A6-A10 (GPIO5/6/7/8/9) deliberately NOT declared - same
+// E-ink/accelerometer pins above. A18/A19 (GPIO19/20) deliberately NOT
+// declared - native USB D-/D+ (would otherwise re-leak the chip-default
+// excluded USB pins via this board's own alias).
 static const uint8_t A0 = 17;
 static const uint8_t A1 = 18;
 static const uint8_t A2 = 1;
 static const uint8_t A3 = 2;
 static const uint8_t A4 = 3;
 static const uint8_t A5 = 4;
-static const uint8_t A6 = 5;
-static const uint8_t A7 = 6;
-static const uint8_t A8 = 7;
-static const uint8_t A9 = 8;
-static const uint8_t A10 = 9;
 static const uint8_t A11 = 10;
 static const uint8_t A12 = 11;
 static const uint8_t A13 = 12;
@@ -78,8 +72,6 @@ static const uint8_t A14 = 13;
 static const uint8_t A15 = 14;
 static const uint8_t A16 = 15;
 static const uint8_t A17 = 16;
-static const uint8_t A18 = 19;
-static const uint8_t A19 = 20;
 
 static const uint8_t T10 = 10;
 

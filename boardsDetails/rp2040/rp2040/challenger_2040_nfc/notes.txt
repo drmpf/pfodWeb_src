@@ -1,0 +1,103 @@
+Board: iLabs "Challenger 2040 NFC" (challenger_2040_nfc), chip bucket rp2040
+Audit date: 2026-07-13
+Part of the ongoing RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin-exclusion audit (never done for this family before this session).
+
+SOURCES CONSULTED
+1. This board's own pins_arduino.h (variants/rp2040/rp2040/challenger_2040_nfc/pins_arduino.h)
+   - already carried a pre-existing comment block documenting the PN7150 connection:
+     "// Connected to PN7150 NFC controller on I2C channel 2" with PIN_WIRE1_SDA=(10u),
+     PIN_WIRE1_SCL=(11u), PIN_PN7150_IRQ_B=(9u), PIN_PN7150_RST_B=(12u), PN7150_I2C_ADDR=(0x28).
+   - Also declares PIN_LED=(24u), NEOPIXEL=(14u)/PIN_NEOPIXEL, LED_BUILTIN=PIN_LED.
+2. Chip-level defaults: variants/rp2040/rp2040/board.json (chipGpios: {} deliberately empty
+   at chip level for this family).
+3. Precedent files read before writing:
+   - variants/rp2040/rp2040/rpipico/board.json (simple onboard LED tagging pattern, led_high).
+   - variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (dedicated-hardware SPI pin
+     exclusion pattern for an onboard chip, capabilities:[] + note, bus role auto-appended
+     by build_boards.js).
+   - variants/rp2040/rp2040/challenger_2040_wifi/board.json - SAME MANUFACTURER, same
+     Challenger RP2040 / Adafruit Feather product line, already audited earlier in this
+     same 2026-07-13 session. This was the most valuable precedent: it documents the
+     iLabs "D15 user programmable green LED" circuit as vendor-confirmed
+     "Active level: High", and shows the identical PN-style co-processor dedicated-pin
+     exclusion pattern (GPIO4/5/13/19 for its ESP8285) and NeoPixel tagging (GPIO11).
+4. WebSearch + WebFetch (live, this session):
+   - https://ilabs.se/challenger-rp2040-nfc-datasheet/ (official vendor datasheet) -
+     confirms verbatim: "GPIO10 (SDA), GPIO11 (SCL) is configured as an I2C bus 1
+     (Wire1)... GPIO9 (Arduino name PIN_PN7150_IRQ_B) is connected to the interrupt
+     signal from the PN7150... GPIO12 (Arduino name PIN_PN7150_RST_B) is connected to
+     the reset signal of the PN7150." Exactly matches this board's own pins_arduino.h
+     (pre-existing comment, cross-confirmed rather than newly discovered).
+     Also states: "On the other side of the USB connector there is a user programmable
+     green LED. This LED is connected to pin D15" (silkscreen/CircuitPython label "D15"
+     = GPIO24 here; this board's own pins_arduino.h separately declares static const
+     uint8_t D18 = (24u), i.e. the same physical pin GPIO24 that PIN_LED/LED_BUILTIN
+     point to - the "D15" vs "D18" naming is an iLabs cross-document labeling
+     inconsistency, but the GPIO number is unambiguous either way). Does NOT state
+     the LED's active-level/polarity on this specific page. Also documents a separate
+     red "CHG" LED that is a passive battery-charge-status indicator, not GPIO-driven
+     (out of scope). No pushbutton beyond BOOTSEL/reset is mentioned in the datasheet's
+     feature/spec table.
+   - https://ilabs.se/quick-start-example-for-the-challenger-rp2040-nfc-board/ (official
+     vendor quick-start guide for THIS specific board) - its example sketch instantiates
+     `Adafruit_NeoPixel pixels(1, NEOPIXEL, NEO_GRB + NEO_KHZ800);`, confirming the
+     onboard NeoPixel (this board's own NEOPIXEL=(14u) alias) is real populated hardware
+     on this exact product (not just an inherited-but-unpopulated shared-header alias).
+     The same example also references LED_BUILTIN and a `#define BUZZER_PIN D13`
+     (GPIO8) - the buzzer is example wiring guidance for an external buzzer, not a
+     documented onboard component (absent from the datasheet's spec table), so GPIO8
+     was left untagged/at full chip default.
+   - https://ilabs.se/challenger-rp2040-wifi-datasheet/ (sibling board, same product
+     line) - explicitly states "Active level: High" for its own D15 user-programmable
+     LED (GPIO12 on that board). Used as cross-referenced evidence that this NFC
+     board's GPIO24 LED (same "user programmable green LED"/"D15" phrasing, same
+     manufacturer, same Feather form factor, same reference LED-driver circuit
+     pattern, only the GPIO number differing per board's own pin budget) is also
+     active-high.
+   - https://tinygo.org/docs/reference/microcontrollers/machine/challenger-rp2040/ -
+     fetched but found unreliable/inconsistent with this board's own pins_arduino.h
+     (e.g. claimed I2C0 SDA=GPIO24 which does not match anything on this board) -
+     NOT used as evidence, disregarded.
+
+PER-PIN REASONING
+  GPIO9  (PIN_PN7150_IRQ_B): PN7150 interrupt output, read by RP2040. No bus alias.
+         capabilities: [] (empty) - not general purpose.
+  GPIO10 (PIN_WIRE1_SDA): PN7150 dedicated I2C1 data line. capabilities: [] - i2c_sda
+         is auto-supplied by build_boards.js from the Wire1 SDA alias (matches the
+         wiznet_5500_evb_pico SPI0-pin precedent: strip digital_input/output/pwm,
+         keep the correct single bus-role capability).
+  GPIO11 (PIN_WIRE1_SCL): PN7150 dedicated I2C1 clock line. Same reasoning as GPIO10
+         (i2c_scl auto-supplied).
+  GPIO12 (PIN_PN7150_RST_B): PN7150 reset line, driven by RP2040. No bus alias.
+         capabilities: [] (empty).
+  GPIO14 (NEOPIXEL / PIN_NEOPIXEL): onboard WS2812 status pixel, confirmed real
+         hardware via this board's own quick-start example. Tagged
+         ["digital_output","led_neopixel","pwm_output"] per the established
+         led_neopixel precedent (challenger_2040_wifi GPIO11, sea_picro GPIO25, etc).
+  GPIO24 (PIN_LED / LED_BUILTIN): onboard user LED. Tagged
+         ["digital_output","pwm_output","led_high"] on the cross-referenced basis
+         described above (sibling board's own vendor datasheet states "Active level:
+         High" for the identical shared reference circuit).
+
+BUG-CLASS CHECK (confirmed button/LED pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK,
+which build_boards.js would silently re-append a bus capability to regardless of a
+chipGpios override): checked GPIO9, 12, 14, 24 against every SPI0 (20-23), Wire0
+(0,1), Wire1 (10,11), Serial1 (16,17) alias in this board's pins_arduino.h - no
+collisions found. GPIO10/11 do carry the Wire1 alias, but that IS their correct,
+intentional dedicated-hardware role (not an accidental/spare-bus collision), so no
+pins_arduino.h edit was needed - unlike the adafruit_feather_scorpio precedent where
+a #define needed removing.
+
+NO BUTTON FOUND: datasheet's feature/spec table lists no pushbutton beyond standard
+BOOTSEL/reset (not a normal GPIO on RP2040 - out of scope, per rpipico/board.json's
+established reasoning).
+
+SUMMARY
+Created variants/rp2040/rp2040/challenger_2040_nfc/board.json (full per-board override,
+chip-level defaults + chipGpios overrides). Excluded 4 GPIOs dedicated to the onboard
+PN7150 NFC controller (GPIO9 IRQ, GPIO10 I2C1 SDA, GPIO11 I2C1 SCL, GPIO12 RST) from
+general-purpose use, and tagged 2 confirmed onboard indicators: GPIO14 as
+led_neopixel (WS2812 status pixel) and GPIO24 as led_high (user LED, active-high by
+cross-reference to the sibling challenger_2040_wifi board's own vendor datasheet).
+No pins_arduino.h edit needed (no bus-collision bug found). No button found/tagged.

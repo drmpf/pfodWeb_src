@@ -1,0 +1,120 @@
+Board: adafruit_matrixportal_esp32s3 (chip: esp32s3)
+Audit type: dedicated-hardware pin-exclusion audit (pins_arduino.h non-boilerplate declarations)
+
+Flagged declarations reviewed:
+  #define PIN_NEOPIXEL 4
+  #define NEOPIXEL_PIN 4
+  #define RGB_BUILTIN    (PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT)   // not a real GPIO, ignored (encoded virtual pin for rgbLedWrite())
+  #define NEOPIXEL_NUM    1                                     // count, not a pin, ignored
+  #define PIN_LIGHTSENSOR A5   (A5 = static const uint8_t 5, comment "// Light")
+  #define PIN_BUTTON_UP   6
+  #define PIN_BUTTON_DOWN 7
+  #define TX1 TX / #define RX1 RX   // aliases of existing TX=18/RX=8, not new GPIOs, ignored per task instructions
+  RGB_BRIGHTNESS   // brightness constant, not a pin, ignored
+
+Sources consulted:
+  - https://learn.adafruit.com/adafruit-matrixportal-s3/pinouts
+    "The RGB status NeoPixel labeled 'NeoPixel'. It is connected to
+    board.NEOPIXEL or Arduino 4." Confirms GPIO4 = onboard single status
+    NeoPixel.
+    "UP button: Connected to board.BUTTON_UP and Arduino pin 6, located
+    in the middle position." "DOWN button: Connected to
+    board.BUTTON_DOWN and Arduino pin 7, located at the bottom."
+    "The up and down buttons do not have any pull-up resistors connected
+    to them and pressing either of them pulls the input low." Confirms
+    GPIO6/GPIO7 = onboard tactile buttons, active LOW, no internal
+    pull-ups (external hardware detail only, does not change the
+    capability tag - pfodWeb's digital_input capability already implies
+    the user enables INPUT_PULLUP themselves if needed).
+    "The RXI pin is attached to board.RX and Arduino 8 and the TXO pin
+    is attached to board.TX and Arduino 18." Confirms TX=18/RX=8 already
+    in pins_arduino.h are correct and match the board's real UART.
+  - https://learn.adafruit.com/adafruit-matrixportal-s3?view=all (Overview)
+    "The MatrixPortal S3 includes a LIS3DH Triple-Axis Accelerometer
+    connected via the I2C bus" (via STEMMA QT, general-purpose I2C -
+    not a GPIO-pin-exclusion concern since SDA/SCL are already
+    general-purpose per this repo's KEEP policy for shared I2C buses).
+    No onboard light sensor mentioned anywhere on this page.
+  - https://learn.adafruit.com/adafruit-matrixportal-s3/downloads
+    Direct quote: "the ALS-PT19 light sense phototransistor is NOT part
+    of the final design for this board, even though it appears on the
+    schematic." This is the key finding: PIN_LIGHTSENSOR/A5 in
+    pins_arduino.h is boilerplate carried over from a shared Adafruit
+    ESP32-S3 template (other boards in the same core, e.g. some Feather
+    ESP32-S3 variants, DO populate this sensor) but is NOT physically
+    present on the MatrixPortal S3's actual PCB.
+  - https://www.adafruit.com/product/5778 (product page)
+    Feature list: ESP32-S3, LIS3DH accelerometer, two user buttons +
+    reset, STEMMA QT I2C connector, JST 3-pin analog connector, 6-pin
+    GPIO breakout. No light sensor listed among features - corroborates
+    the Downloads-page finding above.
+  - Corroborating third-party source (not authoritative, used only as a
+    secondary check): a public ESPHome YAML config for this board
+    (github.com/lboue/ESPHome-Matrix-Portal-S3) comments "GPIO5 LIGHT"
+    and configures an ADC sensor on pin 5 referencing the ALS-PT19
+    datasheet - shows the community also inherited the same
+    schematic/pins_arduino.h boilerplate assumption; does not override
+    Adafruit's own authoritative "not part of the final design" statement.
+
+Reasoning:
+  - GPIO4 (PIN_NEOPIXEL/NEOPIXEL_PIN): KEEP. Confirmed onboard status
+    NeoPixel via Adafruit's own Pinouts guide. Chip-level default already
+    included pwm_output for GPIO4, so per task instructions it is
+    retained. Tagged ["digital_output", "pwm_output", "led_neopixel"] in
+    board.json chipGpios["4"], dropping digital_input/analog_input since
+    it's a dedicated single-wire addressable LED data pin, matching this
+    repo's established led_neopixel tagging convention (e.g.
+    adafruit_metro_esp32s3, adafruit_sparklemotionmini_esp32).
+  - GPIO6 (PIN_BUTTON_UP) and GPIO7 (PIN_BUTTON_DOWN): KEEP. Both
+    vendor-confirmed onboard tactile buttons. Tagged individually
+    ["digital_input", "button"] in board.json chipGpios["6"] and ["7"],
+    dropping analog_input/digital_output/pwm_output, matching this
+    repo's established button tagging convention.
+  - GPIO5 (A5/PIN_LIGHTSENSOR): KEEP, but NOT tagged as a sensor and NOT
+    given any special capability restriction - left with the unmodified
+    chip-level default (analog_input, digital_input, digital_output,
+    pwm_output). This deliberately deviates from the task brief's
+    assumption that this is "an onboard analog light sensor" - real
+    research (Adafruit's own Downloads page) found the opposite: the
+    ALS-PT19 phototransistor is explicitly NOT populated on this board's
+    final production PCB, despite appearing in the schematic and despite
+    the pins_arduino.h "// Light" comment. Per the playbook's "when
+    independent research conflicts with assumptions, trust the vendor's
+    own authoritative statement" principle, GPIO5 is documented via a
+    pinNotes entry (board.json pinNotes["5"]) explaining the discrepancy,
+    rather than falsely tagged as a working sensor. No exclusion applied
+    either - it remains a perfectly usable general-purpose analog-capable
+    GPIO, just not a sensor.
+  - RGB_BUILTIN / RGB_BRIGHTNESS / NEOPIXEL_NUM: not real GPIOs, ignored
+    per task instructions.
+  - TX1/RX1: aliases of existing TX(18)/RX(8), not new GPIOs, ignored
+    per task instructions.
+
+Alias-collision check (build_boards.js bus-capability contamination bug -
+unconditionally appends i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck
+capabilities to any GPIO matching those aliases, and hard-reserves
+TX/RX as serial_tx/serial_rx, regardless of chipGpios content):
+  This board's pins_arduino.h: SDA=16, SCL=17, SS=-1, MOSI=-1, MISO=-1,
+  SCK=-1 (all four SPI aliases explicitly unused/not wired on this
+  board), TX=18, RX=8.
+  Checked all four candidate pins (GPIO4, GPIO5, GPIO6, GPIO7) against
+  all of SDA/SCL/SS/MOSI/MISO/SCK/TX/RX: no numeric match found. No
+  collision; no alias lines needed deletion from pins_arduino.h.
+
+Mechanism:
+  Created board.json as a full copy of the chip-level default
+  (variants/esp32/esp32s3/board.json), then edited chipGpios["4"],
+  chipGpios["6"], chipGpios["7"] as described above, added pinNotes["5"]
+  documenting the unpopulated-light-sensor finding, and left
+  chipGpios["5"] itself unchanged. Leading pfodWeb NOTE comment cites
+  all sources and the alias-check result.
+
+Summary: GPIO4 (PIN_NEOPIXEL) kept and tagged led_neopixel (confirmed
+onboard status NeoPixel); GPIO6/GPIO7 (PIN_BUTTON_UP/PIN_BUTTON_DOWN)
+kept and tagged button (confirmed onboard UP/DOWN tactile buttons, no
+pull-ups, active LOW); GPIO5 (A5/PIN_LIGHTSENSOR) kept as a plain
+general-purpose analog pin with a pinNotes entry, NOT tagged as a sensor,
+because Adafruit's own documentation confirms the ALS-PT19 light sensor
+shown on the schematic was never populated on the actual MatrixPortal S3
+PCB. No SDA/SCL/SPI/TX/RX alias collisions found on any of the four
+candidate pins.

@@ -1,0 +1,131 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: PandaByte xC5 (ESP32-C5-WROOM-1 based). No board.json override
+  // existed before this audit (used the chip-level esp32c5/board.json
+  // default). Flagged by the discovery sweep for having RGB_BUILTIN=10,
+  // BUTTON_BUILTIN=24, plus LP_SDA=2, LP_SCL=3 (WIRE1_PIN_DEFINED/SDA1/
+  // SCL1), LP_RX=4, LP_TX=5 declared in pins_arduino.h but never
+  // individually reviewed.
+  //
+  // Sources consulted:
+  //  - https://www.pandabyte.in/product-page/pandabyte-xc5-esp32c5-microcontroller-board-arduino-compatible
+  //    Official PandaByte product page for the xC5. Confirms peripherals
+  //    list: "Switches: RST, FLASH, and User Programmable buttons" and
+  //    "LED: Programmable Single Color and RGB LEDs". Confirms a user
+  //    programmable button and an RGB LED physically exist on the board,
+  //    but gives no GPIO numbers or wiring/schematic detail.
+  //  - https://github.com/espressif/arduino-esp32/pull/12220
+  //    "PandaByte Dev Board Support" - PR merged into the official
+  //    Espressif arduino-esp32 core, adding pins_arduino.h for 5 PandaByte
+  //    boards (x32, xC3m, xS3, xC5, xC6), including pandabyte_xc5. PR
+  //    description states the boards were validated with: LED blinking
+  //    (digitalWrite), RGB LED control using FastLED, digital input
+  //    handling with switches, USB Serial CDC, WiFi, and I2C/SPI with
+  //    BMP280/ADXL345 sensors on external headers. This is vendor-
+  //    submitted, hardware-tested confirmation that RGB_BUILTIN drives a
+  //    real addressable RGB LED (FastLED = addressable/WS2812-style
+  //    library) and BUTTON_BUILTIN is a real digital-input switch.
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/pandabyte_xc5/pins_arduino.h
+  //    Confirms the merged upstream file matches the local pins_arduino.h
+  //    (RGB_BUILTIN=10, BUTTON_BUILTIN=24, LED_BUILTIN=23, TX=11, RX=12,
+  //    SDA=0, SCL=1, SS=6, MOSI=8, MISO=9, SCK=10, LP_SDA=2, LP_SCL=3,
+  //    LP_RX=4, LP_TX=5).
+  //  - https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/esp32-hal-rgb-led.h
+  //    and general arduino-esp32 documentation on RGB_BUILTIN /
+  //    rgbLedWrite() / neopixelWrite(). Confirms "RGB_BUILTIN" is a
+  //    core-wide Arduino-ESP32 convention for a single-wire addressable
+  //    WS2812-type LED driven via the RMT peripheral, not a discrete
+  //    3-pin R/G/B LED.
+  //  - boardsDetails/esp32/esp32c5/esp32c5/notes.txt (this session, sibling
+  //    generic "esp32c5" board audit) - established that LP_SDA/LP_SCL/
+  //    LP_RX/LP_TX on the ESP32-C5 are a chip-wide, fixed LP-domain
+  //    I2C/UART controller pin-mux constraint (documented by Espressif's
+  //    ESP32-C5-DevKitC-1 user guide and datasheet), not evidence of a
+  //    dedicated onboard device wired to those pins. This Pandabyte board
+  //    exposes the identical LP_SDA=2/LP_SCL=3/LP_RX=4/LP_TX=5 with the
+  //    same "LP I2C/UART Pins are fixed on ESP32-C5" comments verbatim in
+  //    its own pins_arduino.h, and the PandaByte product page/PR #12220
+  //    test table give no indication of an onboard sensor at these
+  //    specific pins (I2C/SPI sensor testing in the PR was against
+  //    external BMP280/ADXL345 breakouts on headers, not a soldered-down
+  //    device) - the same "pin-mux capability, not dedicated hardware"
+  //    reasoning applies here.
+  //
+  // GPIO10 (RGB_BUILTIN): CONFIRMED onboard addressable (WS2812-class) RGB
+  // LED - vendor product page + PR #12220 "RGB LED control using FastLED"
+  // hardware test. Tagged ["digital_output","led_neopixel","pwm_output"],
+  // matching this repo's led_neopixel precedent (pandabyte_x32 GPIO12,
+  // pandabyte_xs3 GPIO12, esp32c5/esp32c5 GPIO27).
+  //
+  // Alias-collision check (this session's playbook step): this variant's
+  // pins_arduino.h aliases TX=11, RX=12, SDA=0, SCL=1, SS=6, MOSI=8,
+  // MISO=9, SCK=10. GPIO10 collided with SCK=10 - build_boards.js
+  // unconditionally appends "spi_sck" to any GPIO matching the SCK alias
+  // regardless of chipGpios overrides, which would have silently
+  // contaminated the clean led_neopixel capability list. This boilerplate
+  // SCK=10 alias was never vendor-confirmed as a real SPI clock line on
+  // this board (RGB_BUILTIN is the vendor-documented identity of GPIO10),
+  // so the SCK declaration was deleted from pins_arduino.h (see the NOTE
+  // comment there). GPIO24 (BUTTON_BUILTIN) does not collide with any of
+  // TX/RX/SDA/SCL/SS/MOSI/MISO/SCK - no edit needed for that pin.
+  //
+  // GPIO24 (BUTTON_BUILTIN): CONFIRMED onboard user programmable button -
+  // vendor product page "User Programmable buttons" + PR #12220 "Digital
+  // input handling with switches" hardware test. Tagged
+  // ["digital_input","button"], matching this repo's button precedent
+  // (pandabyte_x32 GPIO4, pandabyte_xs3 GPIO21).
+  //
+  // GPIO2/GPIO3 (LP_SDA/LP_SCL, LP-domain I2C) and GPIO4/GPIO5 (LP_RX/
+  // LP_TX, LP-domain UART): KEEP as general-purpose GPIOs - no onboard
+  // peripheral documented at any of the four pins on this board. The
+  // "LP I2C/UART Pins are fixed" comments in pins_arduino.h describe a
+  // chip-internal pin-mux constraint of the ESP32-C5's low-power core
+  // (these specific GPIOs are the ONLY ones capable of driving the
+  // LP-domain I2C/UART hardware blocks), not a dedicated onboard device
+  // wired to them - same conclusion independently reached for the sibling
+  // esp32c5/esp32c5 generic board. A user sketch remains free to use
+  // GPIO2/3/4/5 as plain digital/analog GPIOs. Left unchanged from
+  // chip-level defaults (all four already carry analog_input+
+  // digital_input+digital_output+pwm_output, matching their A1/A2/A3/A4
+  // analog aliases).
+  //
+  // See boardsDetails/esp32/esp32c5/pandabyte_xc5/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C5",
+  "displayName": "ESP32-C5 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "4":  "Must be LOW or floating on reboot",
+    "5":  "Must be LOW or floating on reboot",
+    "6":  "Must be LOW or floating on reboot",
+    "23": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "button"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "26": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "27": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "28": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

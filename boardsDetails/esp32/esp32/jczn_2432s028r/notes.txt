@@ -1,0 +1,61 @@
+jczn_2432s028r ("Cheap Yellow Display" / ESP32-2432S028R / JC2432S028) — button/LED audit notes
+Date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout-esp32-2432s028r/
+  - States: "It has the BOOT button which is internally connected to GPIO 0"
+    (described as flash/boot button, not a dedicated "user" button).
+  - Confirms RGB LED: Red = GPIO 4, Green = GPIO 16, Blue = GPIO 17, active-low
+    (HIGH = OFF, LOW = ON).
+
+https://mischianti.org/esp32-2432s028-cheap-yellow-display-high-resolution-pinout-datasheet-schema-and-specs/
+  - Lists "BOOT (GPIO 0), RESET (EN pin)" under a "User buttons" heading —
+    independent confirmation GPIO0 is the board's only user-operable button.
+  - States "RGB LED (GPIO 4/16/17, active-LOW)" — independent confirmation of
+    the RGB LED pin assignment and polarity (matches this board's own
+    pins_arduino.h CYD_LED_RED/GREEN/BLUE defines and CYD_LED_RED_ON() macro).
+
+Local source: this board's own variants/esp32/esp32/jczn_2432s028r/pins_arduino.h
+  - #define CYD_USER_BUTTON 0
+  - #define CYD_LED_RED 4 / CYD_LED_GREEN 16 / CYD_LED_BLUE 17
+  - CYD_LED_RED_ON() -> digitalWrite(CYD_LED_RED, 0)  (confirms active-low)
+  - TX = 1, RX = 3 (confirmed GPIO0 and GPIO4 do not conflict with TX/RX)
+
+Cross-checked precedent: variants/esp32/esp32/alksesp32/board.json, which
+documents the identical situation (discrete RGB LED with blue channel on
+GPIO16, chip-level PSRAM-excluded, left untagged) and
+variants/esp32/esp32/espino32/board.json (GPIO0 boot button tagged "button"
+on plain ESP32, same reasoning applied here).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO16 (Green LED channel, CYD_LED_GREEN): NOT tagged. This chip's
+  chip-level default board.json (variants/esp32/esp32/board.json) has NO
+  chipGpios entry for GPIO16 at all (excluded chip-wide, presumably PSRAM
+  D0/clock use on this board's WROVER module). Per task policy, GPIOs with
+  no existing chipGpios entry due to a chip-level exclusion must not be
+  re-added. This is a firm "leave untagged" decision, not a guess.
+- GPIO17 (Blue LED channel, CYD_LED_BLUE): Same reasoning as GPIO16 — no
+  chipGpios entry in the chip-level default, chip-wide PSRAM exclusion.
+  Firm "leave untagged" decision, not a guess.
+- GPIO26 (CYD_AUDIO_OUT): Not a button or LED (audio/speaker output) —
+  out of scope for this task, left as-is (already has dac_output etc. from
+  the existing per-board override, untouched).
+- GPIO34 (CYD_LDR light sensor, also A6): Not a button or LED (analog light
+  sensor input) — out of scope for this task, left as-is, untouched.
+- No other candidate pins were found. There is no separate onboard NeoPixel
+  and no separate discrete single-color LED distinct from the RGB LED
+  described above.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input", "button"] (onboard BOOT/user button, confirmed
+  by two independent vendor/community documentation sources plus the
+  board's own pins_arduino.h CYD_USER_BUTTON alias; not TX/RX).
+GPIO4 -> ["digital_output", "led_r_low", "pwm_output"] (red channel of the
+  onboard discrete RGB LED, active-low, confirmed by two independent
+  sources plus the board's own pins_arduino.h CYD_LED_RED_ON() macro;
+  pwm_output retained because it was already present on this pin; not
+  TX/RX). Green (GPIO16) and Blue (GPIO17) channels left untagged per the
+  chip-level PSRAM-exclusion reasoning above.

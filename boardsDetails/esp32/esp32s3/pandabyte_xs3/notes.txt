@@ -1,0 +1,86 @@
+pandabyte_xs3 board research notes
+====================================
+
+Board directory: variants/esp32/esp32s3/pandabyte_xs3
+No board.json existed prior to this task; created as a full copy of the
+esp32s3 chip-level default board.json with only GPIO12 and GPIO21
+capabilities modified (see NOTE comments at top of board.json).
+
+pins_arduino.h candidates found:
+  LED_BUILTIN    = GPIO2
+  RGB_BUILTIN    = GPIO12
+  BUTTON_BUILTIN = GPIO21
+  TX = GPIO43, RX = GPIO44 (no conflict with any candidate above)
+
+Sources consulted
+------------------
+1. https://www.pandabyte.in/product-page/pandabyte-xs3-esp32-s3-microcontroller-board-arduino-compatible
+   Official PandaByte product page for the xS3. Confirms peripherals list:
+   "Switches: RST, FLASH, and User Programmable buttons" and
+   "LED: Programmable Single Color and RGB LEDs". Confirms both a
+   single-color LED and an RGB LED physically exist, and a user
+   programmable button exists, but gives no GPIO numbers, no polarity
+   (active-high/low), and no wiring/schematic detail. Also links the
+   generic ESP32-S3-WROOM-1 datasheet (not board-specific) - not useful
+   for GPIO-level confirmation. No "Product Wiki" URL was resolvable from
+   the fetched page content.
+
+2. https://github.com/espressif/arduino-esp32/pull/12220
+   "PandaByte Dev Board Support" - PR merged into the official Espressif
+   arduino-esp32 core (merged 2026-01-12), authored/submitted with vendor
+   involvement, adding variants/pandabyte_xs3/pins_arduino.h (identical
+   content to the local copy) among 5 PandaByte boards. PR description
+   includes a hardware test-results table run on actual PandaByte xS3
+   hardware: "Blink (digitalWrite)" PASS, "Blink RGB (FastLED)" PASS,
+   "Digital Input (Switch)" PASS. This is real vendor-submitted,
+   hardware-verified confirmation (not just an alias name in
+   pins_arduino.h) that: GPIO2 drives a real LED via plain digitalWrite,
+   GPIO12 drives a real RGB LED using FastLED (an addressable/WS2812-style
+   library), and GPIO21 is a real digital-input switch.
+
+3. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/pandabyte_xs3/pins_arduino.h
+   Confirms the merged upstream file matches the local pins_arduino.h
+   byte-for-byte in content (LED_BUILTIN=2, RGB_BUILTIN=12,
+   BUTTON_BUILTIN=21, TX=43, RX=44).
+
+4. https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/esp32-hal-rgb-led.h
+   and general arduino-esp32 documentation on RGB_BUILTIN / rgbLedWrite() /
+   neopixelWrite(). Confirms that "RGB_BUILTIN" is a core-wide, well
+   established Arduino-ESP32 convention specifically for a single-wire
+   addressable WS2812B-type LED (driven via the RMT peripheral through
+   rgbLedWrite()/neopixelWrite(), default GRB color order) - i.e. this
+   is NOT a discrete 3-pin R/G/B LED, it is a NeoPixel-style addressable
+   LED on one data pin. Combined with source #2's "FastLED" test (a
+   library used for addressable LEDs), this confirms GPIO12 is a
+   NeoPixel/WS2812-class LED.
+
+5. https://github.com/panda-byte (checked, and ruled out) - this is an
+   unrelated GitHub user (KaniWani/protein-viewer repos), NOT the
+   PandaByte hardware vendor. No official PandaByte GitHub org, wiki, or
+   schematic PDF could be located via web search.
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO2 (LED_BUILTIN): NOT TAGGED. Identity as a real single-color LED is
+  reasonably well confirmed (vendor product page "Programmable Single
+  Color... LEDs" + PR #12220 vendor hardware test "Blink (digitalWrite)"
+  PASS). However, the required capability tag for a single-color LED
+  depends on polarity (led_high vs led_low, i.e. whether HIGH or LOW
+  turns it on), and NO source found states the wiring polarity - no
+  schematic, wiki, or datasheet with GPIO2 LED circuit detail was
+  locatable. I made NO guess here (not even a best-effort judgment call)
+  because tagging the wrong polarity actively inverts the LED's on/off
+  behavior in the UI, which is worse than leaving it untagged. Left as
+  default chip capabilities: ["analog_input","digital_input",
+  "digital_output","pwm_output"]. Recommend a human reviewer either find
+  a PandaByte schematic/wiki confirming polarity, or physically test the
+  board (does digitalWrite(2, HIGH) turn the LED on or off?) before
+  tagging as led_high or led_low.
+
+What was tagged
+-----------------
+GPIO12 -> led_neopixel (+ pwm_output retained, was already present) -
+  confirmed WS2812/addressable RGB LED (RGB_BUILTIN + FastLED vendor test).
+GPIO21 -> button (digital_input, button) - confirmed onboard user
+  programmable button (BUTTON_BUILTIN + vendor "Digital Input (Switch)"
+  test + product page listing "User Programmable buttons").

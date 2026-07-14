@@ -1,0 +1,254 @@
+Board: pimoroni_servo2040 (chip: rp2040) — Pimoroni "Servo 2040" (PIM613),
+an RP2040 board with 18 level-shifted PWM servo output channels,
+per-channel current/voltage sensing via an analog multiplexer, a 6-pixel
+onboard NeoPixel/WS2812 status bar, and a user button (BOOTSEL-coupled).
+Directory: C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\pimoroni_servo2040\
+Audit date: 2026-07-13
+Task: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin-exclusion audit (first board.json for this board — none existed before
+this session).
+
+FILES REVIEWED
+--------------
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\pimoroni_servo2040\pins_arduino.h
+  (117 lines, read in full — already carries prior "pfodWeb NOTE" comments
+  from an earlier, separate parser-fix pass: SERVO1-18 re-declared as
+  static const D0-D17 since the vendor #define-only macros are invisible
+  to this project's parser; A3 and the commented-out SS/MOSI/MISO/SCK
+  static-const lines removed to avoid phantom-pin leaks through the
+  comment-blind regex parser)
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level
+  default — chipGpios: {} deliberately empty, every aliased GPIO gets
+  full capability by default)
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\pimoroni_tiny2040\board.json
+  + pins_arduino.h (sibling Pimoroni board precedent — RGB LED r/g/b
+  tagging, and GPIO23 BOOTSEL-coupled user-button-with-no-pins_arduino.h-
+  alias precedent, added purely via chipGpios)
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\bigtreetech_SKR_Pico\board.json
+  + pins_arduino.h (dedicated-hardware/NeoPixel precedent — proactive
+  capabilities:[] chipGpios entries for GPIOs with zero pins_arduino.h
+  alias, purely for pin-picker visibility; led_neopixel tagging pattern)
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\rpipico\board.json (simple
+  LED-tag precedent, and the BOOTSEL-is-not-a-normal-GPIO rationale on
+  the plain Pico)
+- C:\ai\aicode\pfodWeb\pfodWeb_src\build_boards.js (parser — read
+  parseEsp32Consts()/buildEsp32Board(), lines ~439-736, to confirm: (a)
+  #define-only pin macros are NEVER harvested as aliases, only
+  `static const uint8_t NAME = n;`/`= OTHER_NAME;` lines are; (b) a
+  chipGpios entry can introduce a GPIO with zero pins_arduino.h alias at
+  all, exactly like the SKR_Pico/tiny2040 precedents; (c) the
+  SDA/SCL/SS/MOSI/MISO/SCK/TX/RX unconditional-append logic (lines
+  698-703) only fires against `consts.SDA` etc., which come from
+  parseEsp32Consts() and are therefore also #define-blind)
+- C:\ai\aicode\pfodWeb\boardsDetails\esp32\esp32\d1_mini32\notes.txt (style
+  template for this notes.txt)
+
+pins_arduino.h DECLARATIONS (as they exist in the file today)
+---------------------------------------------------------------
+static const uint8_t (parsed, become real Designer pins):
+  D0..D17 = SERVO1..SERVO18 = GPIO0..GPIO17
+  A0=GPIO26, A1=GPIO27, A2=GPIO28
+#define only (NEVER parsed by this project's parser — confirmed by
+reading parseEsp32Consts()'s own doc comment and regex, which only
+matches `static const/constexpr uint8_t`):
+  PIN_LED=18u / LED_BUILTIN=PIN_LED
+  USER_SW=22u
+  ADC_ADDR_0=22u, ADC_ADDR_1=24u, ADC_ADDR_2=25u
+  ADC_SHARED=A3 (A3 itself not declared — see prior pfodWeb NOTE in the
+    file; vendor's raw value was the 31u "not pinned out" sentinel)
+  PIN_NEOPIXEL=15u
+  SDA=PIN_WIRE0_SDA=20u, SCL=PIN_WIRE0_SCL=21u (also #define-only, so
+    build_boards.js's unconditional i2c_sda/i2c_scl auto-append never
+    fires for GPIO20/21 on this board)
+  Everything else (Serial1/2, SPI0/1, Wire1) is 31u "not pinned out"
+  sentinels already handled by the prior parser-fix pass.
+
+CRITICAL RESEARCH FINDING: pins_arduino.h vs. real hardware mismatch
+-----------------------------------------------------------------------
+This board's pins_arduino.h header comment cites its source as:
+  https://github.com/rp-rs/rp-hal-boards/blob/main/boards/pimoroni-servo2040/src/lib.rs
+Fetching that exact file (WebFetch, verbatim-reproduction prompt) gives:
+  Gpio18 { name: led_data }
+  Gpio19 { name: int_ }
+  Gpio20 { name: sda }, Gpio21 { name: scl }
+  Gpio22 { name: adc_addr_0 }
+  Gpio23 { name: user_sw }
+  Gpio24 { name: adc_addr_1 }, Gpio25 { name: adc_addr_2 }
+  Gpio26/27/28 { name: adc0/adc1/adc2 }
+  Gpio29 { name: shared_adc }
+i.e. GPIO18 = NeoPixel data (not "PIN_LED" a single LED), GPIO23 = user
+button (not GPIO22, which is actually ADC_ADDR_0), GPIO29 = the real
+multiplexed ADC output pin (not a "not pinned out" sentinel).
+
+Cross-checked against two further, fully independent authoritative
+sources:
+  1. Pimoroni's own official C++ driver library — raw fetch of
+     https://raw.githubusercontent.com/pimoroni/pimoroni-pico/main/libraries/servo2040/servo2040.hpp
+     (Pimoroni's own firmware for their own board, the single most
+     authoritative source available): LED_DATA=18, NUM_LEDS=6 (confirms
+     6-pixel NeoPixel bar, not a single LED); I2C_INT=19, I2C_SDA=20,
+     I2C_SCL=21; USER_SW=23; ADC_ADDR_0=22, ADC_ADDR_1=24, ADC_ADDR_2=25;
+     ADC0=26, ADC1=27, ADC2=28; SHARED_ADC=29 ("multiplex sensing pin for
+     voltage/current and six sensors"); plus shunt-resistor/gain
+     calibration constants for the current-sense circuit. Exact numeric
+     match to rp-hal-boards on every pin.
+  2. Adafruit's independent CircuitPython board definition — raw fetch of
+     https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/raspberrypi/boards/pimoroni_servo2040/pins.c :
+     NEOPIXEL/LED_DATA -> GPIO18, NUM_LEDS: 6 pixels; USER_SW -> GPIO23;
+     ADC_ADDR_0/1/2 -> GPIO22/24/25; SHARED_ADC -> GPIO29;
+     SENSOR_1_ADDR..SENSOR_6_ADDR (0b000-0b101), VOLTAGE_SENSE_ADDR
+     (0b110), CURRENT_SENSE_ADDR (0b111), NUM_SENSORS: 6 — confirms the
+     6-channel-plus-voltage-plus-current multiplexing scheme in detail.
+     Exact numeric match to sources above on every pin.
+  3. shop.pimoroni.com/en-us/products/servo-2040 product page (WebFetch):
+     "6 addressable WS281x RGB LEDs (AKA NeoPixels!)" (confirms 6-pixel
+     count independently of the driver-library sources); "BOOT button
+     (the BOOT button can also be used as a user button)" — confirms
+     USER_SW is the SAME physical switch as BOOTSEL, circuit-coupled to
+     a normal GPIO for software reads during normal operation (identical
+     design pattern to pimoroni_tiny2040's GPIO23, already in this repo).
+
+Four independent sources (rp-hal-boards, Pimoroni's own driver, Adafruit
+CircuitPython, and the product page for the LED count/button-coupling
+detail) unanimously agree with each other and disagree with this board's
+own pins_arduino.h #define values for PIN_LED/PIN_NEOPIXEL/USER_SW. This
+looks like a genuine upstream arduino-pico defect (its own pins_arduino.h
+has drifted from the very rp-hal-boards source its header comment cites).
+
+SCOPE DECISION: pins_arduino.h was NOT edited to correct this. The task
+brief authorizes exactly one class of pins_arduino.h edit this session —
+removing a #define that causes build_boards.js's unconditional
+SDA/SCL/SS/MOSI/MISO/SCK auto-append to leak an unwanted bus capability
+onto a confirmed button/LED pin. That class does not apply here (SDA/SCL
+are themselves #define-only on this board and never reach
+build_boards.js's `consts.SDA`/`consts.SCL` checks at all — confirmed by
+reading parseEsp32Consts()). Correcting the LED_BUILTIN/PIN_NEOPIXEL/
+USER_SW #define *values* to match real hardware is a materially different,
+larger change (it would alter what a sketch's `digitalWrite(LED_BUILTIN,
+...)` or `USER_SW` actually compiles to) that CLAUDE.md's "hardware
+configurations" and "API/interface" restrictions place out of bounds
+without explicit user permission. It also turns out to be moot for this
+project's output: parseEsp32Consts() never harvests #define-only macros
+in the first place (confirmed by reading its own doc comment and regex),
+so PIN_LED/LED_BUILTIN/USER_SW/PIN_NEOPIXEL were never reachable as
+Designer aliases regardless of their (wrong) values — the fix that
+actually matters for this Designer is adding the REAL GPIO numbers via
+chipGpios, which is what this board.json does.
+
+ALIAS-COLLISION CHECK (SDA/SCL/SS/MOSI/MISO/SCK/TX/RX bug class)
+---------------------------------------------------------------------
+Checked every newly-tagged GPIO (18, 22, 23, 24, 25, 29) against
+build_boards.js's `consts.SDA/SCL/SS/MOSI/MISO/SCK/TX/RX` unconditional
+auto-append (lines 698-703 of build_boards.js). Those six/eight `consts.*`
+values come exclusively from parseEsp32Consts(), which only harvests
+`static const uint8_t` declarations. This file has NO such declarations
+for SDA, SCL, SS, MOSI, MISO, SCK, TX, or RX (all are #define-only, or —
+for SS/MOSI/MISO/SCK — were already deleted entirely by the prior
+parser-fix pass to avoid phantom pins). Therefore `consts.SDA` etc. are
+all `undefined` for this board, and the auto-append logic cannot fire
+against ANY GPIO on this board, let alone the 6 newly tagged here.
+Confirmed: no collision, no pins_arduino.h edit needed for this bug class.
+
+PER-PIN FINDINGS AND CAPABILITY DECISIONS
+---------------------------------------------
+GPIO18 — Real NeoPixel/WS2812 data line, 6 pixels (all 3 independent
+  driver/HAL sources + product page agree). Not reachable via this
+  board's own pins_arduino.h aliases today (PIN_LED/LED_BUILTIN #define
+  points here but is dead code to this parser). Tagged
+  ["digital_output","pwm_output","led_neopixel"], matching the
+  bigtreetech_SKR_Pico GPIO24 NeoPixel precedent exactly (same 3
+  capabilities, digital_input dropped since the pin is committed to
+  driving the LED bar).
+
+GPIO23 — Real user button (USER_SW), BOOTSEL-coupled per the product
+  page, identical design to pimoroni_tiny2040 GPIO23. Not reachable via
+  this board's own pins_arduino.h aliases (USER_SW #define points at
+  GPIO22 instead, a numbering error per all 3 independent sources, and
+  is dead code to this parser regardless of its value). Tagged
+  ["digital_input","button"] only — digital_output/pwm_output
+  deliberately omitted, matching the pimoroni_tiny2040 GPIO23 precedent's
+  conservative rationale (no vendor source confirms driving a
+  BOOTSEL-coupled line as an output is electrically safe).
+
+GPIO22 (ADC_ADDR_0), GPIO24 (ADC_ADDR_1), GPIO25 (ADC_ADDR_2) — 3-bit
+  analog-multiplexer address select lines (select which of the 6 sensor
+  channels + voltage-sense + current-sense feeds the shared ADC on
+  GPIO29). Dedicated onboard hardware confirmed by all 3 independent
+  sources. Tagged capabilities:[] each, matching the
+  bigtreetech_SKR_Pico "documented dedicated GPIO, zero capability, note
+  explains why" precedent — proactive visibility rather than silent
+  absence. None of these three were reachable via any pins_arduino.h
+  alias before this board.json either.
+
+GPIO29 (SHARED_ADC) — the multiplexer's single physical ADC output pin.
+  Only meaningful once ADC_ADDR_0/1/2 select a channel; a bare one-shot
+  analogRead() (the only access pattern this Designer's analog_input
+  capability offers) cannot safely be exposed. This board's own
+  pins_arduino.h already reflects the same caution from the prior
+  parser-fix pass (A3/ADC_SHARED deliberately left undeclared — the
+  vendor's raw value there was the 31u "not pinned out" sentinel, not
+  29u, so it was already being suppressed, just for a different literal
+  reason). Tagged capabilities:[] here purely for pin-picker visibility,
+  matching the bigtreetech_SKR_Pico dedicated-GPIO precedent — this is
+  not a capability change from the pre-existing (already-absent) state.
+
+GPIO0-17 (SERVO1-18 / D0-D17) — left UNCHANGED, no chipGpios entry. All
+  3 independent sources confirm these are genuine general-purpose PWM
+  servo-header outputs (rp-hal: Gpio[N]{name:servoN, aliases:
+  FunctionPwm/Pio0/Pio1}; Pimoroni's servo2040.hpp; CircuitPython
+  SERVO_1..SERVO_18) — matches this task's own framing that the RP2040
+  GPIO itself just emits a normal PWM/PIO signal to a level-shifted
+  header pin. GPIO15 specifically cross-checked against this board's own
+  (dead, #define-only) `PIN_NEOPIXEL (15u)` claim: all 3 sources confirm
+  GPIO15 is genuinely SERVO16/D15 only, with no NeoPixel role — the
+  vendor #define is the same upstream-drift defect noted above, and is
+  inert regardless (never parsed). No exclusion applied.
+
+GPIO26-28 (A0/A1/A2) — left UNCHANGED. Confirmed as the 3 direct
+  (non-multiplexed) analog input channels (ADC0/1/2 per all sources) —
+  legitimately analog_input per this task's own framing. Already
+  correctly analog-capable via their existing static-const aliases and
+  the empty chip-level chipGpios default; no chipGpios override needed.
+
+GPIO19 (I2C_INT), GPIO20/21 (I2C SDA/SCL, Qwiic/STEMMA QT header) — left
+  UNCHANGED / out of scope. General-purpose I2C expansion-header pins for
+  externally-attached sensors/boards (not committed onboard hardware
+  consumers), and — like GPIO18/22/23/24/25/29 — not reachable via any
+  pins_arduino.h alias in this file today (SDA/SCL/I2C_SDA/I2C_SCL are
+  all #define-only). No vendor source suggests these need exclusion.
+  Left undeclared rather than guessed at, per this task's "report NO
+  CHANGE rather than guess" instruction.
+
+board.json CREATED
+-------------------
+C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\pimoroni_servo2040\board.json
+— new file (none existed before). Full copy of the chip-level
+rp2040/rp2040/board.json defaults (boardName, displayName, family,
+inputOnlyGpios: [], connections: ["serial"], pinNotes: {}, pwm, dac: {},
+adc), plus a chipGpios object with 6 entries (GPIO18, 22, 23, 24, 25, 29)
+per the findings above. pins_arduino.h left completely unmodified.
+Validated as syntactically correct JSON by manually stripping `//`
+comments and running JSON.parse (no build_boards.js invocation, per task
+instructions) — passed, all 10 required top-level fields present, no
+extra/missing fields, chipGpios keys = ["18","22","23","24","25","29"].
+
+ONE-LINE SUMMARY
+------------------
+pimoroni_servo2040: confirmed (4 independent sources) the real onboard
+6-pixel NeoPixel bar is GPIO18 and the real BOOTSEL-coupled user button is
+GPIO23 — both newly tagged via chipGpios (led_neopixel / button) since
+neither was reachable through this board's own pins_arduino.h aliases;
+also documented (capabilities:[], visibility only) the 3 ADC-mux address
+lines (GPIO22/24/25) and the shared/multiplexed ADC pin (GPIO29) as
+dedicated, non-general-purpose hardware. Found but deliberately did NOT
+fix a likely upstream arduino-pico defect where this board's own
+PIN_LED/PIN_NEOPIXEL/USER_SW #define values (GPIO18/15/22) diverge from
+the real hardware confirmed by rp-hal-boards, Pimoroni's own driver
+library, and Adafruit CircuitPython — out of this audit's scope, and
+moot for this project's parser since #define-only macros are never
+harvested as aliases regardless of their value. All 18 servo channels
+(GPIO0-17) and the 3 direct analog-sense channels (A0-A2/GPIO26-28)
+confirmed genuinely general-purpose and left unchanged. No SDA/SCL/SS/
+MOSI/MISO/SCK bus-collision bug applies (those aliases are themselves
+#define-only on this board, never reaching build_boards.js's
+consts.SDA-style checks). pins_arduino.h was not modified.

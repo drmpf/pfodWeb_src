@@ -1,0 +1,98 @@
+Board: waveshare_esp32_s3_lcd_185 (Waveshare "ESP32-S3-LCD-1.85", non-touch, non-B variant)
+Path: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\waveshare_esp32_s3_lcd_185
+
+SOURCES CONSULTED
+-----------------
+1. https://www.waveshare.com/wiki/ESP32-S3-LCD-1.85
+   (fetched via r.jina.ai reader proxy because direct WebFetch returned HTTP 403)
+   - Confirmed this is the non-touch version ("The development board is divided
+     into touch version and non-touch version"); the wiki page content itself
+     is largely a shared template across Waveshare's LCD product wikis (many
+     embedded screenshots are actually captioned "ESP32-S3-AMOLED-1.91", a
+     reused generic tutorial image set - this is normal for Waveshare wiki
+     pages and does not affect the board-specific pinout tables, which are
+     specific to this board).
+   - Component list includes: "17. Power indicator", "20. Charge indicator",
+     "22. RESET button", "23. BOOT button", "24. Battery header",
+     "25. Battery power supply control button". No discrete
+     user/status/NeoPixel LED is listed anywhere.
+   - "Internal Hardware Connection" tables give exact GPIO numbers for LCD,
+     TF Card, QMI8658 (IMU), PCF85063 (RTC), MIC, and SPEAKER peripherals,
+     but do NOT include a table entry for BOOT/RESET buttons or either LED -
+     those are only shown in the schematic PDF (see below).
+   - Vendor's own demo firmware description: `pinMode(BOOT_KEY_PIN, INPUT)`
+     and a `TouchTask()` polling loop that reads both `PWR_KEY_Input_PIN` and
+     `BOOT_KEY_PIN` as ordinary digital inputs to simulate touch input via
+     buttons (since this is the non-touch board) - confirms the BOOT button
+     is intended to be used as a normal application button, not just a
+     download-mode strap.
+
+2. https://files.waveshare.com/wiki/ESP32-S3-LCD-1.85/ESP32-S3-LCD-1.85.pdf
+   (official schematic diagram, downloaded and text-extracted with
+   pdftotext -layout; text ordering is garbled/interleaved in places because
+   this is a KiCad-exported PDF with overlapping text runs, so conclusions
+   below rely on the clearest, unambiguous fragments only)
+   - Main ESP32-S3-R8 (U5) pinout block: net "IO0" is shown wired directly to
+     the chip pin annotated "GPIO0"; net "RESET" is shown wired to the chip
+     pin annotated "CHIP_PU" (i.e. the EN/reset pin, not a GPIO).
+   - A separate button sub-circuit on the same sheet shows two "Key"
+     components (schematic refs "Key2" and "Key3") sitting beside the "IO0"
+     and "RESET" net labels respectively, each with its own 10K pull-up
+     resistor (R28/R29) and small debounce capacitor (C28/C29) - the classic
+     BOOT+RESET pushbutton pair used on virtually all ESP32-S3 dev boards.
+     Combined with the chip pinout block above, this cross-confirms:
+       Key2 (BOOT button, wiki item 23) -> net IO0 -> chip pin GPIO0
+       Key3 (RESET button, wiki item 22) -> net RESET -> chip pin CHIP_PU/EN
+   - Two LED components exist on the schematic: "LED1" and "LED2" (silkscreen
+     "Red LED 0602"). LED1's cathode traces cleanly to pin "STAT" of U9 (the
+     battery charge-management IC) - this is the "Charge indicator" (wiki
+     item 20), hardwired to the charger IC, not a GPIO. LED2's anode net
+     could NOT be traced unambiguously through the garbled text extraction -
+     nearby text fragments coincidentally overlap with unrelated USB-C CC
+     pull-down resistors (R3/R4, both 5.1K/2.2K, standard USB-C UFP values),
+     which on closer inspection are clearly a false-positive proximity match,
+     not a real net connection. No IOx/GPIOx net label could be confirmed
+     anywhere near LED2. This is consistent with LED2 being the "Power
+     indicator" (wiki item 17), which on this class of board is conventionally
+     a simple always-on LED wired straight to the 3V3/BAT rail through a
+     series resistor, not switched by any GPIO.
+
+3. https://github.com/waveshareteam (org repo listing, via GitHub API)
+   - Checked for a dedicated "ESP32-S3-LCD-1.85" firmware/demo repo (the
+     kind that gave a definitive `#define PWR_KEY_Input_PIN` for the sibling
+     LCD-1.46 board in an earlier audit pass). No such repo exists; the only
+     "1.85" repo in the org is `ESP32-S3-Touch-LCD-1.85C`, which is a
+     different (touch, camera) product variant and was NOT used as a source
+     for this non-touch board.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO46 (CHIP_PU/EN net "RESET", driven by the RESET button, Key3): not a
+  GPIO in the pfodWeb sense - it's the chip's hardware EN/reset pin, not
+  digitalRead()-able. No guess made; this is a hard "not applicable", not a
+  judgment call.
+- LED2 ("Power indicator", wiki item 17): considered as an LED candidate but
+  its driving net could not be traced to any GPIO in the schematic text
+  extraction. No guess made - left untagged. A human reviewer with access to
+  a rendered (not text-extracted) copy of the schematic could confirm this
+  quickly by visually following the LED2 anode trace; poppler's pdftoppm was
+  not available in this environment to render the page for visual
+  inspection, which is the main reason this could not be resolved further
+  here.
+- "Battery power supply control button" (wiki item 25, schematic ref
+  "Key_BAT"): appears to be a physical power on/off latch button tied into
+  the battery-management circuit rather than an ESP32 GPIO. Not investigated
+  further since no GPIO net was seen near it in the extracted text, and it
+  is a distinct third button from BOOT/RESET, not clearly a general-purpose
+  "button" input the firmware could read the way BOOT_KEY_PIN is read. Left
+  untagged - no guess made.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input", "button"] (BOOT button / Key2), confirmed via the
+official Waveshare wiki text plus the official schematic PDF (IO0 net tied
+to chip pin GPIO0, with pull-up/debounce circuit typical of a BOOT
+pushbutton). No TX/RX conflict (this board's TX=43, RX=44 per
+pins_arduino.h). No LED tagged - no confirmable GPIO-driven LED/NeoPixel
+found on this board; both onboard LEDs (power indicator, charge indicator)
+appear to be hardwired status LEDs, not software-controllable.

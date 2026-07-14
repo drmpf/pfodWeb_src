@@ -1,0 +1,77 @@
+Board: waveshare_esp32_s3_lcd_146
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_lcd_146
+pins_arduino.h identifies USB_PRODUCT "ESP32-S3-Touch-LCD-1.46" (SCL=10,
+SDA=11, TX=43, RX=44) - this uniquely matches Waveshare's
+"ESP32-S3-Touch-LCD-1.46" product (round 1.46" 412x412 display), despite
+the variant directory name omitting "touch". No board.json existed for
+this variant prior to this task (pin-exclusion audit for display/touch
+pins has NOT yet been done here - out of scope for this task, left as-is).
+
+Sources consulted:
+- https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.46 (via WebFetch) -
+  confirmed SCL=GPIO10/SDA=GPIO11/TXD=GPIO43/RXD=GPIO44 match this
+  variant's pins_arduino.h exactly, confirming this is the correct
+  product page. States board has "onboard PWR and BOOT two side buttons
+  with customizable functions" and a charge indicator + power indicator
+  LED, but its internal hardware-connections table does NOT list GPIO
+  numbers for the buttons or the indicator LEDs. Table only gives GPIOs
+  for LCD, TF card, QMI8658 IMU, RTC, microphone, speaker, touch.
+- https://spotpear.com/wiki/ESP32-S3R8-1.46-inch-Round-LCD-Display-GC9A01-Gyro-QMI8658-Sensor-MIC-Micro-SD-Speaker-LVGL-HMI-Arduino-Python.html
+  (via WebFetch) - reseller mirror of the same product guide; confirms
+  "BOOT Button", "PWR Button" (battery power supply control, customizable
+  functions), and a volume button exist, plus two hardwired (non-GPIO)
+  status LEDs (charge indicator, power indicator). No GPIO numbers given
+  for buttons or LEDs here either.
+- https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.46 (via
+  Bash/curl against the GitHub REST API tree endpoint, then raw.
+  githubusercontent.com) - Waveshare's own official example-firmware
+  repo for this exact product. File
+  example/Arduino-3.1.1/examples/LVGL_Arduino/PWR_Key.h defines
+  `#define PWR_KEY_Input_PIN 6` and `#define PWR_Control_PIN 7`.
+  PWR_Key.cpp's PWR_Init()/PWR_Loop() read PWR_KEY_Input_PIN with
+  pinMode(INPUT) + digitalRead() as a momentary pushbutton (pressed =
+  LOW) to drive power-on/sleep/restart/shutdown logic, and drive
+  PWR_Control_PIN as an output to hold/cut board power. This is solid,
+  direct vendor firmware evidence that GPIO6 is the physical "PWR" side
+  button referenced on the wiki pages above. Confirmed GPIO6/GPIO7 are
+  not otherwise claimed by any peripheral in the docs.waveshare.com
+  hardware-connections table (LCD/TF/IMU/RTC/mic/speaker/touch lists),
+  and are not the board's TX(43)/RX(44) pins, so no conflict.
+  Searched the same repo tree (via GitHub tree API) for NeoPixel/WS2812/
+  RGB LED driver files - none found; only software LVGL "led" widget
+  demo files (lv_led.c/.h), which are a GUI widget, not hardware.
+
+Pins considered but NOT tagged:
+- GPIO0 (BOOT button): The wiki/spotpear pages both mention a "BOOT"
+  side button used to enter serial-download mode, which on every
+  ESP32-S3 board is universally GPIO0 (matches this board's own
+  chip-level pinNotes "0": "Must be HIGH for normal boot"). However, no
+  vendor source I could access (wiki page, spotpear mirror, or the
+  official GitHub firmware repo) states an explicit "BOOT button = GPIO0"
+  pin number for THIS specific product - the firmware repo has no
+  BOOT-button source file (only PWR_Key.h covers the PWR button). This
+  is a very strong architectural inference (BOOT-mode strap pin is
+  always GPIO0 on ESP32-S3) but per the task's confirmation bar I am
+  treating it as NOT independently vendor-confirmed for this exact
+  board, so I made NO GUESS and left GPIO0 untagged. Flagging for human
+  review: a reviewer confident in the universal GPIO0-BOOT-strap
+  convention may want to tag GPIO0 as "button" separately.
+- Power indicator LED / charge indicator LED: both wiki sources
+  explicitly describe these as hardwired status indicators ("stays on
+  while charging, off when fully charged") with no GPIO control
+  mentioned anywhere, and no GPIO define found in the firmware repo for
+  them. Treated as NOT GPIO-addressable, so NOT tagged. No guess made.
+- Volume button (mentioned only on the spotpear mirror, not on
+  docs.waveshare.com) - no GPIO given anywhere and no corresponding
+  vendor firmware file found. NOT tagged, no guess made.
+- GPIO7 (PWR_Control_PIN): this is the output line the vendor firmware
+  drives to hold/cut board power (a power-enable/latch line), not a
+  button or an LED. Deliberately left untagged/unchanged.
+
+Summary of what was tagged:
+- GPIO6 -> ["digital_input", "button"] (replacing chip-level default
+  ["analog_input","digital_input","digital_output","pwm_output"]) in
+  variants/esp32/esp32s3/waveshare_esp32_s3_lcd_146/board.json (newly
+  created, full copy of the esp32s3 chip-level default board.json plus
+  this one change and a pfodWeb NOTE comment). No LED was tagged - no
+  GPIO-controllable/user LED could be confirmed on this board.

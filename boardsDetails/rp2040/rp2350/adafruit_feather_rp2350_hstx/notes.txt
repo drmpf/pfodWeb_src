@@ -1,0 +1,295 @@
+Board: adafruit_feather_rp2350_hstx ("Adafruit Feather RP2350 with HSTX",
+products 6000 / 6130 — 6130 ships with 8MB PSRAM pre-installed, 6000 does
+not; identical PCB/pinout, this repo's pins_arduino.h covers both) —
+chip: rp2350, family bucket: rp2040
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel audit)
+
+pins_arduino.h identity pins (already present before this audit):
+  #define PIN_LED        (7u)
+  #define PIN_NEOPIXEL   (21)   NUM_NEOPIXEL (1)
+  #define RP2350_PSRAM_CS (8u)
+  DVI/HSTX connector: PIN_CKN=15, PIN_CKP=14, PIN_D0N=19, PIN_D0P=18,
+    PIN_D1N=17, PIN_D1P=16, PIN_D2N=13, PIN_D2P=12
+  PIN_SPI0_SS (21u) — vendor default, shares GPIO21 with PIN_NEOPIXEL (no
+    onboard SPI device uses it — bug, same class already fixed on the
+    sibling adafruit_feather_dvi/adafruit_feather_scorpio boards).
+  No PIN_BUTTON define anywhere in this file (see GPIO7/button reasoning
+    below — this board's Boot/Reset controls are NOT genuine spare GPIOs).
+
+This board had no board.json before this audit (chip-level
+variants/rp2040/rp2350/board.json has chipGpios: {}, so every aliased GPIO
+defaulted to full digital_input/digital_output/pwm_output capability,
+including the LED, NeoPixel, PSRAM CS, and — worse — the 8 dedicated
+HSTX/DVI GPIOs would have been silently invisible in the Designer (no
+alias in pins_arduino.h at all, so they never entered the generated pin
+list), and the LED/NeoPixel pins carried no LED/NeoPixel tag).
+
+Sources consulted:
+1. https://learn.adafruit.com/adafruit-feather-rp2350/pinouts
+   (official Adafruit guide, fetched directly via WebFetch) — quotes:
+     "This little red LED is connected to GPIO7. This little red LED is
+     controllable in CircuitPython code using board.LED, and in Arduino
+     as PIN_LED." -> status LED = GPIO7.
+     "Above the silkscreen label for pin SCK is the status NeoPixel LED.
+     It is connected to GPIO21." -> onboard NeoPixel = GPIO21.
+     "The chip select line for the PSRAM is broken out and is labeled PCS
+     on the board silk. It is attached to GPIO8. If you have PSRAM
+     onboard, DO NOT use GPIO8 as a regular GPIO!" -> PSRAM CS = GPIO8,
+     explicitly reserved by Adafruit's own warning even on the
+     non-PSRAM-populated variant (the CS trace/footprint exists on both
+     product 6000 and 6130).
+     HSTX connector differential pairs: "D0P/GPIO18" and "D0N/GPIO19",
+     "D1P/GPIO16" and "D1N/GPIO17", "D2P/GPIO12" and "D2N/GPIO13",
+     "CKP/GPIO14" and "CKN/GPIO15" - exact match to this board's own
+     pins_arduino.h PIN_CKN/CKP/D0N/D0P/D1N/D1P/D2N/D2P defines.
+     I2C/STEMMA QT: "SCL" GPIO3, "SDA" GPIO2, described as the I2C1
+     interface via the STEMMA QT connector - i.e. the same Wire0 pins
+     already broken out on the Feather header, not a separate dedicated
+     pair (shared-bus arrangement, same reasoning as the DVI board's DDC
+     lines) - GPIO2/GPIO3 left untagged (NO CHANGE).
+     Boot/Reset buttons: "The Boot button is the button on the right...
+     The Reset button is on the left." - described purely by physical
+     location and function, with NO GPIO number given anywhere on this
+     page (in contrast to GPIO7/LED, GPIO21/NeoPixel, and GPIO8/PSRAM,
+     which are ALL given explicit GPIO numbers on this same page) -
+     consistent with these being the RP2350's dedicated non-GPIO BOOTSEL
+     (monitored via the on-chip boot ROM, physically the QSPI_CS/flash
+     strap line - not a regular pin-muxed GPIO) and RUN/reset hardware
+     lines, not general-purpose GPIOs wired to switches. This is the key
+     difference from the sibling adafruit_feather_dvi/
+     adafruit_feather_scorpio boards, whose BOOT button genuinely is a
+     spare GPIO7 pulled to GND (and whose pins_arduino.h files declare a
+     PIN_BUTTON accordingly) - GPIO7 on THIS board is instead the plain
+     status LED, not a button.
+2. https://learn.adafruit.com/adafruit-feather-rp2350/overview
+   (official Adafruit guide, fetched directly via WebFetch) — quotes: "a
+   special High Speed Transmit (HSTX) peripheral that drives 4 lanes of
+   differential data transmission such as DVI output" and "8 more
+   'consecutive' GPIO available on the HSTX connector" (GPIO12-19) -
+   confirms these 8 GPIOs are dedicated/reserved specifically for the
+   onboard HSTX/DVI connector (native RP2350 hardware peripheral, NOT the
+   PIO-bit-banged PicoDVI approach used on the RP2040-family DVI board),
+   not general-purpose broken-out pins. Also: "Pin #7 red LED for general
+   purpose blinking", "RGB NeoPixel for full-color indication", "Both
+   Reset button and Bootloader select button for quick restarts (no
+   unplugging-replugging to relaunch code)" (again with no GPIO numbers
+   given for the buttons), "Optional spot for SOIC PSRAM chip with chip
+   select line on GPIO 8", and "21 GPIO available on the Feather header
+   pins, 8 more 'consecutive' GPIO available on the HSTX connector" (21 +
+   8 = 29 total GPIO - matches this board's pins_arduino.h D/A alias
+   count once GPIO8 and GPIO12-19 are excluded as dedicated).
+3. https://learn.adafruit.com/adafruit-feather-rp2350/frequently-asked-questions
+   (official Adafruit guide, fetched via WebFetch) - checked specifically
+   for any GPIO-level detail on the red LED's active-high/low polarity or
+   the Boot/Reset buttons' wiring; contains neither (only describes the
+   separate NeoPixel status-color meaning) - no contradiction of source
+   #1/#2's readings, but no additional confirmation either.
+4. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/raspberrypi/boards/adafruit_feather_rp2350/pins.c
+   (fetched directly via WebFetch) - independently corroborates every pin
+   mapping in this board's pins_arduino.h:
+     MP_QSTR_LED -> pin_GPIO7
+     MP_QSTR_NEOPIXEL -> pin_GPIO21
+     MP_QSTR_CKN -> pin_GPIO15   MP_QSTR_CKP -> pin_GPIO14
+     MP_QSTR_D0N -> pin_GPIO19  MP_QSTR_D0P -> pin_GPIO18
+     MP_QSTR_D1N -> pin_GPIO17  MP_QSTR_D1P -> pin_GPIO16
+     MP_QSTR_D2N -> pin_GPIO13  MP_QSTR_D2P -> pin_GPIO12
+     MP_QSTR_SDA -> pin_GPIO2   MP_QSTR_SCL -> pin_GPIO3
+     MP_QSTR_SCK -> pin_GPIO22  MP_QSTR_MOSI -> pin_GPIO23
+     MP_QSTR_MISO -> pin_GPIO20
+   This is an exact match to this board's Arduino pins_arduino.h aliases
+   (SPI0 MISO=20/MOSI=23/SCK=22, Wire0 SDA=2/SCL=3) - strong independent
+   confirmation from a wholly separate vendor firmware codebase
+   (CircuitPython, not arduino-pico). Notably this file defines NO
+   MP_QSTR_BUTTON or MP_QSTR_BOOT entry at all - further corroborating
+   that the Boot/Reset buttons are not exposed as regular named GPIOs on
+   this board, in direct contrast to the sibling
+   adafruit_feather_rp2040_dvi board's CircuitPython pins.c, which DOES
+   define both MP_QSTR_BUTTON and MP_QSTR_BOOT -> pin_GPIO7 (a real spare
+   GPIO on that board).
+5. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/raspberrypi/boards/adafruit_feather_rp2350/mpconfigboard.h
+   (fetched directly via WebFetch) - confirms `#define MICROPY_HW_NEOPIXEL
+   (&pin_GPIO21)` (no polarity/inverted flags needed for a NeoPixel data
+   line), `#define CIRCUITPY_PSRAM_CHIP_SELECT (&pin_GPIO8)`,
+   `DEFAULT_SPI_BUS_SCK/MOSI/MISO` = GPIO22/23/20 with NO chip-select
+   #define anywhere in the file - independently corroborating that this
+   board's vendor-default PIN_SPI0_SS=21 in pins_arduino.h was a spurious
+   unused default (no onboard SPI device consumes a CS pin at all in
+   CircuitPython's own board config), not a genuine onboard SPI CS use -
+   see GPIO21 fix below. Also confirms `DEFAULT_DVI_BUS_CLK_DN/DP` =
+   GPIO15/14, `_RED_DN/DP` = GPIO19/18, `_GREEN_DN/DP` = GPIO17/16,
+   `_BLUE_DN/DP` = GPIO13/12 - an exact match to this board's PIN_CKN/
+   CKP/D0N/D0P/D1N/D1P/D2N/D2P pins_arduino.h defines, confirming the
+   full 8-pin HSTX/DVI GPIO12-19 assignment from a second independent
+   source.
+6. Searched for an official Zephyr RTOS board port for this specific
+   board (adafruit_feather_rp2350 / "Feather RP2350 with HSTX") - none
+   exists yet; only a community/Adafruit-Playground guide describing how
+   to write one from scratch was found (adafruit-playground.com/u/
+   SamBlenny/pages/zephyr-quest-feather-rp2350-board-def), and the
+   closest official Zephyr doc (Adafruit Metro RP2350) is a different
+   board with a different LED/GPIO layout, not usable as direct
+   confirmation for this board's GPIO7 LED polarity. GPIO7 LED is
+   therefore treated as active-high on repo precedent only (see per-pin
+   reasoning below), not independently confirmed via devicetree the way
+   earlier RP2040-family boards in this audit were.
+
+Per-pin reasoning:
+
+GPIO7 (PIN_LED):
+  Onboard status LED, active-high (inferred - see source #6 above; no
+  direct Zephyr devicetree exists for this exact board, unlike earlier
+  RP2040-family boards in this audit). Confirmed as GPIO7 via source #1
+  ("This little red LED is connected to GPIO7... in Arduino as PIN_LED")
+  and independently via source #4 (LED -> pin_GPIO7).
+  capabilities: ["digital_output", "pwm_output", "led_high"]
+  digital_input dropped to match this repo's established led_high
+  precedent for dedicated onboard LED pins (rpipico, adafruit_feather_
+  scorpio, adafruit_feather_dvi, wiznet_5500_evb_pico); pwm_output kept
+  since arduino-pico's analogWrite() works on any RP2040/RP2350 GPIO,
+  enabling brightness dimming. Active-high polarity treated as most
+  likely correct on precedent (every other Adafruit RP2040/RP2350
+  Feather-family plain GPIO+resistor status LED audited in this repo so
+  far uses active-high wiring, and no contrary evidence was found for
+  this board in any source consulted) but flagged here as the one
+  identity pin on this board without a direct devicetree/schematic
+  confirmation, should a more authoritative source turn up later.
+
+GPIO8 (RP2350_PSRAM_CS):
+  Dedicated chip-select line for the onboard optional SOIC PSRAM
+  footprint (populated on product 6130, bare footprint on product 6000 -
+  same PCB/pinout either way). Confirmed via Adafruit's own explicit
+  warning (source #1: "If you have PSRAM onboard, DO NOT use GPIO8 as a
+  regular GPIO!") and independently via CircuitPython's mpconfigboard.h
+  (source #5: CIRCUITPY_PSRAM_CHIP_SELECT -> pin_GPIO8).
+  capabilities: [] - this board's own pins_arduino.h already omits a D8
+  general-purpose alias for this reason (no static const uint8_t D8
+  anywhere in the file), so without an explicit chipGpios entry this GPIO
+  would simply be invisible in the generated Designer pin list; the
+  chipGpios entry surfaces it with an explanatory note instead of leaving
+  it silently absent, matching the adafruit_feather_dvi precedent's
+  approach for its dedicated DVI pins.
+
+GPIO12 (PIN_D2P), GPIO13 (PIN_D2N), GPIO14 (PIN_CKP), GPIO15 (PIN_CKN),
+GPIO16 (PIN_D1P), GPIO17 (PIN_D1N), GPIO18 (PIN_D0P), GPIO19 (PIN_D0N):
+  The 8 dedicated onboard HSTX connector TMDS clock/data differential-pair
+  lines, driven by the RP2350's native hardware HSTX peripheral (a
+  dedicated high-speed serializer block - NOT PIO-bit-banged like the
+  RP2040-family PicoDVI approach on the sibling adafruit_feather_dvi
+  board) to drive an external DVI/HDMI monitor via the 22-pin HSTX
+  connector. Confirmed via Adafruit's own "8 more 'consecutive' GPIO
+  available on the HSTX connector" description (source #2) and
+  independently corroborated pin-for-pin by BOTH CircuitPython's pins.c
+  (source #4) and mpconfigboard.h's DEFAULT_DVI_BUS_* defines (source
+  #5) - two independent vendor-firmware confirmations for each of the 8
+  pins. This board's own pins_arduino.h (pre-existing, predating this
+  audit's board.json work) already omits D12-D19 general-purpose aliases,
+  consistent with these being dedicated, not general-purpose.
+  capabilities: [] (each), matching this repo's established vocabulary
+  for confirmed dedicated-hardware GPIO with no general-purpose use (same
+  vocabulary already used for the sibling adafruit_feather_dvi board's
+  GPIO16-23 DVI pins, and for e.g. cytron_motion_2350_pro's USB-host D+/
+  D- and wiznet_5500_evb_pico2's W5500 SPI lines).
+  Because none of these 8 GPIOs carry a static const uint8_t alias in
+  pins_arduino.h (only the bare #define PIN_CKN/CKP/D0N/D0P/D1N/D1P/D2N/
+  D2P macros, which build_boards.js's alias parser does not read as
+  pin-name aliases on their own), they would not have appeared in the
+  generated Designer pin list AT ALL without an explicit chipGpios entry
+  for each - adding these entries (capabilities: []) surfaces them with
+  an explanatory note instead of leaving them silently invisible, matching
+  the identical approach already taken for adafruit_feather_dvi's GPIO16-
+  23.
+
+GPIO21 (PIN_NEOPIXEL, also vendor-default PIN_SPI0_SS):
+  Onboard single status WS2812 NeoPixel, output-only data line. Confirmed
+  by sources #1, #4, #5 above (all three independently name GPIO21 as the
+  status NeoPixel).
+  capabilities: ["digital_output", "led_neopixel"]
+  digital_input/pwm_output omitted, matching this repo's established
+  NeoPixel-tagging vocabulary.
+  This GPIO also carried the vendor's default (unused) PIN_SPI0_SS alias
+  in pins_arduino.h (no onboard SPI device consumes it - CircuitPython's
+  own DEFAULT_SPI_BUS in source #5 defines only SCK/MOSI/MISO, no CS/SS
+  pin at all for this board) - this is the exact same bug class already
+  found and fixed on the sibling adafruit_feather_dvi and
+  adafruit_feather_scorpio boards. FIXED in this session by:
+    - removing "#define PIN_SPI0_SS (21u)" from pins_arduino.h (with an
+      explanatory pfodWeb NOTE comment, matching the dvi/scorpio fix's
+      style)
+    - removing the corresponding "static const uint8_t SS = PIN_SPI0_SS;"
+      line further down in the SAME file (this board's pins_arduino.h
+      does not include ../generic_full/common.h - it declares its own
+      bespoke D0-D29/A0-A3/SPI/Wire static aliases inline - so both the
+      #define and the static reference lived in one file and both were
+      removed together, avoiding the dangling-macro-reference compile
+      error this audit class specifically warns about).
+    - grepped the whole file afterward for "PIN_SPI0_SS" - only the
+      explanatory comment remains, no dangling code reference.
+  Without this fix, build_boards.js's unconditional SS-alias auto-append
+  would have contaminated this confirmed NeoPixel tag with a spurious
+  spi_ss capability.
+
+GPIO2/GPIO3 (PIN_WIRE0_SDA/SCL):
+  NO CHANGE - left at chip-level default full general-purpose I2C
+  capability. Adafruit's own pinouts guide (source #1) describes these as
+  the board's I2C1 bus, exposed both on the ordinary Feather header AND
+  via the STEMMA QT connector - a shared-bus arrangement (the STEMMA QT
+  connector is wired in parallel to the same physical SDA/SCL pins, not a
+  separate dedicated pair), matching this audit's guidance not to
+  over-exclude STEMMA/QT-style shared buses. Same reasoning already
+  applied to the sibling adafruit_feather_dvi board's DVI-connector DDC
+  I2C lines.
+
+GPIO20/GPIO22/GPIO23 (PIN_SPI0_MISO/SCK/MOSI):
+  NO CHANGE - left at chip-level default full general-purpose SPI
+  capability. These form the board's default SPI0 bus, exposed on the
+  Feather header pins; the optional onboard PSRAM (when populated) uses
+  this SAME bus together with its own dedicated GPIO8 chip-select line
+  (see GPIO8 above), rather than a separate dedicated bus - i.e. a
+  shared-bus arrangement, not exclusive-use hardware, so the bus remains
+  fully available for ordinary user SPI peripherals (matching the GPIO2/
+  GPIO3 reasoning above and the sibling adafruit_feather_dvi board's
+  precedent for its SPI0 bus).
+
+Boot/Reset buttons:
+  NO CHANGE / no chipGpios entry - confirmed these are NOT general-purpose
+  GPIOs on this board (unlike the sibling adafruit_feather_dvi/
+  adafruit_feather_scorpio boards' genuine spare-GPIO7 BOOT button). Both
+  Adafruit's own pinouts/overview guides (sources #1, #2) describe them
+  purely by physical location/function with no GPIO number given, and
+  this board's pins_arduino.h has no PIN_BUTTON/PIN_BOOT define at all -
+  independently corroborated by CircuitPython's pins.c (source #4) also
+  defining no MP_QSTR_BUTTON/MP_QSTR_BOOT entry. These are the RP2350's
+  dedicated non-GPIO BOOTSEL (bootrom-monitored QSPI_CS/flash-strap line)
+  and RUN/reset hardware lines - outside the 29-GPIO set entirely, so
+  there is no GPIO number to tag.
+
+Result: board.json created at
+  variants/rp2040/rp2350/adafruit_feather_rp2350_hstx/board.json
+with chipGpios overrides for GPIO7 (status LED, active-high, inferred by
+precedent), GPIO8 (PSRAM CS, capabilities: []), GPIO12-19 (the 8 dedicated
+HSTX/DVI TMDS output lines, capabilities: []), and GPIO21 (status
+NeoPixel, PIN_SPI0_SS collision also fixed in pins_arduino.h). GPIO2/
+GPIO3 (Wire0/STEMMA QT) and GPIO20/22/23 (SPI0 bus, shared with optional
+PSRAM) received NO CHANGE (confirmed shared-but-general-purpose buses,
+not dedicated/exclusive hardware). No button/BOOT GPIO exists on this
+board to tag. JSON validity confirmed via a manual comment-stripping
+parse (no build_boards.js/require() invoked, per this audit's
+instructions).
+
+Summary: Confirmed and tagged the status LED (GPIO7, active-high,
+inferred by repo precedent - no direct devicetree exists for this exact
+board), the status NeoPixel (GPIO21), the dedicated PSRAM chip-select
+line (GPIO8), and all 8 dedicated HSTX/DVI connector GPIOs (12-19,
+capabilities: []) via Adafruit's own official learn.adafruit.com
+pinouts/overview guides, cross-referenced with two independent
+CircuitPython source files (pins.c and mpconfigboard.h). Also fixed a
+PIN_SPI0_SS/GPIO21 alias-collision bug in pins_arduino.h identical to the
+bug already fixed on the sibling adafruit_feather_dvi/
+adafruit_feather_scorpio boards, removing both the dangling #define and
+its corresponding static SS alias in the same file. Confirmed via two
+independent Adafruit/CircuitPython sources that this board's Boot/Reset
+buttons are NOT general-purpose GPIOs (unlike the sibling DVI/SCORPIO
+boards' genuine GPIO7 BOOT button) - no button chipGpios entry applies.
+Left GPIO2/GPIO3 (Wire0/STEMMA QT) and GPIO20/22/23 (SPI0 bus) unchanged
+as confirmed general-purpose/shared buses despite also serving the
+STEMMA QT connector and optional onboard PSRAM respectively.

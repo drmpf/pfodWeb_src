@@ -1,0 +1,123 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit + opportunistic
+// button/LED tagging (2026-07-12). This board (Alfredo NoU3, an FRC/
+// robotics ESP32-S3 controller from Alfredo Systems) had never been
+// individually reviewed before - the discovery sweep flagged it only for
+// USB descriptor macros (a false positive - no real pins in that flag).
+// Full review found:
+//   - GPIO45 (LED_BUILTIN / "User LED") is confirmed as the "RSL" (Robot
+//     Signal Light) status LED. Alfredo-NoU3 library source
+//     (src/Alfredo_NoU3.h: `const int RSL_PIN = 45;`) and
+//     src/Alfredo_NoU3.cpp updateServiceLight() confirm active-HIGH PWM
+//     drive: LIGHT_OFF sets duty=1 (near-zero), LIGHT_ON/LIGHT_DISABLED
+//     set duty=(1<<RSL_PWM_RES)-1 (max) - higher duty = brighter = ON.
+//     Tagged led_high. digital_input dropped (dedicated LED data line),
+//     matching this repo's convention for other confirmed onboard LEDs
+//     (e.g. um_feathers3 GPIO13).
+//   - GPIO33/GPIO34 are the board's physical Qwiic I2C connector (SDA/
+//     SCL), confirmed via both the official hardware docs
+//     (https://alfredo-nou3.readthedocs.io/hardware_documentation.html,
+//     "Qwiic Connector" section: "The NoU3 Uses GPIO 33 for SDA and GPIO
+//     34 for SCL") and the vendor library source
+//     (src/Alfredo_NoU3.h: `PIN_I2C_SDA_QWIIC=33`, `PIN_I2C_SCL_QWIIC=34`;
+//     Alfredo_NoU3.cpp: `Wire.begin(PIN_I2C_SDA_QWIIC, PIN_I2C_SCL_QWIIC,
+//     400000)`). These GPIOs are absent from the chip-level
+//     variants/esp32/esp32s3/board.json chipGpios map (excluded there
+//     under the general "GPIO33-37 = octal flash/PSRAM" assumption most
+//     ESP32-S3 modules need) - but this board's own shipping firmware
+//     library proves GPIO33/34 are free, ordinary GPIOs on this specific
+//     module (using them for live I2C traffic would corrupt flash/PSRAM
+//     access immediately if they were actually flash/PSRAM lines).
+//     Re-added here as this board's own override, following this repo's
+//     "generic exposed connector = KEEP available, informational note
+//     only" policy (same policy applied to the STEMMA QT connector on
+//     adafruit_qtpy_esp32c3) rather than excluding them.
+//   - GPIO35/GPIO36 are a SEPARATE, second I2C bus (Wire1) wired
+//     exclusively to the two onboard IMU chips (LSM6DSOX + MMC5983MA):
+//     src/Alfredo_NoU3.h: `PIN_I2C_SDA_IMU=35`, `PIN_I2C_SCL_IMU=36`;
+//     Alfredo_NoU3.cpp: `Wire1.begin(PIN_I2C_SDA_IMU, PIN_I2C_SCL_IMU,
+//     400000)` plus `pca9685.setupSingleDevice(Wire1, 0x40)` (onboard PCA9
+//     PWM driver, used for motor/servo signals, also lives on this bus).
+//     Per this repo's precedent for a dedicated internal-sensor-only bus
+//     (variants/esp32/esp32s3/Nebula_S3/board.json excluding its SDA1/
+//     SCL1 IMU bus), GPIO35/36 are left EXCLUDED - already absent from
+//     the chip-level default, so no override entry was added for them
+//     here. GPIO37 is undocumented/unused anywhere in the vendor library
+//     or hardware docs - left at the chip-level default (excluded).
+//   - Motor (M1-M8) and encoder (E2-E7) ports are NOT wired to direct
+//     ESP32-S3 GPIOs at all - they are driven through the onboard PCA9
+//     (PCA9685-family) PWM driver chip over the Wire1 I2C bus (see
+//     src/Alfredo_NoU3_PCA9.* and the `pca9685` usage above), so no
+//     additional per-motor/encoder GPIO exclusion is needed - the whole
+//     motor/encoder subsystem is already covered by the GPIO35/36 I2C
+//     bus exclusion above, matching the complete absence of any motor/
+//     encoder pin alias in this board's pins_arduino.h.
+//   - Servo headers S1-S4 (GPIO4/5/6/7) and G8/G9 (GPIO8/9) are plain
+//     PWM-capable GPIO breakouts on a header (not exclusively wired to
+//     one function - unused pins are ordinary GPIO), so left at the
+//     chip-level default with no note, matching this repo's practice of
+//     not annotating generic multi-purpose header pins.
+//   - RESET and BOOT buttons exist (per hardware docs) but are the
+//     standard ESP32-S3 EN/hardware-reset and GPIO0 flash-strapping
+//     buttons - no pins_arduino.h alias or library constant exposes
+//     either as a sketch-readable "button" GPIO, so neither was tagged
+//     (GPIO0's existing chip-level strapping pinNote already documents
+//     it must be HIGH at boot).
+//   - pins_arduino.h was also edited to delete a dead, vendor-commented-
+//     out TX(39)/RX(40) block that this project's comment-blind ESP32
+//     parser regex would otherwise have mis-read as real serial pin
+//     assignments (see pins_arduino.h and notes.txt for detail).
+// See boardsDetails/esp32/esp32s3/alfredo-nou3/notes.txt for full sources
+// and reasoning.
+{
+  "boardName": "ESP32S3",
+  "displayName": "ESP32-S3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH for normal boot",
+    "3":  "Must be LOW or floating on reboot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["digital_input", "digital_output", "pwm_output"],
+            "note": "Onboard Qwiic connector SDA (PIN_I2C_SDA_QWIIC in Alfredo-NoU3 library; Wire.begin(33,34)). Not consumed by flash/PSRAM on this module - confirmed free GPIO by vendor firmware." },
+    "34": { "capabilities": ["digital_input", "digital_output", "pwm_output"],
+            "note": "Onboard Qwiic connector SCL (PIN_I2C_SCL_QWIIC in Alfredo-NoU3 library; Wire.begin(33,34)). Not consumed by flash/PSRAM on this module - confirmed free GPIO by vendor firmware." },
+    "38": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "39": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "40": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "41": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "42": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "43": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "44": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "45": { "capabilities": ["digital_output", "pwm_output", "led_high"] },
+    "46": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "47": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "48": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

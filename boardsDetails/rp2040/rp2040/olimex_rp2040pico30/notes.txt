@@ -1,0 +1,238 @@
+Board: Olimex "RP2040-PICO30" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/olimex_rp2040pico30/
+Audit date: 2026-07-13
+(Retry note: a prior attempt at this exact board hit an API session-limit
+error before any file was touched — this is a clean re-audit from scratch,
+zero carried-over state.)
+
+SUMMARY
+-------
+NO CHANGE. No board.json was created. Olimex's RP2040-PICO30 is a
+Pico-form-factor breakout that exposes all 30 RP2040 GPIOs (the stock
+Raspberry Pi Pico only exposes 26; the missing 4 — GPIO23/24/25/29 — sit
+on pads that are plain GND on the stock Pico). Confirmed directly from
+Olimex's own schematic and user manual (both fetched and read in full,
+see SOURCES) that:
+  - GPIO25's onboard LED is NOT populated by default. The schematic shows
+    LED1 (green 0603) and its series resistor R10 (2.2k) both marked
+    "NA" (not assembled), and the dedicated "LED enable" solder jumper
+    (net LED_E1) is drawn "Opened". Olimex's own order-code table
+    confirms this is deliberate: only the "-U" SKU variant
+    ("RP2040-PICO30U ... with UEXT, LED, R10, R15, R16") ships with the
+    LED/R10 parts actually populated and the UEXT pull-ups (R15/R16)
+    installed — the plain "RP2040-PICO30" SKU (the literal product name
+    this single arduino-pico board ID/pins_arduino.h covers, for every
+    SKU including -16 flash variants) ships without them. Since one
+    board.json/pins_arduino.h serves all SKUs and the baseline/plain SKU
+    has no working onboard LED, tagging GPIO25 as led_high would
+    misrepresent the board as most customers receive it.
+  - GPIO23, GPIO24, and GPIO29 (the other 3 of the "4 extra" GPIOs) have
+    no onboard dedicated circuitry either — they are plain spare
+    header-broken-out GPIOs. The manual's own "Table 1. Notable pins"
+    and schematic "Important Notes" box both describe them only as pins
+    that are GND on the ORIGINAL stock Pico footprint, with a caution to
+    initialize them as INPUT if the board is ever plugged into
+    Pico-designed carrier hardware/shields (to avoid driving current
+    into what that carrier assumes is a ground pin). This is a
+    physical-footprint-compatibility caution, not a description of any
+    onboard peripheral wired to these pins on the PICO30 itself.
+  - Two buttons exist (hardware layout diagram, page 5 of the manual,
+    explicitly labels them): "Boot button" (BOOT1, wired GND <-> the
+    QSPI_SS_N net — the standard ROM-bootloader-entry BOOTSEL line) and
+    "RESET button" (RST1, wired GND <-> RUN — the standard hardware
+    chip-reset line). Neither is a normal GPIO digitalRead() pin; both
+    are out of scope per this audit's established BOOTSEL/RESET
+    convention (see rpipico/board.json, waveshare_rp2040_pizero notes).
+    No third/general-purpose user button exists anywhere.
+  - No NeoPixel/WS2812/addressable LED anywhere on the schematic or in
+    the manual's feature list.
+
+Because there is no button, LED, or NeoPixel confirmed wired to any GPIO
+that would need a chipGpios capability restriction or addition, and no
+bus-alias collision was found (see BUG-CLASS CHECK below), there is
+nothing for a per-board board.json to override. A board.json containing
+only a byte-for-byte copy of the chip-level variants/rp2040/rp2040/
+board.json defaults with an empty chipGpios:{} would be a functional
+no-op, so — per this audit's own stated principle ("Report NO CHANGE
+rather than guess") and the established rakwireless_rak11300 /
+waveshare_rp2040_pizero precedent — none was created.
+
+SOURCES CONSULTED
+------------------
+1. Local pins_arduino.h (variants/rp2040/rp2040/olimex_rp2040pico30/
+   pins_arduino.h) — full file: `#pragma once` + a single
+   `#include "../rpipico/pins_arduino.h"`. This board reuses the
+   Raspberry Pi Pico's pin definitions verbatim (PIN_LED=25, Serial1
+   TX/RX=0/1, Serial2 TX/RX=8/9, SPI0 MISO/SS/SCK/MOSI=16/17/18/19, SPI1
+   MISO/SS/SCK/MOSI=12/13/14/15, Wire0 SDA/SCL=4/5, Wire1 SDA/SCL=26/27)
+   — same file also present, byte-identical, at
+   rp2040_board_variants/variants/olimex_rp2040pico30/pins_arduino.h
+   (the upstream arduino-pico source this repo's copy was taken from).
+2. variants/rp2040/rp2040/rpipico/pins_arduino.h — read in full (the
+   file the above #include resolves to) to get the actual pin numbers/
+   aliases in scope for this board.
+3. variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios:{})
+   and variants/rp2040/rp2040/rpipico/board.json (precedent for the
+   LED-tagging pattern on GPIO25 on a stock Pico, and for the
+   BOOTSEL-is-out-of-scope reasoning) — both read in full before
+   analysing this board.
+4. Official Olimex product/GitHub pages (WebSearch + WebFetch):
+   - olimex.com/Products/RaspberryPi/PICO/RP2040-PICO30/open-source-hardware
+     — confirms "The LED is not connected to any port by default, but
+     can be connected to GPIO25 ... via solder jumper" and "Optional
+     status LED (U version)".
+   - github.com/OLIMEX/RP2040-PICO30 (official open-hardware repo).
+5. **RP2040-PICO30_Rev_A.sch schematic PDF** — downloaded directly from
+   github.com/OLIMEX/RP2040-PICO30 (raw.githubusercontent.com .../
+   HARDWARE/RP2040-PICO30_Rev_A/RP2040-PICO30_Rev_A.pdf) and read
+   directly via the Read tool (the primary, authoritative source — not
+   inferred from search-result summaries). Key findings read directly
+   off the schematic:
+     - "User Led" block: GND — LED1 (NA, LED/GREEN/0603, cathode to
+       GND) — R10 (NA, 2.2k/R0402) — net "LED_E1" — jumper drawn
+       "Opened" — GPIO25. Anode-side orientation (toward R10/GPIO25)
+       confirms active-high polarity IF the LED/resistor were populated
+       and the jumper closed (same as the classic Pico's GPIO25/
+       LED_BUILTIN idiom) — but as shipped on the plain SKU, the circuit
+       is open at two points (missing LED/resistor parts + open jumper),
+       so GPIO25 drives nothing.
+     - "Boot button"/"RESET button" block: BOOT1 (YTS-A016-X) wired
+       GND<->QSPI_SS_N (BOOTSEL); RST1 (YTS-A016-X) wired GND<->RUN
+       (hardware reset). No other push-button symbol anywhere in the
+       file (UEXT, EXTENSIONS, USB, Power Supply, Mounting Holes,
+       Fiducials sections all reviewed).
+     - "Important Notes" box (schematic's own annotation): "Be wary with
+       GPIO23, GPIO24, GPIO25 and GPIO29's definition like outputs, when
+       connected to RPi-Pico Platform! At RPi-Pico, this pins are
+       directly connected to GND!" — a shield/carrier-compatibility
+       caution, not a description of onboard PICO30 circuitry.
+     - No WS2812/NeoPixel/addressable-LED symbol anywhere in the file.
+6. **RP2040-PICO30-user-manual.pdf** (Rev. 1.1, June 2023) — downloaded
+   directly from github.com/OLIMEX/RP2040-PICO30 (raw.githubusercontent.com
+   .../DOCS/RP2040-PICO30-user-manual.pdf) and read directly via the Read
+   tool. Key findings:
+     - "Order codes" table (page 4): plain "RP2040-PICO30" = "industrial
+       grade RPi Pico (RP2040) with 30 GPIOs exposed"; "RP2040-PICO30U" =
+       "RP2040-PICO30 with UEXT, LED, R10, R15, R16" — i.e. the LED (and
+       its series resistor R10, plus the UEXT I2C pull-ups R15/R16) are
+       an assembly option specific to the "-U" SKU, not present on the
+       plain SKU. (16MB-flash "-16"/"U-16" variants follow the same
+       split.) One arduino-pico board ID/pins_arduino.h covers all four
+       SKUs.
+     - Hardware layout diagram (page 5) labels exactly: USB-C, Flash,
+       RP2040, UEXT connector (SPI/I2C/UART), LED, "LED enable jumper",
+       "Boot button", "RESET button", DEBUG (SWD) — confirming the two
+       buttons and the jumper-gated LED, and no third button or
+       NeoPixel.
+     - "Table 1. Notable pins" (page 7) explicitly documents GPIO23,
+       GPIO24, GPIO25, and GPIO29 each with identical wording: "This
+       GPIO is not led out in the original RP2040-PICO design and on
+       this place there is GND line so if you use RP2040-PICO30 in
+       RP2040-PICO design make sure to initialize it as INPUT" —
+       confirming these are plain spare GPIOs on THIS board (PICO30),
+       with the only caveat being footprint-compatibility with
+       stock-Pico carrier hardware, not any onboard PICO30 peripheral.
+     - "SOFTWARE" section (page 11): "RP2040-PICO30 uses the same
+       software as RP2040-PICO" (Pico C-SDK / MicroPython) — no
+       PICO30-specific SDK/pin-remap layer, consistent with this board's
+       pins_arduino.h simply re-using rpipico's verbatim.
+7. Precedent read in full: variants/rp2040/rp2040/rakwireless_rak11300/
+   board.json (does not exist) and boardsDetails/rp2040/rp2040/
+   rakwireless_rak11300/notes.txt, plus boardsDetails/rp2040/rp2040/
+   waveshare_rp2040_pizero/notes.txt — both establish this same session's
+   "no board.json when there is truly nothing to override" convention,
+   applied identically here.
+
+BUG-CLASS CHECK (button/LED aliased onto a bus pin)
+-------------------------------------------------------
+No button or working onboard LED exists on any GPIO in the first place
+(the LED footprint is unpopulated/jumper-open by default), so there is
+no button/LED pin to collide with a bus alias. Checked anyway: GPIO23,
+24, 25, 29 (the four "extra" GPIOs) do not coincide with any of this
+board's inherited bus aliases — PIN_SPI0_MISO/SS/SCK/MOSI = 16/17/18/19,
+PIN_SPI1_MISO/SS/SCK/MOSI = 12/13/14/15, PIN_WIRE0_SDA/SCL = 4/5,
+PIN_WIRE1_SDA/SCL = 26/27 — zero overlap with 23/24/25/29. The UEXT
+connector's I2C signals (GPIO16=I2C0_SDA, GPIO17=I2C0_SCL per the
+manual's pUEXT diagram) also don't collide: GPIO16/17 have no
+static-const bus alias in pins_arduino.h (only GPIO4/5 and GPIO26/27 do),
+so build_boards.js's auto-append-bus-capability logic never fires for
+them. No pins_arduino.h edit was made — no `#define`/`static const`
+lines were touched, so no dangling-reference risk.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED / LED_BUILTIN, inherited from rpipico's
+  pins_arduino.h): onboard LED footprint exists but is NOT populated and
+  its enable jumper is NOT bridged on the plain SKU (confirmed via the
+  official schematic: LED1 + R10 both "NA", jumper "Opened") — populated
+  only on the "-U" SKU per the official user manual's order-code table.
+  Since this board ID/board.json must serve all SKUs and the LED is not
+  present out-of-the-box on the base product, left at the chip-level
+  default full capability set (digital_input/digital_output/pwm_output)
+  — same as every other spare GPIO. No chipGpios tag applied.
+
+GPIO23, GPIO24, GPIO29: plain spare GPIOs exposed on header pads that are
+  GND on the stock Raspberry Pi Pico footprint (confirmed via the
+  official user manual's "Table 1. Notable pins" and the schematic's own
+  "Important Notes" annotation) — no onboard dedicated circuitry. Left
+  at the chip-level default full capability set. No chipGpios tag
+  applied.
+
+Boot button (BOOTSEL, on the QSPI_SS_N net): standard ROM-bootloader-
+  entry button, not a normal GPIO digitalRead() pin. Out of scope per
+  this audit's established convention (rpipico, waveshare_rp2040_pizero
+  precedents).
+
+RESET button (on the RUN net): standard hardware chip-reset line, not a
+  GPIO. Out of scope, same convention as above.
+
+No NeoPixel/WS2812 found anywhere in the schematic or user manual.
+
+All remaining GPIOs (0-22, 26-28): standard header/UEXT/extension-
+  connector pins per the inherited rpipico pins_arduino.h aliases; no
+  dedicated onboard peripheral found for any of them beyond the
+  already-declared Serial/SPI/Wire bus aliases. No chipGpios entry
+  needed.
+
+inputOnlyGpios / pinNotes / pwm / dac / adc: left at chip-level defaults
+  (12-bit ADC, 8-bit analogWrite, no DAC) — this board declares no
+  board-specific analog aliases beyond what rpipico's pins_arduino.h
+  already provides (A0-A2 = GPIO26-28; GPIO29, one of the four "extra"
+  GPIOs, has no A-alias in the inherited file, matching the stock Pico's
+  own 3-analog-channel A0-A2 set — the manual does not describe any
+  analog use for GPIO29 on this board either).
+
+WHY NO board.json IS CREATED
+------------------------------
+Because (a) the onboard LED is not populated/enabled by default on the
+product this board ID literally names ("RP2040-PICO30"), (b) GPIO23/24/29
+have no onboard dedicated circuitry, (c) both buttons are non-GPIO
+BOOTSEL/RESET lines already out of scope by established convention, and
+(d) no NeoPixel exists, there is nothing this audit's button/LED/
+NeoPixel-tagging or bus-collision mandate could correctly add via
+chipGpios. A board.json holding only a verbatim copy of the chip-level
+defaults with an empty chipGpios:{} would be a functional no-op (the
+chip-level variants/rp2040/rp2040/board.json already supplies those same
+defaults via fallback), so none was created — consistent with this
+audit's "Report NO CHANGE rather than guess" principle and the
+rakwireless_rak11300/waveshare_rp2040_pizero precedent from this same
+session.
+
+VALIDATION
+----------
+- No board.json was created for this board, so there is nothing to
+  JSON.parse()-validate for this audit.
+- No pins_arduino.h edit was made (nothing needed changing; re-confirmed
+  no bus-alias collision above).
+- No build script was executed and build_boards.js was never require()'d,
+  per task instructions.
+
+FILES CHANGED
+-------------
+- variants/rp2040/rp2040/olimex_rp2040pico30/board.json: NOT created
+  (would be a no-op duplicate of chip-level defaults — see "WHY NO
+  board.json IS CREATED" above).
+- variants/rp2040/rp2040/olimex_rp2040pico30/pins_arduino.h: NOT modified
+  (no button/LED bus-alias collision found; nothing to exclude).
+- Created: boardsDetails/rp2040/rp2040/olimex_rp2040pico30/notes.txt
+  (this file).

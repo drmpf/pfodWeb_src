@@ -6,21 +6,23 @@
  * cmd deletes the picked entry.
  *
  *   {t}      → list every item in the active menu as a red delete
- *              button (one button per item, cmd `t<idx>`)
- *   {t<n>}   → splice items[n] out of menu.items, then re-emit the
- *              edit menu so the user lands back at the items-list
- *              caller (NOT this delete screen — see "back-nav
- *              idempotency" below)
+ *              button (one button per item, cmd `t<idx>`).  This is a
+ *              full screen ({,...}) — the one legitimate nav-stack
+ *              entry for this flow.
+ *   {t<n>}   → splice items[n] out of menu.items, then redraw the SAME
+ *              list in place ({;...}) with the deleted item's button
+ *              gone.  Deleting several items in a row needs no extra
+ *              taps — each click just updates the same screen.
  *
  * Back-nav idempotency: pfodWeb pushes the cmd that produced each
- * non-update menu response onto its nav stack.  If `{t<n>}` were
- * answered with a refreshed list screen, the user's back-press from
- * that list would re-fire `{t<n>}` and silently delete whatever was
- * now sitting at index <n>.  Mirroring deleteEmptyMenuList's design
- * by returning the EDIT MENU instead means the cmd on the stack
- * after a delete is the edit menu (`{a}` shape), so back-press is a
- * harmless re-render — never a re-delete.  The cost is one extra tap
- * if the user wants to delete several items in a row.
+ * full-screen ({,...}) response onto its nav stack; in-place updates
+ * ({;...}) never get pushed.  If every `{t<n>}` answered with a fresh
+ * full screen, the user's back-press could land on a stale `{t<n>}`
+ * (its index invalidated by later deletes) and silently delete
+ * whatever now sits at that index.  Answering with an in-place update
+ * instead means the nav stack still only has the original bare `{t}`
+ * on top of it — so back-press from anywhere in a delete sequence
+ * always returns cleanly to editMenu, never re-fires a delete.
  *
  * activeItemIdx fix-up: if the user was mid-editing an item when
  * they came here (state.activeItemIdx is set), removing items from
@@ -84,12 +86,29 @@ const DesignerDeleteMenuItems = (() => {
     return '\n<bw><i><-3>' + typeStr;
   }
 
-  /// Render the delete-list screen for the active menu.  Each row is
-  /// a clickable red-bg button whose cmd is `t<idx>` so the click
-  /// round-trips through this same 't' handler.  Empty list shows a
-  /// distinct prompt so the user knows there's nothing left.  No
-  /// version tag — the list shrinks every delete, so caching would
-  /// stale immediately.
+  /// Snapshot the active menu's items, taken once when the delete-list
+  /// screen is first opened (bare `{t}`).  Cmd `t<idx>` is pinned to a
+  /// SNAPSHOT SLOT for the rest of this delete session, never to a live
+  /// position in the shrinking `menu.items` array — deleting one item
+  /// must never renumber any other item's cmd.  Stored on `state` itself
+  /// (not saved/persisted — state.save() only serialises an explicit
+  /// payload, see state.js) so it survives across the `{t<n>}` round-trips
+  /// of one delete session and is rebuilt fresh every time `{t}` bare is
+  /// re-entered from editMenu.
+  function _buildSnapshot(state) {
+    const menu = state.getActiveMenu();
+    return menu.items.map((item) => ({ item, deleted: false }));
+  }
+
+  /// Build the delete-list body from state's snapshot (see
+  /// _buildSnapshot) — one row per snapshot slot, cmd `t<idx>` fixed to
+  /// that slot for the whole session.  Already-deleted slots keep their
+  /// row (so no other slot's cmd ever shifts) but render with the pfod
+  /// hidden-format flag (`-`) so the button itself disappears.  No
+  /// leading `{,`/`{;` marker or trailing `}` — callers wrap this in
+  /// whichever screen-type they need (see _renderListScreen vs
+  /// _renderListUpdate below).  No version tag — the list changes every
+  /// delete, so caching would stale immediately.
   ///
   /// Per-row text matches Java DesignerMsgProcessor.java:4060-4061
   /// exactly: format prefix `<bg r><w>` then `~Delete\n<leadingText>
@@ -99,35 +118,48 @@ const DesignerDeleteMenuItems = (() => {
   ///   line 3: small italic "(Button)" / "(Label)" type tag
   /// — visually marking each row as a delete action separate from
   /// the actual menu item it refers to.
+  function _buildListBody(state) {
+    const snapshot = state._deleteListSnapshot || [];
+    const prompt = 'Click the item to be removed from the menu\n<-2>Use the bottom back arrow to return to the <i><y>Editing Menu</i> screen';
+    let out = DESIGNER_PROMPT_FMT + '~' + prompt;
+    snapshot.forEach((entry, idx) => {
+      const hiddenFlag = entry.deleted ? '-' : '';
+      out += '|t' + idx + hiddenFlag + '<bg r><w>~Delete\n';
+      out += _leadingText(entry.item);
+      out += _typeTagSuffix(entry.item);
+    });
+    return out;
+  }
+
+  /// Full-screen ({,...}) delete list — used only for the initial bare
+  /// `{t}` open from editMenu.  This is the one legitimate nav-stack
+  /// entry for this flow (see file header).  Empty list shows a distinct
+  /// prompt so the user knows there's nothing left.  Always rebuilds a
+  /// fresh snapshot — a new delete session should start from every
+  /// current item shown, nothing pre-hidden.
   function _renderListScreen(state) {
     const menu = state.getActiveMenu();
     if (menu.items.length === 0) {
       return '{<}';
     }
-    const prompt = 'Click the item to be removed from the menu\n<-2>Use the bottom back arrow to return to the <i><y>Editing Menu</i> screen';
-    let out = '{,' + DESIGNER_PROMPT_FMT + '~' + prompt;
-    menu.items.forEach((item, idx) => {
-      out += '|t' + idx + '<bg r><w>~Delete\n';
-      out += _leadingText(item);
-      out += _typeTagSuffix(item);
-    });
-    out += '}';
-    return out;
+    state._deleteListSnapshot = _buildSnapshot(state);
+    return '{,' + _buildListBody(state) + '}';
   }
 
-  /// Splice items[idx] out, fix up activeItemIdx, save, then return
-  /// the editMenu screen as an in-place update `{;…}`.
-  ///
-  /// Both the delete-list screen ({t}) and this response are returned
-  /// as `{;…}` (in-place updates), so neither adds an entry to
-  /// pfodWeb's nav stack.  Back-nav from the resulting editMenu screen
-  /// re-fires whatever `{,}` cmd brought the user to editMenu in the
-  /// first place (e.g. `{b12}` from selectFromMenuList), skipping the
-  /// delete-list entirely — which is the expected behaviour regardless
-  /// of the entry path.
-  ///
-  /// Out-of-range idx (stale re-fire): no mutation, still returns the
-  /// editMenu update so the user lands on editMenu, never a stale list.
+  /// In-place redraw ({;...}) of the delete list — used after every
+  /// `{t<n>}` (successful delete or stale/out-of-range no-op).  Never
+  /// pushed onto pfodWeb's nav stack, so the physical back button always
+  /// resolves to whatever led to the original bare `{t}` open (editMenu),
+  /// never a stale `{t<n>}` from mid-delete-sequence.  Once every real
+  /// item is gone there's nothing left to redraw, so go back instead.
+  function _renderListUpdate(state) {
+    const menu = state.getActiveMenu();
+    if (menu.items.length === 0) {
+      return '{<}';
+    }
+    return '{;' + _buildListBody(state) + '}';
+  }
+
   function _cannotDeleteSubMenuMsg(item) {
     const name = _leadingText(item);
     return '{=<bg w><bl><+2>Requested Delete not Completed</+2>\n<bl><-1>Use back button\nto return to previous menu.}'
@@ -138,27 +170,35 @@ const DesignerDeleteMenuItems = (() => {
       + '\n=========================\n';
   }
 
+  /// idx here is a SNAPSHOT slot index (see _buildSnapshot), not a live
+  /// menu.items position — the two only coincide until the first delete
+  /// of this session.  The item's real, current position in menu.items
+  /// is re-derived by object identity (indexOf) since earlier deletes in
+  /// this same session may have shifted it down.
   function _deleteAndReturnEmpty(state, idx) {
-    const menu = state.getActiveMenu();
-    if (idx >= 0 && idx < menu.items.length) {
-      const item = menu.items[idx];
+    const snapshot = state._deleteListSnapshot;
+    const entry    = snapshot && snapshot[idx];
+    if (entry && !entry.deleted) {
+      const item = entry.item;
       if (item.type === ITEM_TYPE_SUBMENU && item.subMenu && item.subMenu.items.length > 0) {
         return { pfod: _cannotDeleteSubMenuMsg(item), skipSave: true };
       }
-      menu.items.splice(idx, 1);
+      const menu    = state.getActiveMenu();
+      const realIdx = menu.items.indexOf(item);
+      if (realIdx !== -1) {
+        menu.items.splice(realIdx, 1);
 
-      // Keep state.activeItemIdx pointing at the same authored
-      // row, or null when its row was the deleted one.
-      if (state.activeItemIdx !== null && state.activeItemIdx !== undefined) {
-        if (state.activeItemIdx === idx)    state.activeItemIdx = null;
-        else if (state.activeItemIdx > idx) state.activeItemIdx -= 1;
+        // Keep state.activeItemIdx pointing at the same authored
+        // row, or null when its row was the deleted one.
+        if (state.activeItemIdx !== null && state.activeItemIdx !== undefined) {
+          if (state.activeItemIdx === realIdx)    state.activeItemIdx = null;
+          else if (state.activeItemIdx > realIdx) state.activeItemIdx -= 1;
+        }
+        entry.deleted = true;
+        state.save();
       }
-      state.save();
     }
-    if (menu.items.length === 0) {
-      return '{<}';
-    }
-    return DesignerDispatch.dispatch('{t}', state, DISPATCH_ROOT_DEPTH);
+    return _renderListUpdate(state);
   }
 
   /// Dispatch handler.  depth points to the matched 't' byte; the

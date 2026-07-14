@@ -1,0 +1,104 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+// Board: LILYGO TTGO T-OI PLUS, ESP32-C3-MINI-1 module on a tiny board with
+// a built-in 16340 Li-ion battery holder, USB-C, Grove connector, and D1-mini
+// compatible pin layout. This board's own pins_arduino.h declares
+// LED_BUILTIN=3, TX=21, RX=20, SDA=19, SCL=18, SS=7, MOSI=6, MISO=5, SCK=4,
+// A1=2, A2=4, A3=5, and BAT_ADC_PIN=2 (aliased to BAT_VOLT_PIN). No
+// board.json override existed before this audit (used the chip-level
+// esp32c3/board.json default). Flagged by the discovery sweep for having
+// BAT_ADC_PIN=2 declared but never individually reviewed.
+//
+// Sources consulted:
+//  - https://github.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS
+//    Official LilyGO GitHub hardware/firmware repo for this exact board.
+//  - https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS/main/example/battery_voltage/battery_voltage.ino
+//    Official vendor example sketch. Defines `#define BAT_ADC 2` and reads
+//    the battery with `Voltage = (readADC_Cal(analogRead(BAT_ADC))) * 2;` -
+//    vendor-confirmed GPIO2 as the battery-ADC pin, with an explicit 2x
+//    multiplier applied to the raw calibrated ADC reading.
+//  - https://community.lilygo.cc/topic/198/esp32-c3-t-oi-plus-reading-battery-level
+//    Official LilyGO community forum thread. States "Vbat is connected to
+//    the ADC input through a resistive divider made up of two 100K
+//    resistors that cut the voltage in half", matching the vendor example's
+//    2x multiplier (100K series + 100K shunt, i.e. a 1:1 divider halving
+//    the battery voltage before it reaches GPIO2).
+//  - https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/lilygo/ttgo_toiplus/ttgo_toiplus.dts
+//    Official Zephyr RTOS board device-tree source for this exact board.
+//    Contains a gpio-leds node: "green_led (LED0)" on gpio0 pin 3, flagged
+//    GPIO_ACTIVE_HIGH, label "Green - LED0" - independently confirming
+//    GPIO3 as a real onboard active-high LED, matching this board's own
+//    pins_arduino.h LED_BUILTIN=3. No gpio-keys node is present (no
+//    onboard user button documented for this board).
+//  - https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS/main/example/strandtest/strandtest.ino
+//    Official vendor NeoPixel-strip example, checked to rule out GPIO3
+//    being a NeoPixel data pin instead of the plain LED0 the Zephyr DTS
+//    describes. This example uses GPIO19 (`#define D1 19`, `#define
+//    LED_PIN D1`) for the NeoPixel strip data line, not GPIO3 - confirming
+//    the strandtest example targets an external Grove/D1 strip, not the
+//    onboard LED0.
+//
+// GPIO2 (BAT_ADC_PIN / A1): confirmed onboard battery-voltage-sense pin via
+// two independent official LilyGO sources (vendor example sketch + vendor
+// community forum), both agreeing on a 100K/100K (1:1) resistive divider
+// ahead of the ADC, giving an effective corrected reference of
+// 3.3V * (100000 + 100000) / 100000 = 6.6V for the raw ADC-to-battery-volts
+// conversion (matching the vendor code's 2x multiplier). Per this project's
+// battery/voltage-monitor KEEP policy, this pin's capabilities are left
+// unchanged from the chip-level default (analog_input retained, not
+// excluded) - only a documentation "note" was added. adc.defaultRefVolts is
+// NOT changed board-wide (still "3.3") because the divider is wired only to
+// this one dedicated pin, not to the board's other analog-capable pins.
+// Checked pins_arduino.h for any SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias
+// landing on GPIO2: TX=21, RX=20, SDA=19, SCL=18, SS=7, MOSI=6, MISO=5,
+// SCK=4 - none is 2, so no bus-capability contamination risk and no alias
+// line needed deletion.
+//
+// GPIO3 (LED_BUILTIN): confirmed onboard active-high LED via the official
+// Zephyr board device-tree source (gpio-leds node, GPIO_ACTIVE_HIGH),
+// cross-checked against the vendor's own strandtest example to rule out a
+// NeoPixel mix-up (that example uses GPIO19, not GPIO3). Tagged
+// capabilities changed to ["digital_output","pwm_output","led_high"],
+// dropping analog_input and digital_input per this project's established
+// confirmed-LED-pin convention (see e.g. esp32s3/axiometa_pixie_m1's
+// GPIO11). Checked pins_arduino.h for any SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+// alias landing on GPIO3: none is 3, so no bus-capability contamination
+// risk and no alias line needed deletion.
+//
+// No onboard user button was found documented anywhere for this board (the
+// Zephyr DTS has no gpio-keys node, and no vendor source mentions one) -
+// not tagged.
+//
+// See boardsDetails/esp32/esp32c3/ttgo-t-oi-plus/notes.txt for the full
+// research trail.
+
+{
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "BAT_ADC_PIN - onboard battery-voltage sense (100K/100K divider; vendor example applies a 2x multiplier to the raw ADC reading, equivalent to an effective 6.6V corrected reference). See pfodWeb NOTE above." },
+    "3":  { "capabilities": ["digital_output", "pwm_output", "led_high"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

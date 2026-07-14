@@ -1,0 +1,76 @@
+Board: waveshare_esp32_s3_touch_amoled_206
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_206
+Research date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+1. https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-2.06
+   Direct WebFetch returned HTTP 403 (Forbidden), so content was obtained via
+   WebSearch result synthesis (search engine's indexed extract of this exact
+   page). Two independent WebSearch queries both returned the same, consistent
+   text: "BOOT Button: GPIO0 can detect the high and low level of the button
+   to determine the action, and the low level is pressed, which can recognize
+   click, double-click, multi-click, and long-press actions. When pressed
+   during power-on, the development board enters download mode." This
+   describes normal-operation runtime use of the button (not just flashing),
+   so it qualifies as a genuine user button, not merely a flash-mode strap.
+   Also stated: "PWR Button: ... judged by the high and low levels of the
+   EXIO6 detection buttons of the extended IO" - i.e. the PWR button is wired
+   to an I2C-expander pin (EXIO6), NOT a direct ESP32-S3 GPIO.
+   No onboard LED (single-color, RGB, or NeoPixel) was mentioned anywhere in
+   the indexed wiki text returned by either search.
+
+2. https://www.waveshare.com/esp32-s3-touch-amoled-2.06.htm (product page)
+   Direct WebFetch returned HTTP 403 (Forbidden). Not otherwise consulted
+   (no useful indexed snippet found beyond the wiki page content above).
+
+3. https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06
+   (vendor's own GitHub example-program repo). WebFetch of the repo root and
+   a full recursive file-tree listing via the GitHub API
+   (api.github.com/repos/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/git/trees/main?recursive=1)
+   were reviewed. No file, pin-config header, or example sketch anywhere in
+   the tree references an onboard status LED / NeoPixel for this specific
+   board. The only "Led" hit was AW9364_LedDriver, which is a backlight
+   boost/dimmer driver for the AMOLED panel, not a general-purpose status
+   LED - out of scope per task instructions (backlight pins are display
+   control pins).
+
+4. https://raw.githubusercontent.com/waveshareteam/ESP32-S3-Touch-AMOLED-2.06/main/examples/arduino/libraries/SensorLib/src/DevicesPins.h
+   and .../libraries/Mylibrary/pin_config.h
+   Fetched directly. Both are generic/third-party (LilyGo T-series) pin
+   headers bundled as library dependencies, guarded by #if defined(...) for
+   OTHER boards (T-Deck, T-AMOLED-191, T-Watch-S3, etc.) or, in the case of
+   pin_config.h, a LilyGo-authored file whose pin numbers happen to numerically
+   match this board's display/touch pins (LCD_SDIO0=4, IIC_SDA=15, etc.) but
+   which defines no LED and no button pin for this board. Not used as
+   evidence for anything beyond corroborating already-known display/touch
+   pins.
+
+5. https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-2.06/ESP32-S3-Touch-AMOLED-2.06.pdf
+   Attempted via WebFetch; returned raw/undecoded PDF binary that the fetch
+   tool could not extract text from. No usable information obtained.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- PWR button (EXIO6): Confirmed by the vendor wiki text (source 1) to be
+  wired to an I2C GPIO-expander pin ("extended IO"), not a direct ESP32-S3
+  GPIO. board.json chipGpios only covers direct chip GPIOs, so this pin is
+  out of scope for this task by construction - not a judgment call, simply
+  not tag-able here. No expander pin number was found in the available
+  snippets to even record precisely.
+- No onboard status LED / NeoPixel was found in any of the sources above.
+  This is a no-guess conclusion, not a best-guess judgment call: multiple
+  vendor-side sources (wiki text, product page attempt, full GitHub repo
+  file tree) were checked and none mention a general-purpose LED on this
+  board. (The AMOLED backlight and its AW9364 driver are display control
+  hardware, excluded per task instructions.) Left untagged.
+- Checked GPIO0 against this board's TX/RX reservation (TX=43, RX=44 per
+  pins_arduino.h `static const uint8_t TX = 43;` / `RX = 44;`) - no
+  conflict, GPIO0 is clear to tag.
+
+WHAT WAS TAGGED
+-----------------
+GPIO0 -> ["digital_input","button"] (was ["digital_input","digital_output",
+"pwm_output"]) in board.json, based on vendor wiki confirmation of the
+onboard BOOT button (source 1). One NOTE comment added to board.json,
+placed after the existing per-board pin-exclusion NOTE comment.

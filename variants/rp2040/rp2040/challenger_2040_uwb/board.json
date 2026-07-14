@@ -1,0 +1,134 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "iLabs Challenger RP2040 UWB" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This board's onboard radio is a
+  // DWM3000 Ultra-Wideband (Qorvo DW3110) ranging/positioning module,
+  // not an IP-capable WiFi/BLE chip, so it does not qualify for the
+  // "rp2040w" bucket's tcp/http/ble .ino templates (those are written
+  // against the native cyw43 WiFi.h stack). Plain "rp2040" (Serial only)
+  // is correct, same reasoning as the challenger_2040_lora/
+  // challenger_2040_subghz/challenger_2040_nfc siblings.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/NeoPixel tagging
+  // audit, 2026-07-13):
+  //
+  // Board: iLabs "Challenger RP2040 UWB (DWM3000)" (Adafruit Feather form
+  // factor) — an RP2040 board with an onboard DWM3000 Ultra-Wideband
+  // module (integrates a Qorvo DW3110 chip) for indoor positioning /
+  // ranging, wired to the RP2040's second SPI bus (SPI1) plus three
+  // dedicated GPIO control lines (reset + IRQ + wakeup), and a single
+  // general-purpose user LED.
+  //
+  // Sources consulted:
+  // 1. https://ilabs.se/challenger-rp2040-uwb-datasheet/ (official iLabs
+  //    datasheet, fetched directly) — states verbatim: GPIO9 "DWM3000
+  //    chip select signal (DWM3000_SS)"; GPIO10 "serial clock
+  //    (PIN_SPI1_SCK)"; GPIO11 "serial data output (PIN_SPI1_MOSI)";
+  //    GPIO12 "serial data input (PIN_SPI1_MISO)"; GPIO13 "RESET. This
+  //    signal is used to reset the module and is an active low signal";
+  //    GPIO14 "IRQ. This is the interrupt signal from the DWM3000 module
+  //    to the RP2040"; GPIO15 "WAKEUP. This signal can be used to place
+  //    the DWM3000 module in sleep mode." Also states the onboard "user
+  //    programmable green LED... is connected to pin D18 (BUILTIN_LED)"
+  //    and describes it as active-high (standard logic). Separately
+  //    documents a red "CHG" battery-charge-controller indicator LED —
+  //    hardware-driven, not RP2040-GPIO-connected, so out of scope. No
+  //    mention anywhere on the page of a NeoPixel/addressable RGB LED or
+  //    of any onboard user pushbutton beyond standard reset/BOOTSEL.
+  // 2. https://ilabs.se/product/challenger-rp2040-uwb/ (official iLabs
+  //    product page) — confirms the DWM3000 module and Feather form
+  //    factor; pinout is presented as an image (no additional text-based
+  //    pin detail beyond the datasheet above); no NeoPixel or pushbutton
+  //    mentioned.
+  // 3. github.com/earlephilhower/arduino-pico
+  //    variants/challenger_2040_uwb/pins_arduino.h (upstream source of
+  //    this board's own local pins_arduino.h, fetched directly) —
+  //    confirmed matching pin assignments to the local copy in this repo:
+  //    PIN_LED=24, DWM3000 SPI1 SS/SCK/MOSI/MISO=9/10/11/12, and the
+  //    DWM3000_RST/IRQ/WAKEUP=13/14/15 control lines; no NeoPixel or
+  //    button define present upstream either.
+  // 4. WebSearch cross-check (CNX Software "Challenger RP2040 board gets
+  //    DWM3000 UWB module" article; PontusO/iLabs_UWB support-library
+  //    GitHub repo) — independently corroborates the DWM3000 module
+  //    identity (Qorvo DW3110), the GPIO13/14/15 RESET(active-low)/IRQ/
+  //    WAKEUP mapping, and the SPI1 bus connection; no NeoPixel or
+  //    pushbutton mentioned in either source.
+  // 5. Local codebase: this board's own pins_arduino.h
+  //    (variants/rp2040/rp2040/challenger_2040_uwb/pins_arduino.h) —
+  //    already carries a prior-session "pfodWeb NOTE" (lines 63-66)
+  //    recording that D14-D16 were deliberately NOT declared as aliases
+  //    for GPIO13/14/15 (DWM3000 RST/IRQ/WAKEUP), and that GPIO9-12 (the
+  //    module's SPI1 bus) were likewise never given D-number aliases in
+  //    the first place; GPIO18 (D17) is explicitly noted as NOT
+  //    DWM3000-dedicated on this board and stays available. Verified
+  //    directly: the only `static const uint8_t` declarations are
+  //    D0-D13, D17, D18, and A0-A5, resolving to GPIOs {16,17,20,23,22,
+  //    2,3,0,1,4,5,6,7,8,18,24,26,27,28,29,19,21} — none of
+  //    {9,10,11,12,13,14,15} appear anywhere. This already fully
+  //    excludes all seven DWM3000-dedicated GPIOs from the Designer's
+  //    pin list with zero board.json involvement — same outcome and same
+  //    reasoning as the challenger_2040_lora/challenger_2040_subghz
+  //    siblings.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/challenger_2040_uwb/notes.txt
+  //
+  // WHY NO chipGpios ENTRIES FOR THE DWM3000 PINS (GPIO9-15):
+  // Identical reasoning to challenger_2040_lora/challenger_2040_subghz:
+  // adding chipGpios entries for GPIOs already absent from every
+  // pins_arduino.h alias would re-add each one to build_boards.js's
+  // allGpios set as a bare, visible "GPIO<n>" row carrying an
+  // auto-appended "Check if available on board" note (fires for any
+  // rp2040-family GPIO absent from pins_arduino.h, regardless of a
+  // chipGpios override) — undoing the full concealment the pins_arduino.h
+  // aliasing (or lack thereof) already achieves. Left alone.
+  //
+  // No onboard NeoPixel found — confirmed absent by both the iLabs
+  // datasheet and product page (neither mentions one), and confirmed
+  // absent from the upstream arduino-pico pins_arduino.h (no NEOPIXEL/
+  // PIN_NEOPIXEL define). No chipGpios tag applied.
+  //
+  // No onboard user pushbutton found — confirmed absent by both the
+  // iLabs datasheet and product page (neither mentions a discrete
+  // pushbutton beyond standard reset/BOOTSEL, which is not a normal GPIO
+  // on RP2040, out of scope per the rpipico/board.json precedent). No
+  // chipGpios tag applied.
+  //
+  // GPIO24 carries no SPI/I2C/other bus alias on this board (only D18),
+  // so the build_boards.js unconditional bus-capability auto-append
+  // (the "confirmed button/LED pin also aliased as SDA/SCL/SS/MOSI/
+  // MISO/SCK" bug class flagged for this audit) does not apply here —
+  // no pins_arduino.h edit was needed.
+  "chipGpios": {
+    "24": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN (D18 alias) — onboard general-purpose user green LED. Confirmed present, on pin D18, and active-high directly by the official iLabs datasheet (\"user programmable green LED... connected to pin D18 (BUILTIN_LED)\", active-high standard logic). digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Matches this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12u).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

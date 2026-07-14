@@ -578,6 +578,13 @@ Object.assign(DrawingViewer.prototype, {
       // device just doesn't send pfod (e.g. CSV-only).  Polling continues for this case.
       const isNoPfodInResponse = error.code === 'NO_PFOD_IN_RESPONSE';
 
+      // pfodProxy's BLE cached-connect backoff (ble.rs's ensure_open) —
+      // a short, expected, self-clearing cooldown after a recent BLE
+      // connect failure, not a real problem the user can act on. The
+      // underlying reconnect keeps retrying on its own regardless of
+      // whether we alert, so just log and let it keep trying quietly.
+      const isBleRetryBackoff = error.message && /recent connection failure, retry in \d+s/i.test(error.message);
+
       // Clear canvas message on timeout
       if (isRetryExhausted) {
         this.clearCanvasMessage();
@@ -592,7 +599,9 @@ Object.assign(DrawingViewer.prototype, {
 
       // Display alert to user for all errors
       const isInitialMainMenu = request.isInitial && request.requestType === 'mainMenu';
-      if (isRetryExhausted && this.exitPending) {
+      if (isBleRetryBackoff) {
+        console.log('[QUEUE] BLE retry backoff active — suppressing connection alert, will keep retrying');
+      } else if (isRetryExhausted && this.exitPending) {
         // User clicked Exit while the cmd was retrying — the retry was abandoned
         // mid-way by the adapter (or hit its last attempt) and we are about to send {!}
         // and tear down.  Suppress the "Connection failed" modal so it can't block the

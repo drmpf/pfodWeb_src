@@ -1,0 +1,80 @@
+lolin_s3_mini - button/LED research notes
+==========================================
+
+Sources consulted
+------------------
+https://www.wemos.cc/en/latest/s3/s3_mini.html
+  Official WEMOS S3 MINI product page. Confirms "1x RGB LED (IO47)" in the
+  feature list. Does not list buttons or GPIO pin details in the page text
+  itself, but links to the schematic PDF (see below).
+
+https://www.wemos.cc/en/latest/_static/files/sch_s3_mini_v1.0.0.pdf
+  Official WEMOS schematic for LOLIN S3 MINI (KiCad export, sheet
+  "S3_mini.kicad_sch", title block "LOLIN S3 MINI", Rev V1.0.0, 2023-04-04).
+  Fetched and read directly (PDF renders as a schematic drawing). Shows:
+    - SW1: push button wired between net "EN" and GND (this is the RESET
+      button - pulls chip EN/CHIP_PU low - not a general-purpose user
+      button, so NOT tagged).
+    - SW2: push button wired between net "IO0" (GPIO0) and GND, with R3
+      10k pull-up to 3V3 on EN (standard BOOT/user button pattern). This
+      is a genuine physical user button on GPIO0, active-low.
+    - U3: WS2812B-0807 addressable RGB LED, VDD to 3V3, GND to GND, DI
+      (data-in) driven directly by "IO47" (GPIO47). Confirms this is a
+      single-pixel NeoPixel/WS2812 LED, not a discrete R/G/B or simple
+      single-color LED.
+  This schematic is the primary confirming evidence used for both tags.
+
+https://www.espboards.dev/esp32/lolin-s3-mini/
+  Returned HTTP 404 - page does not exist / was not usable as a source.
+
+https://mischianti.org/wemos-lolin-s3-esp32-s3-high-resolution-pinout-datasheet-and-specs/
+  This page turned out to document the plain "LOLIN S3" (not "S3 Mini")
+  board - RGB LED on GPIO48, separate LED_BUILTIN on GPIO38, boot/reset
+  buttons with no stated GPIO. NOT used as evidence for lolin_s3_mini since
+  it is a different, larger board; kept here only to record it was checked
+  and ruled out as inapplicable.
+
+variants/esp32/esp32s3/lolin_s3_mini_pro/board.json (existing repo file,
+sibling board, already audited)
+  Cross-checked for consistency: the Pro variant's NOTE comments cite
+  wemos.cc S3 MINI PRO docs listing "3x Button (IO0, IO47, IO48)" and
+  "1x RGB LED (Data: IO8, Power: IO7)" - i.e. the Pro variant is a
+  different PCB with buttons on IO0/IO47/IO48 and NeoPixel moved to IO8.
+  This confirms the (non-Pro) "lolin_s3_mini" board covered by this task
+  is indeed a different, simpler PCB where GPIO47 is the NeoPixel data
+  pin (not a button) and GPIO0 is the sole button - matches what the
+  s3_mini (non-pro) schematic shows.
+
+variants/esp32/esp32s3/lolin_s3_mini/pins_arduino.h (existing repo file)
+  `LED_BUILTIN = 47 + SOC_GPIO_PIN_COUNT` and `RGB_BUILTIN = LED_BUILTIN`
+  with `RGB_BUILTIN_LED_COLOR_ORDER` defined - this is the Arduino-ESP32
+  core's special encoding for a single addressable RGB LED at physical
+  GPIO47, consistent with (but not solely relied upon for - schematic was
+  the deciding source) the WS2812 finding above. No BUTTON alias is
+  defined in pins_arduino.h at all, so GPIO0 as button was confirmed
+  purely from the schematic, not from any pins_arduino.h alias name.
+
+TX/RX conflict check
+---------------------
+pins_arduino.h: `TX = 43`, `RX = 44`. Neither candidate pin (GPIO0 button,
+GPIO47 NeoPixel) coincides with TX/RX, so no conflict - both tags applied
+normally.
+
+Pins considered but NOT tagged
+--------------------------------
+- GPIO_EN (chip EN/CHIP_PU pin, driven by SW1 reset button): EN is not a
+  regular GPIO exposed in chipGpios (it's the chip enable/reset pin, not
+  in pins_arduino.h as a numbered IO), so there is nothing to tag here and
+  no judgment call was needed - it is simply out of scope for GPIO
+  capability tagging.
+- No other candidate pins were found or considered. No best-guess/judgment
+  calls were made - both tags below are based on direct schematic
+  confirmation, not inference from pin alias names.
+
+Summary of what was tagged
+-----------------------------
+board.json created at variants/esp32/esp32s3/lolin_s3_mini/board.json
+(none existed previously, so it was created as a full copy of the
+esp32s3 chip-level default board.json):
+  - GPIO0  -> ["digital_input", "button"]            (onboard BOOT/user button)
+  - GPIO47 -> ["digital_output", "led_neopixel", "pwm_output"]  (onboard WS2812B NeoPixel; pwm_output kept because it was already present on this pin in the chip-level defaults)

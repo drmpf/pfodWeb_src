@@ -1,0 +1,85 @@
+ozobot_circuit_kit board button/LED capability research notes
+================================================================
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+1. https://raw.githubusercontent.com/ozobot/drvkit_library/master/examples/blink/blink.ino
+   Official Ozobot example sketch (from the ozobot/drvkit_library GitHub repo,
+   the vendor's own Arduino HAL library for this board). Confirms:
+     - RGB_LED pin drives a SINGLE WS2812 addressable LED ("We have only
+       single LED on the board" comment in source), controlled via the
+       Freenove_WS2812_Lib_for_ESP32 library (Freenove_ESP32_WS2812 class,
+       LEDS_COUNT=1). This is a NeoPixel-type single-data-line addressable
+       LED, not a plain single-color LED and not discrete R/G/B pins.
+     - BUTTON pin is configured with pinMode(BUTTON, INPUT) in setup(),
+       confirming it is used by Ozobot's own firmware/example as a
+       general-purpose digital input button.
+   (Also checked branch opilat_remove_button_setup-and-delay of the same
+   repo/file - content identical, no change to BUTTON/RGB_LED usage.)
+
+2. https://github.com/ozobot/drvkit_library
+   Repository overview/README. Confirms this is the official "HAL for the
+   Ozobot DRVKit platform" (DRVKit = official marketing rename of the
+   Circuit Kit, per espressif/arduino-esp32 PR #12572). Used to locate the
+   examples/blink sketch above. src/drvkit.cpp and src/drvkit.h (motor +
+   sensor HAL) do NOT reference BUTTON or RGB_LED - those are handled only
+   in example sketches, not the core library.
+
+3. https://github.com/espressif/arduino-esp32/pull/12465
+   ("feat(board): Add ozobot circuit kit board", merged 2026-03-25, author
+   opilat - an Ozobot contributor). Confirms variants/ozobot_circuit_kit/
+   pins_arduino.h in the upstream arduino-esp32 repo is the same file
+   (byte-for-byte, same BUTTON=D23, RGB_LED=D9 aliases) as the one already
+   present locally in this repo's board variant folder. Does not by itself
+   independently confirm hardware identity (that's why source #1 above,
+   the example sketch, was needed) but confirms provenance/authorship by
+   Ozobot.
+
+4. https://github.com/espressif/arduino-esp32/pull/12572
+   ("Rename development ozobot circuit kit to marketing name Ozobot
+   DRVKit", merged 2026-05-11, author opilat). Confirms "Ozobot Circuit
+   Kit" and "Ozobot DRVKit" are the same board (rename only), and that
+   opilat is an authoritative Ozobot-side contributor for this hardware.
+
+5. https://ozobot.com/pages/manuals
+   Checked for an official Circuit Kit / DRVKit manual or hardware guide.
+   NO manuals or documentation for Circuit Kit/DRVKit were found here -
+   only Ari/Evo/Bit+ robot manuals. This page did not contribute evidence
+   either way.
+
+PINS CONSIDERED
+----------------
+- GPIO0 (alias BUTTON, D23 in pins_arduino.h ESP32-style block): TAGGED.
+  Confirmed via source #1 (official Ozobot example uses pinMode(BUTTON,
+  INPUT)). Note this GPIO is also the ESP32 BOOT/FLASH strap pin ("Must be
+  HIGH for normal boot" per existing chip-level pinNotes) - this is a
+  common and intentional design pattern (BOOT button doubles as a user
+  button) and the official example treats it as a genuine input button, so
+  it was tagged with confidence, not a guess. Verified NOT the board's
+  TX/RX pin (TX=GPIO43, RX=GPIO44 per pins_arduino.h), so no TX/RX
+  silent-discard risk.
+
+- GPIO42 (alias RGB_LED, D9 in pins_arduino.h ESP32-style block): TAGGED.
+  Confirmed via source #1 as a single WS2812/NeoPixel addressable LED.
+  Verified NOT TX/RX.
+
+- GPIO17/18/21/33 (Motor L/R IN1/IN2 outputs): NOT considered - these were
+  already excluded from chipGpios in a prior pin-exclusion audit pass
+  (documented in the existing board.json header NOTE); left untouched per
+  task scope (motor pins, not button/LED).
+
+- No other candidate button/LED pins were found. The board.json/
+  pins_arduino.h only expose one BUTTON alias and one RGB_LED alias (a
+  single NeoPixel, not multiple/discrete LEDs) - no additional LEDs (e.g.
+  separate charge/power/status LEDs) are documented in any source found.
+  Did not find a schematic or Ozobot-published hardware manual, so cannot
+  rule out an undocumented second LED (e.g. a charging-status LED tied
+  directly to a charge-IC, not a GPIO) - no such GPIO alias exists in
+  pins_arduino.h though, so there is nothing further to tag even if one
+  exists physically.
+
+WHAT WAS TAGGED
+-----------------
+GPIO0 -> ["digital_input","button"]  (button)
+GPIO42 -> ["digital_output","pwm_output","led_neopixel"]  (single WS2812/NeoPixel LED; pwm_output retained because it was already present in the chip-level default capability set for this pin)

@@ -16,21 +16,19 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 8;
 static const uint8_t SCL = 9;
 
-// TLV320DAC3101 Stereo Audio DAC
-static const uint8_t TLV_RESET = 21;  // if resp. solder bridge is closed (default closed)
-static const uint8_t TLV_INT = 48;    // if resp. solder bridge is closed (default open)
+// pfodWeb NOTE: TLV_RESET (GPIO21) deliberately NOT declared - connected
+// by default (solder bridge default closed). TLV_INT (GPIO48) stays
+// available - NOT connected by default (bridge default open).
 
 // I2S for onboard TLV320DAC3101
-static const uint8_t I2S_MCLK = 4;  // if resp. solder bridge is closed (default open)
-static const uint8_t I2S_BCLK = 5;
-static const uint8_t I2S_LRCLK = 6;
-static const uint8_t I2S_DOUT = 7;
+// pfodWeb NOTE: I2S_MCLK (GPIO4) stays available - NOT connected by
+// default (bridge default open). I2S_BCLK/LRCLK/DOUT deliberately NOT
+// declared - always connected, dedicated onboard DAC I2S bus.
 
-// SPI for onboard microSD
-static const uint8_t SS = 10;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard microSD card SPI bus (see vendor comment). SS2/MOSI2/MISO2/
+// SCK2 stay kept - vendor explicitly documents that bus as "for public
+// usage".
 
 // SPI2 for public usage
 static const uint8_t SS2 = 38;
@@ -44,7 +42,8 @@ static const uint8_t A2 = 3;
 static const uint8_t A3 = 4;
 static const uint8_t A4 = 8;
 static const uint8_t A5 = 9;
-static const uint8_t A6 = 10;
+// pfodWeb NOTE: A6 (GPIO10) deliberately NOT declared - same dedicated
+// onboard microSD SPI bus as SS above.
 static const uint8_t A7 = 14;
 static const uint8_t A8 = 15;
 static const uint8_t A9 = 16;
@@ -57,7 +56,7 @@ static const uint8_t T3 = 3;
 static const uint8_t T4 = 4;
 static const uint8_t T8 = 8;
 static const uint8_t T9 = 9;
-static const uint8_t T10 = 10;
+// pfodWeb NOTE: T10 (GPIO10) deliberately NOT declared - same as A6 above.
 static const uint8_t T14 = 14;
 
 #endif /* Pins_Arduino_h */

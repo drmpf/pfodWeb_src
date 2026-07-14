@@ -1,0 +1,75 @@
+Board: rpipico (chip: rp2040) — official Raspberry Pi Pico
+Audited: 2026-07-12
+
+SOURCES CONSULTED
+------------------
+1. Local repo files:
+   - variants/rp2040/rp2040/board.json (chip-level defaults; chipGpios: {} deliberately empty)
+   - variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json (precedent for per-board
+     chipGpios override schema/comment style — NeoPixel data pin GPIO27 marked output-only)
+   - variants/rp2040/rp2040/rpipico/pins_arduino.h (this board's own pin definitions)
+   - variants/rp2040/rp2040/generic/common.h (included via "../generic/common.h";
+     defines D0-D22, A0-A2=GPIO26-28, LED_BUILTIN=PIN_LED; already has a pfodWeb NOTE
+     explaining GPIO23/24/25/29 are deliberately NOT given D-aliases because they're
+     wired to onboard circuitry: GPIO23=SMPS power-save control, GPIO24=VBUS sense,
+     GPIO25=onboard LED, GPIO29=VSYS sense/ADC3 — none broken out on the 40-pin header)
+2. Web research (WebSearch/WebFetch):
+   - raspberrypi.com official Pico microcontroller documentation — confirms
+     "LED is connected to GP25" and BOOTSEL button location, but page fetched did not
+     itself state active-high/low explicitly.
+   - Multiple secondary sources (Random Nerd Tutorials, deepbluembedded, etechnophiles,
+     pico.pinout.xyz-adjacent results) consistently confirm GP25 LED is active-high:
+     HIGH = LED on, LOW = LED off — consistent with the universal Pico example-code
+     idiom `digitalWrite(LED_BUILTIN, HIGH); // LED on` and the schematic (LED anode
+     via series resistor to GP25, cathode to GND).
+   - arduino-pico official docs (arduino-pico.readthedocs.io/en/latest/bootsel.html):
+     confirms "The BOOTSEL button on the Pico is not connected to a standard GPIO, so
+     it cannot be read using the usual digitalRead function" — it requires tri-stating
+     the QSPI flash chip-select line with interrupts disabled while running from RAM.
+     arduino-pico exposes it only as a `BOOTSEL` boolean object, not a numbered GPIO pin.
+
+PER-PIN REASONING
+------------------
+- GPIO0-22 (excluding LED, see below): plain general-purpose pins per the parser's
+  default alias-derived digital_input/digital_output/pwm_output — no dedicated
+  hardware on this board beyond the buses already declared in pins_arduino.h
+  (Serial1 TX/RX=0/1, Serial2 TX/RX=8/9, SPI0=16/17/18/19, SPI1=12/13/14/15,
+  Wire0 SDA/SCL=4/5). No override needed; build_boards.js's own boilerplate-alias
+  handling (spi_*, i2c_*, serial_*) already layers onto these where applicable.
+- GPIO23 (SMPS power-save control), GPIO24 (VBUS sense), GPIO29 (VSYS sense/ADC3):
+  NOT declared with any alias anywhere in this board's resolved pins_arduino.h chain
+  (no D23/D24/D29, no PIN_ alias) — per generic/common.h's own pfodWeb NOTE these are
+  deliberately omitted because they're wired to onboard circuitry, not header pins.
+  Since the RP2040 parser only picks up GPIOs with at least one alias, these three
+  never appear in the board's pin list at all. No further action needed — already
+  correctly excluded by the shared common.h.
+- GPIO25 (PIN_LED / LED_BUILTIN): DOES have an alias (PIN_LED, and LED_BUILTIN via
+  #define) so the parser would otherwise treat it as a full general-purpose pin
+  (digital_input/digital_output/pwm_output). Overridden in the new board.json's
+  chipGpios to ["digital_output", "pwm_output", "led_high"] — digital_input dropped
+  to match this repo's established precedent for dedicated onboard LED pins
+  (esp32/esp32c5/XIAO_ESP32C5 GPIO27 led_low, esp8266/esp8266/wiolink GPIO2 led_low).
+  pwm_output kept since arduino-pico's analogWrite() (8-bit, 0-255) works on any
+  RP2040 GPIO, allowing LED brightness dimming.
+- GPIO26-28 (A0-A2): plain ADC-capable general-purpose pins, no dedicated hardware —
+  no override needed; adc block already declares 3 channels/12-bit at chip level.
+- BOOTSEL: NOT tagged as a button. Confirmed via arduino-pico's own documentation
+  that BOOTSEL is not a standard GPIO — it's read via a special `BOOTSEL` boolean
+  object requiring a QSPI CS-line trick (interrupts disabled, code running from RAM),
+  not digitalRead(). Since this repo's capability tagging is keyed by GPIO number and
+  BOOTSEL has no GPIO number, there is no pin to attach a "button" capability to.
+  This is a deliberate exclusion per the task brief, not an oversight.
+- No onboard NeoPixel exists on the plain Pico (unlike some third-party RP2040
+  boards) — not applicable.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/rpipico/board.json (full file, copied from the
+chip-level variants/rp2040/rp2040/board.json defaults) adding one chipGpios override:
+GPIO25 (PIN_LED/LED_BUILTIN) tagged ["digital_output","pwm_output","led_high"],
+active-high, confirmed via official Raspberry Pi Pico documentation + consistent
+secondary sources. GPIO23/24/29 required no action (already alias-less, so
+auto-excluded by the parser). BOOTSEL intentionally left untagged — it is not a
+GPIO-addressable pin on the classic RP2040 Pico (QSPI CS-line trick only, exposed
+by arduino-pico as a non-GPIO `BOOTSEL` boolean object), so no button capability
+applies.

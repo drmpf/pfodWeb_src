@@ -1,0 +1,299 @@
+VALTRACK_V4_MFW_ESP32_C3 - dedicated-hardware pin-exclusion audit
+Date: 2026-07-12
+Chip: esp32c3
+Board dir: variants/esp32/esp32c3/VALTRACK_V4_MFW_ESP32_C3/
+
+BOARD IDENTITY
+Valetron Systems VALTRACK-V4-MFW-ESP32-C3 - a real commercial "mobile field
+worker" 4G-LTE/2G tracking device (Valetron Systems, India), built on an
+ESP32-C3FH4 module. Sibling board VALTRACK_V4_VTS_ESP32_C3 (vehicle tracking
+system variant, audited separately/in parallel this session) shares
+byte-identical GPIO_* declarations in its own pins_arduino.h but is a
+different physical product line within the same V4 hardware platform.
+
+SOURCES CONSULTED
+
+1. https://github.com/ValetronSystems/VALTRACK-V4-ESP32-C3
+   Official vendor ESP-IDF firmware repository, covering both the
+   VALTRACK-V4-VTS-ESP32-C3 and VALTRACK-V4-MFW-ESP32C3 designs (per its own
+   README/repo description). This was the primary, highest-confidence source
+   for this board - actual firmware source code, not third-party
+   reverse-engineering. Files fetched and read directly this session:
+     - main/main.c (7466 lines, fetched in full and grepped)
+     - main/ADC.c + main/include/ADC.h
+     - main/FrontPanel.c + main/include/FrontPanel.h
+     - main/include/MotionSensor.h
+     - main/CMakeLists.txt, main/Kconfig.projbuild, root CMakeLists.txt
+     - Directory listings of main/ and main/include/ (led_strip_rmt_ws2812.c,
+       led_strip_encoder.c, SCI.c/.h, CircularBuffer.c/.h, DeepSleep.c/.h,
+       at24c.c/.h also present but not needed for this audit)
+   Key findings (grep + direct read of main.c, line numbers approximate as
+   of the master branch fetched 2026-07-12):
+     - InitGPIO() (~L2587-2657): configures GPIO_PWRKEY_GSM_ENABLE_PIN_SEL
+       and GPIO_TPS_ENABLE_PIN_SEL (under #ifdef ENABLE_TPS_CONTROL) as
+       GPIO_MODE_OUTPUT; configures a separate GPIO_INPUT_PIN_SEL group
+       (source comment: "INT1 and SOS") as GPIO_MODE_INPUT. This directly
+       and unambiguously confirms GPIO_PWRKEY(7)/GPIO_GSM_ENABLE(10)/
+       GPIO_TPS_ENABLE(4) are dedicated firmware-controlled outputs, and
+       GPIO_INT1(3)/GPIO_SOS(9) are dedicated firmware-read inputs.
+     - EnableGSM()/DisableGSM() (~L1072-1105 by grep hit location) set
+       GPIO_GSM_ENABLE high/low. A PWRKEY pulse routine (~L2277-2280,
+       repeated ~L6279-6281) sets GPIO_PWRKEY high then low - the standard
+       SIMCom-modem power-on sequence.
+     - gpio_hold_dis(GPIO_TPS_ENABLE) / gpio_hold_dis(GPIO_GSM_ENABLE)
+       (~L2651-2654) and gpio_hold_en(GPIO_TPS_ENABLE) /
+       gpio_hold_en(GPIO_GSM_ENABLE) (~L5992-5993, during deep-sleep entry)
+       - RTC-domain pin-hold calls used specifically to keep a power-enable
+       line steady across deep sleep. This is strong confirmation
+       GPIO_TPS_ENABLE is a PMIC/regulator enable line (name matches a TI
+       TPS-series buck/boost regulator), not a general-purpose pin.
+     - INT1 = (MotionStatusType)gpio_get_level(GPIO_INT1) appears at
+       multiple call sites (~L2712, L6695, plus commented-out duplicates at
+       L3823/3829/6709). main/include/MotionSensor.h contains commented-out
+       conditional-compile logic showing this firmware supports either a
+       LIS3DH accelerometer (`#ifdef VALTRACK_V4_VTS`) or an MMA854/8652-
+       family accelerometer (the #else / MFW branch) at I2C address 0x1D
+       (LIS3DH) or 0x19 (MMA-family) - confirms GPIO_INT1 is this board's
+       onboard accelerometer's interrupt output, and that the MFW variant
+       (this board) likely uses the MMA-family part rather than VTS's LIS3DH
+       (register map for MMA8652 is fully enumerated in MotionSensor.h,
+       reinforcing this is a real, wired-up peripheral, not dead code).
+     - SOS = gpio_get_level(GPIO_SOS) appears at ~9 call sites throughout
+       the main loop and BLE/SMS handling paths (e.g. L1424, L1429, L1463,
+       L1764, L2727, L3726, L4500, L4790, L5360, L5496, L5768, L6645,
+       L6650, L6763), feeding a SOSActivated flag used to trigger panic/SOS
+       alert logic (POWER_BUTTON handling, POWER_BUTTON_SOS_SWAP #ifdef).
+       This is unambiguous, heavily-used firmware confirmation of a real,
+       actively-read physical SOS/panic button.
+     - ADC.c: EXAMPLE_ADC1_CHAN0 is #define'd to ADC_CHANNEL_2. On the
+       ESP32-C3, ADC1 channel 2 corresponds to GPIO2, matching
+       GPIO_ANALOG_IN's declared value. The averaged/calibrated reading is
+       stored in a variable literally named `ADCBatteryVoltage`
+       (ADCTask()), computed as
+       `ADCBatteryVoltage = ((DIVIDER_FACTOR * voltage[0][0]) / 1000) + ADC_OFFSET`.
+       This is direct firmware-source confirmation that GPIO2/
+       GPIO_ANALOG_IN is a battery-voltage-sense input behind an external
+       resistor divider (DIVIDER_FACTOR/ADC_OFFSET are presumably #define'd
+       elsewhere, not found in the fetched files, but the variable naming
+       alone is conclusive as to purpose). This is materially stronger
+       evidence than what appears to have been available for the sibling
+       VTS board (whose board.json treats GPIO_ANALOG_IN as an unconfirmed
+       name-based guess) - worth a possible follow-up cross-check/upgrade
+       of that board's note if this ADC.c source applies identically to it
+       (it likely does, since it's the same shared firmware repo/main.c,
+       but that board's own product may use the analog input differently -
+       not verified here, out of scope for this board's audit).
+     - FrontPanel.c/.h define LED colour macros (RED/GREEN/BLUE/etc as
+       0-100% triples), an IndicatorLEDType enum with
+       Battery/Network/Location Red/Green/Blue channels (9 logical
+       sub-LEDs across what is physically 3 RGB LEDs), and functions like
+       UpdateBattery()/UpdateNetwork()/UpdateLocation()/WriteLEDStatus().
+       led_strip_rmt_ws2812.c and led_strip_encoder.c (also present in
+       main/) implement the ESP-IDF RMT-peripheral WS2812/NeoPixel driver.
+       InitGPIO() configures GPIO_LED_SIGNAL_PIN_SEL as a plain OUTPUT
+       first, then configure_led() (called from SystemInit()) hands it to
+       the RMT/WS2812 strip driver. This confirms GPIO_LED_SIGNAL(8) is a
+       single-wire addressable-RGB-LED (WS2812-protocol) data line driving
+       3 physical status LEDs, not a simple on/off LED.
+     - GPIO_CHG_IN (GPIO4, duplicate declaration of GPIO_TPS_ENABLE's
+       value): grepped every occurrence in main.c. All non-declaration
+       occurrences are inside a fully commented-out code block
+       (~L6530-6545: "// #define GPIO_CHG_IN 4" and
+       "//gpio_set_level(GPIO_CHG_IN, 0)"). The LIVE charging-status read in
+       this firmware instead uses a DIFFERENTLY-NAMED macro,
+       `GPIO_CHARGER_PIN` (`ChargingStatus = gpio_get_level(GPIO_CHARGER_PIN)`,
+       inside an `#ifndef VALTRACK_V4_VTS` block at ~L2714 and again at
+       ~L6269 - i.e. MFW-specific code, directly relevant to this board).
+       GPIO_CHARGER_PIN's numeric value is NOT defined anywhere in the
+       public repo's main/ tree (no header, no #define found) - it is
+       presumably defined in a private/per-hardware-revision config header
+       that isn't committed to this public repo, so its actual GPIO number
+       could not be determined this session. CONCLUSION (matches the task's
+       own stated suspicion): GPIO_TPS_ENABLE is the real, actively-used
+       declaration for GPIO4 (confirmed via live gpio_set_level/
+       gpio_hold_en/dis calls); GPIO_CHG_IN is dead/vestigial copy-paste
+       code left over in pins_arduino.h, never actually invoked by any live
+       code path. This was directly verified via source grep, not guessed.
+       Regardless of which name is "authoritative," GPIO4 is dedicated
+       power-management hardware (TPS-regulator enable line) either way, so
+       the EXCLUDE decision is unaffected by the ambiguity.
+     - TX1/RX1 (GPIO0/GPIO1): not in the task's originally-flagged 11-pin
+       list, but investigated anyway per the task's instruction to
+       determine the board's primary vs secondary UART roles. SCI.c/SCI.h
+       ("Serial Communication Interface", 26601/19349 bytes respectively) is
+       this firmware's AT-command driver talking to the cellular modem.
+       Given the file only declares one other UART-capable peripheral
+       (the cellular modem) and the main UART0 (TX=21/RX=20) is used for
+       USB/console and the pfod Serial connection, TX1/RX1 is concluded to
+       be the modem's dedicated AT-command UART. This matches the
+       independent finding made for the sibling VTS board (which additionally
+       cited a hardware teardown showing a UART level-translator IC between
+       the ESP32-C3 and the modem). EXCLUDED as a dedicated modem UART, in
+       addition to the originally-flagged 11 pins, since leaving it
+       available would let a Designer user pick GPIO0/1 for their own
+       sketch and silently break the onboard modem link.
+
+2. https://docs.valetron.com/wiki/products/valtrack-v4-vts-esp32-c3/firmware
+   Vendor documentation wiki. Page is nominally for the VTS SKU but
+   describes the shared V4 hardware platform / firmware source layout.
+   Confirmed (via WebFetch summarisation): LIS3DH accelerometer over I2C;
+   SIM7600/A7672-family cellular modem, AT commands over Serial1
+   (autobaud 9600-115200); GPIO_TPS_ENABLE(4) controls a "power supply
+   enable" subsystem; GPIO_CHG_IN also documented at GPIO4 for "charge
+   detection" (this page does not resolve the GPIO_TPS_ENABLE vs
+   GPIO_CHG_IN ambiguity - that was only resolved by direct source grep,
+   see source 1 above); GPIO_SOS(9) = SOS button; GPIO_LED_SIGNAL(8) =
+   "Addressable NeoPixel strip... with three controllable LEDs for
+   battery, network, and location status" - independently corroborates the
+   FrontPanel.c/led_strip_rmt_ws2812.c finding above.
+
+3. https://docs.valetron.com/wiki/products/valtrack-v4-vts-esp32-c3/specifications
+   Vendor hardware spec page (VTS SKU specifically - no equivalent MFW spec
+   page was found this session, see "gaps" below). Confirmed: LIS3DH
+   12-bit 3-axis accelerometer; regional cellular modem variants
+   (A7672S/E/SA, SIM7672G/NA - 4G-LTE-CAT1/2G with inbuilt GNSS); MP2617
+   Li-ion charger IC; ESP32-C3FH4 processor, 4MB flash. Notably: "Aux
+   Inputs" and "Aux Outputs" are both listed as "None" - i.e. this product
+   family documents no general-purpose/exposed auxiliary I/O header. Used
+   as supporting (not primary) evidence that the I2C bus (GPIO5/6) has no
+   documented external/multi-drop use on this platform, since a sealed
+   IP67 enclosure with "no aux I/O" strongly implies the I2C bus is
+   internal-only (wired to the onboard accelerometer and nothing else a
+   user could physically access anyway).
+
+4. https://www.espboards.dev/esp32/valtrack-v4-mfw-esp32-c3/
+   Independent third-party pinout aggregator, specifically for the MFW SKU
+   (this exact board). Full pinout table corroborates this board's own
+   pins_arduino.h exactly: GPIO4 listed as both A2/GPIO_TPS_ENABLE/
+   GPIO_CHG_IN; GPIO7 = GPIO_PWRKEY; GPIO9 = MISO/GPIO_SOS; GPIO10 =
+   MOSI/GPIO_GSM_ENABLE; GPIO5/6 = SDA/GPIO_IIC_DATA and SCL/
+   GPIO_IIC_CLOCK. Also states "workforce monitoring and remote task
+   logging" as the product's stated use case, consistent with "MFW =
+   mobile/field worker" (distinct from VTS = vehicle tracking system).
+   Treated as corroborating-but-not-fully-independent for the raw pin
+   table (likely sourced from the same Arduino-core board-definition
+   submission), but the "workforce monitoring" framing and per-SKU pinout
+   table (as opposed to a generic shared page) is useful independent
+   context.
+
+5. https://github.com/ValetronSystems/VALTRACK-V4-ESP32-C3 repo root/README
+   and general web search results (CNX Software, Hackaday.io) - confirm
+   this is a real, IP67-enclosed, open-source-firmware commercial tracker
+   product family sold via crowdfunding/Tindie, "programmable" by
+   end users via the public firmware repo, not a closed/hobbyist-inaccessible
+   product. Supports the general approach of treating firmware-confirmed
+   dedicated-hardware pins as genuinely excludable (real product, real
+   onboard peripherals) while still being conservative about undocumented
+   pins (sealed enclosure, no general header) rather than assuming
+   exposure.
+
+GAPS / THINGS NOT FOUND
+- No MFW-specific vendor spec/schematic page was located (only the VTS
+  SKU's specifications page at docs.valetron.com); the "Aux I/O: None"
+  finding is therefore VTS-page-sourced and applied to MFW by inference
+  (same underlying V4 platform/shared firmware repo), not independently
+  confirmed for this exact SKU. Flagged here for a future reviewer.
+- GPIO_CHARGER_PIN's actual GPIO number (the live MFW charging-status read)
+  could not be determined - its #define is not present anywhere in the
+  public repo tree that was fetched this session. It is NOT necessarily
+  GPIO4 - could plausibly be a different, entirely undeclared GPIO not
+  present in this board's pins_arduino.h at all (in which case it's
+  already safely excluded by omission, never having been offered by the
+  Designer in the first place). Not resolved; not blocking, since GPIO4's
+  EXCLUDE decision is already justified via GPIO_TPS_ENABLE regardless.
+- DIVIDER_FACTOR and ADC_OFFSET's numeric values (used in the
+  ADCBatteryVoltage calculation) were not found in the fetched files
+  (likely in a header not read this session, e.g. a project-wide
+  constants file). Not needed for this audit (GPIO2's KEEP decision and
+  purpose are already firmware-confirmed via the variable/macro names
+  alone), but a future reviewer wanting the exact voltage-divider ratio
+  would need to locate that definition.
+- Repo file listing shows no dedicated "board header"/"pins.h" defining
+  GPIO_PWRKEY/GPIO_GSM_ENABLE/etc as C macros anywhere in the public
+  main/ or main/include/ tree - these names are used throughout main.c as
+  if defined, but the actual #define statements were not found (other
+  than the commented-out reference block at ~L6530-6545). Almost
+  certainly defined in a project-specific header excluded from the public
+  repo (e.g. via .gitignore) or supplied via a build-system -D flag not
+  visible in the fetched CMakeLists.txt files. This does not affect the
+  audit's conclusions (all conclusions above are based on how these names
+  are USED in main.c, which is unambiguous), just noted as an
+  incompleteness in the available source.
+
+PER-PIN REASONING (confirmed vs guess distinction)
+
+- GPIO0 (TX1): EXCLUDED. Vendor-repo-corroborated (SCI.c is the modem
+  AT-command driver; second UART distinct from main UART0). Not
+  vendor-schematic-confirmed to the pin-number level, but firmware-
+  source-corroborated - not a pure name-based guess.
+- GPIO1 (RX1): EXCLUDED. Same reasoning/confidence as GPIO0.
+- GPIO2 (GPIO_ANALOG_IN): KEPT (chip-level default capabilities
+  unchanged), documentation note added. CONFIRMED via firmware source
+  (ADC.c: ADC_CHANNEL_2 = GPIO2, variable `ADCBatteryVoltage`,
+  `DIVIDER_FACTOR`, `ADC_OFFSET`) - this is battery-voltage sensing,
+  matching the playbook's analog-sensor-reading KEEP category. Strongest
+  confidence level of any pin in this audit (direct source, unambiguous
+  variable naming).
+- GPIO3 (GPIO_INT1): EXCLUDED. CONFIRMED via firmware source (InitGPIO()
+  configures it as INPUT in the "INT1 and SOS" group; MotionSensor.h shows
+  accelerometer register definitions and LIS3DH/MMA854 selection logic;
+  main.c reads it into a MotionStatusType). Vendor-corroborated
+  accelerometer interrupt line.
+- GPIO4 (GPIO_TPS_ENABLE / GPIO_CHG_IN): EXCLUDED. GPIO_TPS_ENABLE
+  CONFIRMED via firmware source as an actively-used OUTPUT with deep-sleep
+  pin-hold behaviour (PMIC/regulator enable line). GPIO_CHG_IN CONFIRMED
+  dead/unused via source grep (only inside commented-out code). See "Sources
+  consulted" #1 for full detail. Both declarations removed from
+  pins_arduino.h since GPIO4 is dedicated hardware regardless of which name
+  is authoritative.
+- GPIO5 (GPIO_IIC_DATA / SDA): EXCLUDED. I2C bus CONFIRMED via firmware
+  source (i2c_master_init() + InitAccelerometer() in SystemInit()) as the
+  onboard accelerometer's data line. No general-purpose/exposed header
+  evidence found (vendor spec page "Aux I/O: None", sealed IP67
+  enclosure) - this is the one part of the decision resting on absence-of-
+  evidence-plus-product-form-factor reasoning rather than a direct
+  "no external header" vendor statement, so flagged as slightly less than
+  fully confirmed, though still well-corroborated.
+- GPIO6 (GPIO_IIC_CLOCK / SCL): EXCLUDED. Same reasoning/confidence as
+  GPIO5 (same I2C bus).
+- GPIO7 (GPIO_PWRKEY): EXCLUDED. CONFIRMED via firmware source (PWRKEY
+  pulse toggle sequence, standard SIMCom-modem power-on procedure).
+- GPIO8 (GPIO_LED_SIGNAL): KEPT, tagged
+  capabilities: ["digital_output","led_neopixel","pwm_output"]. CONFIRMED
+  via firmware source (FrontPanel.c/.h + led_strip_rmt_ws2812.c/
+  led_strip_encoder.c: WS2812/NeoPixel RMT driver, 3 logical RGB status
+  LEDs for battery/network/location) and independently corroborated by the
+  vendor wiki's firmware page description ("Addressable NeoPixel strip...
+  three controllable LEDs"). Checked against TX/RX/TX1/RX1 (21/20/0/1) -
+  no conflict.
+- GPIO9 (GPIO_SOS): KEPT, tagged capabilities: ["digital_input","button"].
+  CONFIRMED via firmware source - heavily and repeatedly read throughout
+  main.c's main loop and SMS/BLE handling paths, feeding a SOSActivated
+  flag. Vendor wiki corroborates a physical SOS button. Checked against
+  TX/RX/TX1/RX1 (21/20/0/1) - no conflict.
+- GPIO10 (GPIO_GSM_ENABLE): EXCLUDED. CONFIRMED via firmware source
+  (EnableGSM()/DisableGSM() toggle this pin; configured as OUTPUT
+  alongside PWRKEY; deep-sleep pin-hold calls) - modem power-gate enable
+  line.
+- GPIO11: not aliased anywhere in this board's own pins_arduino.h. Left at
+  the chip-level default (unlabeled "GPIO11"), no research needed/done -
+  this board's file simply never mentions it.
+
+SUMMARY
+VALTRACK_V4_MFW_ESP32_C3 board.json created (full copy of the esp32c3
+chip-level default) excluding GPIO0/1 (modem UART), GPIO3 (accelerometer
+INT), GPIO4 (TPS/PMIC enable, plus dead GPIO_CHG_IN duplicate), GPIO5/6
+(I2C to onboard accelerometer), GPIO7 (modem PWRKEY) and GPIO10 (modem
+GSM_ENABLE) from chipGpios; GPIO8 kept and tagged led_neopixel (WS2812
+status LEDs); GPIO9 kept and tagged button (SOS panic button); GPIO2 kept
+at default capabilities with a documentation note (battery-voltage ADC
+input). pins_arduino.h had the corresponding GPIO_* aliases AND every
+boilerplate A<n>/D<n>/SDA/SCL/MOSI alias of the same excluded GPIO numbers
+deleted (not commented out), per the playbook's "blanket-identity re-leak"
+warning. Every finding above is firmware-source-confirmed (direct read of
+the vendor's public ESP-IDF repository, not inferred from macro names
+alone), except the "no general-purpose I2C header" conclusion for GPIO5/6,
+which rests on the absence of any documented aux-I/O header plus the
+product's sealed IP67 form factor rather than an explicit vendor statement
+- clearly flagged above as the one part of this audit resting on
+corroborated-but-not-fully-direct evidence. No build commands were run.

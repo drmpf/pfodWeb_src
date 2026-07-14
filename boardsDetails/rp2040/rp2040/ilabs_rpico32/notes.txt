@@ -1,0 +1,141 @@
+pfodWeb RP2040 family audit — board: ilabs_rpico32 (chip bucket: rp2040)
+Audit date: 2026-07-13
+
+BOARD IDENTITY
+==============
+iLabs "RPICO32" — a bare RP2040 + ESP8285 WiFi SOM/module (5.07 x 2.28 x
+0.72 cm per iLabs' own product page), sold as a solderable module rather
+than an assembled devkit. NOT the same product as the "Challenger RP2040
+WiFi" (challenger_2040_wifi variant) which is a full Adafruit-Feather-form
+-factor devkit from the same vendor with onboard LED/NeoPixel — RPICO32
+is a smaller, bare module with no onboard user I/O beyond the ESP8285
+WiFi link itself.
+
+Architecture: RP2040 (dual-core Cortex-M0, 133MHz, 8MB QSPI flash, 264KB
+SRAM, 12MHz crystal) as host processor, paired with an ESP8285 WiFi
+(2.4GHz) co-processor with 1MB internal flash, connected over UART0
+(GPIO0 TX / GPIO1 RX) at up to 1Mbit/s, plus two RP2040 GPIO control
+lines (GPIO2 = active-low reset, GPIO3 = mode-select for flash mode
+entry). This is the same "host + AT-style UART WiFi co-processor"
+architecture family as challenger_2040_wifi (which uses an ESP8285 too,
+just on different GPIOs/UART instance) — NOT the native RP2040 + CYW43439
+combo used by Pico W / the "rp2040w" chip bucket.
+
+SOURCES CONSULTED
+==================
+1. https://ilabs.se/product/rpico32/ (official vendor product page,
+   authoritative) — full feature list quoted verbatim via WebFetch:
+   - "GPIO0 acts as UART0 TXD"
+   - "GPIO1 acts as UART0 RXD"
+   - "GPIO2 is connected to ESP8285 reset and is active low (PIN_ESP8285_RST
+     in the arduino IDE)"
+   - "GPIO3 Is connected to the mode pin of the ESP8285. If it is pulled
+     low at the same time the reset signal is going high the chip will
+     enter flash mode"
+   - "Raspberry Pi Pico Dual Core Cortex-M0 @ 133MHz", "8 MByte FLASH
+     Memory", "264 KByte SRAM Memory", "Up to 2 Hardware I2C channel",
+     "Up to 2 Hardware SPI channel", "1 Hardware UART for the user
+     (UART1)", "1 Hardware UART connected to the network processor
+     (UART0 @ 1Mbit/s)", "12 Bit ADC", "All pins are PWM capable",
+     "12MHz crystal", "8Mbyte 133MHz QSPI FLASH memory", "ESP8285 with
+     internal 1MByte FLASH Memory", "WiFi (2.4GHz)".
+   - Physical size "5.07 x 2.28 x 0.72 cm", weight 0.009 kg — consistent
+     with a bare module, not a devkit board.
+   - CRITICALLY: no mention anywhere on this page of a status LED, user
+     LED, NeoPixel/addressable RGB LED, or user pushbutton (beyond
+     RP2040 BOOTSEL, which the page doesn't mention either since it's an
+     RP2040-inherent feature, not board-specific). The page is detailed
+     enough to mention crystal frequency and flash chip speed, so this
+     silence is treated as reasonably conclusive for a "no onboard LED,
+     no NeoPixel, no button" verdict, not just an oversight in scraping.
+2. https://gitlab.com/invectorlabs/boards/rpico32 (iLabs' own GitLab
+   boards repo for this exact module) — checked for any additional
+   schematic/README detail beyond the product page; WebFetch returned no
+   additional pinout/LED/button content (page metadata only, README body
+   not retrievable via fetch). No contradicting information found.
+3. WebSearch queries: "iLabs RPICO32 RP2040 ESP32 datasheet",
+   "ilabs.se RPICO32 board pinout LED NeoPixel button", "iLabs RPICO32
+   github pins_arduino.h LED_BUILTIN", "ilabs.se RPICO32 datasheet
+   onboard LED status", "RPICO32 ilabs pinout diagram GPIO2 GPIO3
+   datasheet PDF" — none surfaced any onboard-LED/NeoPixel/button
+   documentation for this specific module; results consistently point
+   back to the same product page and to the separate, unrelated
+   "RPICO32 Evaluation Kit" product (a different product, out of scope
+   for this variant — this variant's boards.txt build.variant maps only
+   to the bare RPICO32 module).
+4. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\ilabs_rpico32\pins_arduino.h
+   (this variant's own file, read in full) — declares NO PIN_LED, NO
+   NEOPIXEL, NO button alias whatsoever. Declares D4-D29 and A0-A3
+   aliases (general purpose); GPIO0-3 have NO Dn alias at all (a
+   pre-existing pfodWeb NOTE at the top of the file, already present
+   before this task, states D0-D3 were deliberately dropped since the
+   vendor's own source marks them "Internal to the board" — confirmed by
+   diffing against the untouched original at
+   C:\ai\aicode\pfodWeb\rp2040_board_variants\variants\ilabs_rpico32\pins_arduino.h,
+   which still has D0-D3 declared with that exact "// Internal to the
+   board" comment).
+5. C:\ai\aicode\pfodWeb\variants\rp2040\boards.txt — confirmed board
+   entry (ilabs_rpico32.name=iLabs RPICO32, build.variant=ilabs_rpico32,
+   build.chip=rp2040, build.board=ILABS_2040_RPICO32_RP2040,
+   build.extra_flags=-DWIFIESPAT2). ilabs_rpico32.build.led= is empty —
+   consistent with (though not solely conclusive of) no onboard LED
+   build flag being defined for this board.
+6. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040w\board.json — its own
+   "inputOnlyGpios" comment explicitly lists ilabs_rpico32 alongside
+   challenger_2040_wifi and others as a co-processor-WiFi board
+   deliberately kept in the plain "rp2040"/"rp2350" chip buckets (not
+   "rp2040w") pending dedicated AT-command .ino templates — confirms
+   this variant is correctly bucketed already; no chip-bucket move made.
+7. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level
+   defaults) and
+   C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\challenger_2040_wifi\board.json
+   (precedent — same vendor, same "RP2040 + ESP8285 UART co-processor"
+   architecture, closest available precedent) both read in full before
+   writing this board's board.json.
+
+PER-PIN REASONING (chipGpios entries written)
+==============================================
+GPIO0 (PIN_SERIAL1_TX / PIN_ESP_TXD) - dedicated ESP8285 co-processor
+  UART0 TX line. capabilities: [].
+GPIO1 (PIN_SERIAL1_RX / PIN_ESP_RXD) - dedicated ESP8285 co-processor
+  UART0 RX line. capabilities: [].
+GPIO2 (PIN_ESP_RESET) - ESP8285 active-low reset line, driven by RP2040.
+  Confirmed active-low by vendor product page. capabilities: [].
+GPIO3 (PIN_ESP_MODE) - ESP8285 flash-mode select line, driven by RP2040
+  during firmware updates. Confirmed by vendor product page.
+  capabilities: [].
+
+Rationale for needing these overrides despite pins_arduino.h having no
+"Dn" alias for GPIO0-3 any more: build_boards.js's numeric #define
+fallback resolution still recognizes PIN_SERIAL1_TX / PIN_SERIAL1_RX /
+PIN_ESP_RESET / PIN_ESP_MODE themselves as GPIO aliases, so absent a
+chipGpios override these 4 pins would silently inherit full
+digital_input/digital_output/pwm_output capability from the chip-level
+empty chipGpios default — exactly the same mechanism already documented
+for challenger_2040_wifi's GPIO4/5/13/19 overrides.
+
+Bus-collision bug class (SDA/SCL/SS/MOSI/MISO/SCK auto-append) checked:
+GPIO0-3 carry no SPI/I2C/other bus alias on this board — Wire0 is
+SDA=GPIO4/SCL=GPIO5, SPI0 is MISO=24/MOSI=23/SCK=22/SS=21, Serial2 is
+TX=8/RX=9, all disjoint from GPIO0-3 — so this bug class does not apply
+here. No pins_arduino.h edit was made or needed.
+
+LED / NEOPIXEL / BUTTON VERDICT
+================================
+NO onboard status LED, NO onboard NeoPixel/addressable RGB LED, and NO
+onboard user pushbutton (beyond RP2040's own non-GPIO BOOTSEL) exist on
+this board — confirmed via the vendor's own detailed product feature
+list, which mentions crystal speed and flash chip speed but nothing
+resembling an LED or button. This is a genuine NO CHANGE for
+LED/NeoPixel/button tagging on this board — not a missed tag. No
+"led_high"/"led_low"/"led_neopixel"/"button" capability was added
+anywhere in this board's chipGpios.
+
+SUMMARY (one line)
+===================
+ilabs_rpico32 (bare RP2040+ESP8285 WiFi module, no onboard LED/NeoPixel/
+button): created board.json with chipGpios overrides zeroing out
+GPIO0/1/2/3 (dedicated ESP8285 UART0 TX/RX + reset + mode-select lines)
+to prevent them inheriting full digital I/O capability from the empty
+chip-level default; no bus-collision bug found; no LED/NeoPixel/button
+tags applicable (none exist on this bare module per vendor documentation).

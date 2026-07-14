@@ -6,36 +6,32 @@
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;
 
-static const uint8_t SDA = 21;
-static const uint8_t SCL = 22;
+// pfodWeb NOTE: SDA/SCL deliberately NOT declared - confirmed via
+// M5Stack Fire docs as the fully internal IMU (MPU6886+BMM150) + power-
+// management (IP5306) I2C bus, not a free Grove port (unlike M5Stack
+// Core Basic, where the same GPIOs are genuinely shared/general).
 
-static const uint8_t SS = 4;
-static const uint8_t MOSI = 23;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard microSD card SPI bus (confirmed via M5Stack Fire docs).
 
-static const uint8_t G23 = 23;
-static const uint8_t G19 = 19;
-static const uint8_t G18 = 18;
+// pfodWeb NOTE: G4/G18/G19/G21-G23/G25/G34 deliberately NOT declared -
+// dedicated onboard microSD SPI bus, internal I2C bus, DAC/speaker, and
+// mic pins. G16/G17 deliberately NOT declared - internally wired to
+// PSRAM on this WROVER-based module, not safely repurposable (confirmed
+// via M5Stack Fire docs) - see board.json chipGpios override. G15
+// (onboard NeoPixel strip) stays kept per policy.
 static const uint8_t G3 = 3;
-static const uint8_t G16 = 16;
-static const uint8_t G21 = 21;
 static const uint8_t G2 = 2;
 static const uint8_t G12 = 12;
 static const uint8_t G15 = 15;
 static const uint8_t G35 = 35;
 static const uint8_t G36 = 36;
-static const uint8_t G25 = 25;
 static const uint8_t G26 = 26;
 static const uint8_t G1 = 1;
-static const uint8_t G17 = 17;
-static const uint8_t G22 = 22;
 static const uint8_t G5 = 5;
 static const uint8_t G13 = 13;
 static const uint8_t G0 = 0;
-static const uint8_t G34 = 34;
 
-static const uint8_t DAC1 = 25;
 static const uint8_t DAC2 = 26;
 
 static const uint8_t ADC1 = 35;

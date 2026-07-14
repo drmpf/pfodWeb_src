@@ -1,0 +1,122 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: DFRobot Beetle ESP32-C3 (SKU DFR0868, coin-sized dev board).
+  // Flagged by the discovery sweep for declaring GDI_DISPLAY_FPC_INTERFACE
+  // and a block of GDI_* macros (GDI_SPI_SCLK, GDI_SPI_MOSI, GDI_SPI_MISO,
+  // GDI_DC, GDI_RES, GDI_CS, GDI_SDCS, GDI_TCS, GDI_SCL, GDI_SDA, GDI_BLK) -
+  // all of them #defines pointing at already-declared pin aliases (SCK,
+  // MOSI, MISO, A0-A3, SS, SCL, SDA, LED_BUILTIN), not new GPIO
+  // declarations. No board.json override existed before this audit (used
+  // the chip-level esp32c3/board.json default).
+  //
+  // Sources consulted:
+  //  - https://wiki.dfrobot.com/dfr0868/
+  //    Official DFRobot wiki product page (primary vendor source,
+  //    authoritative, publishes schematics). Confirmed via WebFetch: the
+  //    GDI connector is "a DFRobot dedicated GDI display interface for
+  //    connecting a screen using a 18pin-FPC wire" and "comes without a
+  //    display attached" - i.e. an optional expansion connector for a
+  //    pluggable display module, not a fixed onboard screen. Also
+  //    confirmed Onboard LED = GPIO10 and BOOT Button = GPIO9.
+  //  - https://wiki.dfrobot.com/SKU_DFR0868_Beetle_ESP32_C3
+  //    Same vendor wiki (alternate URL for the same product). Confirmed
+  //    via WebFetch: the board's bundled breakout/expansion board "offers
+  //    additional power and GPIO pins, battery terminals for the on-board
+  //    lithium-ion management system, and a ribbon cable connector for an
+  //    optional display" - independently corroborating the GDI connector
+  //    is for an optional, user-attached display, not a fixed component.
+  //  - https://www.espboards.dev/esp32/dfrobot-beetle-esp32c3/
+  //    Independent third-party board database. Confirmed via WebFetch a
+  //    BOOT button and separately listed "LED/10" i.e. onboard LED on
+  //    GPIO10, and pin-mapping table showing SDA on GPIO8 / SCL on GPIO9 -
+  //    matching this board's own pins_arduino.h aliases exactly.
+  //  - WebSearch summary of DFRobot/community sources: confirms BOOT
+  //    (IO9) and RST buttons for entering download mode / resetting;
+  //    battery charging handled by an onboard TP4057 li-ion charge
+  //    management chip wired to a solder-pad "BAT" terminal on the
+  //    breakout board, not a GPIO-based voltage-sense pin - no BAT/VBAT
+  //    alias appears anywhere in this board's pins_arduino.h, so there is
+  //    no battery-sense GPIO to tag.
+  //  - pins_arduino.h (local, already in repo) - `static const uint8_t
+  //    SCL = 9;` duplicates the confirmed GPIO9 BOOT button pin as the I2C
+  //    clock alias; used as corroboration alongside the vendor-confirmed
+  //    GPIO9 BOOT button finding above.
+  //
+  // GDI connector (SPI/I2C/A0-A3 repurposed pins): CONFIRMED an OPTIONAL
+  // plug-in expansion connector for a separately-purchased display module
+  // (18-pin FPC), per two independent fetches of DFRobot's own wiki
+  // ("comes without a display attached" / "ribbon cable connector for an
+  // optional display"). KEPT general-purpose - SCK/MOSI/MISO/SS/SDA and
+  // A0-A3 (GPIO4,6,5,7,8,0,1,2,3) are left at the chip-level default, not
+  // excluded, matching the expectation that GDI is a pluggable expansion
+  // standard across DFRobot's product line rather than fixed onboard
+  // hardware.
+  //
+  // GPIO9 (opportunistic section 7a button check): CONFIRMED onboard
+  // physical BOOT button, per wiki.dfrobot.com and espboards.dev. Standard
+  // ESP32-C3 strapping pin (chip-level pinNotes "Must be HIGH for normal
+  // boot" retained as-is, not removed - expected/documented for this
+  // exact pin, matching the adafruit_qtpy_esp32c3 and
+  // waveshare_esp32_c3_zero precedents). Tagged capabilities
+  // ["digital_input","button"] only.
+  //
+  // GPIO10 (LED_BUILTIN): CONFIRMED onboard plain (non-addressable) LED,
+  // per wiki.dfrobot.com and espboards.dev ("LED/10"). Not a WS2812/
+  // NeoPixel-style addressable LED (no PIN_RGB_LED/RGB_BUILTIN/
+  // RGB_BRIGHTNESS macros present in this board's pins_arduino.h, unlike
+  // the led_neopixel precedent boards), and GDI_BLK also aliases this same
+  // pin as an optional display's backlight-enable line. Left at the
+  // chip-level default capabilities (plain digital_output already covers
+  // a simple LED) - matching this repo's existing precedent of NOT adding
+  // a special capability tag for a plain, non-addressable onboard LED
+  // (e.g. lolin_s3_pro's treatment of GPIO14 TFT_LED vs its GPIO38
+  // NeoPixel).
+  //
+  // Alias-conflict check (critical check found earlier this session):
+  // this board's own pins_arduino.h declares TX=21, RX=20, SDA=8, SCL=9,
+  // SS=7, MOSI=6, MISO=5, SCK=4. GPIO10 (the LED) does not collide with
+  // any of these. GPIO9 (the BOOT button), however, DID collide - it was
+  // also declared as SCL, which would have let build_boards.js silently
+  // append an I2C-clock capability on top of the button-only capability
+  // list (that append is independent of anything set here in board.json).
+  // Since GPIO9 is a confirmed physical BOOT button pin and not a
+  // vendor-confirmed general-purpose I2C header pin, the SCL alias line
+  // was deleted outright from pins_arduino.h (not commented out - the
+  // parser is comment-blind), and the GDI_SCL macro (which referenced the
+  // SCL alias) was repointed at the numeric GPIO value directly so the
+  // file stays internally consistent. SDA (GPIO8) was left declared since
+  // its pin has no such conflict.
+  //
+  // See boardsDetails/esp32/esp32c3/dfrobot_beetle_esp32c3/notes.txt for
+  // the full research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

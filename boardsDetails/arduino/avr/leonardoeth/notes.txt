@@ -1,0 +1,107 @@
+Board: Arduino Leonardo ETH (avr/leonardoeth, split off avr/leonardo)
+Date: 2026-07-14
+
+Reason for split: boards.txt previously had
+"leonardoeth.build.variant=leonardo", meaning Leonardo ETH silently shared
+the plain Leonardo's pins_arduino.h/board.json (a D13-LED-only config).
+Leonardo ETH genuinely differs: it adds an onboard W5500 TCP/IP Embedded
+Ethernet Controller AND a microSD card reader, each wired via SPI with its
+own dedicated chip-select pin not present/committed on plain Leonardo.
+Created a new self-contained variant directory: pins_arduino.h is a
+one-line #include of ../leonardo/pins_arduino.h (identical ATmega32U4
+mechanical pin map — the Ethernet/SD hardware is additive, not a
+different silicon pinout), with its own board.json adding
+"connections": ["serial","tcp"] and a chipGpios map excluding the two
+dedicated chip-select pins (plus their dual-numbered analog aliases, see
+below). boards.txt's leonardoeth.build.variant was repointed from
+"leonardo" to "leonardoeth".
+
+Sources consulted:
+- https://docs.arduino.cc/retired/boards/arduino-leonardo-eth (official
+  Arduino documentation, retired-product section). Raw page HTML is a
+  client-rendered Gatsby SPA shell with no content (WebFetch and curl on
+  the rendered URL both returned empty/placeholder content) — the actual
+  MDX content was recovered from Gatsby's page-data.json backing
+  endpoint (https://docs.arduino.cc/page-data/retired/boards/arduino-leonardo-eth/page-data.json),
+  fetched directly via curl and grepped for the relevant text. This is
+  the same content the docs.arduino.cc page renders client-side, just
+  read from its JSON data source instead of the rendered DOM.
+  Confirmed, verbatim from the page's specifications table:
+    "Reserved Pins" | "4 used for SD card select; 10 used for W5500 select"
+  Also confirmed, verbatim from the page's pinout/board-info text:
+    "LED: 13. There is a built-in LED connected to the digital pin 13.
+    When the pin is HIGH value, the LED is on, when the pin is LOW,
+    it's off."
+  This is the single authoritative source for all findings below —
+  it directly and explicitly names both dedicated chip-select pins by
+  number, with no ambiguity or inference required.
+- WebSearch corroboration (secondary, not relied on for the final
+  decision but consistent with the primary source): SK Pang Electronics
+  product listing and a PlatformIO/community technical guide both state
+  "SS pin 10 ... to select Ethernet" and "SS for the SD card is on Pin 4"
+  for this board, matching the official page exactly.
+- Attempted but unhelpful/dead ends (recorded so a future reviewer
+  doesn't re-tread them): https://www.arduino.cc/en/Main/ArduinoBoardLeonardoEth
+  (redirects to the retired docs.arduino.cc page above, same SPA-shell
+  issue); wiki-content.arduino.cc mirror returned HTTP 403; the
+  arduino/docs-content GitHub repository's full recursive tree listing
+  contains no "leonardo" path at all, so this specific retired-product
+  page's source markdown is not hosted in that repo (likely a
+  differently-sourced/legacy CMS entry) — do not waste time searching
+  that repo again for this board.
+
+Per-pin findings:
+- D13 (LED_BUILTIN) — confirmed onboard status LED, active-high, same
+  wording/polarity as plain Leonardo ("HIGH = on"). Not on the SPI bus
+  for this 32U4 pin map (SPI moved to D14-D17 on Leonardo/Leonardo ETH),
+  so no dual-role caveat needed. Tagged
+  ["digital_output","pwm_output","led_high"].
+- D4 (index "4") — confirmed dedicated to the onboard microSD card
+  reader's SPI chip-select ("4 used for SD card select"). Excluded
+  (capabilities: []).
+- D10 (index "10") — confirmed dedicated to the onboard W5500 Ethernet
+  controller's SPI chip-select ("10 used for W5500 select"). Excluded
+  (capabilities: []).
+- A6 (index "24") and A10 (index "28") — NOT independently researched
+  as separate hardware, but excluded as a direct consequence of the D4/
+  D10 findings above: this 32U4 pin map (see ../leonardo/pins_arduino.h's
+  own analog_pin_to_channel_PGM / digital_pin_to_port_PGM /
+  digital_pin_to_bit_mask_PGM tables) dual-numbers several digital pins
+  as analog-indexed aliases of the exact same physical silicon pin.
+  Verified directly from those tables: PIN_A6 = 24 maps to port PD bit 4
+  (PD4) — the identical physical pin as digital index 4 (D4, also PD4,
+  confirmed via both the port table and the bit-mask table). PIN_A10 =
+  28 maps to port PB bit 6 (PB6) — the identical physical pin as digital
+  index 10 (D10, also PB6). Since build_boards.js's buildAvrBoard()
+  generates one JSON pin entry per raw digital-pin-index (0..30) and
+  determines the A<n> name purely from whether the index falls in the
+  chip's analogOffset..analogOffset+numAnalog range (18..29 here), the
+  D4/A6 pair and D10/A10 pair are TWO SEPARATE ENTRIES in the generated
+  pin list for each single physical pin. Excluding only "4" and "10"
+  would leave the identical physical SPI-CS pins fully exposed under
+  their "24"/"28" (A6/A10) indices with default analog+digital+PWM
+  capabilities — so all four indices ("4","10","24","28") were excluded
+  together. This reasoning was derived directly from the pin-mapping
+  tables already present in leonardo/pins_arduino.h, not guessed; no
+  independent research was needed or attempted for A6/A10 specifically
+  since they are electrically identical pins, not separate hardware.
+- No other dedicated hardware found or claimed by the source. The SPI
+  bus itself (D14-D17: MISO/SCK/MOSI/SS) is the standard Leonardo ICSP-
+  header SPI bus and was left with its normal default capabilities/
+  bus-role tags (spi_ss/spi_mosi/spi_miso/spi_sck) — the W5500 and SD
+  card are wired to this same physical SPI bus but distinguished only by
+  their separate chip-select lines (D4, D10), which is the standard
+  multi-device-SPI-bus pattern (see this playbook's KEEP-available
+  policy: "General-purpose I2C/SPI buses without a documented exclusive
+  onboard consumer... even if only one device happens to be attached" —
+  here two onboard devices share the bus via CS, and the bus lines
+  themselves are not board-json-worth excluding).
+
+Summary: Arduino Leonardo ETH — split from sharing the plain Leonardo's
+board.json/pins_arduino.h into its own variant directory; D13 onboard
+LED confirmed and tagged active-high (identical to Leonardo); onboard
+W5500 Ethernet controller's chip-select (D10) and onboard microSD card
+reader's chip-select (D4) both confirmed via official Arduino
+documentation and excluded, along with their electrically-identical
+A10/A6 dual-numbered aliases (indices 28/24). connections set to
+["serial","tcp"] since the onboard W5500 supports pfod over TCP.

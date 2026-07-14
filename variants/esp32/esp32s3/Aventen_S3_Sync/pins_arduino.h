@@ -24,7 +24,8 @@ static const uint8_t SCK = 12;
 
 static const uint8_t ALS = 17;
 static const uint8_t RGB_DI = 38;
-static const uint8_t RF_SW = 37;
+// pfodWeb NOTE: RF_SW (GPIO37) deliberately NOT declared - dedicated
+// onboard RF antenna switch, not general-purpose.
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;

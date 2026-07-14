@@ -20,15 +20,16 @@
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
-// BHI260,PCF85063,BQ25896,DRV2605L,ES8311 share I2C Bus
-static const uint8_t SDA = 3;
-static const uint8_t SCL = 2;
-
-// Default sd cs pin
-static const uint8_t SS = SD_CS;
-static const uint8_t MOSI = 34;
-static const uint8_t MISO = 33;
-static const uint8_t SCK = 35;
+// pfodWeb NOTE: this is a fully-integrated LoRa pager device — SDA/SCL
+// (GPIO2/3) is an internal-only I2C bus shared by 5 built-in chips
+// (BHI260 sensor hub, PCF85063 RTC, BQ25896 charger, DRV2605L haptic
+// driver, ES8311 audio codec), not a general expansion connector, so
+// deliberately NOT declared as pins here. SS/MOSI/MISO/SCK (GPIO21/33/
+// 34/35) are the SPI bus shared by the LoRa radio, onboard microSD, and
+// ST25R3916 NFC chip — also deliberately NOT declared. See this board's
+// own board.json chipGpios override for the full pin-exclusion list
+// (keyboard, rotary encoder, RTC/NFC/sensor interrupts, audio codec,
+// GPS, display — everything on this device except TX/RX/GPIO0/9/15/16).
 
 #define KB_INT       (6)
 #define KB_BACKLIGHT (46)

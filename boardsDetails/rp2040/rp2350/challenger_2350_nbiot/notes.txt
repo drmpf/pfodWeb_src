@@ -1,0 +1,307 @@
+Board: iLabs "Challenger+ RP2350 NB-IoT" (chip bucket: rp2350)
+Directory: variants/rp2040/rp2350/challenger_2350_nbiot/
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+Confirmed the onboard STMicroelectronics ST87M01-1301 module is a
+genuine LTE Cat NB2 (NB-IoT) cellular modem with integrated GNSS
+(GPS L1 + Galileo) and Wi-Fi (802.11b scan-only) positioning - NOT the
+"No Battery" false-friend found on the challenger_nb_2040_wifi sibling
+earlier this session. The modem occupies GPIO4/5 (UART TX/RX) and
+GPIO8/9/10/11 (INT/RSTN/WAKEUP/GNSS-bias-enable control lines); GPIO14
+is a separate dedicated BConnect/SWD debug-connector UART pin (unrelated
+to the modem). All seven of these GPIOs were ALREADY fully excluded from
+the Designer's pin list because pins_arduino.h declares no `static const
+uint8_t` alias for any of them - so no board.json chipGpios entries were
+needed or added for them (adding entries would have been counterproductive
+- see "WHY NO chipGpios ENTRIES..." below).
+
+Created board.json (this board previously had none) containing a single
+chipGpios entry: GPIO15 (PIN_LED/LED_BUILTIN), tagged as the onboard
+general-purpose user LED (active-high, cross-referenced inference).
+Unlike the challenger_2040_lte/challenger_nb_2040_wifi siblings, this
+board's LED pin carries NO D-number alias at all in pins_arduino.h (only
+the #define, which build_boards.js's parser does not read), so without
+this chipGpios entry GPIO15 would be entirely invisible in the Designer,
+not merely mistagged - this entry was required to surface it.
+
+No onboard NeoPixel found (unlike the challenger_2350_bconnect/
+challenger_2350_wifi6_ble5 siblings in this same rp2350 chip bucket,
+which do have one - those boards are unaudited and out of scope here).
+No discrete user pushbutton found beyond the standard RST reset line
+(out of scope, same BOOTSEL/reset precedent as rpipico2/board.json).
+
+GPIO0 and GPIO22 carry no pins_arduino.h alias and are not mentioned
+anywhere in the datasheet either (header table, internal module table,
+or debug section) - no dedicated function could be confirmed for either,
+so per this audit's "report NO CHANGE rather than guess" guidance, no
+chipGpios entry was added; they remain fully hidden from the Designer's
+pin list exactly as pins_arduino.h already leaves them (the safe default).
+
+pins_arduino.h was NOT modified this session - no button/LED pin was
+found to collide with any SPI/I2C/UART bus alias, so the "confirmed
+button/LED pin also aliased as a bus signal" bug class does not apply to
+this board.
+
+SOURCES CONSULTED
+------------------
+1. https://ilabs.se/product/challenger-rp2350-nb-iot/ (official iLabs
+   product page, fetched directly via WebFetch) - confirms the
+   ST87M01-1301 module identity, lists documentation download links
+   (used to locate source #2 below) and the upstream Arduino library
+   (github.com/PontusO/ST87M01, source #4 below).
+2. https://usercontent.one/wp/ilabs.se/wp-content/uploads/2026/05/
+   Challenger_RP2350_NB-IoT_Datasheet_v1.2.pdf (official iLabs datasheet,
+   Rev 1.2, May 2026, fetched and read directly as a PDF via WebFetch).
+   Note: an older cached URL for the same datasheet
+   (.../2026/03/Challenger_RP2350_NB-IoT_Datasheet_v1.0.pdf) returned a
+   404 "Page not found" from the WordPress host - the correct current
+   URL (v1.2, May 2026) was found by re-fetching the product page's live
+   Documentation section links.
+   Key excerpts (Section 3.1 "External Header Pins"):
+     TXD=GPIO12 (UART0 RX), RXD=GPIO13 (UART0 TX), D5=GPIO23, D6=GPIO24,
+     D9=GPIO25, D10=GPIO2, D11=GPIO3, D12=GPIO6, D13=GPIO7, SS/A5=GPIO17,
+     SCK=GPIO18, MOSI=GPIO19, MISO=GPIO16, SDA=GPIO20, SCL=GPIO21,
+     A0=GPIO26, A1=GPIO27, A2=GPIO28, A3=GPIO29,
+     A4=GPIO1 ("GPIO / PWM - Generic GPIO (Not analog input)").
+   This table matches this board's own pins_arduino.h aliases exactly and
+   notably has NO row for GPIO15 (PIN_LED), GPIO0, or GPIO22 - confirming
+   none of the three are broken out to an external header pin.
+   Section 3.2 "Internal NB-IoT Module Connections" (verbatim):
+     "NB-IoT TX | GPIO4 | UART0_RX (pin 15) | RP2350 transmit to module"
+     "NB-IoT RX | GPIO5 | UART0_TX (pin 16) | Module transmit to RP2350"
+     "NB-IoT INT | GPIO8 | UART0_RTS (Pin 19) | Ring output to RP2350"
+     "Module RESET | GPIO9 | RESETn (pin 38) | Active-low hardware reset"
+     "Module WAKEUP | GPIO10 | WAKE_UP (pin 39) | Wake module from sleep"
+     "GNSS Bias Enable | GPIO11 | Connected to LDO enable | Enabled the
+      GNSS bias voltage"
+   - matches this board's own PIN_ST87M01_INT=(8u), PIN_ST87M01_RSTN=(9u),
+   PIN_ST87M01_WAKEUP=(10u), PIN_GNSS_BIAS_EN=(11u) exactly.
+   Section 4.3 "GNSS Positioning" adds: "The LDO is controlled by pin
+   GPIO11 on the RP2350 (GNSS_BIAS_EN) and is disabled by default by a
+   pull down resistor."
+   Section 5.3 "Debugging" (verbatim): "A BConnect SWD debug connector is
+   located easily accessable on the top side of the board and is
+   compatible with the iProbe from iLabs. The debug TXD signal on the
+   BSWD connector is connected to pin GPIO14 of the RP2350 and can be
+   configured as a Software UART pin." - confirms PIN_IPROBE_TX=(14u).
+   The datasheet does NOT state the onboard LED's active-high/active-low
+   polarity anywhere, and does not mention a NeoPixel or a discrete user
+   pushbutton (only the RST reset line, out of scope per precedent).
+3. https://github.com/earlephilhower/arduino-pico
+   variants/challenger_2350_nbiot/pins_arduino.h (upstream arduino-pico
+   source this repo's local copy is derived from, fetched directly via
+   curl) - confirmed byte-identical to the local copy in this repo
+   (PIN_LED=15, PIN_SERIAL2_TX/RX=4/5, PIN_ST87M01_INT/RSTN/WAKEUP=
+   8/9/10, PIN_GNSS_BIAS_EN=11, PIN_IPROBE_TX=14, and the same D0/D1/D5/
+   D6/D9-D13/A0-A5/SS/MOSI/MISO/SCK/SDA/SCL/RX/TX aliases).
+   Upstream boards.txt (fetched directly via curl) confirms
+   `challenger_2350_nbiot.build.led=` is empty (no LED_BUILTIN override)
+   and `.build.board=CHALLENGER_2350_NBIOT_RP2350`,
+   `.build.variant=challenger_2350_nbiot`.
+4. https://github.com/PontusO/ST87M01 src/ST87M01Boards.h (iLabs-authored
+   Arduino modem-driver library referenced by the datasheet and product
+   page, fetched directly via curl) - its
+   `ARDUINO_CHALLENGER_2350_NBIOT_RP2350` preset block wires
+   `reset=PIN_ST87M01_RSTN`, `wakeup=PIN_ST87M01_WAKEUP`,
+   `ring=PIN_ST87M01_INT` - independently corroborates the datasheet's
+   GPIO8/9/10 assignments straight from iLabs' own library source code.
+5. Local codebase: variants/rp2040/rp2350/challenger_2350_nbiot/
+   pins_arduino.h (pre-existing, unmodified this session) - verified
+   directly: the only `static const uint8_t` aliases are D0/D1/D5/D6/
+   D9-D13, A0-A5, SS/MOSI/MISO/SCK, SDA/SCL, RX/TX, resolving to GPIOs
+   {13,12,23,24,25,2,3,6,7,29,28,27,26,1,17,19,16,18,20,21} - none of the
+   modem pins (4,5,8,9,10,11), the debug pin (14), or the LED pin (15)
+   carry any alias.
+6. pfodWeb_src/build_boards.js (read directly, not executed/required, to
+   confirm parser behavior - parseEsp32Consts() only reads `static const
+   uint8_t` declarations, never `#define` macros like PIN_LED itself;
+   buildEsp32Board()'s allGpios set is the union of pins_arduino.h alias
+   GPIOs and chipGpios keys only - see line-numbered mechanism in the
+   board.json comment).
+7. variants/rp2040/rp2350/board.json (chip-level defaults - chipGpios:{}
+   deliberately empty, copied verbatim into this board's new board.json
+   except for the added chipGpios entry and board-specific comments).
+8. Precedent/schema reference, read in full before writing this board's
+   files: variants/rp2040/rp2040/challenger_2040_lte/board.json (genuine
+   cellular-modem sibling, same "omit chipGpios for unaliased dedicated
+   pins" reasoning applied here) and variants/rp2040/rp2040/
+   challenger_nb_2040_wifi/board.json (the "NB = No Battery, not NB-IoT"
+   false-friend warning - independently re-verified this board is a
+   genuine NB-IoT/cellular board via source #2's own "LTE Cat NB2
+   (NB-IoT)" banner and GCF/RED/RED-DA cellular certifications, unlike
+   that sibling). Also read variants/rp2040/rp2350/challenger_2350_
+   wifi6_ble5/pins_arduino.h and variants/rp2040/rp2350/challenger_2350_
+   bconnect/pins_arduino.h (same-chip-bucket, same-product-line siblings,
+   unaudited/no board.json - used only to confirm this product line does
+   carry a NEOPIXEL define on OTHER boards, GPIO22 on bconnect, and that
+   PIN_LED=7/D13 alias pattern differs per-board - out of scope to touch).
+9. WebSearch cross-checks: "iLabs Challenger RP2350 NB-IoT datasheet
+   ST87M01", "ST87M01 module NB-IoT GNSS chip specification" (STMicro
+   blog/product page/datasheet - independently confirms ST87M01-1301 is
+   STMicroelectronics' own in-house LTE Cat NB2 + GNSS + Wi-Fi-positioning
+   module), "ilabsGmbH github challenger_2350_nbiot pins_arduino.h" (led
+   to confirming Earle F. Philhower's arduino-pico core is the upstream
+   source and to locating the PontusO/ST87M01 library repo).
+10. rpipico2/board.json (variants/rp2040/rp2350/rpipico2/board.json) -
+    cross-checked as the strongest same-chip-bucket (RP2350) precedent
+    for the "every RP2040/RP2350 board audited to date is active-high"
+    claim (its own PIN_LED=GPIO25 entry: "active-high, confirmed via
+    official Raspberry Pi pico-sdk board header (pico2.h)").
+
+WHY NO chipGpios ENTRIES FOR THE MODEM/DEBUG PINS (GPIO4,5,8,9,10,11,14)
+--------------------------------------------------------------------
+build_boards.js's buildEsp32Board() (the parser the "rp2040" family
+routes through) only lists a GPIO in the Designer's pin picker if it
+appears either (a) as a `static const uint8_t` alias in pins_arduino.h,
+or (b) as a key in this board's chipGpios object:
+  `const allGpios = new Set(aliasesByGpio.keys());
+   for (const key of Object.keys(chipGpiosMap)) { ... allGpios.add(n); }`
+  (build_boards.js ~line 535-539)
+
+Since this board's pins_arduino.h already declares NO `static const
+uint8_t` alias resolving to GPIO4, 5, 8, 9, 10, 11, or 14, those seven
+GPIOs are already 100% absent from the Designer's pin list with zero
+board.json involvement. Adding chipGpios entries for them here would have
+been COUNTERPRODUCTIVE: build_boards.js unconditionally appends a "Check
+if available on board" note to ANY rp2040-family GPIO absent from
+pins_arduino.h, regardless of whether a chipGpios entry (with its own
+custom note) exists for it:
+  `if (!inPinsH && cfg.family !== 'esp32' && cfg.family !== 'esp8266')
+     noteParts.push('Check if available on board');`
+  (build_boards.js ~line 718)
+Adding entries here would re-add each pin to allGpios as a bare, visible
+"GPIO<n>" row carrying that redundant/misleading note - undoing the full
+concealment the pins_arduino.h omission already achieves. Same reasoning
+independently traced and documented this session on the
+challenger_2040_lte sibling.
+
+PER-PIN REASONING
+------------------
+GPIO4 (PIN_SERIAL2_TX): ST87M01 modem's dedicated UART TX line ("NB-IoT
+  TX | GPIO4 | UART0_RX (pin 15) | RP2350 transmit to module"). Not
+  general-purpose. No pins_arduino.h alias exists; already fully absent
+  from the Designer pin list. No board.json entry needed or added.
+
+GPIO5 (PIN_SERIAL2_RX): ST87M01 modem's dedicated UART RX line ("NB-IoT
+  RX | GPIO5 | UART0_TX (pin 16) | Module transmit to RP2350"). Same
+  reasoning as GPIO4.
+
+GPIO8 (PIN_ST87M01_INT): modem's ring/interrupt output line ("NB-IoT INT
+  | GPIO8 | UART0_RTS (Pin 19) | Ring output to RP2350"). Same reasoning
+  as GPIO4.
+
+GPIO9 (PIN_ST87M01_RSTN): modem's active-low hardware reset line, driven
+  by the RP2350 ("Module RESET | GPIO9 | RESETn (pin 38) | Active-low
+  hardware reset"). Same reasoning as GPIO4.
+
+GPIO10 (PIN_ST87M01_WAKEUP): modem's wake-from-sleep control line
+  ("Module WAKEUP | GPIO10 | WAKE_UP (pin 39) | Wake module from
+  sleep"). Same reasoning as GPIO4.
+
+GPIO11 (PIN_GNSS_BIAS_EN): GNSS antenna-bias LDO enable line ("GNSS Bias
+  Enable | GPIO11 | Connected to LDO enable | Enabled the GNSS bias
+  voltage"). Not general-purpose. Same reasoning as GPIO4.
+
+GPIO14 (PIN_IPROBE_TX): dedicated BConnect/SWD debug-connector software-
+  UART TX pin ("The debug TXD signal on the BSWD connector is connected
+  to pin GPIO14 ... can be configured as a Software UART pin"). Not
+  general-purpose. Same reasoning as GPIO4.
+
+GPIO15 (PIN_LED / LED_BUILTIN): tagged in the new board.json chipGpios
+  with ["digital_output", "pwm_output", "led_high"]. Presence confirmed
+  via this board's own pins_arduino.h and the byte-identical upstream
+  arduino-pico source; corroborated by absence from the datasheet's own
+  external header pin table (Section 3.1), confirming GPIO15 is a fixed
+  onboard LED not broken out to any header pin. UNLIKE the
+  challenger_2040_lte/challenger_nb_2040_wifi siblings, this board's
+  PIN_LED carries NO static-const D-number alias in pins_arduino.h at
+  all (only the #define, which build_boards.js's parser intentionally
+  does not read - see parseEsp32Consts() doc-comment), so without this
+  chipGpios entry GPIO15 would be completely ABSENT from the Designer's
+  pin list, not merely mistagged - this entry was required to surface it
+  at all. Active-high polarity is a cross-referenced inference: this
+  board's own datasheet does not state the active level, so the tag
+  relies on (a) every other RP2040/RP2350 board audited in this family to
+  date being confirmed or inferred active-high, none active-low
+  (challenger_2040_lte, challenger_nb_2040_wifi, rpipico2, etc.), and (b)
+  this board reusing the same iLabs Challenger product-line onboard-LED
+  reference circuit whose sibling boards' own datasheets (e.g.
+  challenger_rp2040_wifi) explicitly state "Active level: High".
+  digital_input capability dropped to match this repo's established
+  led_high precedent for dedicated onboard LED pins; pwm_output kept
+  since arduino-pico's analogWrite() works on any RP2040/RP2350 GPIO.
+
+No onboard NeoPixel found - confirmed absent from this board's own
+  pins_arduino.h, the byte-identical upstream arduino-pico source, and
+  the datasheet (no NEOPIXEL/PIN_NEOPIXEL reference anywhere), unlike the
+  challenger_2350_bconnect sibling in this same rp2350 chip bucket (which
+  does define NEOPIXEL=GPIO22 - that board is unaudited, out of scope).
+  No chipGpios tag applied.
+
+No onboard user button found - confirmed absent by the datasheet (only
+  the standard RST reset line is documented, not a normal GPIO on
+  RP2040/RP2350, out of scope per the rpipico2/board.json BOOTSEL/reset
+  precedent) and by the absence of any BUTTON-style define in
+  pins_arduino.h. No chipGpios tag applied.
+
+GPIO0 and GPIO22: no pins_arduino.h alias, and absent from every table in
+  the datasheet (external header pins, internal module connections,
+  debug section) despite the datasheet's own claim that "Pin assignments
+  follow the standard Challenger / Feather layout ... All other pins
+  remain fully available." No source consulted confirms a dedicated
+  function for either GPIO. Per this audit's "report NO CHANGE rather
+  than guess" guidance, no chipGpios entry was added; both remain fully
+  absent from the Designer's pin list exactly as pins_arduino.h already
+  leaves them - the safe default, since inventing a "general-purpose
+  spare pin" chipGpios entry without a confirmed source would risk
+  exposing a possibly-still-dedicated pin as user-wireable.
+
+GPIO15 carries no SPI/I2C/other bus alias on this board (SPI0 lives on
+  GPIO16-19, Wire0 on GPIO20-21), so the build_boards.js unconditional
+  bus-capability auto-append (the "confirmed button/LED pin also aliased
+  as SDA/SCL/SS/MOSI/MISO/SCK" bug class flagged for this audit) does not
+  apply here - no pins_arduino.h edit was needed. Likewise none of
+  GPIO4/5/8/9/10/11/14 collide with any SPI/I2C/UART alias either.
+
+OUT-OF-SCOPE OBSERVATION (flagged only, not fixed): this board's
+  pins_arduino.h aliases GPIO1 as "A4", and build_boards.js's default
+  capability derivation tags any GPIO with an "A<n>"-pattern alias as
+  analog_input - yet the datasheet's own header table explicitly
+  annotates "A4 | GPIO1 | GPIO / PWM | Generic GPIO (Not analog input)",
+  i.e. GPIO1 is NOT a real ADC-capable pin on this board (RP2350's 4 ADC
+  channels are physically fixed to GPIO26-29; A4 is just the
+  Feather-form-factor header-slot label reused for a plain digital pin
+  here). This is a pre-existing upstream pins_arduino.h/arduino-pico
+  naming quirk shared by every iLabs Challenger board in this repo
+  (identical A4=(1u) alias already present on challenger_2040_lte,
+  challenger_nb_2040_wifi, challenger_2350_wifi6_ble5, and
+  challenger_2350_bconnect), not introduced or fixable by this board's
+  own pin-exclusion audit - flagged for awareness of a possible future
+  non-audit fix only, matching the analogous GPIO20/CircuitPython gap
+  already flagged on the challenger_2040_lte sibling's own notes.txt.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax using a standalone
+  script (scratchpad/validate_nbiot_board_json.js) that strips `//` line
+  comments (skipping `https://`/`http://` occurrences) and then runs a
+  plain JSON.parse() - confirmed valid, confirmed chipGpios has exactly
+  one entry (key "15"), and confirmed connections is ["serial"]. No
+  build script was executed and build_boards.js was never require()'d,
+  per task instructions.
+- inputOnlyGpios/pinNotes/pwm/dac/adc values reproduce the chip-level
+  variants/rp2040/rp2350/board.json defaults verbatim except for the
+  added chipGpios entry and board-specific comments on displayName/
+  connections/pinNotes/chipGpios explaining the reasoning above.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2350/challenger_2350_nbiot/board.json (new
+  file - this board previously had none)
+- Created: boardsDetails/rp2040/rp2350/challenger_2350_nbiot/notes.txt
+  (this file)
+- pins_arduino.h: NOT modified this session (no dedicated pin was found
+  aliased as a bus signal, so the bug class this audit specifically
+  checks for does not apply; the file was otherwise already correct).

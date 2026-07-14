@@ -1,0 +1,76 @@
+Board: Franzininho WiFi (ESP32-S2) (chip: esp32s2)
+Date: 2026-07-14 (independent verification pass - batch E, real vendor research)
+
+Sources consulted:
+- Local repo copy of pins_arduino.h: `static const uint8_t PIN_RGB_LED = 18;`,
+  wired to RGB_BUILTIN/rgbLedWrite() and LED_BUILTIN via
+  `PIN_RGB_LED + SOC_GPIO_PIN_COUNT`.
+- Official Franzininho GitHub repository:
+  https://github.com/Franzininho/Franzininho-WIFI
+  - lists board features including "1 x Reset" and "1 x Boot" buttons and
+    "2 general-purpose LEDs" (see note on GPIO21/33 below); does not give
+    exact GPIO numbers for the RGB LED in the excerpt retrieved.
+- Rafael Aroca's board writeup (independent educator/blogger, ESP32-S2 +
+  CircuitPython + BIPES context):
+  https://rafaelaroca.wordpress.com/2022/01/09/esp32s2-circuitpython-and-bipes-franzininho-wifi/
+  - explicitly states "a NeoPixel RGB LED on GPIO18", confirming both the
+    pin number and the NeoPixel/WS2812 nature of the LED, independent of
+    this repo's own pins_arduino.h.
+- FritzenLab electronics board article:
+  https://fritzenlab.net/2024/04/11/franzininho-wifi-dev-board-esp32-s2/
+  - independently names GPIO21 and GPIO33 as two general-purpose onboard
+    LEDs (yellow and blue), with a MicroPython example
+    (`led = Pin(33, Pin.OUT)`, `led2 = Pin(21, Pin.OUT)`). This is a NEW
+    claim not present in the existing board.json/notes.txt and is
+    discussed below.
+- espboards.dev aggregator pages (franzininho-wifi-esp32s2 and
+  franzininho-wifi-msc-esp32s2) were also checked as a cross-check for the
+  GPIO21/33 LED claim, but returned inconsistent, apparently
+  auto-generated pinout text (one page referenced "GPIO22" with a 220-ohm
+  LED-to-ground legend, which doesn't match GPIO21/33 and doesn't fit the
+  ESP32-S2's actual GPIO map cleanly) - this source is unreliable and was
+  NOT used to confirm anything.
+
+Per-pin findings:
+- GPIO0: [digital_input, digital_output, pwm_output] - standard (also
+  boot-strapping pin per chip-level pinNotes). No button alias found in
+  pins_arduino.h; the official GitHub repo describes only "Reset" and
+  "Boot" buttons, which are bootloader/flash-mode controls, not
+  general-purpose GPIO buttons in the pfodWeb sense - CONFIRMED no change.
+- GPIO1-17: kept at chip-level default capability sets - standard, no
+  vendor source claims dedicated hardware on any of these.
+- GPIO18: tagged "led_neopixel" - CONFIRMED onboard addressable RGB LED.
+  pins_arduino.h declares PIN_RGB_LED = 18; independently corroborated by
+  Rafael Aroca's writeup ("a NeoPixel RGB LED on GPIO18") and referenced
+  again in FritzenLab's article. Capabilities: [digital_output,
+  pwm_output, led_neopixel]. No change needed.
+- GPIO21, GPIO33: kept at chip-level default
+  [digital_input, digital_output, pwm_output] - NOT tagged. UNCONFIRMED
+  NEW CLAIM (out of scope, not applied): FritzenLab's article and one
+  further web search both describe GPIO21/GPIO33 as two additional
+  onboard general-purpose LEDs (yellow/blue), and the official Franzininho
+  GitHub repo separately mentions "2 general-purpose LEDs" as a board
+  feature without giving GPIO numbers. Taken together these are
+  suggestive, but this claim is not corroborated by a primary
+  schematic/vendor pinout diagram, and the one aggregator site checked as
+  a further cross-check gave a third, inconsistent GPIO (22) for what
+  appears to be the same feature - a sign of low-quality/auto-generated
+  secondary data, not independent confirmation. Per the "never guess"
+  policy, GPIO21/33 are left untagged/generic here rather than tagged on
+  secondary-source evidence alone; this is flagged for a future pass with
+  access to the actual KiCad schematic (present in the Franzininho GitHub
+  repo's "Franzininho-WIFI-kicad" folder but not machine-readable via the
+  tooling available in this pass).
+- GPIO34-46: kept at chip-level default capability sets (including GPIO46
+  input-only) - standard, no vendor source claims dedicated hardware.
+
+Summary: GPIO18's led_neopixel tag is CONFIRMED by an independent source
+(Rafael Aroca's board writeup) beyond this repo's own pins_arduino.h/
+board.json, and the "no button" finding is likewise CONFIRMED (official
+GitHub repo only describes bootloader Reset/Boot controls). No changes
+were made to chipGpios. A new, currently-untagged claim surfaced during
+this research - that GPIO21/GPIO33 are onboard general-purpose LEDs - but
+it rests on secondary sources only (a blog post plus a vague README
+mention) and one aggregator cross-check actively disagreed on the GPIO
+number, so it was NOT applied; documented here for future follow-up with
+a primary schematic source.

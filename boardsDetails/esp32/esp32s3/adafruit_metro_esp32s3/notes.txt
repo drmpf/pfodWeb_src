@@ -1,0 +1,80 @@
+Board: adafruit_metro_esp32s3 (Adafruit Metro ESP32-S3), chip esp32s3
+Date: 2026-07-14 (independent verification pass - real vendor/upstream sources
+consulted, replacing the earlier documentation-backfill pass that only cited
+Adafruit's guide titles without confirming exact GPIO numbers)
+
+Sources consulted (real, independently fetched):
+1. Official pins_arduino.h, espressif/arduino-esp32 (the actual upstream
+   Arduino core this board.json is derived from):
+   https://github.com/espressif/arduino-esp32/blob/master/variants/adafruit_metro_esp32s3/pins_arduino.h
+   Relevant definitions (verbatim):
+     #define LED_BUILTIN 13
+     #define PIN_NEOPIXEL 46
+     #define NEOPIXEL_NUM 1
+     #define PIN_BUTTON1 0  // BOOT0 switch
+2. Adafruit's "Read a Push-button" guide (confirms the Boot button is a
+   real onboard pushbutton, not just the bare BOOT0 strap):
+   https://learn.adafruit.com/adafruit-metro-esp32-s3/read-a-push-button
+3. Adafruit's NeoPixel LED guide (confirms onboard addressable NeoPixel,
+   silkscreen labeled "Neo", next to the JTAG connector):
+   https://learn.adafruit.com/adafruit-metro-esp32-s3/neopixel-led
+4. Adafruit's Metro ESP32-S3 pinouts page (describes the "L" LED and the
+   Boot/Reset buttons by silkscreen label and position):
+   https://learn.adafruit.com/adafruit-metro-esp32-s3/pinouts
+
+Cross-check discrepancy investigated and resolved: while researching this
+board, a different GitHub repository (avencan/Aventen-S3-Sync_ArduinoSupport
+- an unrelated third party's fork of arduino-esp32, used to add support for
+their own "Aventen S3 Sync" board, see that board's separate notes.txt in
+this same audit batch) was found to carry a stale/outdated copy of
+variants/adafruit_metro_esp32s3/pins_arduino.h with PIN_NEOPIXEL=45 and
+different SPI pin assignments (SS=21, MOSI=35, SCK=36, MISO=37) than the
+current upstream. The actively-maintained espressif/arduino-esp32 master
+branch (source 1 above - the actual upstream this repo's board.json is
+built from) is authoritative and defines PIN_NEOPIXEL=46 with SS=45,
+MOSI=42, SCK=39, MISO=21. This matches the board.json's existing GPIO46
+tag exactly, so no correction was made. (This discrepancy is plausibly
+explained by Adafruit's Nov 2023 Rev B hardware fix, mentioned in their
+blog, which moved the NeoPixel and SPI/SD pins to resolve a PSRAM
+conflict; the fork's snapshot appears to predate that fix.)
+
+Per-pin findings:
+- GPIO0: tagged "button" - CONFIRMED onboard BOOT0/DFU pushbutton.
+  #define PIN_BUTTON1 0 // BOOT0 switch appears verbatim in the official
+  pins_arduino.h, and Adafruit's "Read a Push-button" guide documents it
+  as a real labelled onboard button ("Boot" button, top-left area, used
+  to enter the ROM bootloader) - unlike a bare unlabelled strapping pin,
+  this board has an actual pushbutton wired to GPIO0. Capabilities:
+  ["digital_input", "button"].
+- GPIO13: tagged "led_high" - CONFIRMED active-high onboard "L" LED.
+  LED_BUILTIN=13 in the official pins_arduino.h; Adafruit's Blink guide
+  documents digitalWrite(led, HIGH) turning it on. Capabilities:
+  ["digital_output", "pwm_output", "led_high"].
+- GPIO46: tagged "led_neopixel" - CONFIRMED onboard addressable NeoPixel.
+  PIN_NEOPIXEL=46 in the official (current, actively-maintained)
+  pins_arduino.h; Adafruit's NeoPixel LED guide confirms the onboard
+  NeoPixel silkscreen-labeled "Neo". Capabilities: ["digital_output",
+  "pwm_output", "led_neopixel"].
+- GPIO1,2,3,4,5,6,7,8,9,10: no tag - standard chip-level capabilities
+  ["analog_input", "digital_input", "digital_output", "pwm_output"]. No
+  vendor source ties these to dedicated onboard hardware.
+- GPIO11,12,14,15,16,17,18: no tag - standard ADC2-range capabilities
+  ["analog_input_serial", "digital_input", "digital_output", "pwm_output"].
+- GPIO21,38,39,40,41,42,43,44,45,47,48: no tag - standard capabilities
+  ["digital_input", "digital_output", "pwm_output"]. Several of these
+  (21=SS/MISO, 39=SCK, 40/41=TX/RX, 42=MOSI, 47/48=SDA/SCL) carry default
+  software peripheral assignments per pins_arduino.h but are not
+  physically dedicated to onboard hardware (no fixed-function component
+  soldered to them), so correctly left untagged/unexcluded per this
+  repo's "never guess" methodology.
+- No GPIOs were excluded from this board's chipGpios map - the full
+  chip-level default pin set is present unchanged apart from the three
+  tags above.
+
+Summary: GPIO0 tagged button, GPIO13 tagged led_high, GPIO46 tagged
+led_neopixel - all three CONFIRMED via the official, actively-maintained
+espressif/arduino-esp32 pins_arduino.h (which uses these exact GPIO
+numbers, including its own "// BOOT0 switch" comment) plus Adafruit's own
+guides. A stale third-party fork momentarily suggested GPIO45 for the
+NeoPixel; this was investigated and rejected in favor of the authoritative
+current upstream. No corrections were required; no pins excluded.

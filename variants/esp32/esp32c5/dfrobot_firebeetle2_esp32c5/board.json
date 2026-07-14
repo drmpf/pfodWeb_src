@@ -1,0 +1,100 @@
+// pfodWeb NOTE (2026-07-12): per-board override for the DFRobot FireBeetle 2
+// ESP32-C5 (SKU DFR1222). Full copy of the chip-level
+// variants/esp32/esp32c5/board.json, with one addition from a
+// dedicated-hardware pin-exclusion + opportunistic button/LED/battery audit
+// (see boardsDetails/esp32/esp32c5/dfrobot_firebeetle2_esp32c5/notes.txt for
+// the full research trail). Triggered by a discovery sweep that flagged this
+// variant's pins_arduino.h GDI_* macro block (GDI_BLK, GDI_SPI_SCLK,
+// GDI_DC, GDI_RES, GDI_CS, GDI_SDCS, GDI_FCS, GDI_TCS, GDI_SCL, GDI_SDA,
+// GDI_INT, GDI_BUSY_TE) for review.
+//
+// GDI display connector: NOT excluded, no change made. wiki.dfrobot.com/dfr1222/
+// and the CNX Software coverage of this board both confirm the 18-pin GDI
+// FPC connector is an OPTIONAL plug-in expansion interface ("designed to add
+// an SPI/I2C touchscreen display", with six compatible displays from 1.54in
+// to 3.5in listed as separate purchasable accessories) - not a fixed onboard
+// display. This matches the established DFRobot GDI pattern audited in
+// parallel this session for the Beetle ESP32-C3. Every GDI_* macro in this
+// board's pins_arduino.h is a #define pointing at an already-existing pin
+// alias (SCK/MOSI/MISO/SCL/SDA/D2/D3/D6/D11/D12/D13/A2) - no new pin
+// declarations were introduced, so no pin needed to be dropped from the
+// general-purpose pool. All chip-level capabilities are left as-is for
+// every GDI-referenced pin.
+//
+// GPIO15 (LED_BUILTIN, silkscreen "15/D13"): CONFIRMED onboard LED via
+// wiki.dfrobot.com/dfr1222/ and CNX Software ("LED | 15/D13 | Onboard LED").
+// No source states active-high/active-low polarity, so no led_high/led_low
+// tag was applied (unconfirmed - left at chip defaults, per this project's
+// no-guess policy - same call made for dfrobot_firebeetle2_esp32e's
+// LED_BUILTIN=2/D9). Note this pin is also GDI_BLK (the optional display's
+// backlight control line) when a GDI display module is plugged in - not a
+// conflict while the connector is unpopulated, and not a reason to exclude
+// it since GDI itself is optional.
+//
+// GPIO28 (D9 in this board's pins_arduino.h, silkscreen "28/BOOT"): tagged
+// "button". CONFIRMED onboard BOOT/User pushbutton - wiki.dfrobot.com/dfr1222/
+// and CNX Software both independently describe it ("28/BOOT button (GPIO28)";
+// "Reset and Boot/User (GP28) buttons"), and this board's own pins_arduino.h
+// gives it a named Arduino alias (D9), unlike the SparkFun Thing Plus
+// ESP32-C6's BOOT/GPIO9 pin (no alias at all in that board's pins_arduino.h,
+// left untagged - see sparkfun_esp32c6_thing_plus/board.json). Tagged
+// capabilities restricted to ["digital_input","button"] (digital_output/
+// pwm_output dropped), matching this repo's established convention for
+// confirmed onboard BOOT-labelled pushbuttons (waveshare_esp32_c6_zero
+// GPIO9, Pcbcupid_GLYPH_C6 GPIO9, soldered_nula_mini_esp32c6 GPIO9,
+// dfrobot_firebeetle2_esp32e GPIO27). Alias-collision check: this board's
+// TX/RX/SDA/SCL/SS/MOSI/MISO/SCK aliases are 11/12/9/10/27/24/25/23 - none
+// of those equals 28, so GPIO28 is not double-aliased as a bus pin and no
+// i2c/spi/uart capability would be silently contaminating this pin.
+//
+// GPIO1 ("IO1" silkscreen, battery voltage detection pin): NOT tagged, no
+// change made. wiki.dfrobot.com/dfr1222/ and CNX Software both confirm IO1
+// is the battery-voltage-detection pin for the board's 2-pin LiPo
+// connector, but unlike axiometa_genesis_one's VBAT_SENSE or
+// Pcbcupid_GLYPH_C6's BAT_MEASURE, this board's own pins_arduino.h gives
+// GPIO1 no named Arduino alias at all (no A0/BAT/VBAT constant defined) -
+// same situation as the SparkFun Thing Plus ESP32-C6's untagged BOOT pin.
+// Left at chip defaults with no documentation note, to avoid attaching
+// board-specific meaning to a pin the header itself does not name.
+//
+// GPIO0 ("IO0" silkscreen, secondary 3.3V rail / 3V3_C enable control): not
+// a button, LED, or battery-sense function - out of scope for this audit,
+// no change made. Also has no named alias in this board's pins_arduino.h.
+{
+  "boardName": "ESP32C5",
+  "displayName": "ESP32-C5 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "4":  "Must be LOW or floating on reboot",
+    "5":  "Must be LOW or floating on reboot",
+    "6":  "Must be LOW or floating on reboot",
+    "23": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "26": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "27": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "28": { "capabilities": ["digital_input", "button"], "note": "BOOT/User pushbutton (silkscreen \"28/BOOT\") - vendor-confirmed, see pfodWeb NOTE above" }
+  }
+}

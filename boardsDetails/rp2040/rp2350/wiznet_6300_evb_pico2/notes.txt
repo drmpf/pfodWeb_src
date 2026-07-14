@@ -1,0 +1,150 @@
+Board: wiznet_6300_evb_pico2 (chip: rp2350) — WIZnet W6300-EVB-Pico2
+Audited: 2026-07-12
+
+SOURCES CONSULTED
+------------------
+1. Local repo files:
+   - variants/rp2040/rp2350/board.json (chip-level defaults; chipGpios: {} deliberately
+     empty, same rationale as the rp2040 bucket)
+   - variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json (schema/comment-style
+     precedent named in the task brief)
+   - variants/rp2040/rp2040/rpipico/board.json (closest existing per-board precedent —
+     same GPIO25/PIN_LED active-high LED tagging pattern, reused here)
+   - variants/rp2040/rp2350/wiznet_6300_evb_pico2/pins_arduino.h — this board's own file
+     is only `#define PICO_RP2350A 1` + `#include "../generic/pins_arduino.h"`, i.e. a
+     plain, undifferentiated Pico 2 pin map (confirms the task brief's expectation)
+   - variants/rp2040/rp2350/generic/pins_arduino.h + generic/common.h (resolved include
+     chain) — common.h declares D0-D22 static-const aliases unconditionally (all default
+     to their own GPIO number since no board-specific __PIN_Dn override exists), plus
+     A0-A2=GPIO26-28 and SS=PIN_SPI0_SS(17)/MOSI=PIN_SPI0_MOSI(19)/MISO=PIN_SPI0_MISO(16)/
+     SCK=PIN_SPI0_SCK(18)/SDA=PIN_WIRE0_SDA(4)/SCL=PIN_WIRE0_SCL(5). GPIO23/24/25/29 are
+     deliberately NOT given D-aliases (per common.h's own pfodWeb NOTE) since they're
+     wired to onboard circuitry on the reference Pico/Pico2 design — this means GPIO25
+     (the LED, per WIZnet's own docs below) has NO alias at all in the inherited file and
+     would not appear as a pin without an explicit chipGpios entry.
+   - pfodWeb_src/build_boards.js buildEsp32Board() (used for family "rp2040") — read in
+     full to confirm: (a) a chipGpios entry's "capabilities" array only replaces the
+     *base* digital_input/digital_output/pwm_output/analog_input/dac_output derivation;
+     the spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl auto-append (matching this
+     board's own pins_arduino.h-resolved SS/MOSI/MISO/SCK/SDA/SCL consts) happens
+     unconditionally afterwards and cannot be suppressed via chipGpios; (b) omitting the
+     "capabilities" key entirely falls through to the OLD default-derivation branch
+     (re-adding digital_input/output/pwm) rather than yielding zero capabilities — a bare
+     "capabilities": [] is required to fully neutralise a pin.
+2. Web research (WebSearch/WebFetch):
+   - docs.wiznet.io W6300-EVB-Pico2 product page
+     (https://docs.wiznet.io/Product/Chip/Ethernet/W6300/w6300-evb-pico2) — publishes a
+     verbatim GPIO table, reproduced here in full:
+       GPIO15 (O) "Connected to INTn on W6300"
+       GPIO16 (O) "Connected to CSn on W6300"
+       GPIO17 (O) "Connected to SCLK on W6300"
+       GPIO18 (I/O) "Connected to IO0 (MOSI) on W6300 (QSPI)"
+       GPIO19 (I/O) "Connected to IO1 (MISO) on W6300 (QSPI)"
+       GPIO20 (I/O) "Connected to IO2 on W6300 (QSPI)"
+       GPIO21 (I/O) "Connected to IO3 on W6300 (QSPI)"
+       GPIO22 (O) "Connected to RSTn on W6300"
+       GPIO24 (I) "VBUS sense - high if VBUS is present, else low"
+       GPIO25 (O) "Connected to user LED"
+       GPIO29 (I) "Used in ADC mode (ADC3) to measure VSYS/3"
+     plus explicit text: "Pins GPIO15-GPIO22 are dedicated to W6300 Ethernet
+     communication and cannot be repurposed if using the Ethernet function." The page
+     did not state LED polarity or mention any push-button beyond BOOTSEL.
+   - WIZnet-PICO-C firmware example (github.com/WIZnet-ioNIC/WIZnet-PICO-C) — board pin
+     config for W6300-EVB-Pico2/W6300-EVB-Pico independently corroborates the exact same
+     assignment: PIO_IRQ_PIN=15, PIN_CS=16, PIO_SPI_SCK_PIN=17, PIO_SPI_DATA_IO0_PIN=18,
+     PIO_SPI_DATA_IO1_PIN=19, PIO_SPI_DATA_IO2_PIN=20, PIO_SPI_DATA_IO3_PIN=21,
+     PIN_RST=22.
+   - Attempted to pull the vendor schematic PDF (github.com/Wiznet/Hardware-Files-of-
+     WIZnet, SCH-W6300-EVB-Pico2.pdf) directly and via raw.githubusercontent.com for a
+     independent net-name/LED-polarity cross-check; WebFetch could not extract readable
+     text/vector content from the binary PDF either way. Relied on the docs.wiznet.io
+     GPIO table + WIZnet-PICO-C firmware corroboration instead, which agree exactly on
+     all eight GPIO15-22 assignments (two independent authoritative WIZnet sources).
+   - No independent LED-polarity confirmation found for this specific board; treated as
+     active-high by the same standard Pico/Pico2 reference-design LED convention already
+     confirmed and applied to rpipico's board.json in this database (LED anode via series
+     resistor to the GPIO, cathode to GND) — this board's own marketing material
+     describes it as working "basically the same as a Raspberry Pi Pico board" with
+     Ethernet added, and no inverted-LED wiring is documented anywhere consulted.
+
+PER-PIN REASONING
+------------------
+- GPIO15 (INTn / PIO_IRQ_PIN): dedicated interrupt line asserted BY the W6300 to signal
+  the RP2350 — not general purpose (driving it as output would contend with the chip).
+  chipGpios capabilities set to [] (bare empty array, not an omitted key — see build_
+  boards.js note above), note only. Confirmed by both WIZnet sources.
+- GPIO16 (CSn / PIN_CS): dedicated SPI/QSPI chip-select output from the RP2350 to the
+  W6300 — not general purpose. capabilities: []. NOTE: this board's inherited generic
+  pins_arduino.h happens to alias GPIO16 as SPI0 MISO (PIN_SPI0_MISO=16u, a plain-Pico
+  reference-design coincidence unrelated to this board's real wiring), which causes
+  build_boards.js to unconditionally append a "spi_miso" capability tag regardless of
+  the chipGpios override (see build_boards.js note above — this auto-append lives
+  outside the chipGpios branch and cannot be suppressed without editing the shared
+  generic/pins_arduino.h file, out of scope for a single-board audit since many other
+  RP2350 boards depend on that file's SPI0 aliases unchanged). Documented explicitly in
+  both the board.json comment block and each affected pin's "note" so the mismatch
+  between the auto-tag label and the real function is traceable.
+- GPIO17 (SCLK / PIO_SPI_SCK_PIN): dedicated QSPI clock output — not general purpose.
+  capabilities: []. Same alias-collision gotcha as GPIO16: inherited generic file
+  labels GPIO17 as SPI0 SS (PIN_SPI0_SS=17u), triggering an unavoidable auto-appended
+  "spi_ss" tag that does not reflect the real SCLK function.
+  Confirmed by both WIZnet sources.
+- GPIO18 (MOSI/IO0 / PIO_SPI_DATA_IO0_PIN): dedicated QSPI data line — not general
+  purpose. capabilities: []. Same gotcha: inherited generic file labels GPIO18 as SPI0
+  SCK (PIN_SPI0_SCK=18u), triggering an unavoidable auto-appended "spi_sck" tag.
+  Confirmed by both WIZnet sources.
+- GPIO19 (MISO/IO1 / PIO_SPI_DATA_IO1_PIN): dedicated QSPI data line — not general
+  purpose. capabilities: []. Same gotcha: inherited generic file labels GPIO19 as SPI0
+  MOSI (PIN_SPI0_MOSI=19u), triggering an unavoidable auto-appended "spi_mosi" tag.
+  Confirmed by both WIZnet sources.
+- GPIO20 (IO2 / PIO_SPI_DATA_IO2_PIN): dedicated QSPI data line, only used in
+  QSPI/Quad mode — not general purpose. capabilities: []. No alias collision (GPIO20
+  has no SPI0/Wire0 role in the inherited generic file, only the plain D20 alias).
+  Confirmed by both WIZnet sources.
+- GPIO21 (IO3 / PIO_SPI_DATA_IO3_PIN): dedicated QSPI data line, only used in
+  QSPI/Quad mode — not general purpose. capabilities: []. No alias collision.
+  Confirmed by both WIZnet sources.
+- GPIO22 (RSTn / PIN_RST): dedicated reset output from the RP2350 to the W6300 — not
+  general purpose (toggling it outside the Ethernet driver would reset the chip
+  mid-operation). capabilities: []. No alias collision. Confirmed by both WIZnet
+  sources.
+- GPIO24 (VBUS sense) and GPIO29 (VSYS/3 ADC3): confirmed by docs.wiznet.io as generic
+  RP2350/Pico2 reference-design features, NOT part of the W6300 Ethernet interface, and
+  already have no alias in the inherited generic pins_arduino.h chain (per common.h's
+  own pfodWeb NOTE) — so they never appear as a pin in the Designer's list regardless.
+  Out of scope for this Ethernet-focused audit (a chip-generic concern, not specific to
+  this board); no chipGpios entry added, consistent with rpipico's board.json handling
+  of the identical GPIO24/29 situation.
+- GPIO25 (onboard user LED): DOES have no alias in the inherited generic file (see
+  common.h note above) so without an explicit entry it would not appear as a pin at
+  all. Confirmed as "Connected to user LED" via docs.wiznet.io. Tagged
+  ["digital_output", "pwm_output", "led_high"], reusing this database's established
+  rpipico precedent for the identical standard-Pico LED circuit (active-high assumed by
+  convention — no explicit polarity statement found for this specific board, but no
+  inverted-LED wiring documented anywhere either, and the vendor markets this board as
+  working "basically the same as a Raspberry Pi Pico board" with Ethernet added).
+  digital_input dropped to match the established led_high precedent for dedicated
+  onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any
+  RP2040/RP2350 GPIO.
+- No onboard push-button beyond BOOTSEL is documented anywhere consulted. BOOTSEL is
+  not a GPIO-addressable pin on RP2040/RP2350 (arduino-pico exposes it only as a
+  non-GPIO `BOOTSEL` boolean via a QSPI CS-line trick, same as every other board in this
+  database) — out of scope, not a missed tag. No onboard NeoPixel is documented either.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2350/wiznet_6300_evb_pico2/board.json (full file, copied from
+the chip-level variants/rp2040/rp2350/board.json defaults) adding nine chipGpios
+overrides: GPIO15-22 (W6300 Ethernet chip INTn/CSn/SCLK/MOSI-IO0/MISO-IO1/IO2/IO3/RSTn,
+all confirmed via docs.wiznet.io's own GPIO table and independently corroborated by
+WIZnet's WIZnet-PICO-C firmware pin config) each set to capabilities: [] with a note
+documenting their real function — including an explicit call-out of an unavoidable
+build_boards.js alias-collision quirk that auto-tags GPIO16/17/18/19 with mismatched
+spi_miso/spi_ss/spi_sck/spi_mosi labels inherited from the generic Pico SPI0 aliases,
+which cannot be suppressed without editing the shared generic pins_arduino.h (out of
+scope) — and GPIO25 (onboard user LED, previously unexposed since it has no alias in
+the inherited generic file at all) tagged ["digital_output","pwm_output","led_high"],
+active-high by the same Pico/Pico2 reference-design convention already applied to
+rpipico's board.json. GPIO24/29 required no action (generic Pico2 VBUS/VSYS-sense
+pins, not W6300-related, already alias-less and out of scope). No onboard button or
+NeoPixel found in any consulted source.

@@ -1,0 +1,181 @@
+ttgo-t1 button/LED research notes
+==================================
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32\ttgo-t1
+Board: LILYGO/TTGO T1 (V1.3), a plain ESP32 devkit with an onboard microSD
+card slot - NOT a LoRa/OLED board (distinct product line from the already-
+audited ttgo-lora32-v2, which shares the same GPIO22=LED_BUILTIN alias but
+turned out to be a misleading generic template artifact for that board).
+board.json already existed (chip-level ESP32 default, dedicated-hardware
+pin-exclusion pass already applied in an earlier session - SD card SPI pins
+2/13-15 already excluded, per its existing top-of-file NOTE comment).
+pins_arduino.h already existed, unmodified this session.
+
+pins_arduino.h aliases found (NOT trusted as evidence per task rules, only
+used to pick candidate pins to go verify):
+  LED_BUILTIN = GPIO22
+  TX = GPIO1, RX = GPIO3 (checked - GPIO22 does not coincide with TX/RX)
+  SDA = GPIO21, SCL = GPIO23 (checked - GPIO22 is NOT aliased as SDA/SCL/
+    SS/MOSI/MISO/SCK anywhere in this file; no bus-capability collision to
+    fix for this candidate pin)
+  No KEY_BUILTIN/BUTTON alias present anywhere in this file. GPIO0 is only
+  aliased as A11/T1 (analog/touch capability names), never as a button
+  alias, so no button candidate was identified for this board and none was
+  researched further - consistent with the established policy of only
+  investigating aliases the board's own file actually suggests, not
+  inventing unaliased candidates.
+
+CRITICAL DIFFERENCE FROM ttgo-lora32-v2 (found in this file's own text,
+before any external research): pins_arduino.h lines 13-16 carry a specific,
+board-authored comment, not a generic template line:
+  "static const uint8_t SDA = 21;
+   // Despite the many diagrams from TTGO showing SCL on pin 22, due to the
+   // on-board LED also on this pin it is better to shift to 23 instead to
+   // avoid issues.
+   static const uint8_t SCL = 23;"
+This is a deliberate engineering decision (deviating from TTGO's own
+diagrams, which show SCL on GPIO22) made specifically to avoid an I2C/LED
+conflict - not a bare "LED_BUILTIN = 22" alias with no explanation. Grepped
+the entire variants/esp32 tree for this exact comment text; it appears
+ONLY in this one file, confirming it is board-specific, not a copy-pasted
+generic template line.
+
+SOURCES CONSULTED
+------------------
+1. This board's own pins_arduino.h comment (quoted above). Treated as
+   strong (not proof-positive, but qualitatively much stronger than a bare
+   alias) first-party evidence that GPIO22 carries a REAL onboard LED on
+   the TTGO T1, because: (a) it is specific to this exact file/board, not
+   shared boilerplate found elsewhere in the tree, (b) it explains a
+   deliberate design trade-off (moving SCL against TTGO's own diagrams)
+   that only makes sense if the LED conflict is real, (c) it references
+   "the many diagrams from TTGO" showing pin 22, implying the file's
+   author cross-referenced actual TTGO documentation.
+
+2. https://github.com/lilygo/esp32-ttgo-t1 (official LilyGO/Xinyuan-LilyGO
+   GitHub repo for this exact board - "self-developed version of ESP32
+   equipped with CP2102 serial chip, Bluetooth V4.2 and WiFi"). Repo header
+   confirms this is the right product family; README body text did not
+   surface LED/button details via WebFetch (image-only README).
+
+3. https://raw.githubusercontent.com/LilyGO/ESP32-TTGO-T1/master/T1_V1.3.pdf
+   Official vendor schematic (KiCad-style, "T1_V1.3", dated 2019-03-04).
+   Downloaded and read directly (PDF text extraction, not image rendering -
+   no pdftoppm/ImageMagick/ghostscript/PyMuPDF/pdf2image available in this
+   environment, and installing one was out of scope - not a project
+   dependency, plus this environment's own CLAUDE.md requires asking before
+   adding dependencies). The extracted text is a linearized dump of all
+   schematic text objects with NO preserved wire/net connectivity, so exact
+   component-to-GPIO tracing was not possible from it. It DID confirm:
+     - Three real discrete LED components exist on the board: "LED_G"
+       (Blue, R17, positioned near the U7 battery-charge IC / VBAT / PH2-WO
+       battery connector - almost certainly a hardware charge-status
+       indicator, not GPIO-controlled - see source 6 below for
+       corroboration from a sibling TTGO board's gallery page).
+       "LED_G1" (Green, R19, 2K) and "LED_G2" (Red, R20, 2K), both
+       positioned in the schematic text stream near a component labeled
+       "U2". Text-linearization order in a PDF does not reliably reflect
+       physical/electrical adjacency, so which (if any) of these two maps
+       to GPIO22 could NOT be confirmed from the text extraction alone.
+     - U1 is confirmed as ESP32-D0WDQ6 (matches TX=1/RX=3/standard ESP32
+       pinout used in this board's pins_arduino.h).
+     - No net label reading "GPIO22" or "LED_BUILTIN" was found directly
+       adjacent to any LED component in the extracted text.
+
+4. https://www.espboards.dev/esp32/ttgo-t1/ - Third-party pinout page.
+   Explicitly checked and REJECTED as evidence: this page's own pin table
+   lists "OLED SCL", "LoRa SCLK", "LoRa CS", "LoRa MISO/MOSI/DIO0/RST",
+   and "DS3231 SDA/SCL" for a board that has NONE of those peripherals
+   (TTGO T1 is a plain SD-card devkit, no LoRa radio, no OLED, no RTC) -
+   this is unmistakably recycled/templated content shared across multiple
+   unrelated "TTGO"-named board pages on that site, not board-specific
+   research. Its claim of "GPIO22 LED_BUILTIN" was therefore NOT counted
+   as independent corroboration, only as (uncorroborated) repetition of
+   the same pins_arduino.h alias already known and already discounted per
+   task rules.
+
+5. https://www.espressif.com / arduino-esp32 GitHub issue #2740 ("Arduino
+   board support/definition for TTGO T1 (v1.3+)") - discusses only SD-card
+   SPI pin configuration, no mention of LED/button.
+
+6. https://homeding.github.io/boards/esp32/ttgogallery.htm (TTGO Gallery,
+   a different sibling board "T14") - confirms the general TTGO-board
+   pattern of a charge-status "Blue LED when charging" separate from any
+   GPIO-controlled LED, corroborating source 3's inference that this
+   board's Blue "LED_G" (near the battery charge IC) is a hardware charge
+   indicator, not the GPIO22 LED.
+
+7. https://www.paleotechnologist.net/?p=4689 ("TTGO T-Display I2C pin
+   location") - IMPORTANT cross-check, explicitly references this exact
+   file (author quotes the literal path
+   "...variants\ttgo-t1\pins_arduino.h" and the same SDA/SCL-shift
+   comment). The author was using a physically DIFFERENT board (a TTGO
+   T-Display, a TFT-screen board with no SD slot) but selected the
+   "ttgo-t1" board profile in Arduino IDE as a rough substitute. They ran
+   a blink test on GPIO22 on their T-Display hardware and observed no LED
+   response, concluding "whatever LED was associated with Pin 22 was
+   deleted long ago" - but this negative result is about T-Display
+   hardware, not genuine T1 hardware, so it does NOT disprove the LED on
+   an actual T1 board; it only shows the ttgo-t1 profile's LED claim does
+   not hold when mis-applied to different physical hardware. Noted as a
+   partial caution, not treated as evidence against this board's own LED.
+
+8. General WebSearch sweeps ("TTGO T1 SD card ESP32 board GPIO22 LED",
+   "TTGO T1 esp32 pin 22 LED blue schematic anode cathode", "Esp32_radio
+   TTGO T1 GPIO22 LED Smallenburg", "TTGO T1 esp32 sd card blue led OR
+   power led review unboxing") and page fetches of eBay/AliExpress/
+   ChipGlobe listings, the ESP32-Radio-TTGO README, and espressif/
+   arduino-esp32 discussion #6823 (a different board, T-Beam) - none
+   produced a specific statement of GPIO22's LED polarity (active-high vs
+   active-low) for this board. No source - vendor or third-party - states
+   HIGH or LOW for this pin.
+
+PIN CONSIDERED
+---------------
+GPIO22 (pins_arduino.h alias LED_BUILTIN):
+  IDENTITY: Judged CONFIRMED (moderate-to-high confidence, not absolute
+  certainty) as a genuine onboard LED, based on source 1's board-specific,
+  non-generic engineering comment - a materially different evidence bar
+  than ttgo-lora32-v2's bare, unexplained alias (which was correctly left
+  untagged as a probable copy-paste artifact). This is a deliberate
+  "the LED is real" finding, not a coin flip.
+  POLARITY: NOT CONFIRMED. Despite the vendor schematic PDF being
+  available and read (source 3), the PDF's text-only extraction (no
+  schematic-rendering tool available in this environment) could not trace
+  which specific LED component, if any, is wired to the GPIO22 net, nor
+  its anode/cathode orientation. No other source (vendor page, third-party
+  pinout site, GitHub issues, forum/blog posts, product listings) states
+  the polarity either.
+  DECISION: Per task policy ("tag led_high/led_low if confirmed AND
+  polarity known - never guess"), NO TAG APPLIED. board.json's existing
+  chipGpios["22"] entry (["digital_input","digital_output","pwm_output"])
+  is left UNCHANGED. This is a deliberate "identity yes, polarity unknown,
+  no guess" outcome, matching the precedent already established elsewhere
+  in this audit for boards blocked specifically by the lack of a
+  schematic-rendering tool (see playbook section 12, "Espectro's
+  polarity-quality bar" - dfrobot_firebeetle2_esp32c5/c6, esp_c3_m1_i_kit,
+  intorobot-fig, sparkfun_pro_micro_esp32c3 all left similarly untagged).
+  RECOMMENDATION: Flag for a future polarity-focused re-pass if a PDF/
+  schematic-image-rendering tool (pdftoppm, ImageMagick, ghostscript,
+  PyMuPDF, pdf2image, etc.) becomes available in this environment - the
+  vendor schematic PDF (T1_V1.3.pdf) IS available and would very likely
+  resolve this with a visual read of the LED_G1/LED_G2 component
+  connections near "U2".
+
+BUS-CAPABILITY COLLISION CHECK (per task step 4)
+--------------------------------------------------
+GPIO22 is NOT aliased as SDA/SCL/SS/MOSI/MISO/SCK anywhere in this file
+(SDA=21, SCL=23 - the file's own comment explains SCL was deliberately
+moved OFF of GPIO22 specifically to avoid the LED conflict). No collision
+exists for this candidate pin; no alias line needed to be deleted.
+
+SUMMARY OF WHAT WAS APPLIED
+-----------------------------
+NO CHANGE to board.json. GPIO22's LED identity is judged confirmed (real
+onboard LED, distinguishing this board from the sibling ttgo-lora32-v2
+case where the same alias was a template artifact), but polarity could not
+be confirmed from any available real evidence (vendor schematic PDF read
+but not renderable to trace connectivity/orientation in this environment),
+so per the "never guess" policy no led_high/led_low capability tag was
+applied. No button candidate was identified in this board's pins_arduino.h
+(no KEY_BUILTIN/BUTTON alias present), so none was researched. pins_
+arduino.h was not modified (no bus-alias collision existed to fix).

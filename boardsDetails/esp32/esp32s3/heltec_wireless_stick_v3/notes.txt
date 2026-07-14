@@ -1,0 +1,90 @@
+Board: heltec_wireless_stick_v3 (variants/esp32/esp32s3/heltec_wireless_stick_v3)
+Researched: 2026-07-11
+
+1) SOURCES CONSULTED
+---------------------
+https://resource.heltec.cn/download/Wireless_Stick_V3/HTIT-WS_V3(Rev1.0).pdf
+  Official Heltec datasheet for HTIT-WS_V3 (this exact board, non-Lite, Rev1.0). Downloaded and
+  text-extracted with pdftotext. Its I/O pin table (page ~5/16) explicitly lists:
+    - "GPIO0, connected to USER switch."  -> confirms onboard user button on GPIO0.
+    - "GPIO35, SPIIO6, FSPID, SUBSPID, LED Write Ctrl."  -> confirms GPIO35 is the vendor-labelled
+      single-color LED control pin.
+    - "GPIO48, SPICLK_N_DIFF, SUBSPICLK_N_DIFF."  -> GPIO48 has NO LED/RGB designation in the
+      official datasheet, just generic chip alternate-function names.
+    - No mention anywhere in the datasheet of "RGB", "NeoPixel" or "WS2812".
+
+https://github.com/HelTecAutomation/Heltec_ESP32/blob/master/examples/Factory_Test/Wireless_Stick_V3_FactoryTest/Wireless_Stick_V3_FactoryTest.ino
+  Official Heltec vendor factory-test sketch for this exact board. Confirms:
+    - attachInterrupt(0, interrupt_GPIO0, FALLING) + if(digitalRead(0)==0) pressed-detect pattern
+      on GPIO0 -> real, exercised USER button, active-low.
+    - pinMode(LED, OUTPUT); digitalWrite(LED, LOW) at setup (off by default), then
+      digitalWrite(LED, HIGH) when a LoRa packet is received (rxNumber%2==0) -> confirms GPIO35
+      ("LED" alias = 35 in pins_arduino.h) is a real, exercised single-color LED, active-high
+      (HIGH = on).
+
+https://github.com/Heltec-Aaron-Lee/WiFi_Kit_series/blob/master/variants/heltec_wireless_stick_v3/pins_arduino.h
+  Vendor source pins_arduino.h (matches the copy already in this repo). Defines
+  LED_BUILTIN/RGB_BUILTIN = SOC_GPIO_PIN_COUNT + 48 with RGB_BRIGHTNESS 64, and a comment:
+  "Some boards have too low voltage on this pin (board design bug). Use different pin with 3V
+  and connect with 48 and change this setup for the chosen pin (for example 38)." Also defines
+  static const uint8_t LED = 35. This is the alias-name-only evidence the task explicitly
+  distrusts; it is NOT corroborated by the official datasheet (see above), so I have NOT relied
+  on it alone for GPIO48.
+
+https://heltec.org/project/wireless-stick-v3/
+  Official product page. Fetched but contains no explicit button/LED/GPIO details (feature list
+  focuses on OLED, LoRa, WiFi/BLE; no RGB/NeoPixel or button callout).
+
+https://docs.cirkitdesigner.com/component/880903bd-2114-4c7a-9f3d-2c7287f04974/heltec-wireless-stick-v3
+  Third-party (unofficial) pinout reference site, reached only via WebSearch snippet (direct
+  WebFetch failed, DNS error). Snippet confirms J3.6=GPIO0="PRG switch" (consistent with USER
+  switch) and J3.5=GPIO48 listed only as "SPICLK_N_DIFF, SUBSPICLK_N_DIFF" - i.e. it also does
+  NOT show any LED/RGB function for GPIO48, consistent with the official datasheet. Treated as
+  weak/secondary corroboration only, not a primary source.
+
+https://docs.zephyrproject.org/latest/boards/heltec/heltec_wireless_stick_lite_v3/doc/index.html
+  Zephyr board docs, but this is for the LITE variant only (different PCB from this board).
+  States the Lite V3 has "Addressable RGB LED, driven by GPIO38" and a white LED on GPIO35
+  (led0, GPIO_ACTIVE_HIGH) and GPIO0 "User Switch". Useful only as cross-reference context;
+  NOT used as evidence for this (non-Lite) board since Zephyr has no board file for
+  heltec_wireless_stick_v3 (non-lite) and GPIO38 on the Lite board is a different physical
+  design from GPIO48 on this board.
+
+https://heltec.org Wireless Stick Lite datasheet, Wireless Stick (older V1/V2) docs.heltec.org page,
+GitHub Heltec_ESP32 repo root, DeepWiki pin-mapping page for WiFi_Kit_series
+  Consulted via WebSearch while triangulating GPIO48 and GPIO0 identities; none gave board-
+  specific (non-Lite V3) confirmation of an RGB/NeoPixel LED on GPIO48. Not separately cited
+  above because they added no new confirmed facts about this exact board.
+
+2) PINS CONSIDERED BUT NOT TAGGED
+-----------------------------------
+- GPIO35 ("LED Write Ctrl" per official datasheet, confirmed active-high single-color LED via
+  vendor factory-test firmware): NOT TAGGED. This GPIO is already absent from this board's
+  chipGpios (and from the esp32s3 chip-level default board.json, which excludes GPIO33-37 as
+  "octal flash/PSRAM" dedicated pins per Espressif ESP-IDF docs). A prior pin-exclusion audit
+  pass evidently already removed/never-included GPIO35 from the usable pin set for this board.
+  Re-adding it to tag it as an LED would mean overriding an existing pin-exclusion decision,
+  which the task instructions explicitly say not to touch. This is a genuine judgment call left
+  for human review: the vendor confirms GPIO35 physically drives an LED on the real board, but
+  pfodWeb's chip-level model currently treats GPIO33-37 as unavailable (presumably because on
+  boards using octal PSRAM/flash those pins are physically committed to the flash/PSRAM bus).
+  Whether this specific Heltec board actually uses octal mode (making the datasheet's GPIO35
+  LED claim compatible with real hardware) or quad mode (freeing GPIO35) was not something I
+  could confirm from the sources gathered here. No guess made; left exactly as inherited.
+
+- GPIO48 (RGB_BUILTIN / LED_BUILTIN alias in vendor pins_arduino.h, offset by
+  SOC_GPIO_PIN_COUNT, suggesting an addressable/NeoPixel LED): NOT TAGGED. The official Heltec
+  datasheet's I/O pin table lists GPIO48 only as "SPICLK_N_DIFF, SUBSPICLK_N_DIFF" with no
+  LED/RGB designation, and no mention of RGB/NeoPixel/WS2812 exists anywhere in the 16-page
+  datasheet. This directly matches the task's explicit warning not to infer capability purely
+  from a pins_arduino.h alias name (LED_BUILTIN/RGB_BUILTIN in this case). The confusing
+  "board design bug ... connect with 48 ... for example 38" comment in pins_arduino.h suggests
+  GPIO48's RGB assignment may be inherited/adapted boilerplate (or an unpopulated/optional
+  rework pad) rather than a stock onboard component confirmed by the schematic/datasheet. No
+  guess made; treated as unconfirmed and left alone.
+
+3) SUMMARY OF WHAT WAS TAGGED
+-------------------------------
+GPIO0 tagged ["digital_input", "button"] - confirmed onboard USER switch (official Heltec
+datasheet HTIT-WS_V3(Rev1.0).pdf + vendor Factory_Test sketch). No TX/RX conflict (this board's
+TX=43, RX=44). No other GPIOs were tagged.

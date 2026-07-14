@@ -22,7 +22,7 @@ class BaseBoard {
     this.connections = null; // populated by BoardLoader.load — keyed by transport id
                              // (serial / ble / tcp / http); each value is a per-
                              // transport config object (serial carries availablePorts,
-                             // defaultPort, defaultBaud, supportedBauds).
+                             // defaultPort).
   }
 
   /// Subclasses may override to expose board-specific feature flags

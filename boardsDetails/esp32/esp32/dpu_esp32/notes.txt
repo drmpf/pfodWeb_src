@@ -1,0 +1,77 @@
+Board: dpu_esp32 (chip: esp32) — TAMC "DPU ESP32" (Display Process Unit,
+ESP32-WROVER, 2.8" IPS LCD + 5-point capacitive touch + microSD)
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\dpu_esp32\
+
+2026-07-14 INDEPENDENT VERIFICATION PASS (batch B of 8)
+========================================================
+Task: confirm or correct the existing touch-panel/TFT/microSD exclusion
+findings against REAL external vendor documentation, not just the
+board's own pins_arduino.h (which is all the prior pass had cited).
+
+Sources consulted this pass:
+- https://dpu-esp32.readthedocs.io/en/latest/ — TAMCTec's own official
+  hosted documentation for this exact board (linked from the vendor's
+  GitHub README, see below). Confirms: "2.8\" IPS LCD Panel" with
+  "5-Point Touch Screen", a "SD Card Slot", ESP32 Wrover (16MB
+  flash/8MB PSRAM), CP2102 USB-serial, "ON-OFF Switch, RST, IO0 Button",
+  QWIIC/STEMMA-QT I2C connector, 2x8-pin GPIO header.
+- https://dpu-esp32.readthedocs.io/en/latest/hardware.html — the vendor's
+  own pin table page. Quotes exact GPIO assignments:
+    TFT: MOSI=IO13, MISO=IO12, SCLK=IO14, TFT_CS=IO15, TFT_DC=IO27,
+         TFT_RST=IO32, TFT_BL=IO18
+    Touch controller: SDA=IO4, SCL=IO5, TP_RST=IO21, TP_INT=IO19
+    SD card: SD_CS=IO23, SD_CD=IO22 (shares the TFT's SPI MOSI/MISO/SCLK)
+  This is an EXACT, pin-for-pin match to this board's own pins_arduino.h
+  and to the existing board.json exclusion set (GPIO12-15/18/19/21/23/
+  27/32 for TFT+touch, GPIO22/23 also for SD) — full independent
+  confirmation via the vendor's own official documentation site, not
+  just the raw pins_arduino.h comment as before.
+- https://github.com/TAMCTec/dpu-esp32 — the vendor's GitHub repo (README
+  says "a Display Process Unit with ESP32 Wrover", links to the
+  readthedocs site above for the tutorial/hardware detail).
+- https://www.espboards.dev/esp32/dpu-esp32/ — secondary aggregator;
+  independently lists the identical GPIO labels (TFT_DC=27, TFT_RST=32,
+  TFT_BL=18, TFT_CS=15, TP_INT=19, TP_RST=21, SD_CD=22, SD_CS=23) as the
+  official TAMCTec docs — treated only as weak corroboration since it
+  likely derives from the same upstream pins_arduino.h, not used as the
+  primary evidence.
+
+Per-pin findings (re-confirmed):
+- GPIO12(MISO), 13(MOSI), 14(SCLK), 15(TFT_CS), 18(TFT_BL), 21(TP_RST),
+  19(TP_INT), 27(TFT_DC), 32(TFT_RST): EXCLUDED. CONFIRMED — official
+  TAMCTec hardware doc page names each of these exactly as the TFT/touch
+  bus pins listed above.
+- GPIO22(SD_CD), 23(SD_CS): EXCLUDED. CONFIRMED — same official page,
+  microSD interface (shares MOSI/MISO/SCLK with the TFT bus already
+  excluded above).
+- GPIO4(SDA)/GPIO5(SCL): KEPT available (not excluded). CONFIRMED as the
+  correct call — these are the touch controller's I2C bus, but the same
+  official doc lists a separate "QWIIC/STEMMA QT I2C Connector" on the
+  board, meaning this I2C bus is also brought out for general-purpose
+  external I2C use, not exclusively dedicated to the touch chip. Matches
+  this repo's established "general-purpose I2C bus without an exclusive
+  onboard consumer stays available" policy.
+- GPIO0/IO0 ("IO0 Button") and RST: not tagged as "button" — matches the
+  established convention across this whole audit (BOOT/IO0 strapping pin
+  and hardware RESET line are never tagged "button", since they are
+  power-on/flash-mode controls, not general-purpose input buttons a
+  pfodWeb sketch would read). No LED_BUILTIN or similar alias appears
+  anywhere in this board's pins_arduino.h, and no official doc page
+  mentions a discrete GPIO-controlled status LED — no LED tag applied
+  (none to apply).
+- All remaining chipGpios entries (0,1,2,3,4,5,25,26,33,34,35,36,37,38,39)
+  unchanged from the esp32/esp32 chip-level default.
+
+RESULT: All existing findings CONFIRMED via real, independent, official
+vendor documentation (TAMCTec's own readthedocs hardware page + GitHub
+repo), not just the board's own pins_arduino.h as before. No corrections
+needed. board.json's chipGpios content is unchanged; only the top-of-file
+comment and this notes.txt were updated to record the real citations.
+
+Summary: GPIO12/13/14/15/18/19/21/23/27/32 excluded as the dedicated
+touch panel + TFT ST7789-class display shared SPI bus, and GPIO22/23
+excluded as the onboard microSD card interface — now independently
+confirmed via TAMCTec's own official hardware documentation
+(dpu-esp32.readthedocs.io), which matches the vendor pins_arduino.h
+exactly, pin for pin. All other pins left at the chip-level esp32/esp32
+default.

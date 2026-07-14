@@ -61,11 +61,14 @@ if ! command -v cc &>/dev/null; then
 fi
 
 # ── Extract version ──────────────────────────────────────────────────────────
+# This bundle is pfodProxy-only (pfodWeb.html is distributed separately —
+# see header comment), so its version comes from pfodProxy_rs/src/version.rs,
+# not pfodWeb_src/version.js.
 
 VERSION="$(node -e "
 var fs=require('fs');
-var m=fs.readFileSync('$ROOT/pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);
-if(!m){process.stderr.write('ERROR: version not found in pfodWeb_src/version.js\n');process.exit(1);}
+var m=fs.readFileSync('$ROOT/pfodProxy_rs/src/version.rs','utf8').match(/VERSION:\s*&str\s*=\s*\"(\d+\.\d+\.\d+)\"/);
+if(!m){process.stderr.write('ERROR: version not found in pfodProxy_rs/src/version.rs\n');process.exit(1);}
 process.stdout.write(m[1]);
 ")"
 echo "Version: $VERSION"

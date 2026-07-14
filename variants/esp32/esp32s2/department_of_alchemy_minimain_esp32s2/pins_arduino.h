@@ -20,10 +20,12 @@
 #define RGB_BUILTIN    (PIN_RGB_LED + SOC_GPIO_PIN_COUNT)
 #define RGB_BRIGHTNESS 64
 
-#define RGBLED_NUM         1     // number of RGB LEDs
-#define RGBLED_POWER       21    // power pin
+#define RGBLED_NUM      1     // number of RGB LEDs
+// pfodWeb NOTE: RGBLED_POWER (GPIO21) deliberately NOT declared -
+// internal power-gate, not general-purpose. PIN_SERVO (GPIO2)
+// deliberately NOT declared - dedicated servo PWM header, not
+// general-purpose (see board.json).
 #define RGBLED_POWER_ON    HIGH  // power pin state when on
-#define PIN_SERVO          2     // servo pin
 #define PIN_ISOLATED_INPUT 40    // optocoupled input
 
 static const uint8_t SDA = 3;
@@ -46,7 +48,8 @@ static const uint8_t RX = 38;
 #define TX1 TX
 #define RX1 RX
 
-static const uint8_t T2 = 2;
+// pfodWeb NOTE: T2 (GPIO2) deliberately NOT declared - same as
+// PIN_SERVO above.
 static const uint8_t T5 = 5;
 static const uint8_t T6 = 6;
 static const uint8_t T8 = 8;

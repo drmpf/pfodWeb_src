@@ -23,11 +23,9 @@ static const uint8_t RX = 3;
 // Already assigned to BMA423 PCF8563 and external extensions
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
-// SPI has been configured as an SD card slot and must be removed when downloading
-static const uint8_t SS = 13;
-static const uint8_t MOSI = 15;
-static const uint8_t MISO = 2;
-static const uint8_t SCK = 14;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK (GPIO13/15/2/14) deliberately NOT
+// declared - "SPI has been configured as an SD card slot" per vendor
+// comment (dedicated onboard microSD card SPI bus).
 // Externally programmable IO
 static const uint8_t DAC1 = 25;
 static const uint8_t DAC2 = 26;

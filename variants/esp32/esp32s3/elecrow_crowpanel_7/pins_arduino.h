@@ -22,13 +22,13 @@ static const uint8_t RX = 40;
 static const uint8_t TXD2 = 17;
 static const uint8_t RXD2 = 18;
 
-static const uint8_t SDA = 19;
-static const uint8_t SCL = 20;
-
-static const uint8_t SS = 10;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
+// pfodWeb NOTE: SDA/SCL (GPIO19/20) and SS/MOSI/MISO/SCK (GPIO10/11/13/12)
+// deliberately NOT declared - confirmed via Elecrow's own CrowPanel 7.0
+// schematic as the dedicated GT911 touch controller I2C bus and microSD
+// card SPI bus respectively (exact GPIO match). Other pins on this board
+// are left unchanged - vendor documentation for the RGB LCD panel and I2S
+// audio pins conflicts with this file's own TX/RX/TXD2/RXD2 declarations,
+// so no further exclusions are made without stronger evidence.
 
 static const uint8_t G0 = 0;
 static const uint8_t G1 = 1;
@@ -40,14 +40,9 @@ static const uint8_t G6 = 6;
 static const uint8_t G7 = 7;
 static const uint8_t G8 = 8;
 static const uint8_t G9 = 9;
-static const uint8_t G11 = 11;
-static const uint8_t G12 = 12;
-static const uint8_t G13 = 13;
 static const uint8_t G14 = 14;
 static const uint8_t G17 = 17;
 static const uint8_t G18 = 18;
-static const uint8_t G19 = 19;
-static const uint8_t G20 = 20;
 static const uint8_t G21 = 21;
 static const uint8_t G33 = 33;
 static const uint8_t G34 = 34;

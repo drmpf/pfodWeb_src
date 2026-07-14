@@ -20,11 +20,11 @@
 #define RGB_BUILTIN    (PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT)
 #define RGB_BRIGHTNESS 64
 
-#define NEOPIXEL_NUM      1     // number of neopixels
-#define NEOPIXEL_POWER    21    // power pin
+#define NEOPIXEL_NUM 1  // number of neopixels
+// pfodWeb NOTE: NEOPIXEL_POWER (GPIO21) and I2C_POWER/PIN_I2C_POWER
+// (GPIO7) deliberately NOT declared - internal power-gate lines for the
+// onboard NeoPixel and Stemma QT I2C connector, not general-purpose.
 #define NEOPIXEL_POWER_ON HIGH  // power pin state when on
-#define I2C_POWER         7     // I2C power pin
-#define PIN_I2C_POWER     7     // I2C power pin
 
 static const uint8_t SDA = 3;
 static const uint8_t SCL = 4;

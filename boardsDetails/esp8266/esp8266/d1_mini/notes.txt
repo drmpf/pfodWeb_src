@@ -1,0 +1,193 @@
+d1_mini - button/LED + ADC research notes
+===========================================
+
+Context: this single board.json (variants/esp8266/esp8266/d1_mini/) is shared
+by FIVE boards.txt entries: d1_mini ("LOLIN(WEMOS) D1 R2 & mini"),
+d1_mini_clone ("LOLIN(WEMOS) D1 mini (clone)"), d1_mini_lite
+("LOLIN(WEMOS) D1 mini Lite"), d1_mini_pro ("LOLIN(WEMOS) D1 mini Pro"), and
+d1_wroom_02 ("LOLIN(WEMOS) D1 ESP-WROOM-02").
+
+Sources consulted
+------------------
+https://www.wemos.cc/en/latest/d1/d1_mini.html
+  Official WEMOS/LOLIN D1 Mini product page (current "D1 mini" doc, v4.0.0
+  hardware revision). States "1 analog input(3.2V max input)" in the
+  features list and "Analog Input Pins | 1(3.2V Max)" in the specs table.
+  Also states "All of the IO pins run at 3.3V" (that 3.3V figure describes
+  digital IO logic level, NOT the A0 analog full-scale voltage - the two
+  are easy to conflate, which is likely how the earlier-session board.json
+  ended up with "3.3" for defaultRefVolts). Links to the schematic PDF and
+  pin diagram PNG for hardware rev v4.0.0.
+
+https://www.wemos.cc/en/latest/_static/files/sch_d1_mini_v4.0.0.pdf
+  Official KiCad-exported schematic PDF (D1_mini.kicad_sch, rev v4.0.0).
+  THE key confirming source, read directly (not just searched). Shows:
+    - LED1 (LED_0603_B) wired +3V3 -> R5 (2k) -> LED1 -> IO2/GPIO2. GPIO2
+      sinks current through the resistor and LED to turn it on, so the LED
+      is active-LOW (digitalWrite(LED_BUILTIN, LOW) = on). This matches
+      pins_arduino.h's `#define LED_BUILTIN 2`.
+    - SW1 (SW_2x4x3.5), the ONLY pushbutton on the schematic, is wired to
+      the RST net (with debounce cap C14 100nF and pull resistor R11 12k)
+      - i.e. it is the RESET button, not a general-purpose user button.
+      GPIO0 has no physical pushbutton on this board at all - auto-program
+      mode (GPIO0 LOW at boot) is driven electronically by the CH340C
+      USB-serial chip's DTR/RTS lines through transistor pair U5 (UMH3N),
+      not by a physical FLASH button (unlike, e.g., typical NodeMCU boards
+      which do have a discrete flash button). RST is not itself a chip
+      GPIO, so no "button" capability tag applies to any chipGpios entry.
+    - A0 analog divider: A0 -> R12 (220k) -> node -> R13 (100k) -> GND,
+      with the node also feeding TOUT/ADC (ESP8266 chip pin 6, native
+      0-1.0V range). Ratio (220k+100k)/100k = 3.2, so native 1.0V full
+      scale * 3.2 = 3.2V at A0 - this is exact resistor-math confirmation
+      of the "3.2V Max" spec on the product page, not 3.3V.
+  No other switches/buttons and no other user-facing LEDs are present on
+  the schematic.
+
+https://siytek.com/wemos-d1-mini-analog-input/ and general web search
+  Third-party corroboration: "R2 is 100kOhm and R1 equals to 220kOhm...
+  voltage divider of 220k over 100k resistor, which allows for a max
+  voltage of 3.2 volt to be measured" and "The 100K/220K network produces
+  a full count at 3.2v, not 3.3v." Used only as corroboration; the
+  official schematic PDF and product spec page are the authoritative
+  sources actually cited in board.json.
+
+General web search ("Wemos D1 Mini onboard LED GPIO2 active low")
+  Multiple independent sources (forum posts, pinout guides) consistently
+  describe D4/GPIO2 as the onboard LED, active-low, LED_BUILTIN. Used only
+  as corroboration of the schematic finding, not as the primary source.
+
+Existing sibling precedent
+----------------------------
+variants/esp8266/esp8266/d1/board.json (the WeMos D1 R1/R2 Uno-shield-form
+board, a DIFFERENT variant directory from this one, sharing the same
+ESP-12 module and same D1 family lineage) already independently reached
+the same two conclusions in an earlier session: GPIO2 tagged "led_low",
+and defaultRefVolts corrected to "3.2" (from a "1.0" chip-level default,
+citing third-party D1 R1/R2-specific sources giving "3.2V max"). This is
+consistent with, and reinforces confidence in, the d1_mini findings above
+(independently confirmed here via the actual official d1_mini-specific
+schematic PDF rather than by analogy).
+
+Pins considered but NOT tagged
+-------------------------------
+GPIO0: commonly a BOOT/FLASH button on many other ESP8266 dev boards, but
+the D1 Mini's own schematic (sch_d1_mini_v4.0.0.pdf) has no physical
+pushbutton wired to GPIO0 - entry into flash mode is driven purely by the
+CH340C DTR/RTS auto-reset circuit, not a button a user can press. No
+"button" tag applied - not a guess, directly confirmed absent from the
+schematic.
+
+RST/EXT_RSTB (SW1): this is the only physical pushbutton on the board, but
+it is wired to the chip's reset pin, not to any GPIO in chipGpios, so no
+capability tag can apply to it regardless of function.
+
+Checked pins_arduino.h in the variant directory for TX/RX conflicts:
+TX = 1 (UART0 TX0), RX = 3 (UART0 RX0). GPIO2 does not coincide with
+either, so no conflict with the build_boards.js TX/RX hard-reservation.
+
+GPIO2 was already present in this board.json's chipGpios map before this
+pass (as digital_input/digital_output/pwm_output), so retagging it as
+led_low is not an exclusion-reversal issue.
+
+Five-variant family-sharing caveat
+-------------------------------------
+This board.json's LED_BUILTIN=GPIO2/active-low wiring and A0 3.2V divider
+are standard, low-cost, well-documented features of the core ESP-12-based
+D1 Mini reference design and very likely apply identically across all five
+sharing boards.txt entries (d1_mini, d1_mini_clone, d1_mini_lite,
+d1_mini_pro, d1_wroom_02) - clone/pro/wroom_02 variants are pin-compatible
+derivatives of the same reference design, and "Lite" specifically is a
+cost-reduced SoC swap (smaller flash/different module), not a pinout or
+peripheral change, so the onboard LED and A0 divider should be unaffected.
+However, only the flagship "D1 mini" (v4.0.0) schematic was directly
+inspected here - the clone/lite/pro/wroom_02 variants are third-party or
+alternate-SoC boards not independently schematic-verified in this pass. A
+human reviewer should flag it if any specific clone/lite/pro board is later
+found to omit the LED or use a different divider.
+
+Summary
+--------
+TAGGED: GPIO2 -> ["digital_output","pwm_output","led_low"] (onboard blue
+LED, active-low, confirmed via official schematic sch_d1_mini_v4.0.0.pdf
+and pins_arduino.h LED_BUILTIN=2). No user button exists on this board (only
+a non-GPIO RESET button) - correctly left untagged, not a guess.
+ADC: pre-existing "3.3" value was INCORRECT and has been CORRECTED to
+"3.2" - confirmed via official product page ("3.2V Max") and exact
+resistor-divider math (220k/100k -> 3.2x) read directly from the official
+schematic PDF.
+
+===========================================
+[2026-07-12] Dedicated-hardware pin-exclusion audit (sections 1-6 of the
+playbook) - full sweep, distinct from the earlier button/LED/ADC retrofit
+pass above.
+===========================================
+
+Purpose of this pass: confirm no GPIO on this board is silently wired to
+an onboard peripheral (SD card, radio, display, motor driver, mux, etc.)
+that the pin picker should exclude - i.e. verify pin AVAILABILITY, not
+just re-check the LED/button/ADC tagging already done above.
+
+pins_arduino.h re-read in full (variants/esp8266/esp8266/d1_mini/pins_arduino.h,
+52 lines). Every static const/#define in the file was checked against the
+playbook's corrected discovery-sweep exclude regex (section 11):
+  PIN_WIRE_SDA/PIN_WIRE_SCL (4/5), SDA/SCL aliases, LED_BUILTIN (2),
+  D0-D8 board-numbering aliases (16,5,4,0,2,14,12,13,15), RX/TX (3/1).
+Every single declaration in the file matches the standard boilerplate
+exclude pattern - there is ZERO non-boilerplate content. This confirms
+the pre-audit hypothesis: this is a bare WiFi module + one onboard LED,
+no other dedicated hardware, consistent with the schematic already
+inspected in the earlier pass above (only LED1 + SW1-on-RST present).
+
+Sources consulted (this pass)
+------------------------------
+https://lastminuteengineers.com/wemos-d1-mini-pinout-reference/ and
+general WebSearch ("Wemos D1 Mini pinout D1 SCL D2 SDA I2C default pins")
+  Multiple independent sources (including Wemos's own D1_mini_Examples
+  GitHub repo's I2C_Scanner.ino, and steve.fi/hardware/d1-pins/) confirm
+  the well-known Wemos board-level convention: D1 (GPIO5) = default SCL,
+  D2 (GPIO4) = default SDA. ESP8266 I2C is software-bit-banged (any GPIO
+  pair can be reconfigured), so this is a convention/default, not a fixed
+  hardware bus - but it is the documented, expected default wiring that
+  the whole Wemos shield ecosystem (D1 Mini shields stack onto D1/D2 for
+  I2C) depends on.
+
+https://www.wemos.cc/en/latest/d1/d1_mini.html (re-checked, same page as
+earlier pass) - confirms "interrupt/pwm/I2C/one-wire supported (except
+D0)" in the general IO feature list, consistent with D1/D2 being a
+software I2C default rather than dedicated silicon.
+
+Critical alias-collision check (per this pass's specific instruction)
+------------------------------------------------------------------------
+Checked whether the already-tagged LED pin (GPIO2, D4, LED_BUILTIN) is
+also aliased anywhere in this file or the shared common.h as SDA/SCL/SS/
+MOSI/MISO/SCK/TX/RX, which would silently contaminate its capability list:
+  SDA=4, SCL=5 (this file's PIN_WIRE_SDA/PIN_WIRE_SCL)
+  SS=15, MOSI=13, MISO=12, SCK=14 (variants/esp8266/esp8266/generic/common.h,
+    the shared #include this file pulls in - standard D5/D6/D7/D8 mapping)
+  TX=1, RX=3 (this file)
+None of these equal 2 (GPIO2/D4/LED_BUILTIN). NO COLLISION - the LED pin
+is clean, confirming the board.json "led_low" tag on GPIO2 is not
+contaminated by any bus alias. This matches the ESP32-side pattern the
+task description warned about, but does not reproduce here.
+
+Separately, D1(GPIO5)=SCL and D2(GPIO4)=SDA IS a genuine alias overlap
+(the D1/D2 board-numbering names double as the I2C bus pins) - but this
+is a CONFIRMED, LEGITIMATE, documented dual-use per the Wemos convention
+above (not a spurious/unconfirmed alias), and per playbook section 3's
+KEEP policy ("General-purpose I2C/SPI buses without a documented
+exclusive onboard consumer, even if only one device happens to be
+attached in the reference design") - this board has no onboard I2C
+device at all, so the bus is fully general-purpose. Likewise D5/D6/D7/D8
+doubling as SCK/MISO/MOSI/SS (from the shared common.h) is the same
+kind of legitimate general-purpose SPI bus exposure - this board has no
+onboard SPI peripheral (no SD card, no display) consuming it exclusively.
+Documented here per the task's instruction, NOT "fixed" - excluding
+GPIO4/5/12/13/14/15 would be wrong, since KEEP policy explicitly covers
+this exact case (multi-drop bus pins with no exclusive onboard consumer).
+
+Result: NO CHANGE to pins_arduino.h or board.json this pass. All chipGpios
+entries (0,1,2,3,4,5,12,13,14,15,16,17) remain as already set in the
+earlier pass - full sweep found no dedicated-hardware GPIO to exclude,
+and the SDA/SCL/SPI alias overlaps are confirmed legitimate, not bugs.
+This closes out d1_mini's entry in the ESP8266 full-audit queue
+(playbook section 11, /tmp/esp8266_full_audit_remaining.txt).

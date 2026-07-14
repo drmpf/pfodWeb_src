@@ -1,0 +1,74 @@
+um_tinys2 (Unexpected Maker TinyS2, esp32s2) - button/LED research notes
+==========================================================================
+
+Sources consulted:
+
+1. https://unexpectedmaker.com/tinys2
+   Fetched page only contained an ESP32-S3 board comparison matrix
+   (NanoS3/TinyS3/FeatherS3/ProS3) - no TinyS2-specific GPIO/button/LED
+   detail was retrievable from this URL at fetch time.
+
+2. https://github.com/UnexpectedMaker/tinys2
+   Repo landing page confirmed to exist (schematic PDF
+   TinyS2_P1_Schematic.pdf referenced, arduino/circuitpython/micropython
+   dirs present) but page text fetched did not include README body detail.
+
+3. https://raw.githubusercontent.com/UnexpectedMaker/tinys2/main/README.md
+   Fetched successfully but returned only logo/features-image/support
+   content - no technical GPIO table was present in the extracted text.
+
+4. https://help.unexpectedmaker.com/index.php/article-tags/tinys2/
+   404 Not Found.
+
+5. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/espressif/boards/unexpectedmaker_tinys2/pins.c
+   SUCCESS - authoritative, independent (non-Arduino-core) vendor-adjacent
+   source. Confirms:
+     NEOPIXEL       -> pin_GPIO1
+     NEOPIXEL_POWER -> pin_GPIO2
+   No BUTTON pin alias defined anywhere in this file.
+
+6. WebSearch aggregate results (multiple listings: PlatformIO docs,
+   Tasmota template page, Adafruit product page, CNX Software article,
+   Pimoroni/Adafruit shop listings) - consistently describe TinyS2 as
+   having: Boot button, Reset button (for entering USB download/flash
+   mode), and an onboard NeoPixel with power gate on GPIO2/data on GPIO1.
+   None of these sources described the Boot button as a general-purpose
+   user-accessible input pin (contrast with um_micro_s2, whose vendor
+   README/CircuitPython pins.c explicitly names GPIO0 "BUTTON").
+
+7. This board's own pins_arduino.h (already in repo, previously audited):
+   RGB_DATA = GPIO1, RGB_PWR = GPIO2 (GPIO2 already excluded from
+   chipGpios in an earlier audit pass with its own pre-existing NOTE -
+   left untouched by this task). TX=43, RX=44 (neither conflicts with
+   GPIO1).
+
+Pins considered but NOT tagged:
+
+- GPIO0 (BOOT button): Every ESP32-S2 board has a BOOT and a RESET
+  button for entering flash/download mode, and TinyS2 is no exception
+  per general marketplace listings. However I found NO vendor
+  documentation, schematic text, or CircuitPython board definition that
+  designates GPIO0 as a general-purpose "user button" for TinyS2
+  specifically (the CircuitPython pins.c has no BUTTON alias at all,
+  unlike the sibling um_micro_s2 board which explicitly has
+  BUTTON -> pin_GPIO0 in its own pins.c and vendor README text calling
+  out "dedicated Reset and Boot buttons"). Per task rules, I made NO
+  guess here and left GPIO0 untagged. A human reviewer with access to
+  the full TinyS2 schematic PDF (TinyS2_P1_Schematic.pdf in the
+  UnexpectedMaker/tinys2 GitHub repo) or a live product page fetch could
+  confirm/deny more definitively.
+
+- GPIO2 (RGB_PWR / NEOPIXEL_POWER): Already excluded from chipGpios by a
+  prior audit pass (existing NOTE at top of board.json: "excludes GPIO2
+  - internal power-gate for the onboard RGB LED (RGB_PWR), not
+  general-purpose"). Per task rules this is out of scope and was left
+  untouched - not re-added, not re-tagged.
+
+Summary of what was tagged:
+
+- GPIO1: capabilities set to ["digital_output", "led_neopixel",
+  "pwm_output"] (pwm_output retained because it was already present on
+  this pin). Confirmed via Adafruit CircuitPython board definition
+  (unexpectedmaker_tinys2/pins.c: NEOPIXEL -> pin_GPIO1) cross-matching
+  this board's own pins_arduino.h (RGB_DATA = GPIO1). No button was
+  tagged - insufficient evidence.

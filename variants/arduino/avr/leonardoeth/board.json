@@ -1,0 +1,55 @@
+{
+  // boardName / displayName are overridden by boards.txt entry:
+  //   leonardoeth.name=Arduino Leonardo ETH
+  "boardName": "leonardoeth",
+  "displayName": "Arduino Leonardo ETH",
+
+  // Same ATmega32U4 pin map as the standard Leonardo — see pins_arduino.h,
+  // which just includes ../leonardo/pins_arduino.h. Split into its own
+  // variant directory (2026-07-14 AVR pin audit) because Leonardo ETH adds
+  // a genuinely different onboard W5500 TCP/IP Ethernet controller PLUS a
+  // microSD card reader, each wired via SPI with its own dedicated
+  // chip-select pin that the plain Leonardo does not have committed.
+  "family": "avr",
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  // ADC: ATmega32U4 10-bit ADC (0-1023). Leonardo ETH runs the standard
+  // 5 V / 16 MHz Leonardo supply (7-12 V input regulated to 5 V, per
+  // official Arduino documentation), so AVCC = 5 V, same as plain Leonardo.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "5.0" },
+  "inputOnlyGpios": [],
+
+  // Hardware UART on D0/D1 for direct serial connection.
+  // Onboard W5500 TCP/IP Embedded Ethernet Controller supports pfod over TCP.
+  "connections": ["serial", "tcp"],
+
+  "pinNotes": {},
+
+  // Sources consulted (see boardsDetails/arduino/avr/leonardoeth/notes.txt
+  // for the full trail): official Arduino documentation at
+  // docs.arduino.cc/retired/boards/arduino-leonardo-eth states, in its
+  // specifications table: "Reserved Pins: 4 used for SD card select; 10
+  // used for W5500 select" — and separately: "LED: 13. There is a
+  // built-in LED connected to the digital pin 13. When the pin is HIGH
+  // value, the LED is on, when the pin is LOW, it's off." (identical
+  // wording/polarity to the plain Leonardo).
+  //
+  // IMPORTANT dual-numbering wrinkle specific to the 32U4 pin map (see
+  // ../leonardo/pins_arduino.h's own analog_pin_to_channel_PGM/
+  // digital_pin_to_port_PGM tables): digital pins D4 and D10 are BOTH
+  // electrically the same physical silicon pin as an analog-numbered
+  // alias one octave up — D4 (PD4) is the exact same pin as A6, which
+  // this parser assigns digital-pin-index 24 (PIN_A6 = 24); D10 (PB6) is
+  // the exact same pin as A10, digital-pin-index 28 (PIN_A10 = 28).
+  // Excluding only "4" and "10" would leave the identical physical pins
+  // still fully exposed under their "24"/"28" (A6/A10) digital-pin-index
+  // entries — so all four indices are excluded below.
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED, active-high (official Arduino documentation: built-in LED on digital pin 13, HIGH = on). Same as plain Leonardo; not on the SPI bus for this 32U4 pin map." },
+    "4":  { "capabilities": [], "note": "Dedicated to the onboard microSD card reader's SPI chip-select (official Arduino documentation: \"4 used for SD card select\"). This physical pin (PD4) is also addressable as A6 (digital-pin-index 24, excluded below) - both entries must stay excluded together." },
+    "24": { "capabilities": [], "note": "Same physical pin as D4 (PD4) - see the D4 (index 4) entry for the SD-card chip-select exclusion reasoning. This is the A6-numbered alias of that same dedicated pin." },
+    "10": { "capabilities": [], "note": "Dedicated to the onboard W5500 TCP/IP Ethernet controller's SPI chip-select (official Arduino documentation: \"10 used for W5500 select\"). This physical pin (PB6) is also addressable as A10 (digital-pin-index 28, excluded below) - both entries must stay excluded together." },
+    "28": { "capabilities": [], "note": "Same physical pin as D10 (PB6) - see the D10 (index 10) entry for the W5500 chip-select exclusion reasoning. This is the A10-numbered alias of that same dedicated pin." }
+  }
+}

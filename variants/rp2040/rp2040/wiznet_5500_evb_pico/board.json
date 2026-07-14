@@ -1,0 +1,117 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "WIZnet W5500-EVB-Pico" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — the
+  // Ethernet-dedicated GPIOs excluded below (GPIO20 output-only RSTn,
+  // GPIO21 input-only INTn) are handled entirely via the chipGpios
+  // capability overrides instead, since they're chip-driven roles, not
+  // ordinary user pins that merely lack an output driver.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // "rp2040" chip bucket; the onboard W5500 is a wired-Ethernet SPI
+  // chip reached via the Arduino Ethernet/W5500lwIP library, not a
+  // pfodWeb "connections" transport in its own right (tcp/http here
+  // would imply an onboard WiFi radio, which this board does not have).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-12):
+  //
+  // Board: WIZnet "W5500-EVB-Pico" — official WIZnet product, a
+  // Raspberry Pi Pico-form-factor RP2040 board with an onboard W5500
+  // Ethernet controller wired via SPI0. This board's own pins_arduino.h
+  // is just `#include "../generic/pins_arduino.h"` (no board-specific
+  // pin declarations at all), so without this override the Designer
+  // would expose GPIO16-21 as six innocuous general-purpose pins even
+  // though all six are physically dedicated to the onboard Ethernet
+  // chip and "cannot be used for any other purpose" per the vendor.
+  //
+  // Source: WIZnet's own official documentation
+  // (docs.wiznet.io/Product/Chip/Ethernet/W5500/w5500-evb-pico), which
+  // states verbatim: "GPIO16, GPIO17, GPIO18, GPIO19, GPIO20, GPIO21
+  // are connected to W5500 inside the board... GPIO16-GPIO19 are used
+  // for SPI0 communication... GPIO20 is routed to the reset signal...
+  // GPIO21 is routed to the interrupt signal... If you are using the
+  // Ethernet function, these pins cannot be used for any other
+  // purpose." Cross-referenced via WebSearch against the Zephyr RTOS
+  // w5500_evb_pico board docs and NuttX's w5500-evb-pico board docs —
+  // both independently confirm the identical GPIO16-21 SPI0/RSTn/INTn
+  // assignment.
+  //
+  // Per-pin mapping (matches this board's generic/pins_arduino.h SPI0
+  // aliases exactly — MISO=16/SS=17/SCK=18/MOSI=19 — so no
+  // pins_arduino.h edit was needed; the board's SS/MOSI/MISO/SCK
+  // globals already point at the correct GPIOs, and build_boards.js's
+  // unconditional spi_ss/spi_mosi/spi_miso/spi_sck auto-append, which
+  // fires regardless of any chipGpios override (see build_boards.js
+  // ~line 697-703), supplies the correct single bus-role capability on
+  // top of the empty base capability set declared below):
+  //   GPIO16 - W5500 MISO (SPI0 RX)
+  //   GPIO17 - W5500 CS/SS (SPI0 chip-select)
+  //   GPIO18 - W5500 SCK (SPI0 clock)
+  //   GPIO19 - W5500 MOSI (SPI0 TX)
+  //   GPIO20 - W5500 RSTn (active-low reset, GPIO output to the chip)
+  //   GPIO21 - W5500 INTn (interrupt, GPIO input from the chip)
+  // GPIO16-19 end up with only their single bus-role capability
+  // (spi_miso/spi_ss/spi_sck/spi_mosi respectively) — digital_input/
+  // digital_output/pwm_output are stripped so the Designer doesn't
+  // also offer them for general use. GPIO20/21 have no SPI-bus alias
+  // to auto-append, so their capabilities are left fully empty (note
+  // only, matching the "no legitimate general-purpose role" precedent
+  // in adafruit_trinkeyrp2040qt/board.json) — GPIO20 is a chip-driven
+  // reset output and GPIO21 a chip-driven interrupt input; exposing
+  // either as a general digital_output/digital_input would let a
+  // Designer sketch fight the Ethernet library for control of the pin
+  // (e.g. holding RSTn permanently low, or driving INTn from both
+  // sides at once).
+  //
+  // No onboard user button beyond the standard Pico BOOTSEL (not a
+  // normal GPIO, out of scope) — confirmed by the same WIZnet
+  // documentation page, which documents no button at all.
+  //
+  // GPIO25 (user LED): the same WIZnet documentation page lists "GPIO25
+  // Connected to user LED" — the standard Pico LED circuit, identical to
+  // the one already confirmed active-high on rpipico/board.json (2026-07-12
+  // audit) and on this board's RP2350 sibling wiznet_5500_evb_pico2/
+  // board.json. Tagged here to match (2026-07-12 consistency pass) rather
+  // than leaving it deferred, since the evidence (identical unmodified
+  // stock LED circuit) is already established.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/wiznet_5500_evb_pico/notes.txt
+  "chipGpios": {
+    "16": { "capabilities": [], "note": "W5500 MISO (SPI0 RX) - onboard Ethernet chip's dedicated SPI data line, not general-purpose. spi_miso capability is auto-supplied by build_boards.js from this board's SPI0 MISO alias." },
+    "17": { "capabilities": [], "note": "W5500 CS/SS (SPI0 chip-select) - onboard Ethernet chip, not general-purpose. spi_ss capability is auto-supplied by build_boards.js from this board's SPI0 SS alias." },
+    "18": { "capabilities": [], "note": "W5500 SCK (SPI0 clock) - onboard Ethernet chip, not general-purpose. spi_sck capability is auto-supplied by build_boards.js from this board's SPI0 SCK alias." },
+    "19": { "capabilities": [], "note": "W5500 MOSI (SPI0 TX) - onboard Ethernet chip, not general-purpose. spi_mosi capability is auto-supplied by build_boards.js from this board's SPI0 MOSI alias." },
+    "20": { "capabilities": [], "note": "W5500 RSTn - onboard Ethernet chip's active-low reset line, driven by the Ethernet library during init. Not general-purpose." },
+    "21": { "capabilities": [], "note": "W5500 INTn - onboard Ethernet chip's interrupt output, read internally by the Ethernet library. Not general-purpose." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Connected to user LED (WIZnet docs). Standard unmodified Pico LED circuit, confirmed active-high per the rpipico precedent." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Not affected by this Ethernet-pin audit (none
+  // of GPIO16-21 carry an analog_input alias in the first place).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

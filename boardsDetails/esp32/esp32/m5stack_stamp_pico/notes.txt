@@ -1,0 +1,53 @@
+m5stack_stamp_pico board.json button/LED research notes
+=========================================================
+
+Sources consulted:
+- https://docs.m5stack.com/en/core/stamp_pico
+  Official M5Stack product docs for the "Stamp-Pico" (ESP32-PICO-D4 module).
+  Pinmap table confirms: onboard 1x SK6812 programmable RGB LED data pin =
+  GPIO27; onboard 1x programmable physical button = GPIO39. Also lists the
+  12 physically-exposed breakout GPIOs as G0, G1, G3, G26, G36, G18, G19,
+  G21, G22, G25, G32, G33 - exactly matching the twelve G<n> aliases already
+  present in this board's pins_arduino.h. GPIO27 and GPIO39 are NOT among
+  the exposed breakout pins - they are used internally for the LED and
+  button only.
+- WebSearch "M5Stack StampPico pinout GPIO27 RGB LED button docs.m5stack.com"
+  Corroborated: Stamp-Pico has "12 x GPIO, 1 x programmable RGB light,
+  1 x button" as headline hardware features, consistent with the docs page.
+
+Pins considered but NOT changed in pins_arduino.h:
+- The dev's discovery sweep flagged G0,G1,G3,G18,G19,G21,G22,G25,G26,G32,
+  G33,G36 as plain GPIO-number-as-name aliases. Cross-checked against the
+  vendor pinout above: these are exactly the 12 real user-facing breakout
+  pins on the physical module, not dedicated-hardware boilerplate, so no
+  exclusion or renaming was warranted for them.
+- Checked whether GPIO27 or GPIO39 (the confirmed NeoPixel/button pins)
+  collide with any SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias already declared
+  in pins_arduino.h (TX=1, RX=3, SDA=21, SCL=22, SS=19, MOSI=26, MISO=36,
+  SCK=18). Neither 27 nor 39 appears in that list, so no bus-capability
+  contamination risk exists for these two pins and no alias needed to be
+  deleted from pins_arduino.h. pins_arduino.h was left completely
+  unmodified.
+- No LED_BUILTIN, RGB_BUILTIN, PIN_NEOPIXEL, KEY_BUILTIN, or BUTTON-named
+  declaration exists anywhere in this board's pins_arduino.h - the file
+  only declares TX/RX/SDA/SCL/SS/MOSI/MISO/SCK and the twelve plain G<n>
+  breakout aliases. The onboard LED/button are wired internally to
+  GPIO27/GPIO39 with no corresponding named alias in this file at all;
+  confirmation came entirely from vendor documentation, not the source
+  file.
+
+Summary of changes applied:
+- Created board.json as a full copy of the chip-level default
+  (variants/esp32/esp32/board.json), then:
+  - GPIO27: onboard SK6812 RGB LED -> capabilities changed from
+    ["analog_input_serial","digital_input","digital_output","pwm_output"]
+    to ["digital_output","led_neopixel","pwm_output"].
+  - GPIO39: onboard programmable button -> capabilities changed from
+    ["analog_input","digital_input"] to ["digital_input","button"].
+  - inputOnlyGpios list left unchanged (still includes 39), matching the
+    precedent set by other tagged boards (e.g. m5stack_fire) where
+    button-tagged pins remain listed as input-only.
+  - Added pfodWeb NOTE comments at the top of board.json documenting the
+    two tags, the vendor source, and the fact that GPIO27/39 are not
+    physically exposed breakout pins on this module.
+- pins_arduino.h: no changes.

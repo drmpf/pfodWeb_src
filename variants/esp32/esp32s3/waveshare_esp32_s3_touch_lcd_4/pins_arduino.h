@@ -17,9 +17,9 @@
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
-// Def for I2C that shares the IMU I2C pins
-static const uint8_t SDA = -1;
-static const uint8_t SCL = -1;
+// pfodWeb NOTE: SDA/SCL not declared — the vendor's own value here is
+// (-1), a "not connected" sentinel that would otherwise leak a phantom
+// "SDA (GPIO255)" pin (uint8_t wraps -1 to 255, which doesn't exist).
 
 // Mapping based on the ESP32S3 data sheet - alternate for SPI2
 static const uint8_t SS = 34;    // FSPICS0
@@ -32,6 +32,12 @@ static const uint8_t OUTPUT_IO2 = 2;
 static const uint8_t OUTPUT_IO3 = 3;
 static const uint8_t OUTPUT_IO17 = 17;
 static const uint8_t OUTPUT_IO18 = 18;
+
+// pfodWeb NOTE: this board's file (unlike its 5/5b/7/43/43b siblings)
+// documents no WS_LCD_*/WS_TP_* pins at all, and a fuller sibling file
+// (touch_lcd_1.69) shows GPIO2/3/17/18 are NOT dedicated to its onboard
+// display there — so, absent solid evidence for this specific variant,
+// A0-A6/D0-D16/T1-T7 below are kept as declared rather than guessing.
 
 // Analog capable pins on the header
 static const uint8_t A0 = 1;

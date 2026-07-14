@@ -1,0 +1,58 @@
+Board: waveshare_rp2040_one (chip: rp2040) — Waveshare RP2040-One
+Audit date: 2026-07-13
+
+SOURCES CONSULTED
+------------------
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\waveshare_rp2040_one\pins_arduino.h (this board's own header,
+  including its ASCII pinout diagram and vendor links in the file's comment header:
+  https://www.waveshare.com/wiki/RP2040-One ,
+  https://www.waveshare.com/w/upload/9/90/RP2040-One.pdf ,
+  https://www.waveshare.com/img/devkit/RP2040-One/RP2040-One-details-9.jpg )
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level defaults, chipGpios: {} by design)
+- C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\generic_full\common.h (shared include; confirms no PIN_LED
+  alias is defined anywhere for this board, so no LED_BUILTIN exists)
+- Precedent files read before writing this board's board.json:
+    ../rpipico/board.json (simple LED tag pattern, GPIO25 led_high)
+    ../waveshare_rp2040_zero/board.json (sibling Waveshare board, NeoPixel-only GPIO16, no plain LED)
+    ../waveshare_rp2040_matrix/board.json (sibling Waveshare board, NeoPixel array GPIO16, no plain LED)
+- WebFetch: https://thepihut.com/products/waveshare-rp2040-one — "The board includes a WS2812 RGB LED
+  (tied to GPIO 16)... No separate standard LED is mentioned... two buttons: BOOT (enter download mode
+  on reset) and RESET (restart the microcontroller)." Also explicitly distinguishes this board from the
+  RP2040-Matrix: "a standalone LED (not a matrix like the RP2040-Matrix model)".
+- WebSearch corroboration (waveshare.com wiki page itself returned HTTP 403 to WebFetch, so relied on
+  search-result snippets and the thepihut.com mirror of the same spec): board described as featuring
+  "a WS2812 RGB LED (tied to GPIO 16), additional GPIO pins broken out to solder pads, and BOOT/RESET
+  buttons".
+
+PER-PIN REASONING
+------------------
+GPIO16 (PIN_NEOPIXEL, from pins_arduino.h line "#define PIN_NEOPIXEL (16u)"):
+  - Confirmed as the board's sole onboard WS2812 addressable RGB LED (a single pixel, not a matrix —
+    explicitly distinguished from the sibling RP2040-Matrix board).
+  - pins_arduino.h leaves "//#define LED_BUILTIN PIN_NEOPIXEL" commented out, and no PIN_LED is defined
+    anywhere in this board's header or its included generic_full/common.h — confirms there is genuinely
+    no separate plain/standard LED on this board, consistent with the "Waveshare one-indicator" pattern
+    already established on waveshare_rp2040_zero and waveshare_rp2040_matrix.
+  - Tagged capabilities: ["digital_output", "led_neopixel"] — output-only (bypasses default
+    input-derivation that would otherwise also add digital_input), no pwm_output (WS2812 is a
+    bit-serial-protocol data line, not a PWM-dimmable pin), matching this repo's established
+    NeoPixel-tagging convention.
+  - Bus-collision check: this board's pins_arduino.h declares SPI0 (MISO=4, MOSI=3, SCK=2, SS=5),
+    SPI1 (MISO=12, MOSI=15, SCK=14, SS=13), Wire0 (SDA=4, SCL=5), Wire1 (SDA=26, SCL=27), Serial1
+    (TX=0, RX=1), Serial2 (TX=8, RX=9). GPIO16 does not appear in any of these — no collision, so no
+    pins_arduino.h edit is needed to prevent build_boards.js from auto-appending a spurious bus
+    capability to GPIO16.
+
+Buttons: only BOOT and RESET exist on this board (confirmed via thepihut.com product page). BOOT enters
+  ROM bootloader mode (not a normal GPIO digitalRead()) and RESET is a hardware reset line — neither has
+  a pins_arduino.h alias, so both are out of scope for capability tagging (same rationale already
+  documented in ../rpipico/board.json, ../waveshare_rp2040_zero/board.json, and
+  ../waveshare_rp2040_matrix/board.json). No other onboard buttons are documented for this board.
+
+SUMMARY
+-------
+Created C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\waveshare_rp2040_one\board.json (full file, chip
+defaults + chipGpios override) tagging GPIO16 (PIN_NEOPIXEL) as ["digital_output", "led_neopixel"] —
+this board's sole onboard indicator, a single WS2812 RGB LED, with no separate plain LED and no
+onboard general-purpose button beyond BOOT/RESET (both out of scope). No pins_arduino.h changes were
+needed (no bus-collision bug found on GPIO16, unlike the adafruit_feather_scorpio precedent case).

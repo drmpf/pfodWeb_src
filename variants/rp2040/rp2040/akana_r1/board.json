@@ -1,0 +1,118 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's six navigation/action buttons (BTN_ENTER/BACK/UP/DOWN/
+  // LEFT/RIGHT) are ordinary GPIO push-buttons with vendor-stated
+  // hardware debounce, not capacitive-touch or otherwise input-only —
+  // handled entirely via the chipGpios "button" tags below, so no
+  // inputOnlyGpios entry is needed for them.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (button/LED/NeoPixel tagging audit, 2026-07-12):
+  //
+  // Board: METE HOCA "Akana R1" — a Turkish STEM-education RP2040 board
+  // (MH-EDU-Electronics / metehoca.com), built in a game-controller form
+  // factor with a 1.3" I2C OLED display and six navigation/action
+  // buttons. This board's own pins_arduino.h (variants/rp2040/rp2040/
+  // akana_r1/pins_arduino.h) is board-specific (not the generic
+  // fallback), and its header comment literally reads
+  // "METE HOCA Akana R1 Pin Definitions".
+  //
+  // Sources consulted (WebSearch/WebFetch, 2026-07-12):
+  //  1. Manufacturer's own product page:
+  //     https://www.metehoca.com/akana-r1-yeni-nesil-gelistirme-karti/
+  //  2. Vendor's Tindie storefront listing:
+  //     https://www.tindie.com/products/mh-edu/akana-r1-next-generation-development-board/
+  //  Both independently describe the identical hardware: "4+2 kullanıcı
+  //  butonları" (4+2 user buttons) arranged in a game-controller format
+  //  with a dedicated hardware debounce circuit, plus BOOTSEL/RESET as
+  //  separate programming buttons; and 6 total single-color LEDs (2
+  //  front — one power-status "ON" LED, one user-controllable LED "connected
+  //  to GP25" — plus 4 corner LEDs on the back, all wired in parallel to
+  //  the same GP25 signal).
+  //
+  // BUTTONS (BTN_ENTER=14, BTN_BACK=15, BTN_UP=22, BTN_DOWN=23,
+  // BTN_LEFT=20, BTN_RIGHT=21): confirmed as six genuine hardware
+  // buttons — the vendor's "4+2 buttons in game-controller format"
+  // description (4 directional + 2 action = exactly UP/DOWN/LEFT/RIGHT
+  // + ENTER/BACK) matches this board's own six BTN_* aliases exactly,
+  // and is independent, real-hardware confirmation beyond the alias
+  // names alone. Tagged ["digital_input","button"] on all six GPIOs.
+  //
+  // LED (PIN_LED=25): confirmed onboard user-controllable LED — both
+  // sources state the front-right LED is "connected to GP25" and is
+  // user-controllable (distinct from the fixed "ON" power LED). This is
+  // the same GP25 dedicated onboard-LED circuit used across the whole
+  // RP2040 family (see rpipico/board.json, wiznet_5500_evb_pico/board.json)
+  // — tagged led_high (active-high) to match that established,
+  // independently-confirmed precedent for the standard Pico-form-factor
+  // GP25 LED circuit; no Akana-specific polarity documentation was found,
+  // but no source suggests a non-standard (inverted) circuit either. The
+  // 4 parallel back-corner LEDs share the same GP25 signal, so no
+  // additional GPIO needs tagging for them.
+  //
+  // NEOPIXEL (PIN_NEO=24) — NO CHANGE, deliberately left untagged:
+  // despite the alias name, BOTH vendor sources explicitly state the
+  // Akana R1 has "single-color LEDs only" on the main board and that
+  // NO addressable RGB/WS2812/NeoPixel LED is built into the main board
+  // itself — RGB functionality is only available via separate plug-in
+  // accessory docks (e.g. "NEO8 Dock", "RGB Matrix Dock", also sold by
+  // MH-EDU-Electronics on Tindie) that attach externally. This directly
+  // contradicts what the "PIN_NEO" alias name would suggest. Per this
+  // audit's rule to confirm real hardware via vendor documentation
+  // rather than guessing from an alias name, GPIO24 is NOT tagged
+  // led_neopixel here — it is left at its full chip-default derived
+  // capabilities (digital_input/digital_output/pwm_output), same as any
+  // ordinary declared GPIO. Notably, GPIO24 is NOT a broken-out
+  // general-purpose pin on the stock/reference Pico design (it's
+  // VBUS-sense there — see variants/rp2040/rp2040/generic/common.h's
+  // own pfodWeb NOTE), so Akana R1's designers deliberately repurposed
+  // this specific GPIO and gave it a NeoPixel-suggestive alias — quite
+  // possibly it *is* wired out to the AkanaPort header as a
+  // NeoPixel-protocol data line for the accessory docks even though no
+  // NeoPixel sits on the base board itself. That distinction (dedicated
+  // output-only dock-data pin vs. genuine ordinary GPIO) could not be
+  // confirmed from available documentation, so it is left as full
+  // default capabilities rather than guessed at. Flagged for follow-up
+  // if an official schematic/pinout diagram becomes available.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/akana_r1/notes.txt
+  "chipGpios": {
+    "14": { "capabilities": ["digital_input", "button"], "note": "BTN_ENTER - one of the six vendor-confirmed game-controller-format user buttons (metehoca.com / Tindie: \"4+2 kullanıcı butonları\" with hardware debounce). See pfodWeb NOTE above." },
+    "15": { "capabilities": ["digital_input", "button"], "note": "BTN_BACK - one of the six vendor-confirmed game-controller-format user buttons (metehoca.com / Tindie: \"4+2 kullanıcı butonları\" with hardware debounce). See pfodWeb NOTE above." },
+    "20": { "capabilities": ["digital_input", "button"], "note": "BTN_LEFT - one of the six vendor-confirmed game-controller-format user buttons (metehoca.com / Tindie: \"4+2 kullanıcı butonları\" with hardware debounce). See pfodWeb NOTE above." },
+    "21": { "capabilities": ["digital_input", "button"], "note": "BTN_RIGHT - one of the six vendor-confirmed game-controller-format user buttons (metehoca.com / Tindie: \"4+2 kullanıcı butonları\" with hardware debounce). See pfodWeb NOTE above." },
+    "22": { "capabilities": ["digital_input", "button"], "note": "BTN_UP - one of the six vendor-confirmed game-controller-format user buttons (metehoca.com / Tindie: \"4+2 kullanıcı butonları\" with hardware debounce). See pfodWeb NOTE above." },
+    "23": { "capabilities": ["digital_input", "button"], "note": "BTN_DOWN - one of the six vendor-confirmed game-controller-format user buttons (metehoca.com / Tindie: \"4+2 kullanıcı butonları\" with hardware debounce). See pfodWeb NOTE above." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED - onboard user-controllable LED, confirmed \"connected to GP25\" by both metehoca.com and the Tindie listing (4 parallel back-corner LEDs share this same signal). Tagged active-high to match the established, independently-confirmed GP25 LED precedent used across this RP2040 family (rpipico, wiznet_5500_evb_pico); no Akana-specific polarity documentation found." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

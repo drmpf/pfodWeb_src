@@ -1,0 +1,188 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32S3" -> designer/boards/ESP32S3/ESP32S3.json -> const ESP32S3Data = {...}
+  "boardName": "ESP32S3",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32-S3 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32-S3 has no hardware DAC.
+  "dac": {},
+
+  // ADC: ESP32-S3 has a 12-bit ADC (0-4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation settable via analogSetAttenuation()
+  // for 0-3.3 V range; without attenuation input range is ~0-1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  // ESP32S3: every exposed GPIO is bidirectional -- no input-only pins.
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Reference: ESP32-S3 Technical Reference Manual -- Strapping Pins.
+  "pinNotes": {
+    "0":  "Must be HIGH for normal boot",
+    "3":  "Must be LOW or floating on reboot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-12):
+  //
+  // Board: Axiometa "Genesis One" ESP32-S3 module -- the always-attached
+  // main board of Axiometa's "Genesis IoT Discovery Lab" modular
+  // prototyping kit (Crowd Supply / axiometa.io). Confirmed real product
+  // via WebSearch: axiometa.io product pages, CNX Software coverage
+  // (2025-08-22, "Genesis IoT Discovery Lab is a modular ESP32-S3-based
+  // wire-free prototyping platform"), Espressif's own developer blog
+  // ("Genesis IoT Discovery Lab - A Plug-and-Play Classroom Built on
+  // ESP32-S3"), and Hackster.io coverage. Highest hit-count board (28) in
+  // the ESP32 re-audit sweep -- given full individual review below.
+  //
+  // 1) VBAT_SENSE (GPIO10) / getBatteryVoltage() macro: KEEP, no change.
+  //    The board's own file already comments "Battery monitoring (voltage
+  //    divider /2)" and the macro `((analogRead(VBAT_SENSE)/4095.0)*3.3*2.0)`
+  //    multiplies the raw 0-3.3V ADC reading by 2x to recover the true
+  //    battery voltage -- internally consistent evidence of a real 1:1
+  //    resistor divider ahead of this ADC pin (matches Axiometa's own
+  //    product-page claim of an onboard "battery socket... with
+  //    short-circuit protection" and charge circuitry, which requires
+  //    voltage sensing). Matches playbook KEEP precedent for battery/
+  //    voltage-monitor analog pins. Chip-level default already carries
+  //    analog_input for GPIO10 -- no chipGpios override needed, this
+  //    entry is informational only.
+  //
+  // 2) P1_IO0..P8_IO2 (24 GPIOs across 8 "ports"): KEEP all, no exclusion.
+  //    Confirmed via WebSearch (axiometa.io "How to use Axiometa Genesis
+  //    with Arduino", CNX Software, Espressif dev blog) that these are
+  //    genuinely general-purpose expansion connectors: Axiometa's "AX22"
+  //    is an open (CERN-OHL-S-2.0) 22x22mm module standard with a
+  //    standardized 10-pin connector carrying power/ground plus I2C, SPI,
+  //    UART, analog and 3x GPIO -- explicitly designed so ANY of the 8
+  //    ports can accept ANY of "50+ sensors and peripherals" (buttons,
+  //    LEDs, motor drivers, relays, displays, etc.), i.e. there is no
+  //    fixed onboard consumer soldered to any specific port -- the
+  //    consumer is whatever module the end user plugs in. This matches
+  //    the playbook's "general-purpose bus without a documented exclusive
+  //    onboard consumer" KEEP precedent, applied per-port across all 8.
+  //    ESP32-S3's GPIO matrix (any pin can carry any UART/SPI/I2C
+  //    peripheral signal) is exactly what makes this connector design
+  //    possible, corroborating the vendor's own "fitting UART, I2C, SPI,
+  //    analog and digital into 10 pins took some trial and error" copy.
+  //    No vendor doc or schematic found showing any port hard-wired to a
+  //    fixed onboard peripheral -- if one is found later, exclude only
+  //    that port's affected pin(s), not the whole set.
+  //
+  //    Two of these 24 GPIOs are a documented EXCEPTION, already handled
+  //    correctly by build_boards.js's own TX/RX precedence logic (no
+  //    board.json change needed for them):
+  //      - GPIO43 = both TX and P1..P8's "P8_IO1"
+  //      - GPIO44 = both RX and P8_IO2
+  //    The board's own pins_arduino.h explicitly comments these as
+  //    "Fixed communication pins (shared across all ports)" immediately
+  //    above the TX/RX declarations -- i.e. vendor-confirmed as a real,
+  //    deliberately shared UART0 bus (also GPIO43/44 are ESP32-S3's
+  //    conventional default UART0 pins, typically routed to the onboard
+  //    USB-UART bridge for flashing/logging), not a boilerplate/generic
+  //    default. build_boards.js forces any GPIO matching TX/RX to
+  //    capabilities:['serial_tx']/['serial_rx'] only (see build_boards.js
+  //    ~line 662-675), discarding the P8_IO1/P8_IO2 GPIO port framing
+  //    automatically -- so no chipGpios edit is required to get the
+  //    correct (UART-only, not general GPIO) behavior for these two pins.
+  //
+  //    A THIRD collision (GPIO1 = both P1_IO0 and a boilerplate "SS"
+  //    alias) was found and fixed by deleting the `SS` declaration from
+  //    pins_arduino.h itself (see the pfodWeb NOTE comment in that file)
+  //    -- unlike TX/RX, that SS alias had no vendor comment/confirmation.
+  //    GPIO1's display label was unaffected either way (its A0/T1
+  //    boilerplate identity-block aliases already win the display name
+  //    over any TX/RX/SDA/SCL/SS/MOSI/MISO/SCK alias, per
+  //    build_boards.js's `_displayAliases`), but leaving `SS` in place
+  //    would have added a spurious spi_ss capability to GPIO1's
+  //    capability list via `if (g === ss) caps.push('spi_ss')` -- exactly
+  //    the "unconditional bus-capability contamination" this session's
+  //    new check was added to catch.
+  //
+  // 3) SDA=47 / SCL=48 (Qwiic/STEMMA QT connector): KEEP, no change.
+  //    CNX Software's coverage confirms a dedicated "STEMMA QT / Qwiic
+  //    connector" on the board. GPIO47/48 are NOT part of any of the 8
+  //    AX22 ports' pin sets (which only span GPIO1-9,14-18,21,38-46), so
+  //    there is no P<n>_IO<m> collision to resolve. I2C is inherently
+  //    multi-drop and Qwiic/STEMMA QT connectors are themselves a
+  //    general-purpose plug-in-sensor standard (matches the playbook's
+  //    explicit "general-purpose I2C/SPI buses... even if only one
+  //    device happens to be attached in the reference design" KEEP
+  //    precedent) -- left as a plain KEEP with the existing SDA/SCL
+  //    aliases; build_boards.js's i2c_sda/i2c_scl capability tagging
+  //    already applies automatically from those aliases.
+  //
+  // 4) MOSI=11 / MISO=12 / SCK=13: KEEP, no change. Not part of any
+  //    port's pin set (no collision), no vendor doc showing a fixed
+  //    onboard SPI-flash/PSRAM/other chip on these GPIOs (ESP32-S3
+  //    octal flash/PSRAM pins are the chip-level-excluded 26-37 range,
+  //    already absent from chipGpios), consistent with these being
+  //    default/general SPI convenience pins rather than dedicated
+  //    hardware. General-purpose SPI bus KEEP precedent applies.
+  //
+  // Net result: chipGpios below is an unmodified copy of the chip-level
+  // default -- every GPIO's capabilities already matched what the
+  // research supports. Full findings/sources trail:
+  // boardsDetails/esp32/esp32s3/axiometa_genesis_one/notes.txt
+  //
+  // User-accessible GPIO numbers on the ESP32-S3 chip.  GPIOs 26-32 (flash),
+  // 33-37 (octal flash/PSRAM), and 19-20 (USB) are excluded.  GPIOs 22-25
+  // do not exist in this chip's silicon.  No DAC on this chip.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "VBAT_SENSE: onboard battery voltage sense via a 1:1 divider (getBatteryVoltage() macro multiplies the ADC reading by 2x)." },
+    "11": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "38": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "39": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "40": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "41": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "42": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "43": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "44": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "45": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "46": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "47": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "48": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

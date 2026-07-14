@@ -1,0 +1,71 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases, and the BOOTSEL button is NOT a normal GPIO on the
+  // Pico 2 either — same QSPI-flash-chip-select-line trick as the
+  // classic RP2040 Pico (confirmed: the Pico 2's PCB/BOOTSEL circuit is
+  // unchanged from the original Pico, only the RP2350 die differs;
+  // arduino-pico exposes it as a `BOOTSEL` boolean object, not a
+  // numbered GPIO, on both chips). Since this repo's capability tagging
+  // is keyed by GPIO number, there is no pin to attach a "button"
+  // capability to — out of scope, not a missed tag.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED / LED_BUILTIN) is the Pico 2's only onboard
+  // peripheral beyond USB — this board's pins_arduino.h is pin-identical
+  // to the RP2040 rpipico variant (only difference is the added
+  // `#define PICO_RP2350A 1`), and confirmed independently via the
+  // official Raspberry Pi pico-sdk board header
+  // (boards/include/boards/pico2.h) which defines
+  // `PICO_DEFAULT_LED_PIN 25` with no `PICO_DEFAULT_LED_PIN_INVERTED`
+  // override — the same active-high pattern used for the plain
+  // (non-W) Pico/Pico 2 boards (the inverted-polarity override only
+  // exists on the wireless *_w.h board headers, where the LED is driven
+  // through the CYW43 chip instead of a plain GPIO). Also confirmed via
+  // multiple independent sources (Random Nerd Tutorials, SunFounder,
+  // Coxxect) stating GP25 HIGH = LED on for Pico 2. No onboard NeoPixel
+  // and no onboard general-purpose button exist on the plain Pico 2
+  // (unlike Pico 2 W / third-party boards). digital_input dropped to
+  // match this repo's established led_high/led_low precedent for
+  // dedicated onboard LED pins (see rp2040/rpipico GPIO25 — the direct
+  // RP2040 sibling of this board) — pwm_output kept since arduino-pico's
+  // analogWrite() works on any RP2040/RP2350 GPIO (all PWM slices cover
+  // GPIO0-29), enabling LED brightness dimming. No SPI/I2C alias
+  // collision on GPIO25 in this board's pins_arduino.h (SPI0/SPI1/Wire0/
+  // Wire1 pins are all GPIO4-5,12-19,26-27 — GPIO25 is untouched), and
+  // the shared rp2040/rp2350/generic/common.h D0-D29 blanket fallback
+  // deliberately excludes GPIO25 already (see its comment), so no
+  // build_boards.js bus-capability contamination is possible here.
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard user LED, active-high, confirmed via official Raspberry Pi pico-sdk board header (pico2.h) and multiple independent tutorial sources (see pfodWeb NOTE above)" }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

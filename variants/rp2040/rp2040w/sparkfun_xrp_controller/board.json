@@ -1,0 +1,211 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-13.
+// Board: SparkFun XRP Controller Board (full/non-beta) - a real
+// educational robotics controller (XRP = "Experiential Robotics
+// Platform", developed by SparkFun with iRobot/other partners) built on
+// a genuine RP2350B (48-GPIO variant - this board's own pins_arduino.h
+// has `#define PICO_RP2350A 0 // RP2350B`) + onboard CYW43439-class
+// WiFi/BLE radio. The board drives 4 DC motor channels (with quadrature
+// encoders + current sense), 4 servo headers, a Qwiic I2C bus (plus a
+// second Qwiic connector), an ultrasonic distance sensor header, 2 line-
+// follower IR inputs, a battery-voltage monitor, an onboard LSM6DSO IMU
+// (I2C), a user pushbutton, a WS2812 NeoPixel, and (per pins_arduino.h's
+// own RP2350_PSRAM_CS/RP2350_PSRAM_MAX_SCK_HZ define pair - the same
+// arduino-pico PSRAM scaffolding used by sparkfun_thingplusrp2350, which
+// has confirmed onboard PSRAM) an onboard PSRAM chip.
+//
+// This board's own pins_arduino.h (variants/rp2040/rp2040w/
+// sparkfun_xrp_controller/pins_arduino.h) is self-contained (does NOT
+// `#include` the shared generic/common.h fallback) and already carries
+// a "pfodWeb NOTE" comment (above its D<n>/A<n> declarations) recording
+// an EARLIER pass of this same audit: it deliberately declares
+// `static const uint8_t D<n>` aliases for ONLY the distance sensor
+// (GPIO0/1), Qwiic 0 I2C (GPIO4/5), the Serial1/SPI1 header (GPIO12-15)
+// and the SPI0 header (GPIO16-19) - every motor/servo/encoder/current-
+// sense GPIO is intentionally left with NO static-const alias at all, so
+// build_boards.js's parseEsp32Consts() (which only harvests
+// `static const uint8_t NAME = n;` declarations, never `#define`s) never
+// sees them as routable pins in the first place. This board.json is the
+// remaining piece: it (a) documents every one of those already-excluded
+// dedicated GPIOs via explicit chipGpios `capabilities: []` entries, so
+// the Designer's pin picker shows *why* each one is unavailable rather
+// than silently omitting it (matching the established
+// bigtreetech_SKR_Pico/board.json precedent for a board where almost
+// every GPIO is committed to fixed-function hardware), and (b) adds the
+// two confirmed user-facing GPIOs that pins_arduino.h's own audit
+// correctly left OUT of the general D-alias set because they need
+// special capability tags rather than plain digital I/O: the onboard
+// USER button (GPIO36) and the WS2812 NeoPixel (GPIO37).
+//
+// Sources consulted (full detail in
+// boardsDetails/rp2040/rp2040w/sparkfun_xrp_controller/notes.txt):
+//   - This board's own pins_arduino.h - authoritative arduino-pico
+//     board-support source the generated sketches compile against; XRP
+//     default/alternate pin-name #defines for every motor/servo/encoder/
+//     current-sense/sensor/button/LED signal, plus its own "pfodWeb
+//     NOTE" comment recording the earlier D-alias exclusion pass.
+//   - https://docs.sparkfun.com/SparkFun_XRP_Controller/hardware_overview/
+//     Official SparkFun hookup guide (fetched 2026-07-13). Confirms:
+//     "The USER button connects to GPIO36 ... allows it to be programmed
+//     for various purposes"; "The RGB LED connects to GPIO37 ... WS2812
+//     Data In Pin ... can be programmed to change to any color"; exact
+//     GPIO numbers for every motor phase/enable/encoder pin, the 4 servo
+//     headers, both Qwiic connectors (GPIO4/5 and GPIO38/39), the
+//     distance-sensor trigger/echo, the 2 line-follower IR inputs, the
+//     battery-voltage monitor (GPIO46), and GPIO47 as "PSRAM Chip
+//     Select". Also confirms two hardwired (non-GPIO) status LEDs -
+//     "MOT" (lit when motor power is available) and "SYS" (lit when the
+//     3.3V/system rail is powered) - and a separate BOOTSEL-style BOOT
+//     button on the RP2350 itself ("Holding the BOOT button ... sets the
+//     RP2350 to behave as a mass storage device"), distinct from the
+//     GPIO36 USER button. Confirms the onboard LSM6DSO 6-DoF IMU
+//     (STMicroelectronics) is reached over the same Qwiic 0 I2C bus
+//     (GPIO4/5), not a separate GPIO.
+//
+// Per-pin mapping (matches this board's own pins_arduino.h #defines,
+// cross-checked against the hookup-guide GPIO numbers above):
+//   GPIO0/1   - DISTANCE_TRIGGER/ECHO - KEPT general purpose (already a
+//               D0/D1 alias in pins_arduino.h) per this repo's "onboard
+//               sensor exposed for pfodWeb's data-display use case"
+//               policy (matches sparkfun_xrp_controller_beta's identical
+//               treatment of the same signals).
+//   GPIO2/3   - MOTOR_4_ENCODER_A/B - dedicated motor-4 quadrature
+//               encoder inputs, no D-alias. Documented only.
+//   GPIO4/5   - I2C_SDA_0/SCL_0 (Qwiic 0, also carries the onboard
+//               LSM6DSO IMU) - KEPT general purpose (already D4/D5 +
+//               SDA/SCL aliases).
+//   GPIO6     - SERVO_1 - dedicated servo-1 PWM output header. Documented
+//               only.
+//   GPIO7     - SERVO_3 - dedicated servo-3 PWM output header. Documented
+//               only.
+//   GPIO8     - SERVO_4, also PIN_SERIAL2_TX - dedicated servo-4 PWM
+//               output header. Documented only.
+//   GPIO9     - SERVO_2, also PIN_SERIAL2_RX - dedicated servo-2 PWM
+//               output header. Documented only.
+//   GPIO10/11 - MOTOR_4_IN_1/IN_2 - dedicated motor-4 driver phase/enable
+//               outputs. Documented only.
+//   GPIO12-15 - PIN_SERIAL1_TX/RX, PIN_SPI1_MISO/SS/SCK/MOSI - KEPT
+//               general purpose (already D12-D15 aliases) - this
+//               board's pins_arduino.h treats the aux Serial1/SPI1 pins
+//               as a general expansion header, not committed onboard
+//               hardware (matches this repo's existing "genuine
+//               multi-purpose expansion header" KEEP policy).
+//   GPIO16-19 - PIN_SPI0_MISO/SS/SCK/MOSI - KEPT general purpose
+//               (already D16-D19 aliases), same reasoning as GPIO12-15.
+//   GPIO20/21 - MOTOR_3_IN_1/IN_2 - dedicated motor-3 driver phase/enable
+//               outputs. Documented only.
+//   GPIO22/23 - MOTOR_3_ENCODER_A/B - dedicated motor-3 quadrature
+//               encoder inputs. Documented only.
+//   GPIO24/25 - MOTOR_R_ENCODER_A/B - dedicated right-motor quadrature
+//               encoder inputs. Documented only.
+//   GPIO26-28 - A0/A1/A2 - KEPT general purpose analog inputs (already
+//               aliased, no XRP pin name assigned to these three in
+//               pins_arduino.h - genuinely spare ADC-capable pins).
+//   GPIO29    - no XRP pin name and no static-const alias anywhere in
+//               pins_arduino.h - unconfirmed/unreferenced. Left with NO
+//               chipGpios entry (conservative - not exposed), matching
+//               the "report NO CHANGE rather than guess" instruction.
+//   GPIO30/31 - MOTOR_L_ENCODER_A/B - dedicated left-motor quadrature
+//               encoder inputs. Documented only.
+//   GPIO32/33 - MOTOR_R_IN_1/IN_2 - dedicated right-motor driver
+//               phase/enable outputs. Documented only.
+//   GPIO34/35 - MOTOR_L_IN_1/IN_2 - dedicated left-motor driver
+//               phase/enable outputs. Documented only.
+//   GPIO36    - BOARD_USER_BUTTON - CONFIRMED onboard USER pushbutton
+//               (docs.sparkfun.com: "The USER button connects to GPIO36
+//               ... allows it to be programmed for various purposes").
+//               Tagged ["digital_input","button"], matching this repo's
+//               existing button-tagging precedent (e.g. adafruit_fruitjam
+//               GPIO4/5, wiolink GPIO0).
+//   GPIO37    - BOARD_NEOPIXEL / PIN_NEOPIXEL (NUM_NEOPIXEL=1) -
+//               CONFIRMED onboard WS2812 addressable RGB LED data line
+//               (docs.sparkfun.com: "The RGB LED connects to GPIO37 ...
+//               WS2812 Data In Pin"). Tagged
+//               ["digital_output","led_neopixel","pwm_output"], matching
+//               this repo's existing led_neopixel precedent (e.g.
+//               sparkfun_thingplusrp2350 GPIO14, bigtreetech_SKR_Pico
+//               GPIO24). digital_input dropped - the pin is committed to
+//               driving the LED, not general-purpose input.
+//   GPIO38/39 - I2C_SDA_1/SCL_1 (Qwiic 1, a second I2C connector) - no
+//               static-const alias in pins_arduino.h (unlike Qwiic 0's
+//               GPIO4/5) - this board's own earlier D-alias-exclusion
+//               pass did not expose it. Not modified here (out of scope
+//               for a board.json-only pass - changing which pins get a
+//               general-purpose role belongs to a pins_arduino.h edit,
+//               not this file); documented only so the pin picker
+//               explains its absence instead of leaving it a silent gap.
+//   GPIO40    - MOTOR_L_CURRENT - dedicated left-motor current-sense ADC
+//               input. Documented only.
+//   GPIO41    - MOTOR_3_CURRENT - dedicated motor-3 current-sense ADC
+//               input. Documented only.
+//   GPIO42    - MOTOR_4_CURRENT - dedicated motor-4 current-sense ADC
+//               input. Documented only.
+//   GPIO43    - MOTOR_R_CURRENT - dedicated right-motor current-sense ADC
+//               input. Documented only.
+//   GPIO44/45 - LINE_L/LINE_R - dedicated line-follower IR reflectance
+//               sensor inputs. Documented only.
+//   GPIO46    - BOARD_VIN_MEASURE - dedicated battery-voltage monitor ADC
+//               input (docs.sparkfun.com "VIN MEAS"). Documented only.
+//   GPIO47    - RP2350_PSRAM_CS - CONFIRMED onboard PSRAM chip-select
+//               (pins_arduino.h RP2350_PSRAM_CS/RP2350_PSRAM_MAX_SCK_HZ
+//               define pair; docs.sparkfun.com hardware overview calls
+//               GPIO47 "PSRAM Chip Select"). Not broken out, never meant
+//               to be user-toggled. Documented only.
+//
+// No onboard user-controllable LED beyond the NeoPixel (GPIO37) - BOARD_LED
+// resolves to `PIN_LED` = (64u), a sentinel value outside the real
+// RP2350B GPIO0-47 range (i.e. "no simple GPIO LED exists" on this
+// board), and the two other LEDs the hookup guide documents ("MOT",
+// "SYS") are hardwired power/status indicators with no GPIO connection
+// at all - no capability tag applies to either. No onboard button beyond
+// GPIO36 - the separate BOOT button is the standard RP2350 BOOTSEL-style
+// button (read via the boot ROM, not a normal digitalRead()-capable
+// GPIO), matching this repo's existing convention of never tagging
+// Pico-family BOOTSEL buttons as a general-purpose "button" pin.
+//
+// See boardsDetails/rp2040/rp2040w/sparkfun_xrp_controller/notes.txt for
+// the full research trail.
+{
+  "boardName": "RP2040W",
+  "displayName": "Raspberry Pi Pico W / 2W",
+  "family": "rp2040",
+  "inputOnlyGpios": [],
+  "connections": ["serial", "tcp", "http", "ble"],
+  "pinNotes": {},
+  "chipGpios": {
+    "2":  { "capabilities": [], "note": "MOTOR_4_ENCODER_A - dedicated motor-4 quadrature encoder input - not general purpose (confirmed pins_arduino.h + docs.sparkfun.com hardware overview)." },
+    "3":  { "capabilities": [], "note": "MOTOR_4_ENCODER_B - dedicated motor-4 quadrature encoder input - not general purpose." },
+    "6":  { "capabilities": [], "note": "SERVO_1 - dedicated servo-1 PWM output header - not general purpose." },
+    "7":  { "capabilities": [], "note": "SERVO_3 - dedicated servo-3 PWM output header - not general purpose." },
+    "8":  { "capabilities": [], "note": "SERVO_4 (also PIN_SERIAL2_TX) - dedicated servo-4 PWM output header - not general purpose." },
+    "9":  { "capabilities": [], "note": "SERVO_2 (also PIN_SERIAL2_RX) - dedicated servo-2 PWM output header - not general purpose." },
+    "10": { "capabilities": [], "note": "MOTOR_4_IN_1 - dedicated motor-4 driver phase/enable output - not general purpose." },
+    "11": { "capabilities": [], "note": "MOTOR_4_IN_2 - dedicated motor-4 driver phase/enable output - not general purpose." },
+    "20": { "capabilities": [], "note": "MOTOR_3_IN_1 - dedicated motor-3 driver phase/enable output - not general purpose." },
+    "21": { "capabilities": [], "note": "MOTOR_3_IN_2 - dedicated motor-3 driver phase/enable output - not general purpose." },
+    "22": { "capabilities": [], "note": "MOTOR_3_ENCODER_A - dedicated motor-3 quadrature encoder input - not general purpose." },
+    "23": { "capabilities": [], "note": "MOTOR_3_ENCODER_B - dedicated motor-3 quadrature encoder input - not general purpose." },
+    "24": { "capabilities": [], "note": "MOTOR_R_ENCODER_A - dedicated right-motor quadrature encoder input - not general purpose." },
+    "25": { "capabilities": [], "note": "MOTOR_R_ENCODER_B - dedicated right-motor quadrature encoder input - not general purpose." },
+    "30": { "capabilities": [], "note": "MOTOR_L_ENCODER_A - dedicated left-motor quadrature encoder input - not general purpose." },
+    "31": { "capabilities": [], "note": "MOTOR_L_ENCODER_B - dedicated left-motor quadrature encoder input - not general purpose." },
+    "32": { "capabilities": [], "note": "MOTOR_R_IN_1 - dedicated right-motor driver phase/enable output - not general purpose." },
+    "33": { "capabilities": [], "note": "MOTOR_R_IN_2 - dedicated right-motor driver phase/enable output - not general purpose." },
+    "34": { "capabilities": [], "note": "MOTOR_L_IN_1 - dedicated left-motor driver phase/enable output - not general purpose." },
+    "35": { "capabilities": [], "note": "MOTOR_L_IN_2 - dedicated left-motor driver phase/enable output - not general purpose." },
+    "36": { "capabilities": ["digital_input", "button"], "note": "BOARD_USER_BUTTON - CONFIRMED onboard USER pushbutton (docs.sparkfun.com: \"The USER button connects to GPIO36 ... allows it to be programmed for various purposes\")." },
+    "37": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "BOARD_NEOPIXEL / PIN_NEOPIXEL (NUM_NEOPIXEL=1) - CONFIRMED onboard WS2812 addressable RGB LED data line (docs.sparkfun.com: \"The RGB LED connects to GPIO37 ... WS2812 Data In Pin\")." },
+    "38": { "capabilities": [], "note": "I2C_SDA_1 - second Qwiic (I2C1) connector - no static-const alias in this board's pins_arduino.h (unlike Qwiic 0's GPIO4/5); left unexposed by this board's own earlier D-alias audit, not changed here (out of scope for a board.json-only pass)." },
+    "39": { "capabilities": [], "note": "I2C_SCL_1 - second Qwiic (I2C1) connector - see GPIO38 note; same reasoning." },
+    "40": { "capabilities": [], "note": "MOTOR_L_CURRENT - dedicated left-motor current-sense ADC input - not general purpose." },
+    "41": { "capabilities": [], "note": "MOTOR_3_CURRENT - dedicated motor-3 current-sense ADC input - not general purpose." },
+    "42": { "capabilities": [], "note": "MOTOR_4_CURRENT - dedicated motor-4 current-sense ADC input - not general purpose." },
+    "43": { "capabilities": [], "note": "MOTOR_R_CURRENT - dedicated right-motor current-sense ADC input - not general purpose." },
+    "44": { "capabilities": [], "note": "LINE_L - dedicated line-follower IR reflectance sensor input - not general purpose." },
+    "45": { "capabilities": [], "note": "LINE_R - dedicated line-follower IR reflectance sensor input - not general purpose." },
+    "46": { "capabilities": [], "note": "BOARD_VIN_MEASURE - dedicated battery-voltage monitor ADC input (docs.sparkfun.com \"VIN MEAS\") - not general purpose." },
+    "47": { "capabilities": [], "note": "RP2350_PSRAM_CS - CONFIRMED onboard PSRAM chip-select (pins_arduino.h RP2350_PSRAM_CS/RP2350_PSRAM_MAX_SCK_HZ define pair; docs.sparkfun.com hardware overview calls GPIO47 \"PSRAM Chip Select\") - not broken out, never user-toggled." }
+  },
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

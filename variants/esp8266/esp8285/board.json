@@ -1,0 +1,66 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8285" -> designer/boards/ESP8285/ESP8285.json -> const ESP8285Data = {...}
+  "boardName": "ESP8285",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Generic ESP8285 Module",
+
+  // Same pin-declaration style as regular ESP8266 — shares the "esp8266"
+  // family value (see variants/esp8266/esp8266/board.json for the full
+  // rationale) so this stays grouped under the ESP8266 family, not ESP32.
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over.  ESP8285 has WiFi but no
+  // on-chip Bluetooth — BLE is omitted.
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. Commonly wired to a FLASH/BOOT button on dev boards",
+    "2":  "Must be HIGH at boot. Commonly wired to the on-board LED on dev boards",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. Native range is 0-1.0V on the bare chip; many dev boards add an on-board divider for 0-3.3V — check your board's documentation before wiring higher voltages"
+  },
+
+  // GPIO1/GPIO3: hardware UART0 TX/RX, same as regular ESP8266 (see
+  // variants/esp8266/esp8266/board.json for why this is forced via
+  // chipGpios rather than relying on a pins_arduino.h alias).
+  // GPIO9/GPIO10: ESP8285 has flash embedded in the SoC package via a
+  // different SPI arrangement, freeing these two pins for GPIO use —
+  // on a standard (non-8285) ESP8266 module they are reserved for the
+  // external flash chip and never broken out.  Confirmed against the
+  // vendor `common.h`'s `isFlashInterfacePin()` / `esp_is_8285()` split.
+  // GPIO16: no PWM/interrupt support (RTC-domain pin, see pinNotes).
+  // A0 (GPIO17) is analog-input-only — see variants/esp8266/esp8266/board.json.
+  // PWM is available on GPIO0-15 (per randomnerdtutorials.com above), so
+  // GPIO9/10 get pwm_output here now that they're freed on this chip.
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "Available on ESP8285 (embedded flash) — reserved for flash SPI on standard ESP8266 modules" },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "Available on ESP8285 (embedded flash) — reserved for flash SPI on standard ESP8266 modules" },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "1.0" }
+}

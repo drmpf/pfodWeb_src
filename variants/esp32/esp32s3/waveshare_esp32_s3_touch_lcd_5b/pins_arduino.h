@@ -60,9 +60,9 @@
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
-// Def for I2C that shares the IMU I2C pins
-static const uint8_t SDA = 11;
-static const uint8_t SCL = 10;
+// pfodWeb NOTE: SDA/SCL not declared — per this board's own comment
+// this I2C bus is shared with the onboard IMU, and GPIO10 is also the
+// dedicated LCD B7 data line, so it's not a general expansion port.
 
 // Mapping based on the ESP32S3 data sheet - alternate for SPI2
 static const uint8_t SS = 34;    // FSPICS0
@@ -70,47 +70,31 @@ static const uint8_t MOSI = 35;  // FSPID
 static const uint8_t MISO = 37;  // FSPIQ
 static const uint8_t SCK = 36;   // FSPICLK
 
-// Mapping based on the ESP32S3 data sheet - alternate for OUTPUT
-static const uint8_t OUTPUT_IO2 = 2;
-static const uint8_t OUTPUT_IO3 = 3;
-static const uint8_t OUTPUT_IO17 = 17;
-static const uint8_t OUTPUT_IO18 = 18;
+// pfodWeb NOTE: OUTPUT_IO2/3/17/18 deliberately NOT declared — they
+// just re-label GPIO2/3/17/18, which are already excluded above as
+// dedicated onboard ST7262 RGB LCD data lines (R4/VSYNC/B6/B5).
 
-// Analog capable pins on the header
-static const uint8_t A0 = 1;
-static const uint8_t A1 = 2;
-static const uint8_t A2 = 3;
-static const uint8_t A3 = 4;
-static const uint8_t A4 = 5;
+// Analog capable pins on the header (pfodWeb NOTE: A0-A4/A6
+// deliberately NOT declared — GPIO1/2/3/4/5/7 are all dedicated onboard
+// LCD/touch pins, see the SDA/SCL/board.json notes above/below)
 static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
 
-// GPIO capable pins on the header
-static const uint8_t D0 = 7;
+// GPIO capable pins on the header (pfodWeb NOTE: D0/D2-D6/D9-D11
+// deliberately NOT declared — dedicated onboard LCD/touch pins; D12-D16
+// (GPIO33-37) are genuinely free on this board despite being in the
+// chip's usual flash/PSRAM range — this board's own file declares them,
+// so they're trusted per this project's audit policy)
 static const uint8_t D1 = 6;
-static const uint8_t D2 = 5;
-static const uint8_t D3 = 4;
-static const uint8_t D4 = 3;
-static const uint8_t D5 = 2;
-static const uint8_t D6 = 1;
 static const uint8_t D7 = 44;
 static const uint8_t D8 = 43;
-static const uint8_t D9 = 40;
-static const uint8_t D10 = 39;
-static const uint8_t D11 = 38;
 static const uint8_t D12 = 37;
 static const uint8_t D13 = 36;
 static const uint8_t D14 = 35;
 static const uint8_t D15 = 34;
 static const uint8_t D16 = 33;
 
-// Touch input capable pins on the header
-static const uint8_t T1 = 1;
-static const uint8_t T2 = 2;
-static const uint8_t T3 = 3;
-static const uint8_t T4 = 4;
-static const uint8_t T5 = 5;
+// Touch input capable pins on the header (pfodWeb NOTE: T1-T5/T7
+// deliberately NOT declared — dedicated onboard LCD/touch pins)
 static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
 
 #endif /* Pins_Arduino_h */

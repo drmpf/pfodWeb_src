@@ -1,0 +1,190 @@
+ESP-01 (AI-Thinker) — button/LED capability tag and ADC refVolts research notes
+Board: variants/esp8266/esp8266/esp01/board.json
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+
+1. Official Ai-Thinker "ESP-01/07/12 Series Modules User's Manual V1.3" (2018,
+   Shenzhen Ai-Thinker Technology Co., Ltd) — PRIMARY / authoritative source:
+   https://home-assistant-guide.com/wp-content/uploads/2021/04/ESP-01_ESP-07_ESP-12_Series_User_Manual_V1.3.pdf
+   - Table 2.2 "ESP Series Module Pin Function Definitions" (page 6): for the
+     combined "01 / 01S" pin-number column, the 8 physical pins are
+     GND, IO2, IO0, RXD (row 1) / TXD, EN, RST, VCC (row 2). No button/switch
+     pin is listed anywhere for this module - confirms no onboard user button.
+   - The same table's "ADC" row shows "-" (dash, meaning absent) for the
+     "01/01S" column. ADC only appears starting at ESP-01M (which uses the
+     16-pin SMD package, pin 16). This confirms the plain 8-pin DIP ESP-01
+     module (and ESP-01S) does NOT physically break out the ADC/A0 pin at
+     all — matches the pre-existing comment already in board.json.
+   - Section 7 "Module Selection" table (page 23-24), row "Indicator light":
+       ESP-01  -> "TXD0 / POWER"   (two rows in the cell)
+       ESP-01S -> "GPIO2"
+     This is the critical finding: the vendor's own datasheet distinguishes
+     the plain "ESP-01" (which is what this board.json models — displayName
+     is "ESP-01 (AI-Thinker)", not "ESP-01S") from "ESP-01S". The plain
+     ESP-01's indicator lights are (a) a TXD0 activity LED, hardwired to the
+     UART0 TX line (not a GPIO the firmware can drive - GPIO1/TX is already
+     hard-reserved as serial_tx on this board anyway) and (b) a POWER LED
+     hardwired directly to VCC (always on when powered, not GPIO-controllable
+     at all). Only the separate ESP-01S variant lists "GPIO2" as its
+     indicator light. Table 2.2's "Indicator light" values for ESP-01S GPIO2
+     LED are not disputed - the point is that this specific board entry
+     ("ESP-01", not "ESP-01S") is documented by the vendor as NOT having a
+     GPIO2-controlled LED.
+   - Boot-mode table (page 7 / page 23) confirms GPIO0 and GPIO2 both need to
+     be HIGH for normal "Run mode" boot (GPIO0 LOW selects "Download mode")
+     - consistent with the pre-existing pinNotes already in board.json.
+
+2. forward.com.au (pfod's own site) "ESP-01 and ESP-01S How program and use
+   the Pins and Leds":
+   https://www.forward.com.au/pfod/ESP8266/GPIOpins/ESP8266_01_pin_magic.html
+   - Independently corroborates the vendor split: describes the original
+     ESP-01 as having "a Red led that comes on when the 3v3/GND is applied"
+     (= the POWER LED above) plus a Blue LED wired to GPIO1/TXD, active-low
+     (= the TXD0 activity LED above, NOT a separate GPIO-controllable LED).
+     States the ESP-01S variant instead has its Blue LED on GPIO2, active-low.
+   - Confirms no onboard user button on the bare module (external push
+     buttons must be added).
+   - Confirms the ADC pin is not broken out on the ESP-01's 8-pin header
+     (matches the datasheet's own "-" in the ADC row for 01/01S), noting it
+     would need to be manually soldered to access, and citing that the
+     recommended path for analog needs is an external I2C ADC.
+
+3. WebSearch aggregate results (multiple ESP8266 pinout/tutorial sites, e.g.
+   microcontrollerslab.com, circuitofthings.com, xecor.com) generally state
+   "the ESP-01S has a Blue LED connected to GPIO2, active-low" — consistent
+   with sources 1 and 2 above, but these tutorial sites frequently blur the
+   ESP-01 vs ESP-01S distinction and were not used as the deciding source;
+   the vendor datasheet (source 1) and pfod's own reference (source 2), which
+   both explicitly separate the two part numbers, were treated as decisive.
+
+CONSIDERED BUT NOT CHANGED, AND WHY
+------------------------------------
+
+- GPIO2 "led_low" / "led_high" tag: considered, NOT added. The existing
+  pinNotes comment ("Commonly wired to the on-board LED") pre-dates this
+  review and is generically true of the ESP-01/ESP-01S family colloquially,
+  but the vendor's own part-by-part table says the plain "ESP-01" (this
+  board's exact display name) does not have a GPIO2 LED — only ESP-01S does.
+  Per the task's capability-tagging rule, tags require solid, board-specific
+  evidence, not a same-family "sometimes true" LED. Left untagged; existing
+  pinNotes text preserved verbatim, with a pfodWeb NOTE comment added above
+  it in board.json documenting this finding and citing sources.
+  (If a future need arises to model "ESP-01S" specifically as its own board.json
+  entry, GPIO2 "led_low" would be correctly tagged there - see randomnerdtutorials.com
+  and the sources above for the ESP-01S-specific evidence.)
+
+- GPIO0 "button" tag: considered, NOT added. No source (vendor datasheet or
+  otherwise) shows an onboard button on the bare ESP-01 module. The existing
+  pinNotes text already correctly notes GPIO0 is "often wired to a
+  FLASH/BOOT button on ESP-01 programmer adapters" (i.e. external
+  breakout/programmer boards, not the module itself) — left as-is.
+
+- GPIO1 (TX) / GPIO3 (RX): not considered for any tag regardless of findings,
+  since they are hard-reserved as serial_tx/serial_rx on this board and any
+  other tags on them would be silently discarded by build_boards.js. (This
+  is also where the plain ESP-01's TXD0 activity LED physically lives, which
+  reinforces that it was never a taggable general-purpose GPIO capability.)
+
+- adc.defaultRefVolts: considered changing from "1.0", NOT changed. No
+  research was done into any specific reference-voltage/divider value
+  because the ADC pin is not physically exposed on this 8-pin module at all
+  (confirmed by both sources 1 and 2 above) - there is no pin on this board
+  to apply a refVolts value to. Left at the chip-level default "1.0" per the
+  pre-existing comment, with a citation added confirming the "not broken
+  out" claim against the vendor datasheet.
+
+SUMMARY
+-------
+TAGGED esp01: nothing tagged - vendor datasheet shows plain ESP-01 (as
+distinct from ESP-01S) has no GPIO-controllable LED and no onboard button;
+ADC pin is not physically broken out on this 8-pin module at all.
+
+===============================================================
+[2026-07-12] FULL dedicated-hardware pin-exclusion sweep (KEEP/EXCLUDE pass)
+Board: variants/esp8266/esp8266/esp01/{pins_arduino.h, board.json}
+===============================================================
+
+SCOPE OF THIS PASS
+-------------------
+This is a separate, broader sweep than the 2026-07-11 entry above (which
+only covered button/LED capability tagging and the ADC refVolts question).
+This pass checks the file for ANY dedicated-hardware pin that should be
+EXCLUDED from the general-purpose GPIO pool (SPI bus pins, I2C bus pins,
+strapping pins already covered, flash-SPI pins, etc), per the standard
+board-database pin-exclusion playbook used across the ESP32/ESP8266 sweep.
+
+SOURCES CONSULTED
+------------------
+1. Full re-read of variants/esp8266/esp8266/esp01/pins_arduino.h (all 23
+   lines) — confirms the file declares NOTHING except an LED_BUILTIN
+   #define guard. No `static const uint8_t` pin aliases, no PIN_SPI_*,
+   no PIN_WIRE_* defines, no board-specific extras of any kind. The
+   file's own header comment explains why: the ESP-01's 4 real pins
+   (GPIO0, GPIO1/TX, GPIO2, GPIO3/RX) are supplied directly via this
+   variant's board.json chipGpios map instead of via pins_arduino.h
+   aliases.
+2. Full re-read of variants/esp8266/esp8266/esp01/board.json — chipGpios
+   already narrows the pin set to exactly {0, 1, 2, 3}; GPIO1/GPIO3 are
+   already hard-tagged serial_tx/serial_rx (protected, not general GPIO).
+   No SDA/SCL/SS/MOSI/MISO/SCK key or note appears anywhere in the file.
+3. Ai-Thinker ESP-01/07/12 Series Modules User's Manual V1.3 (already
+   cited above) — Table 2.2 confirms only 4 signal pins are physically
+   castellated on this 8-pin module: IO0, IO2, RXD, TXD (plus VCC/GND/
+   CH_PD/RST). No SPI header, no I2C header, no other dedicated
+   peripheral pins exist on this module to exclude.
+4. pfodWeb build_boards.js source itself (pfodWeb_src/build_boards.js),
+   read directly to verify the alias-collision mechanism rather than
+   relying on documentation alone:
+   - parseEsp32Consts() (~line 439) is the function that would create
+     any SDA/SCL/SS/MOSI/MISO/SCK alias: it matches ONLY the regex
+     `static (const|constexpr) uint8_t NAME = ...;` (plus a narrow
+     #define fallback used only to resolve an alias chain that already
+     names it). Since esp01's pins_arduino.h contains zero such
+     declarations, parseEsp32Consts(src) returns an empty object for
+     this file.
+   - buildEsp32Board() (~line 515, which is the parser this "esp8266"
+     family routes through per the chip-level board.json's own family
+     comment) reads consts.SDA / consts.SCL / consts.SS / consts.MOSI /
+     consts.MISO / consts.SCK (~lines 543-548) straight from that
+     parsed object. With an empty consts object, every one of those is
+     `undefined`, so the capability-attachment checks at ~lines 376-381
+     (`if (p === wireSda) caps.push('i2c_sda')`, etc) can never match
+     any pin — there is no numeric value for `undefined` to equal.
+   - Conclusion: the step-4 alias-collision failure mode (an ESP32-side
+     board silently inheriting an SDA/SCL/SPI capability tag from a
+     same-named alias that isn't a real header) is structurally
+     impossible for esp01, because the source file that would need to
+     declare the alias declares nothing at all. This is a stronger
+     guarantee than "no such alias was found by inspection" — the
+     parser has no code path that could produce one from this input.
+
+KEEP vs EXCLUDE POLICY APPLIED
+--------------------------------
+- GPIO0: KEEP as general-purpose digital_input/digital_output/pwm_output
+  (already so in board.json). Boot-strapping pinNote already present and
+  unchanged. Not a dedicated peripheral pin on this module.
+- GPIO1 (TX): already EXCLUDED from general GPIO pool via serial_tx
+  hard-reservation in chipGpios — correct, unchanged.
+- GPIO2: KEEP as general-purpose digital_input/digital_output/pwm_output
+  (already so in board.json). Boot-strapping pinNote already present and
+  unchanged. Confirmed (2026-07-11 entry above) this module has no
+  GPIO2-driven LED, so no led_* tag applies, but the pin itself remains
+  general-purpose since nothing dedicates it to a fixed peripheral.
+- GPIO3 (RX): already EXCLUDED from general GPIO pool via serial_rx
+  hard-reservation in chipGpios — correct, unchanged.
+- No SPI pins, no I2C pins, no flash pins, no other dedicated-hardware
+  pins exist anywhere in this file or this board.json to consider for
+  exclusion — the module simply does not expose any.
+
+RESULT: NO CHANGE
+------------------
+No edits made to pins_arduino.h or board.json in this pass. The full
+dedicated-hardware sweep confirms there is nothing on this minimal 8-pin
+module beyond the 4 pins already modeled, no spurious SDA/SCL/SPI alias
+capability can be attached by build_boards.js (verified against the
+parser source, not just by absence-of-evidence in the .h file), and the
+existing GPIO0/GPIO2 KEEP + GPIO1/GPIO3 serial-reserved EXCLUDE
+classification already matches the playbook exactly. This board required
+no action beyond this confirmation.

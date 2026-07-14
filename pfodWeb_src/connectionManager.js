@@ -1451,6 +1451,23 @@ class ProxyStreamConnection extends PfodConnectionBase {
               startAttempt();
               return;
             }
+            // pfodProxy's cached-connect backoff (ble.rs's ensure_open) —
+            // "recent connection failure, retry in <n>s". Expected and
+            // self-clearing, same as the "not found" case above: keep the
+            // dialog open, show the wait, then retry after it elapses
+            // instead of rejecting (which would close the dialog only for
+            // the caller to immediately reopen a fresh one on its own retry).
+            const backoffMatch = rawMsg.match(/recent connection failure, retry in (\d+)s/i);
+            if (!settled && this.protocol === 'ble' && backoffMatch) {
+              const waitSec = parseInt(backoffMatch[1], 10) || 2;
+              if (showDialog) this._updateConnectingDialog(`Re-scanning in ${waitSec}s…`);
+              setTimeout(() => {
+                if (settled) return;   // cancelled while the wait was pending
+                if (showDialog) this._updateConnectingDialog('scanning');
+                startAttempt();
+              }, waitSec * 1000);
+              return;
+            }
             if (showDialog) this._hideConnectingDialog();
             const name = this.bleName;
             const addr = this.bleAddress || '';

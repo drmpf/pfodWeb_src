@@ -1,0 +1,166 @@
+Board: WIZnet "W5100S-EVB-Pico2" (chip bucket: rp2350)
+Directory: variants/rp2040/rp2350/wiznet_5100s_evb_pico2/
+Audit date: 2026-07-12
+
+SUMMARY
+-------
+Applied dedicated-hardware pin exclusion for the onboard W5100S Ethernet
+chip's SPI bus + reset/interrupt lines (GPIO16-21). Also tagged GPIO25
+(PIN_LED/LED_BUILTIN) as led_high, matching this project's established
+precedent for the same GPIO25 LED on other Pico-form-factor RP2040/RP2350
+boards (rpipico, wiznet_5500_evb_pico2). No button tagging - board has no
+onboard button. Created board.json (this board previously had none - zero
+differentiation from a plain Pico 2; its pins_arduino.h is just
+`#include "../generic/pins_arduino.h"`).
+
+SOURCES CONSULTED
+------------------
+1. docs.wiznet.io/Product/Chip/Ethernet/W5100S/w5100s-evb-pico2 (WIZnet's
+   own official documentation for THIS board - authoritative). Confirmed
+   page heading "W5100S-EVB-Pico2" and body text explicitly mentioning
+   "Raspberry Pi RP2350". States verbatim: "GPIO16, GPIO17, GPIO18,
+   GPIO19, GPIO20, GPIO21 are connected to W5100S inside the board. These
+   pins enable SPI communication with W5100S to use Ethernet function...
+   If you are using the Ethernet function, these pins cannot be used for
+   any other purpose."
+   Exact per-signal table from the same page:
+     MISO -> GPIO16
+     CSn  -> GPIO17
+     SCLK -> GPIO18
+     MOSI -> GPIO19
+     RSTn -> GPIO20
+     INTn -> GPIO21
+   Also confirmed on the same page: "GPIO25 Connected to user LED"
+   (standard Pico-style LED, not shared with the Ethernet pins), GPIO24
+   = VBUS sense, GPIO29 = ADC3/VSYS-sense (both standard RP2350 Pico2
+   features, out of scope here), and only the RUN pin (PIN30, resets the
+   chip when shorted low - not a numbered GPIO / not a user button)
+   documented as any kind of button/reset control. No onboard user
+   pushbutton found.
+2. docs.wiznet.io/Product/Chip/Ethernet/W5100S/w5100s-evb-pico (the
+   sibling RP2040 board's WIZnet doc page) - cross-referenced and
+   confirms the identical GPIO16-21 SPI0/RSTn/INTn assignment and GPIO25
+   user LED for the non-RP2350 sibling, corroborating the Pico2 page.
+3. WebSearch: community LED-control example for the W5100S-EVB-Pico2
+   using `#define LEDPIN 25` and `digitalWrite(LEDPIN, HIGH)` to turn
+   the LED on / `LOW` to turn it off - confirms active-high polarity
+   (Hackster.io W5100S-EVB-Pico2 LED project).
+4. Local codebase: this board's own pins_arduino.h
+   (variants/rp2040/rp2350/wiznet_5100s_evb_pico2/pins_arduino.h) is two
+   lines: `#define PICO_RP2350A 1` then
+   `#include "../generic/pins_arduino.h"` - no board-specific pin
+   declarations. The included generic file
+   (variants/rp2040/rp2350/generic/pins_arduino.h) declares SPI0 as
+   MISO=16/SS=17/SCK=18/MOSI=19 and PIN_LED=25 - this happens to match
+   the real W5100S wiring and LED wiring exactly, so no pins_arduino.h
+   edit was required. GPIO20/21 have no boilerplate function alias in
+   the generic file, so they needed no alias changes either - only
+   chipGpios capability corrections.
+5. Chip-level default: variants/rp2040/rp2350/board.json (chipGpios: {}
+   - deliberately empty per its own comment).
+6. Schema/style precedent:
+   - variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json (per-board
+     chipGpios override + "no legitimate general-purpose role" empty-
+     capabilities pattern).
+   - variants/rp2040/rp2040/rpipico/board.json (GPIO25 led_high tagging
+     precedent + active-high justification for the plain Pico LED
+     circuit).
+   - variants/rp2040/rp2350/wiznet_5500_evb_pico2/board.json (near-
+     identical sibling board created in this same audit wave - same
+     GPIO16-21 Ethernet-chip SPI/RESET/INT layout, same GPIO25 led_high
+     tagging approach; used as the direct structural template for this
+     file since the W5100S-EVB-Pico2 and W5500-EVB-Pico2 share the
+     identical GPIO assignment pattern per WIZnet's own docs).
+7. pfodWeb_src/build_boards.js (read to confirm parser behavior):
+   - buildEsp32Board() (used for the "rp2040" family too) builds each
+     GPIO's base capability set from chipGpios when present (empty
+     capabilities array => empty base set, skips the default digital_
+     input/output/pwm_output derivation), THEN unconditionally appends
+     spi_ss/spi_mosi/spi_miso/spi_sck for whichever single GPIO matches
+     the board's own SS/MOSI/MISO/SCK globals (~line 700-703). This
+     auto-append cannot be suppressed via chipGpios - it fires
+     regardless, so GPIO16/17/18/19's final capability lists end up as
+     exactly one bus-role capability each even though the board.json
+     "capabilities" array is empty.
+   - button/led_high/led_low/led_neopixel capabilities (~line 599-621)
+     are ONLY ever attached via an explicit chipGpios entry - never
+     auto-derived from a pins_arduino.h alias name (e.g. PIN_LED) - so
+     GPIO25 required an explicit chipGpios entry to get the led_high tag.
+
+PER-PIN REASONING
+------------------
+GPIO16 (W5100S MISO / SPI0 RX): chipGpios "capabilities": [] strips the
+  default digital_input/digital_output/pwm_output. build_boards.js's
+  SPI0-MISO auto-append (this board's generic pins_arduino.h SPI0 MISO
+  alias resolves to GPIO16) still fires unconditionally, giving a final
+  capability list of exactly ["spi_miso"].
+
+GPIO17 (W5100S CSn/SS / SPI0 chip-select): same treatment. Final
+  capabilities: ["spi_ss"] only, via auto-append from this board's
+  SPI0 SS alias.
+
+GPIO18 (W5100S SCLK / SPI0 clock): same treatment. Final capabilities:
+  ["spi_sck"] only.
+
+GPIO19 (W5100S MOSI / SPI0 TX): same treatment. Final capabilities:
+  ["spi_mosi"] only.
+
+GPIO20 (W5100S RSTn, RP2350 GPIO output to the chip): no SS/MOSI/MISO/
+  SCK/SDA/SCL alias collision on this GPIO (not part of the SPI0
+  boilerplate group), so the auto-append rules never touch it.
+  chipGpios "capabilities": [] leaves it with NO capabilities at all
+  (note only) - it is chip-driven (the Ethernet library holds it as an
+  output and toggles it during W5100S init/reset); offering it as a
+  general digital_output would let a Designer sketch fight the library
+  for control (e.g. holding reset asserted permanently, taking the
+  Ethernet link down).
+
+GPIO21 (W5100S INTn, interrupt output from the chip, RP2350 GPIO input):
+  same treatment - no bus-role alias collision, "capabilities": []
+  leaves it with no capabilities (note only). It's an input the
+  Ethernet library reads internally; not something a Designer sketch
+  should also be driving/reading as a generic pin.
+
+GPIO25 (PIN_LED / LED_BUILTIN, standard Pico2-style onboard LED):
+  tagged ["digital_output", "pwm_output", "led_high"]. Confirmed by the
+  WIZnet W5100S-EVB-Pico2 doc page as the only LED on this board and NOT
+  one of the six Ethernet-dedicated GPIOs. Active-high polarity
+  confirmed via a community example (`digitalWrite(LEDPIN, HIGH)` turns
+  the LED on, LEDPIN=25). digital_input dropped to match this project's
+  established led_high precedent for dedicated onboard LED pins (see
+  variants/rp2040/rp2040/rpipico/board.json and
+  variants/rp2040/rp2350/wiznet_5500_evb_pico2/board.json); pwm_output
+  kept since arduino-pico's analogWrite() works on any RP2040/RP2350
+  GPIO, enabling LED brightness dimming.
+
+GPIO24 (VBUS sense) and GPIO29 (ADC3/VSYS-sense): confirmed on the same
+  WIZnet doc page as standard RP2350 Pico2 chip features, not specific
+  to this board's own onboard hardware - left untouched (out of scope
+  for a per-board Ethernet-hardware + LED audit; matches chip-level
+  defaults).
+
+No onboard user button - confirmed absent by the WIZnet documentation
+  page (only the LED, the six Ethernet-chip pins, VBUS/ADC3 sense pins,
+  and the RUN/PIN30 chip-reset pin are documented; no button listed).
+  No button tagging applied.
+
+VALIDATION
+----------
+- board.json was checked for valid JSON syntax by stripping `//` line
+  comments and running JSON.parse() against the result - succeeded,
+  producing the expected top-level keys (boardName, displayName, family,
+  inputOnlyGpios, connections, pinNotes, chipGpios, pwm, dac, adc) and
+  the expected chipGpios shape for GPIO16/17/18/19/20/21/25.
+- No build script was executed (per task instructions).
+- pwm/dac/adc/family/connections/pinNotes/inputOnlyGpios/boardName/
+  displayName values reproduce the chip-level
+  variants/rp2040/rp2350/board.json defaults verbatim except for the
+  added chipGpios entries, per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2350/wiznet_5100s_evb_pico2/board.json (new file)
+- Created: boardsDetails/rp2040/rp2350/wiznet_5100s_evb_pico2/notes.txt (this file)
+- pins_arduino.h: NOT modified (its inherited generic SPI0/LED aliases
+  already happen to match the real W5100S/LED wiring exactly, so no edit
+  was needed there).

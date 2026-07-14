@@ -1,0 +1,42 @@
+Board: deneyapkart (Deneyap Kart / ESP32)
+Date: 2026-07-14 (documentation backfill - findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- Vendor pins_arduino.h - cited directly for the dedicated camera, IMU
+  I2C, and mic pin aliases (CAMSD/CAMSC/CAMD2-9/CAMPC/CAMXC/CAMH/CAMV,
+  IMUSD/IMUSC, MICD/MICC).
+- docs.deneyapkart.org "Pin Tanimlamalari" (DYDK) - cited directly as
+  confirming GPIO0 is the onboard GPKEY button: 10K pull-up to 3.3V,
+  pressed pulls LOW, also used for manual boot mode entry.
+- mekinfo.net Deneyap Kart setup guide - cited directly as confirming
+  LEDG (GPIO1) and LEDR (GPIO3), and also LEDB (GPIO4), are active-low.
+- build_boards.js's own serial-pin reservation behavior - cited as the
+  reason GPIO1/GPIO3 were not tagged despite the confirmed LED evidence.
+
+Per-pin findings:
+- GPIO4, GPIO5, GPIO15, GPIO18, GPIO19, GPIO21, GPIO22, GPIO23, GPIO25,
+  GPIO26, GPIO32, GPIO33, GPIO34, GPIO35, GPIO36, GPIO39: excluded
+  (capabilities: [] / omitted from chipGpios) - dedicated onboard camera,
+  IMU I2C, and mic pins (vendor pins_arduino.h CAMSD/CAMSC/CAMD2-9/CAMPC/
+  CAMXC/CAMH/CAMV, IMUSD/IMUSC, MICD/MICC).
+- GPIO0: tagged ["digital_input", "button"] - confirmed onboard GPKEY
+  button (docs.deneyapkart.org Pin Tanimlamalari DYDK: 10K pull-up to
+  3.3V, pressed pulls LOW, also used for manual boot mode entry).
+- GPIO1 (LEDG), GPIO3 (LEDR): confirmed active-low per mekinfo.net Deneyap
+  Kart setup guide, but deliberately NOT tagged led_g_low/led_r_low -
+  they are also this board's primary serial TX/RX pins, which
+  build_boards.js hard-reserves for serial duty (pfodWeb's serial
+  connection needs them), so any chipGpios tag on them would be silently
+  discarded in the generated output.
+- GPIO4 (LEDB): also confirmed active-low, but already excluded above as
+  a dedicated IMU I2C SDA pin - not reachable for LED tagging either way.
+- GPIO2, GPIO14, GPIO27, GPIO37, GPIO38: kept, unchanged generic
+  capabilities.
+
+Summary: Camera/IMU/mic pins excluded per vendor pins_arduino.h; GPIO0
+tagged button (confirmed onboard GPKEY button, also used for manual boot
+entry, per docs.deneyapkart.org); GPIO1/GPIO3 (LEDG/LEDR, confirmed
+active-low) deliberately left untagged because they double as this
+board's hard-reserved serial TX/RX pins and any tag would be silently
+discarded by build_boards.js; GPIO4 (LEDB, also active-low) already
+excluded as a dedicated IMU I2C pin.

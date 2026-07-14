@@ -1,0 +1,105 @@
+namino_rosso (ESP32-S3-WROOM-1U-N4R8) - button/LED research notes
+====================================================================
+
+Sources consulted:
+
+1. https://shop.namino.cc/products/namino-rosso
+   - Official product page. Lists "1 knob input and button" among industrial
+     I/O features but gives no GPIO/schematic detail for it, and does not
+     mention any onboard status/RGB LED at all.
+
+2. https://namino.cc/products/boards/namino-rosso/
+   - Official board page, same summary spec list ("1 knob input and
+     button"). No LED or button wiring/GPIO detail given.
+
+3. https://ipxchange.tech/boards/namino-rosso-arancio-and-bianco-industrial-grade-esp32-development-boards/
+   - Third-party overview article, repeats vendor spec sheet (8 PNP digital
+     inputs, 8 PNP digital outputs, 1 SPDT relay, "1 knob input and
+     button", RS485, DIN-rail, Arduino UNO shield interface, USB-C). No
+     GPIO-level detail.
+
+4. https://github.com/espressif/arduino-esp32/pull/8407 and
+   https://github.com/espressif/arduino-esp32/pull/8582
+   - Espressif core PRs that added the namino_rosso board variant
+     (pins_arduino.h / boards.txt). Confirms board authorship (Namino
+     Team / a-sapuppo) and existence of the variant; PR file diffs were
+     not directly viewable through the fetch tool but corroborate the raw
+     file below.
+
+5. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/namino_rosso/pins_arduino.h
+   - Confirmed via direct curl: upstream file matches this repo's local
+     pins_arduino.h (same GPIO declarations), except upstream still
+     declares GPIO46 (RESET_ADD_ON), GPIO47 (BOOT_MODE), GPIO48
+     (NM_RESET) which this repo's copy has already deliberately omitted
+     per the pre-existing pin-exclusion NOTE at the top of the local
+     pins_arduino.h (from an earlier audit pass - not touched here).
+     Critically: NO LED_BUILTIN, LED, BUTTON, BTN, or RGB macro of any
+     kind is defined anywhere in this header. J10_enc_A / J10_enc_B /
+     J10_sw (the knob/encoder connector pins) are all defined literally
+     as "= 0" (i.e. not mapped to any real GPIO in this header), not
+     GPIO0.
+
+6. https://raw.githubusercontent.com/namino-cc/examples/main/Arduino/namino_rosso_blinkLed/namino_rosso_blinkLed.ino
+   and .../namino_rosso_blinkLed/ReadMe.md
+   - THE key finding. Official "blink onboard LED" example. The ReadMe
+     states: "Turn ON and OFF repeatedly on board TEST LED, connected in
+     parallel to DIG OUT1 (digital output 1) - Side B - J15". The .ino
+     defines `#define LED_BUILTIN 1  // Out Channel for Built-in Led` and
+     controls it exclusively via `nr.writeDigOut(LED_BUILTIN, ...)` /
+     `nr.readDigOut(LED_BUILTIN)`, i.e. through the namino_rosso library's
+     SPI register protocol to Namino's secondary industrial-I/O
+     microcontroller (nr.begin(..., MISO, MOSI, SCK, SS)). LED_BUILTIN=1
+     here is a logical "digital output channel index" on that secondary
+     chip's register map, NOT an ESP32-S3 GPIO number - despite the
+     confusingly GPIO-like macro name and value. This is exactly the
+     "misleading LED_BUILTIN alias" trap the task instructions warned
+     about.
+
+7. https://raw.githubusercontent.com/namino-cc/examples/main/PlatformIO/NR_LCD_PT1000/include/namino_rosso.h
+   - namino_rosso library header. Confirms the onboard knob/button is
+     likewise virtualized behind the same SPI register protocol:
+     `RO_ENCODER_COUNTER_L/H` and `RO_ENCODER_SWITCH` are read-only
+     industrial registers, exposed to sketches via `nr.readEncoder()`
+     and `nr.readEncoderSwitch()` - again, no direct GPIO digitalRead()
+     of any ESP32-S3 pin is involved.
+
+8. https://x.com/Namino_official/status/1759510710411776453
+   - Namino's own tweet describing "The NPN encoder on the Rosso board...
+     employs an NPN transistor approach to transmit input signals to the
+     circuit" - consistent with the encoder/knob being wired into the
+     industrial PNP/NPN I/O subsystem (handled by the secondary chip),
+     not a simple GPIO-connected user button.
+
+Pins considered and NOT tagged:
+--------------------------------
+- No candidate GPIO was tagged. The only two "onboard user LED" and
+  "onboard button/knob" features documented by the vendor (the TEST LED
+  and the knob+switch) are both proven (source #6, #7 above) to be
+  implemented as logical channels on Namino's secondary industrial-I/O
+  microcontroller, accessed over the SPI bus (SS=GPIO10, MOSI=GPIO11,
+  MISO=GPIO13, SCK=GPIO12) via the namino_rosso library's register
+  protocol - they are NOT directly wired to any single dedicated
+  ESP32-S3 GPIO that could be meaningfully tagged "button" or "led_*" in
+  chipGpios. This is a firm, evidence-based conclusion, not a judgment
+  call - no guess was made and no GPIO was tagged.
+- SS/MOSI/MISO/SCK (GPIO10/11/12/13) were considered as the "carrier"
+  pins for these virtual channels but rejected for tagging: they are a
+  shared general-purpose SPI bus (also used for other things, e.g.
+  optional SD card CS on GPIO2 per existing NOTE) multiplexing many
+  register reads/writes (industrial inputs, outputs, encoder, LED, RTC,
+  analog config, etc.), not a dedicated button/LED pin - tagging them
+  button/led would be actively misleading.
+- GPIO46/47/48 (RESET_ADD_ON/BOOT_MODE/NM_RESET in the upstream vendor
+  header) were re-confirmed as out of scope: they are chip-reset/strap
+  lines to Namino's own add-on shield and secondary chip, already
+  excluded from chipGpios by a prior audit pass (see existing NOTE at
+  top of board.json / pins_arduino.h) - left untouched.
+- No pin coincides with TX (GPIO17) / RX (GPIO18) in this analysis since
+  no GPIO was identified as a button/LED candidate in the first place.
+
+Summary of action taken: NO CHANGE. board.json was not modified - no
+confirmable direct-GPIO onboard button or LED (single-color, RGB, or
+NeoPixel) exists on namino_rosso; the vendor's "TEST LED" and "knob and
+button" are both routed through a secondary SPI-attached industrial I/O
+chip, not through any ESP32-S3 GPIO suitable for pfodWeb capability
+tagging.

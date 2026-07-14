@@ -1,0 +1,177 @@
+Board: d32 (chip: esp32) - Wemos/LOLIN D32
+Directory: variants/esp32/esp32/d32/
+Audit date: 2026-07-12
+Task: dedicated-hardware pin-exclusion audit, flagged for
+      "static const uint8_t _VBAT = 35;" / "#define BAT_VOLT_PIN _VBAT"
+      declared in pins_arduino.h. Sibling board d1_mini32 (also flagged
+      this wave) declares the identical _VBAT=35 alias - explicitly NOT
+      assumed to be the same hardware; this board was researched
+      independently as instructed.
+
+SOURCES CONSULTED
+-----------------
+1. https://www.wemos.cc/en/latest/d32/d32.html
+   Official WEMOS/LOLIN documentation page for the plain "D32" board
+   (separate page from "D32 Pro" at
+   https://www.wemos.cc/en/latest/d32/d32_pro.html, which this repo
+   already covers as its own variant, variants/esp32/esp32/d32_pro).
+   Confirms: ESP32-WROOM-32 module (latest Rev1), 4MB flash, WiFi+BT,
+   LiPo battery interface with onboard charge management, 500mA max
+   charge current. No TFT/touch/microSD hardware listed for the plain
+   D32 (that extra hardware belongs to the D32 Pro), consistent with
+   this variant's minimal pins_arduino.h (only LED_BUILTIN + _VBAT
+   declared, no display-controller pin aliases like the d32_pro variant
+   has).
+   Note: WebFetch could not resolve www.wemos.cc directly (DNS lookup
+   failure in this environment: "getaddrinfo ENOTFOUND www.wemos.cc"),
+   but WebSearch's result snippets independently surfaced and quoted this
+   exact URL's content, and the schematic PDF (source 2 below, same
+   wemos.cc host/path pattern) fetched successfully - treated as
+   sufficiently corroborated official-vendor content.
+
+2. https://www.wemos.cc/en/latest/_static/files/sch_d32_v1.0.0.pdf
+   PRIMARY EVIDENCE. Official Wemos/LOLIN schematic, rev 1.0.0, dated
+   2018-04-08. Title block reads "LOLIN LOLIN" / "TITLE: D32" - fetched
+   and read directly as a PDF (not just text-scraped), confirming this
+   is indeed the plain D32's own schematic (not D32 Pro's). Six labelled
+   blocks on the one sheet: USB-UART, LED, IO, Power, Auto Flash,
+   Battery, Core.
+   - "Battery" block: LiPo charger U5 (TP4054, standard single-cell LiPo
+     linear charger IC) with pins CHRG/VCC/BAT/PROG/GND. A status LED
+     (LED1, via R6 2k) is wired to the CHRG pin - i.e. driven directly by
+     the charger IC's own status output, not by any ESP32 GPIO. The
+     charger's BAT output feeds net "VBAT", which also goes to the
+     battery connector P1 (PH-2-WD, 2-pin JST-style) and to bypass
+     capacitor C6 (10uF). Separately, net VBAT feeds a two-resistor
+     divider straight to GND: R12 (100k, on the VBAT/battery side) in
+     series with R17 (100k, on the GND side), with a bypass cap C2
+     (10uF) also across VBAT-GND. The R12/R17 junction is tapped by net
+     "IO35" (GPIO35) - i.e. GPIO35 is permanently wired (no jumper,
+     switch, or enable pin - always connected) to a 100k/100k (1:1)
+     resistive divider off the raw battery rail. This is a direct,
+     independent hardware confirmation that _VBAT=35/BAT_VOLT_PIN is a
+     genuine battery-voltage-sense pin, not just an unverified alias
+     name copied from boilerplate.
+   - "LED" block: a single LED (LED2) wired from the +3V3 rail through
+     resistor R9 (2k) to net "IO05" (GPIO5), with the LED's cathode on
+     the GPIO5 side. Current flows 3V3 -> R9 -> LED2 -> GPIO5, so GPIO5
+     must be driven/pulled LOW to sink current and light the LED - i.e.
+     an active-LOW onboard LED. This independently confirms the board's
+     own pins_arduino.h LED_BUILTIN = GPIO5 designation with real
+     schematic evidence. It is also self-consistent with the ESP32
+     strapping requirement (GPIO5 must be HIGH/floating at boot) - the
+     LED is correctly off by default at power-up under this active-low
+     wiring.
+   - "Auto Flash" block: U4 (UMH3N, a dual-NPN transistor pack) forms the
+     standard auto-program/auto-reset circuit driven from the CH340C
+     USB-UART's RTS/DTR lines, toggling RESET and IO0 automatically
+     during upload - this is not a physical button.
+   - "Core" block: the only physical switch on the whole schematic is K1
+     (silkscreened "RESET"), which pulls the EN (CHIP_PU) line low
+     directly - a hard module reset, not a GPIO-readable button. No
+     separate physical BOOT/flash-mode pushbutton exists on this board
+     (auto-flash handles that via the transistor circuit above).
+   - "IO" block: two 16-pin headers (JP1, JP2) breaking out
+     RESET/UP/UN/IO34/IO32/IO33/IO25/IO26/IO27/IO14/IO12/IO13/EN/VBUS/
+     VBAT (JP1) and IO23/TXD0/RXD0/IO21/IO19/IO18/IO5/IO17/IO16/IO4/IO0/
+     IO2/IO15/GND (JP2) - a plain general-purpose GPIO breakout, no
+     additional dedicated-hardware pins beyond the LED/battery items
+     already covered above.
+   - Confirms pins_arduino.h itself declares no SDA/SCL/SS/MOSI/MISO/
+     SCK/TX/RX static-const aliases anywhere (only LED_BUILTIN=5 and
+     _VBAT=35) - independently verified by direct inspection of the
+     3-line pins_arduino.h body, not just the schematic. No "hidden bus
+     alias" parser-collision risk exists on this board (build_boards.js
+     only appends spi_*/i2c_*/serial_* capabilities for GPIOs matching
+     an SDA/SCL/SS/MOSI/MISO/SCK/TX/RX const, and none of those consts
+     are defined at all in this file).
+
+3. ESP32 Forum, "Lipo voltage Lolin D32" thread (esp32.com/viewtopic.php?t=10147)
+   and related community discussion surfaced via web search - describes
+   this exact board's battery-sense circuit as "a voltage divider bridge
+   of 100 KOhms - 100 KOhms, with the battery voltage therefore halved."
+   Independently corroborates the schematic's R12=100k/R17=100k reading
+   (community sources were not used as primary evidence on their own,
+   only as a cross-check against the directly-read schematic).
+
+4. variants/esp32/esp32/d1_mini32/pins_arduino.h (local file, for
+   comparison only, per task instructions not to assume identical
+   hardware). d1_mini32 declares LED_BUILTIN=GPIO2 (not GPIO5) plus a
+   full set of D0-D8/RXD/TXD aliases and PIN_WIRE_SDA/SCL/PIN_SPI_*
+   backward-compat #defines - a materially different, more fleshed-out
+   pins_arduino.h than plain d32's 3-line file. Confirms these are
+   indeed two distinct physical products sharing only the same _VBAT=35
+   convention, not a copy-paste duplicate needing identical treatment.
+
+FINDINGS AND DECISIONS
+-----------------------
+GPIO35 (_VBAT / BAT_VOLT_PIN): KEEP as a plain analog-input-only GPIO.
+  Confirmed via the official schematic to be a permanently-wired
+  100k/100k (1:1) resistive divider off the battery rail (R12 series,
+  R17 shunt to ground, tapped by GPIO35) - a genuine, always-connected
+  battery-voltage-sense pin, matching this repo's KEEP policy for
+  onboard battery/voltage-monitor analog pins. Already correctly
+  restricted to analog_input/digital_input only via the chip-level
+  inputOnlyGpios 34-39 range - no capability change needed.
+  Corrected effective reference for this one pin: 3.3V *
+  (R_series+R_shunt)/R_shunt = 3.3V * (100000+100000)/100000 = 6.6V.
+  Since this board exposes many other general-purpose analog pins
+  (GPIO0/2/4/12-15/25-27/32-39 area) that do NOT carry any divider,
+  changing the board-wide "adc.defaultRefVolts" field would incorrectly
+  re-scale all of those unrelated pins too - so the correction is
+  recorded only as a per-pin "note" on GPIO35's chipGpios entry (board-
+  wide "adc" block left at the chip default 3.3V). This matches the
+  established precedent set on other confirmed 1:1-divider battery pins
+  in this repo (uPesy ESP32-C3 Mini/Basic, LilyGO TTGO T-OI Plus), as
+  opposed to the board-wide adc correction used on ThingPulse ePulse
+  Feather (a board with a differently-valued, board-specific divider
+  ratio, applied board-wide there because of that board's own specific
+  pin layout - not directly comparable to this one-of-many-pins case).
+
+GPIO5 (LED_BUILTIN): CONFIRMED onboard LED, active-low, per the official
+  schematic (LED2 driven from +3V3 through R9 2k to GPIO5, cathode on
+  the GPIO5 side). Tagged ["digital_output","led_low","pwm_output"] in
+  board.json's chipGpios entry for GPIO5 - matches this repo's led_low
+  precedent (node32s, oroca_edubot). digital_input capability dropped to
+  match those precedents (an LED-tagged pin is documented as output-only
+  in this repo's convention). The existing pinNotes strapping warning
+  ("Must be HIGH or floating on reboot") is left in place unchanged -
+  it is independently correct regardless of the LED tagging and is
+  self-consistent with the active-low LED being off by default at boot.
+
+No button GPIO found. The only physical switch on the schematic (K1,
+  "RESET") is wired directly to EN (hard module reset), not to any GPIO;
+  the auto-program/flash function is handled by a transistor circuit
+  (U4, UMH3N) driven from the CH340C's DTR/RTS lines, not a physical
+  BOOT button. Section 7a (button capability tagging) is therefore not
+  applicable to this board - no button tag was added anywhere.
+
+Alias-collision check (playbook step): this variant's pins_arduino.h
+  declares ONLY "static const uint8_t LED_BUILTIN = 5;" and
+  "static const uint8_t _VBAT = 35;" - no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+  aliases exist anywhere in the file (confirmed by direct read of the
+  13-line header). Since build_boards.js's ESP32 parser only appends the
+  spi_*/i2c_*/serial_* bus capabilities for a GPIO that equals one of
+  those specific named consts, and none of those consts are declared at
+  all in this file, there is no hidden-bus-alias contamination risk to
+  guard against on this board - nothing needed to be deleted from
+  pins_arduino.h.
+
+pins_arduino.h: left unmodified - no exclusion or alias-collision
+  deletion was warranted anywhere on this board.
+
+SUMMARY
+-------
+_VBAT=35 confirmed via the official Wemos/LOLIN D32 schematic as a real,
+permanently-wired 100k/100k battery-voltage divider (not identical
+circuitry to sibling d1_mini32, verified independently) - KEPT as plain
+analog-input-only GPIO with a per-pin corrected-reference note (6.6V)
+rather than a board-wide adc.defaultRefVolts change, since this board has
+many other unrelated analog pins. LED_BUILTIN=GPIO5 confirmed via the
+same schematic as a genuine active-low onboard LED - tagged led_low. No
+onboard button GPIO exists (RESET button is on EN, not a GPIO). No
+SDA/SCL/SS/MOSI/MISO/SCK/TX/RX aliases exist in this file at all, so no
+bus-alias collision risk and no deletions were needed. Created
+board.json as a full copy of the esp32/esp32 chip-level default with
+only GPIO5 and GPIO35's chipGpios entries modified, plus this research-
+trail NOTE at the top of the file.

@@ -1,0 +1,109 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases (buttons A/B and the BOOT/RESET pair are all
+  // undocumented in pins_arduino.h itself — identified from vendor
+  // docs/source below). BOOT enters ROM bootloader mode (not a normal
+  // GPIO digitalRead(), same out-of-scope rationale as ../rpipico/
+  // board.json) and RESET is a hardware reset line — neither is a
+  // user-readable GPIO. Buttons A (GPIO10) and B (GPIO11) ARE ordinary
+  // GPIO pushbuttons and are handled below via chipGpios "button" tags.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Melopero "Cookie RP2040" (Italian vendor, melopero.com) — a
+  // round 50.8mm dev board with a 5x5 WS2812 NeoPixel matrix display, a
+  // Qwiic/Stemma QT I2C connector, two user pushbuttons (A/B), a single
+  // green user LED, USB-C power/programming, and VBAT pad.
+  //
+  // Sources consulted:
+  // 1. https://www.melopero.com/getting_started_with_melopero_cookie_rp2040_v2.pdf
+  //    (official Melopero "Getting started" guide, v2.0.0, 12 April 2023)
+  //    — Section 1 "Hardware overview" explicitly labels the board photo:
+  //      "Green user LED on pin 21" / "user LED (GPIO 21)"
+  //      "Button A (GPIO 10)" / "Button B (GPIO 11)"
+  //      "Neopixel Matrix (GPIO 17)" — 5x5 = 25 pixels, row-major wired.
+  //      "NEOPIXEL / Qwiic POWER" — GPIO16, "by default power is enabled
+  //      (LOW). Set pin GPIO 16 to HIGH to disable it" — this is a power
+  //      MOSFET-enable line for the Qwiic connector + NeoPixel matrix
+  //      rail, not a data or button/LED pin.
+  //    Section 2 "Pinout" (official pinout diagram) independently
+  //    corroborates all four GPIO numbers via a physical-pin/GPIO/
+  //    CircuitPython/Arduino-IDE cross-reference table: "User LED 32 21
+  //    D21 21", "User Button A 14 11 D11 11" (labelled A on the board
+  //    silkscreen, GPIO11), "User Button B 13 10 D10 10" (labelled B on
+  //    the board silkscreen, GPIO10), "NEOPIXEL MATRIX 28 17 D17 17".
+  //    (Board silkscreen "A"/"B" letters and the GPIO10/GPIO11 button
+  //    numbering are cross-checked against source #2's C++ header below
+  //    — BUTTON_A resolves to GPIO10, BUTTON_B to GPIO11, matching the
+  //    hardware-overview page's captions, not the pinout table's inverted
+  //    A/B row order.)
+  // 2. https://github.com/melopero/Melopero_Cookie_RP2040_Arduino_Library
+  //    src/Melopero_Cookie_RP2040.cpp — actual C++/pico-sdk source:
+  //      ledInit()  -> pinMode(21, OUTPUT)   (Arduino wrapper)
+  //      ledOn()    -> digitalWrite(21, HIGH)  -- CONFIRMS active-high
+  //      ledOff()   -> digitalWrite(21, LOW)
+  //      buttonsInit() -> gpio_init(BUTTON_A); gpio_set_dir(BUTTON_A, GPIO_IN);
+  //                       gpio_init(BUTTON_B); gpio_set_dir(BUTTON_B, GPIO_IN);
+  //                       (no gpio_pull_up()/gpio_pull_down() call — pulls
+  //                       are left at the RP2040 pad's power-on-reset
+  //                       default, which per the RP2040 datasheet is
+  //                       pull-down enabled)
+  //      readButton(button) -> return gpio_get(button);  (raw HIGH/LOW)
+  // 3. https://raw.githubusercontent.com/melopero/Melopero_Cookie_RP2040/master/MicroPython/examples/main_example.py
+  //    — official demo code: `if cookie.read_button(BUTTON_A): ...` treats
+  //    a True/HIGH read as "pressed" (e.g. clears the screen on press) —
+  //    CONFIRMS buttons read HIGH when pressed (active-high), consistent
+  //    with source #2's default-pull-down + button-to-3V3 wiring.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/melopero_cookie_rp2040/notes.txt
+  "chipGpios": {
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Button A — onboard pushbutton, active-high (reads HIGH when pressed). Confirmed via the official Getting Started guide's hardware-overview page (\"Button A (GPIO 10)\") and the Arduino library's readButton()/buttonsInit() source (gpio_set_dir(GPIO_IN), no pull configured -> relies on the RP2040's power-on-reset default pull-down) cross-checked against the official MicroPython example treating a True/HIGH read as \"pressed\". Full digital_input/digital_output/pwm_output capability retained — ordinary GPIO wired to a switch to 3V3, not a dedicated/capacitive-only pin, matching this repo's vccgnd_yd_rp2040 PIN_USRKEY and adafruit_feather_scorpio PIN_BUTTON precedents." },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Button B — onboard pushbutton, active-high (reads HIGH when pressed). Same confirmation and reasoning as GPIO10/Button A above (official Getting Started guide's \"Button B (GPIO 11)\" caption, Arduino library source, MicroPython example)." },
+    "17": { "capabilities": ["digital_output", "led_neopixel"], "note": "NeoPixel Matrix data line — onboard 5x5 (25-pixel) WS2812 addressable RGB matrix display, output-only, row-major wired starting at this pin. Confirmed via the official Getting Started guide's hardware-overview page (\"Neopixel Matrix (GPIO 17)\") and section 1.1's pixel-numbering diagram (\"Melopero Cookie RP2040 is equipped with a 5x5 neopixels matrix display, which can be accessed through pin GPIO17\"). digital_input/pwm_output omitted, matching this repo's established NeoPixel-tagging vocabulary (vccgnd_yd_rp2040 GPIO23, adafruit_feather_scorpio GPIO4, waveshare_rp2040_zero GPIO16 precedents) — pwm_output is not meaningful for a bit-serial WS2812 data line." },
+    "21": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / User LED — onboard single green status LED, active-high. Confirmed via the official Getting Started guide (\"Green user LED on pin 21\") and the Arduino library source's ledOn()/ledOff() (digitalWrite(21, HIGH)/digitalWrite(21, LOW) respectively). digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins (rpipico, wiznet_5500_evb_pico, vccgnd_yd_rp2040, adafruit_feather_scorpio); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming. No bus-alias collision found: this board's pins_arduino.h SPI0 (MISO 20/MOSI 19/SCK 18/SS 1), SPI1 (MISO 28/MOSI 27/SCK 26/SS 29), and Wire0/Wire1 (SDA 12/SCL 13, SDA 2/SCL 3) aliases none touch GPIO21, so no build_boards.js bus-capability auto-append contamination applies here (unlike adafruit_feather_scorpio's GPIO13/PIN_SPI0_SS case)." }
+  },
+
+  // NO CHANGE: GPIO16 ("NEOPIXEL / Qwiic POWER" per the official Getting
+  // Started guide — a MOSFET power-enable line for the Qwiic connector
+  // and NeoPixel matrix rail, default LOW = power enabled, set HIGH to
+  // disable) is left at the chip-level default full general-purpose
+  // capability set. It is a genuine ordinary bidirectional GPIO (the
+  // vendor's own library exposes no dedicated accessor for it — it is
+  // simply driven LOW/HIGH like any other digital_output pin by
+  // application code that wants to manage the power rail), not a fixed/
+  // dedicated LED, button, or NeoPixel-data pin, so no chipGpios override
+  // or special capability tag applies — see notes.txt for full reasoning.
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as every other RP2040/RP2350 board. This board's
+  // pins_arduino.h declares no board-specific analog aliases beyond the
+  // shared generic_full/common.h defaults (A0-A3 = GPIO26-29).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

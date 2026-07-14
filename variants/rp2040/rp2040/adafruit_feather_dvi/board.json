@@ -1,0 +1,120 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // GPIO7 (BOOT button, see chipGpios below) is a genuine bidirectional
+  // GPIO merely wired to a switch to GND with the RP2040's internal
+  // pull-up enabled by software — not a dedicated/capacitive-only pin —
+  // so it is handled entirely via the chipGpios "button" tag (full
+  // capability set retained), not via inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Adafruit "Feather RP2040 with DVI Output Port" (product 5710)
+  // — an Adafruit Feather with an onboard DVI/HDMI video output
+  // connector driven via 8 dedicated RP2040 GPIOs bit-banging TMDS
+  // signalling through the PIO peripheral (Adafruit's PicoDVI library),
+  // plus the usual plain status LED (D13), onboard single status
+  // NeoPixel (GPIO4), and a BOOT button (GPIO7).
+  //
+  // Sources consulted:
+  // 1. learn.adafruit.com/adafruit-feather-rp2040-dvi/pinouts (official
+  //    Adafruit guide) — confirms: "This little red LED is controllable
+  //    in CircuitPython code using board.LED, and in Arduino as
+  //    PIN_LED" -> GPIO13; "the status NeoPixel LED. It is on GPIO4";
+  //    the DVI connector's I2C (DDC/EDID) pins "are connected to the
+  //    Feather SCL and SDA pins (through a safe level-shifter)" — i.e.
+  //    the onboard Wire0/GPIO2-3 bus is merely shared with the DVI
+  //    connector's DDC lines (to read a monitor's EDID EEPROM), not a
+  //    separate dedicated pin pair — GPIO2/3 are left untagged (still
+  //    ordinary, fully user-available I2C).
+  // 2. learn.adafruit.com/adafruit-feather-rp2040-dvi/overview — quotes
+  //    "8 unused pins for DVI output that can be used with the PicoDVI
+  //    library in Arduino or the Pico SDK", confirming GPIO16-23 are
+  //    dedicated/reserved for the onboard DVI connector, not general
+  //    purpose broken-out pins (unlike the sibling SCORPIO board's
+  //    external 8x I/O header, which Adafruit's own docs explicitly
+  //    describe as reconfigurable general-purpose GPIO).
+  // 3. This board's own pins_arduino.h (sourced from
+  //    learn.adafruit.com/assets/100337 per its header comment) directly
+  //    declares PIN_CKN=16, PIN_CKP=17, PIN_D0N=18, PIN_D0P=19,
+  //    PIN_D1N=20, PIN_D1P=21, PIN_D2N=22, PIN_D2P=23 for the DVI
+  //    connector's clock/data differential pairs, and already omits
+  //    D16-D23 general-purpose aliases (see the pfodWeb NOTE already
+  //    present in that file, predating this audit), independently
+  //    confirming these 8 GPIOs are not exposed as ordinary digital
+  //    pins on this board.
+  // 4. github.com/adafruit/circuitpython
+  //    ports/raspberrypi/boards/adafruit_feather_rp2040_dvi/pins.c and
+  //    mpconfigboard.h — independently corroborate every pin mapping:
+  //    LED->GPIO13, NEOPIXEL->GPIO4, BUTTON->GPIO7, BOOT->GPIO7,
+  //    CKN->GPIO16, CKP->GPIO17, D0N->GPIO18, D0P->GPIO19, D1N->GPIO20,
+  //    D1P->GPIO21, D2N->GPIO22, D2P->GPIO23 (exact match to this
+  //    board's pins_arduino.h).
+  // 5. raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+  //    boards/adafruit/feather_rp2040/adafruit_feather_rp2040.dts — the
+  //    base "plain" Feather RP2040 reference design this DVI variant is
+  //    built on (same D13 LED / GPIO4 NeoPixel / GPIO7 BOOT pin
+  //    numbering as the sibling SCORPIO board already audited in this
+  //    repo) — confirms `leds { led_0 { gpios = <&gpio0 13
+  //    GPIO_ACTIVE_HIGH>; }; };`, i.e. the GPIO13 status LED is
+  //    active-high. No Zephyr board port exists yet specifically for
+  //    the DVI variant, so this sibling-board confirmation (identical
+  //    GPIO number, same Adafruit Feather RP2040 reference-design
+  //    family) is used together with source #1's description of the
+  //    LED's behavior.
+  // 6. boardsDetails/rp2040/rp2040/adafruit_feather_scorpio/notes.txt
+  //    (this repo's own prior audit of the sibling SCORPIO board, which
+  //    shares identical PIN_LED=13/PIN_NEOPIXEL=4/PIN_BUTTON=7 numbering
+  //    and even the identical "'Boot0' button also on GPIO #7" source
+  //    comment) — independently confirmed via Zephyr's SCORPIO
+  //    devicetree that GPIO7 is active-low with the RP2040's internal
+  //    pull-up enabled; used here as supporting precedent for the
+  //    identical GPIO7 BOOT button wiring on this board.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_feather_dvi/notes.txt
+  "chipGpios": {
+    "4":  { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard single status NeoPixel (WS2812), output-only data line. Confirmed via Adafruit's own learn.adafruit.com pinouts guide (\"the status NeoPixel LED. It is on GPIO4\") and CircuitPython's pins.c (NEOPIXEL -> pin_GPIO4)." },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON / BOOT — onboard bootloader-select pushbutton, also usable as a general input when application code is running (this board's own pins_arduino.h comment: \"'Boot0' button also on GPIO #7\"). Confirmed via CircuitPython's pins.c (both BUTTON and BOOT -> pin_GPIO7). Active-low with the RP2040's internal pull-up enabled — inferred from the identical GPIO7 BOOT wiring on the sibling adafruit_feather_scorpio board (same Adafruit Feather RP2040 reference design, same source pinout PDF, identical pins_arduino.h comment text), confirmed there via Zephyr's adafruit_feather_scorpio_rp2040.dts gpio_keys node (GPIO_ACTIVE_LOW | GPIO_PULL_UP). Full digital_input/digital_output/pwm_output capability retained (ordinary GPIO wired to a switch to GND, not a dedicated/capacitive-only pin), matching this repo's vccgnd_yd_rp2040 PIN_USRKEY and adafruit_feather_scorpio precedents." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard status LED, active-high. Confirmed via Zephyr's adafruit_feather_rp2040.dts leds node for the base Feather RP2040 reference design this board shares (gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>), consistent with Adafruit's own pinouts guide description of the LED. digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins (rpipico, adafruit_feather_scorpio, wiznet_5500_evb_pico); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming. This GPIO was also the vendor's default (unused) PIN_SPI0_SS alias, which would have contaminated this confirmed LED tag with a spurious spi_ss capability - fixed 2026-07-13 by removing that alias from pins_arduino.h (no onboard SPI device consumes it), matching the identical fix already applied to the sibling adafruit_feather_scorpio board." },
+    "16": { "capabilities": [], "note": "PIN_CKN — DVI/HDMI connector TMDS clock- differential line, PIO-driven bit-banged output dedicated to the onboard DVI connector (PicoDVI library). Confirmed via Adafruit's overview page (\"8 unused pins for DVI output that can be used with the PicoDVI library\") and CircuitPython's pins.c (CKN -> pin_GPIO16). Not general-purpose; this board's own pins_arduino.h already omits a D16 alias for this reason." },
+    "17": { "capabilities": [], "note": "PIN_CKP — DVI/HDMI connector TMDS clock+ differential line. Same reasoning as GPIO16 (CKN)." },
+    "18": { "capabilities": [], "note": "PIN_D0N — DVI/HDMI connector TMDS data-channel-0 minus differential line. Same reasoning as GPIO16 (CKN)." },
+    "19": { "capabilities": [], "note": "PIN_D0P — DVI/HDMI connector TMDS data-channel-0 plus differential line. Same reasoning as GPIO16 (CKN)." },
+    "20": { "capabilities": [], "note": "PIN_D1N — DVI/HDMI connector TMDS data-channel-1 minus differential line. Same reasoning as GPIO16 (CKN)." },
+    "21": { "capabilities": [], "note": "PIN_D1P — DVI/HDMI connector TMDS data-channel-1 plus differential line. Same reasoning as GPIO16 (CKN)." },
+    "22": { "capabilities": [], "note": "PIN_D2N — DVI/HDMI connector TMDS data-channel-2 minus differential line. Same reasoning as GPIO16 (CKN)." },
+    "23": { "capabilities": [], "note": "PIN_D2P — DVI/HDMI connector TMDS data-channel-2 plus differential line. Same reasoning as GPIO16 (CKN)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares its own
+  // bespoke A0-A3 = GPIO26-29 mapping, matching the chip-level default;
+  // no reason found to override.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

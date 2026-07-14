@@ -1,0 +1,88 @@
+Board: dfrobot_firebeetle2_esp32c5 (DFRobot FireBeetle 2 ESP32-C5, SKU DFR1222)
+Audit date: 2026-07-12
+Trigger: discovery sweep flagged GDI_* macro block in pins_arduino.h (same
+pattern as DFRobot Beetle ESP32-C3, audited in parallel this wave).
+
+Sources consulted (WebSearch + WebFetch):
+- https://wiki.dfrobot.com/dfr1222/ (official DFRobot wiki, primary source)
+- https://wiki.dfrobot.com/SKU_DFR1222_Firebeetle_2_ESP32_C5_Development_Board
+- https://www.cnx-software.com/2025/11/15/firebeetle-2-esp32-c5-iot-development-board-offers-gdi-display-interface-lipo-battery-support/
+- https://www.dfrobot.com/product-2976.html (vendor product/spec page)
+- Local file read in full: variants/esp32/esp32c5/dfrobot_firebeetle2_esp32c5/pins_arduino.h
+- Local file read for precedent: variants/esp32/esp32/dfrobot_firebeetle2_esp32e/board.json
+  and pins_arduino.h (sibling FireBeetle 2 product, same vendor conventions)
+- Local file read for precedent: variants/esp32/esp32c6/sparkfun_esp32c6_thing_plus/board.json
+  (precedent for NOT tagging a BOOT-strap pin that has no named Arduino alias)
+- Local file read for precedent: variants/esp32/esp32c6/waveshare_esp32_c6_zero,
+  Pcbcupid_GLYPH_C6, soldered_nula_mini_esp32c6 board.json (precedent for
+  tagging confirmed onboard BOOT pushbuttons with restricted
+  ["digital_input","button"] capabilities)
+
+Findings:
+1. GDI display connector (GDI_BLK, GDI_SPI_SCLK/MOSI/MISO, GDI_DC, GDI_RES,
+   GDI_CS, GDI_SDCS, GDI_FCS, GDI_TCS, GDI_SCL, GDI_SDA, GDI_INT,
+   GDI_BUSY_TE): CONFIRMED optional plug-in expansion interface, not fixed
+   onboard hardware. wiki.dfrobot.com/dfr1222/ and CNX Software both
+   describe it as an 18-pin FPC connector "designed to add an SPI/I2C
+   touchscreen display", with six separately-purchasable compatible
+   displays (1.54in-3.5in) listed as accessories. Matches the established
+   DFRobot GDI pattern (same conclusion reached for the Beetle ESP32-C3
+   audited in parallel). Every GDI_* macro is a #define aliasing an
+   already-existing pin (SCK/MOSI/MISO/SCL/SDA/D2/D3/D6/D11/D12/D13/A2) -
+   no new pin declarations. No exclusions applied; all GDI-referenced pins
+   keep their chip-level default capabilities.
+
+2. Onboard LED: CONFIRMED, GPIO15 (LED_BUILTIN, silkscreen "15/D13").
+   wiki.dfrobot.com/dfr1222/: "LED | 15/D13 | Onboard LED". No source gives
+   active-high/active-low polarity, so no led_high/led_low tag applied
+   (left at chip defaults, per this project's no-guess policy - same
+   outcome as dfrobot_firebeetle2_esp32e's own LED_BUILTIN). Note GPIO15 is
+   also GDI_BLK (backlight control for an optional plugged-in GDI display) -
+   not a conflict while the connector is unpopulated.
+
+3. Onboard button: CONFIRMED, GPIO28 (D9 in this board's pins_arduino.h,
+   silkscreen "28/BOOT"). wiki.dfrobot.com/dfr1222/ and CNX Software both
+   independently describe a "Boot/User (GP28)" pushbutton. This board's own
+   pins_arduino.h gives GPIO28 a named Arduino alias (D9), which is the
+   deciding factor (per the sparkfun_esp32c6_thing_plus precedent, a
+   BOOT-strap pin with NO named alias in the local pins_arduino.h is left
+   untagged; one that IS named, as here, gets tagged). Applied
+   capabilities ["digital_input","button"] (digital_output/pwm_output
+   dropped), matching this repo's established convention for confirmed
+   onboard BOOT pushbuttons elsewhere in the ESP32-C6 family and for
+   dfrobot_firebeetle2_esp32e's own onboard button.
+   Alias-collision check: this board's TX/RX/SDA/SCL/SS/MOSI/MISO/SCK
+   aliases are 11/12/9/10/27/24/25/23 - GPIO28 does not collide with any
+   of them, so no bus capability is silently contaminating this pin.
+
+4. Battery voltage sense: found, GPIO1 ("IO1" silkscreen). Both
+   wiki.dfrobot.com/dfr1222/ and CNX Software confirm IO1 is the battery
+   voltage detection pin for the board's 2-pin LiPo connector (up to 0.5A
+   charge current, 3.7-4.2V). However this board's own pins_arduino.h gives
+   GPIO1 no named Arduino alias at all (no A0/BAT/VBAT constant) - unlike
+   axiometa_genesis_one's VBAT_SENSE or Pcbcupid_GLYPH_C6's BAT_MEASURE
+   macros, which did get a documentation "note" added. Left untagged and
+   unmodified, per the same "no local alias -> no board-specific note"
+   reasoning applied to GPIO28's alternative (untagged) sibling case at
+   sparkfun_esp32c6_thing_plus.
+
+5. GPIO0 ("IO0" silkscreen): controls the secondary 3.3V power rail
+   (3V3_C enable), not a button/LED/battery function - out of scope, no
+   change. Also has no named alias in this board's pins_arduino.h.
+
+6. Alias-collision sweep for candidate pins (per session-wide check):
+   GPIO28 (button) and GPIO15 (LED) were checked against this file's
+   SDA(9)/SCL(10)/SS(27)/MOSI(24)/MISO(25)/SCK(23)/TX(11)/RX(12) aliases -
+   no overlap found for either pin, so neither capability list is
+   contaminated by an unrelated bus-pin alias.
+
+Action taken: created board.json (full copy of chip-level
+variants/esp32/esp32c5/board.json) with GPIO28 capabilities changed to
+["digital_input","button"]; all other pins unchanged from chip defaults.
+No pins_arduino.h edit needed (no boilerplate alias collided with a
+dedicated-hardware pin on this board). No build commands run.
+
+One-line summary: GDI connector confirmed optional (KEEP, no change);
+added onboard BOOT/User button tag to GPIO28 (D9); LED_BUILTIN (GPIO15)
+and battery-sense IO1 (GPIO1) confirmed but left untagged (no polarity
+evidence / no local pins_arduino.h alias, respectively).

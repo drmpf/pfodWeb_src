@@ -1,0 +1,148 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // GPIO7 (BOOT button, see chipGpios below) is a genuine bidirectional
+  // GPIO merely wired to a switch to GND with the RP2040's internal
+  // pull-up enabled by software — not a dedicated/capacitive-only pin —
+  // so it is handled entirely via the chipGpios "button" tag (full
+  // capability set retained), matching the adafruit_feather_scorpio and
+  // adafruit_feather_can precedents. The six EPD (e-Ink display
+  // connector) control lines and the NeoPixel power-enable line are
+  // likewise genuine bidirectional GPIOs merely wired to dedicated
+  // onboard roles, so they too are handled via chipGpios (emptied
+  // capabilities), not inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // "rp2040" chip bucket; the board's EPD support circuitry is an SPI-
+  // attached e-Ink/e-Paper display connector, not a pfodWeb "connections"
+  // transport in its own right.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel + dedicated-
+  // hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Adafruit "Feather RP2040 ThinkInk" (product 5727) — a Feather
+  // RP2040 with dedicated support circuitry (six GPIOs wired to a 24-pin
+  // FPC connector, per Adafruit: "No display is included onboard...
+  // support circuitry for common 24-pin e-Paper/e-Ink displays") for
+  // driving an externally-attached e-Ink/e-Paper display over its own
+  // dedicated SPI bus, plus a plain status LED (D13), an onboard single
+  // status NeoPixel (GPIO21, with a separate power-enable gate on
+  // GPIO20), and a BOOT button (GPIO7) — the same identity-pin pattern
+  // as the already-audited adafruit_feather_scorpio and
+  // adafruit_feather_can sibling Feather RP2040 boards.
+  //
+  // Sources consulted:
+  // 1. learn.adafruit.com/adafruit-rp2040-feather-thinkink/pinouts
+  //    (official Adafruit guide) — quotes verbatim:
+  //      "Above the USB C connector is the D13 LED. This little red LED
+  //      is controllable in CircuitPython code using board.LED, and in
+  //      Arduino as PIN_LED."
+  //      "Above the pin labels for D24 and D25 is the status NeoPixel
+  //      LED. It is connected to GPIO21."
+  //      "Additionally, there is a NeoPixel power pin on GPIO20. It
+  //      needs to be set High for the NeoPixel to be powered."
+  //      "The Boot button is the button on the right, located on GPIO7.
+  //      It is available as board.BUTTON in CircuitPython, and is
+  //      available for use in Arduino as PIN_BUTTON."
+  //      "EPD_BUSY/GPIO16 - The Busy Detect pin for e-Ink displays. It
+  //      is also SPI0 MISO, UART0 TX, I2C0 SDA and PWM0 A."
+  //      "EPD_RESET/GPIO17 - The Reset pin for e-Ink displays. It is
+  //      also SPI0 CS, UART0 RX, I2C0 SCL and PWM0 B."
+  //      "EPD_DC/GPIO18 - The Data Command pin for e-Ink displays. It
+  //      is also SPI0 SCK, I2C1 SDA and PWM1 A."
+  //      "EPD_CS/GPIO19 - The Chip Select pin for e-Ink displays. It is
+  //      also SPI0 MOSI, I2C1 SCL and PWM1 B."
+  //      "EPD_SCK/GPIO22 - The SPI SCK pin for e-Ink displays. It is
+  //      also SPI0 SCK, I2C1 SDA and PWM3 A."
+  //      "EPD_MOSI/GPIO23 - The SPI MOSI pin for e-Ink displays. It is
+  //      also SPI0 MOSI, I2C1 SCL and PWM3 B."
+  //    (The "SPI0"/"SPI1" bus names in Adafruit's per-pin quotes above
+  //    refer to the RP2040's raw hardware SPI0/SPI1 peripherals, which
+  //    this board's pins_arduino.h maps the opposite way round via its
+  //    __SPI0_DEVICE/__SPI1_DEVICE indirection — the Arduino-facing
+  //    "SPI1" object (__SPI1_DEVICE spi0) is the EPD bus: PIN_SPI1_SS
+  //    (19u) / PIN_SPI1_SCK (22u) / PIN_SPI1_MOSI (23u) match EPD_CS/
+  //    EPD_SCK/EPD_MOSI exactly, and PIN_SPI1_MISO is left "not pinned
+  //    out" (31u) — consistent with an e-Ink display, which is
+  //    write-only over SPI and needs no MISO line.)
+  //    Also separately confirms GPIO8/13/14/15 (the Arduino-facing
+  //    "SPI0" object, __SPI0_DEVICE spi1) are the board's general-
+  //    purpose exposed Feather header SPI pins: "GPIO8 (MI): The main
+  //    SPI1 MISO...", "GPIO13 (D13): Digital I/O pin 13. It is also
+  //    SPI1 CS...", "GPIO14 (SCK): The main SPI1 SCK...", "GPIO15 (MO):
+  //    The main SPI1 MOSI..." — i.e. GPIO13 is merely the vendor's
+  //    default SS pin for this shared/general-purpose bus, not consumed
+  //    by the EPD or any other onboard peripheral (see "Bug found"
+  //    below).
+  // 2. learn.adafruit.com/adafruit-rp2040-feather-thinkink (Overview,
+  //    view=all) — official Adafruit guide, confirms: "No display is
+  //    included onboard. The board features support circuitry for
+  //    common 24-pin e-Paper/e-Ink displays" via a 24-pin FPC connector;
+  //    "One red LED on Pin #13 for general-purpose use"; "RGB NeoPixel
+  //    for full-color indication"; a separate "Bootloader select
+  //    button" alongside a Reset button.
+  // 3. raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/adafruit_feather_rp2040_thinkink/
+  //    mpconfigboard.h and pins.c — official CircuitPython board port,
+  //    independently cross-referencing the same hardware: confirms
+  //    CIRCUITPY_STATUS_LED_POWER -> GPIO20, MICROPY_HW_NEOPIXEL ->
+  //    GPIO21, and pins.c maps LED->GPIO13, BUTTON/BOOT->GPIO7,
+  //    NEOPIXEL->GPIO21, NEOPIXEL_POWER->GPIO20, EPD_BUSY->GPIO16,
+  //    EPD_RESET->GPIO17, EPD_DC->GPIO18, EPD_CS->GPIO19, EPD_SCK->
+  //    GPIO22, EPD_MOSI->GPIO23 — an exact match to this board's own
+  //    pins_arduino.h aliases.
+  // 4. raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+  //    boards/adafruit/feather_rp2040/adafruit_feather_rp2040.dts — no
+  //    Zephyr board port exists for this specific ThinkInk variant, but
+  //    the plain sibling "Feather RP2040" (same D13-LED / GPIO7-BOOT-
+  //    button module design, reused verbatim across this entire
+  //    Adafruit Feather RP2040 product line per source 1's identical
+  //    phrasing) confirms: leds { led0: led_0 { gpios = <&gpio0 13
+  //    GPIO_ACTIVE_HIGH>; }; } — i.e. D13 LED is active-high, matching
+  //    the adafruit_feather_scorpio/adafruit_feather_can precedents'
+  //    independently-confirmed active-high D13 LED on the same module.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_feather_thinkink/notes.txt
+  "chipGpios": {
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON / BOOT — onboard bootloader-select pushbutton, also usable as a general input when application code is running. Confirmed via Adafruit's own pinouts guide (\"The Boot button is the button on the right, located on GPIO7... available for use in Arduino as PIN_BUTTON\"). Active-low with the RP2040's internal pull-up enabled, matching the identical GPIO7 BOOT button already independently confirmed via Zephyr devicetree on this board's adafruit_feather_scorpio and adafruit_feather_can siblings (same Feather RP2040 module design). Full digital_input/digital_output/pwm_output capability retained (ordinary GPIO wired to a switch to GND, not a dedicated/capacitive-only pin)." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard status LED, active-high. Confirmed via Adafruit's own pinouts guide (\"the D13 LED... controllable in CircuitPython code using board.LED, and in Arduino as PIN_LED\") and CircuitPython's pins.c (LED -> GPIO13); active-high polarity independently confirmed via Zephyr's adafruit_feather_rp2040.dts leds node (gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>) for the same D13-LED module design shared across this Adafruit Feather RP2040 product line (matching the adafruit_feather_scorpio/adafruit_feather_can precedents' identical GPIO13 LED). digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming. This GPIO was also the vendor's default (unused) PIN_SPI0_SS alias, which would have contaminated this confirmed LED tag with a spurious spi_ss capability — fixed 2026-07-13 by removing that alias from pins_arduino.h (Adafruit's own pinouts guide confirms GPIO8/14/15 are merely the general-purpose exposed Feather header SPI pins, and the EPD connector uses its own separate dedicated SPI1 bus with SS=GPIO19, not this default SS assignment), matching the identical adafruit_feather_scorpio/adafruit_feather_can bus-alias-contamination fix pattern." },
+    "16": { "capabilities": [], "note": "EPD_BUSY — dedicated Busy-Detect control line wired to this board's 24-pin e-Ink display FPC connector, read by e-Ink display driver libraries during refresh/init. Not general-purpose. Confirmed via Adafruit's pinouts guide (\"EPD_BUSY/GPIO16 - The Busy Detect pin for e-Ink displays\") and pins_arduino.h's PIN_EPD_BUSY alias." },
+    "17": { "capabilities": [], "note": "EPD_RESET — dedicated active-reset control line wired to this board's e-Ink display connector, driven by e-Ink display driver libraries during init. Not general-purpose. Confirmed via Adafruit's pinouts guide (\"EPD_RESET/GPIO17 - The Reset pin for e-Ink displays\") and pins_arduino.h's PIN_EPD_RESET alias." },
+    "18": { "capabilities": [], "note": "EPD_DC — dedicated Data/Command select control line wired to this board's e-Ink display connector, driven by e-Ink display driver libraries during every SPI transaction. Not general-purpose. Confirmed via Adafruit's pinouts guide (\"EPD_DC/GPIO18 - The Data Command pin for e-Ink displays\") and pins_arduino.h's PIN_EPD_DC alias." },
+    "19": { "capabilities": [], "note": "EPD_CS — dedicated SPI chip-select line for this board's e-Ink display connector (this board's PIN_SPI1_SS, __SPI1_DEVICE spi0). Not general-purpose. Confirmed via Adafruit's pinouts guide (\"EPD_CS/GPIO19 - The Chip Select pin for e-Ink displays\") and pins_arduino.h's PIN_EPD_CS / PIN_SPI1_SS aliases." },
+    "20": { "capabilities": [], "note": "NEOPIXEL_POWER — onboard NeoPixel power-enable gate, must be driven HIGH for the status NeoPixel (GPIO21) to be powered. Not general-purpose. Confirmed via Adafruit's pinouts guide (\"there is a NeoPixel power pin on GPIO20. It needs to be set High for the NeoPixel to be powered\") and CircuitPython's mpconfigboard.h (CIRCUITPY_STATUS_LED_POWER -> GPIO20), matching this repo's adafruit_feather_can NEOPIXEL_POWER exclusion precedent (same Feather RP2040 module design)." },
+    "21": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard single status NeoPixel (WS2812), output-only data line. Confirmed via Adafruit's pinouts guide (\"the status NeoPixel LED. It is connected to GPIO21\") and CircuitPython's mpconfigboard.h (MICROPY_HW_NEOPIXEL -> pin_GPIO21). Requires NEOPIXEL_POWER (GPIO20) driven HIGH to actually light — see that pin's note." },
+    "22": { "capabilities": [], "note": "EPD_SCK — dedicated SPI clock line for this board's e-Ink display connector (this board's PIN_SPI1_SCK, __SPI1_DEVICE spi0). Not general-purpose. Confirmed via Adafruit's pinouts guide (\"EPD_SCK/GPIO22 - The SPI SCK pin for e-Ink displays\") and pins_arduino.h's PIN_EPD_SCK / PIN_SPI1_SCK aliases." },
+    "23": { "capabilities": [], "note": "EPD_MOSI — dedicated SPI MOSI line for this board's e-Ink display connector (this board's PIN_SPI1_MOSI, __SPI1_DEVICE spi0). Not general-purpose. Confirmed via Adafruit's pinouts guide (\"EPD_MOSI/GPIO23 - The SPI MOSI pin for e-Ink displays\") and pins_arduino.h's PIN_EPD_MOSI / PIN_SPI1_MOSI aliases. This board's SPI1 has no MISO line pinned out (PIN_SPI1_MISO left at 31u/not-pinned-out), consistent with an e-Ink display being write-only over SPI." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares no analog
+  // aliases of its own (its bespoke D0-D29/A0-A3 static-const block
+  // mirrors the chip's standard A0-A3 = GPIO26-29 mapping), and this
+  // audit found no reason to override that.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

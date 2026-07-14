@@ -1,0 +1,97 @@
+Board: Adafruit FunHouse (ESP32-S2) (adafruit_funhouse_esp32s2), chip esp32s2
+Date: 2026-07-14 (independent verification pass - real vendor sources checked)
+
+SOURCES CONSULTED
+-----------------
+1. https://learn.adafruit.com/adafruit-funhouse/pinouts - official
+   Adafruit Learning System pinout guide. Confirms buttons "BUTTON_UP:
+   GPIO5", "BUTTON_SELECT: GPIO4", "BUTTON_DOWN: GPIO3", and a boot
+   button on the back connected to "BOOT0". Confirms "a red LED
+   positioned at the top right of the FunHouse door ... This LED is
+   attached to LED or GPIO37". Confirms "There are 4 DotStar LEDs on pin
+   IO #14 and #15" with macros PIN_DOTSTAR_DATA/PIN_DOTSTAR_CLOCK.
+2. https://learn.adafruit.com/adafruit-funhouse/arduino-basics - confirms
+   `digitalWrite(LED_BUILTIN, HIGH)` turns the red LED on ("HIGH is the
+   voltage level") - active-high.
+3. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/adafruit_funhouse_esp32s2/pins_arduino.h -
+   vendor pins_arduino.h, fetched in full via curl (authoritative,
+   complete file, not a search-engine summary). Key #defines:
+     LED_BUILTIN = 37
+     PIN_BUTTON1 = 3 (BUTTON_DOWN), PIN_BUTTON2 = 4 (BUTTON_SELECT),
+     PIN_BUTTON3 = 5 (BUTTON_UP), PIN_BUTTON4 = 0 (BOOT0 switch)
+     PIN_DOTSTAR_DATA = 14, PIN_DOTSTAR_CLOCK = 15
+     TFT_BACKLIGHT = 21, TFT_DC = 39, TFT_CS = 40, TFT_RESET = 41
+     SPI: SS = 40, MOSI = 35, SCK = 36, MISO = 37 (!! same pin as
+       LED_BUILTIN - see correction below)
+     SENSOR_PIR = 16, SENSOR_LIGHT = 18, SDA = 34, SCL = 33
+   No BUTTON5/BOOT0-as-application-input framing needed here - PIN_BUTTON4
+   IS the BOOT0 switch and is already given a normal PIN_BUTTON alias
+   alongside the other 3, unlike the MagTag's separate BOOT0 pin (see
+   that board's notes.txt for the contrasting case).
+4. Cross-reference: web search corroborates PIN_BUTTON1/2/3 = BUTTON_DOWN/
+   SELECT/UP = GPIO3/4/5 and the back-panel BOOT0 button = GPIO0,
+   matching source #3 exactly and the existing board.json findings.
+
+PER-PIN FINDINGS
+----------------
+- GPIO0, GPIO3, GPIO4, GPIO5: capabilities ["digital_input","button"].
+  CONFIRMED - PIN_BUTTON4(BOOT0)=0, PIN_BUTTON1(BUTTON_DOWN)=3,
+  PIN_BUTTON2(BUTTON_SELECT)=4, PIN_BUTTON3(BUTTON_UP)=5 per source #3,
+  matching Adafruit's own product naming (source #1). Matches the
+  earlier claim exactly - no change.
+- GPIO21, GPIO39, GPIO40, GPIO41: excluded (not present in chipGpios).
+  CONFIRMED - TFT_BACKLIGHT=21, TFT_DC=39, TFT_CS=40, TFT_RESET=41 per
+  source #3. Matches the earlier claim.
+- GPIO35, GPIO36: excluded (not present in chipGpios). CONFIRMED -
+  MOSI=35, SCK=36 per source #3, the TFT's SPI bus. Matches the earlier
+  claim.
+- GPIO37: CORRECTED. Previously lumped into the "GPIO35-37" TFT-SPI-bus
+  exclusion range and fully excluded from chipGpios. Source #3 shows
+  GPIO37 is actually `LED_BUILTIN` (it is also nominally the SPI `MISO`
+  line, but this ST7789-based TFT display is write-only and never reads
+  back over MISO, so Adafruit repurposed the otherwise-idle pin as the
+  onboard red status LED). Source #1 independently and explicitly
+  documents this exact pin as a real, user-controllable LED ("This LED
+  is attached to LED or GPIO37"), and source #2 confirms active-high
+  behavior with a working Blink example. This is a real, vendor-
+  documented user-facing role, not an incidental SPI pin - now tagged
+  capabilities ["digital_output","pwm_output","led_high"] instead of
+  being excluded.
+- GPIO14, GPIO15: CORRECTED. Previously left at chip-level default
+  capabilities (kept as plain analog/digital/pwm GPIO). Source #3 and
+  source #1 both confirm these are PIN_DOTSTAR_DATA/PIN_DOTSTAR_CLOCK -
+  the 2-wire (clock+data) driver pins for 4 onboard dedicated DotStar
+  (APA102-style) addressable LEDs, not general-purpose or user-exposed
+  pins. This repo has no dedicated DotStar capability tag (the
+  vocabulary only covers led_high/low, led_neopixel, led_r/g/b_high/low,
+  button), and the established precedent for a board's own onboard
+  DotStar driver pins (see adafruit_sparklemotionstick_esp32's GPIO21/22
+  DotStar exclusion) is to exclude them entirely as dedicated hardware
+  rather than leave them as plain GPIO or invent a new tag. Now excluded
+  (removed from chipGpios) to match that precedent.
+- GPIO1, GPIO2, GPIO6-13, 16-18: kept at chip-level default. GPIO16
+  (SENSOR_PIR) and GPIO18 (SENSOR_LIGHT/A3) and GPIO42 (SPEAKER) are
+  fixed-purpose sensor/actuator lines per source #3 but are simple analog/
+  digital signal lines a user could still repurpose if the onboard
+  sensor/speaker isn't used (same treatment given to comparable pins on
+  other boards in this repo, e.g. MagTag's LIGHT_SENSOR/BATT_MONITOR) -
+  no exclusion or special tag applied, consistent with the earlier pass.
+- GPIO33, GPIO34: kept at chip-level default - SCL=33/SDA=34 broken out
+  general I2C, not internally dedicated.
+- GPIO38, 42-45: kept at chip-level default - GPIO43/44 are the exposed
+  UART TX/RX.
+- GPIO46: kept at chip-level default (input-only) - no change.
+
+SUMMARY
+-------
+Independently confirmed via learn.adafruit.com and vendor pins_arduino.h
+(fetched directly, not summarized): the button tags (GPIO0/3/4/5) and the
+TFT_DC/CS/RESET + MOSI/SCK exclusions (GPIO21/35/36/39-41) are correct as
+previously found. Two real corrections: (1) GPIO37 was wrongly folded
+into the TFT-SPI-bus exclusion range - it is actually the onboard
+LED_BUILTIN (the display's unused MISO line repurposed as an LED),
+confirmed active-high, now tagged led_high instead of excluded; (2)
+GPIO14/15 were left as plain GPIO but are actually the dedicated onboard
+4-pixel DotStar driver pins, confirmed via vendor source and Adafruit's
+own pinouts page, now excluded to match this repo's DotStar-exclusion
+precedent (adafruit_sparklemotionstick_esp32).

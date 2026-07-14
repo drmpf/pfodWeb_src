@@ -1,0 +1,96 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This variant is the RP2040 half of
+  // a dual-MCU board (see pfodWeb NOTE below) that talks to its
+  // companion ESP32S3 over UART, not its own WiFi/BLE radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, 2026-07-13):
+  //
+  // Board: "seeed_indicator_rp2040" = the RP2040-side MCU of Seeed
+  // Studio's "SenseCAP Indicator" (D1/D1S/D1L/D1Pro), a 4-inch
+  // touchscreen IoT device driven by a dual-MCU design: an ESP32S3
+  // (touchscreen/LCD/WiFi/BLE/UI) plus this RP2040 (sensors/buzzer/
+  // microSD/Grove IO). The two MCUs communicate over UART (this board's
+  // own PIN_SERIAL1_TX/RX = GPIO16/17 or PIN_SERIAL2_TX/RX = GPIO8/9 —
+  // confirmed by wiki.seeedstudio.com/SenseCAP_Indicator_ESP32_Arduino/
+  // stating "The RP2040 are connected to the ESP32S3 ... using UART
+  // Interfaces"). Confirmed via:
+  //   - wiki.seeedstudio.com/SenseCAP_Indicator_Dive_into_the_Hardware/
+  //   - wiki.seeedstudio.com/SenseCAP_Indicator_ESP32_Arduino/
+  //   - wiki.seeedstudio.com/SenseCAP_Indicator_RP2040_Buzzer/
+  //   - wiki.seeedstudio.com/SenseCAP_Indicator_RP2040_MicroSD/
+  //   - github.com/Seeed-Solution/SenseCAP_Indicator_RP2040
+  //
+  // The product name "Indicator" refers to the whole SenseCAP Indicator
+  // device (an environmental-sensor display "indicator"), NOT to an
+  // LED/NeoPixel driven by this specific RP2040 chip — despite the name
+  // strongly suggesting one, no evidence of an RP2040-driven LED,
+  // NeoPixel, or button was found:
+  //   - The device's single physical user button (short press
+  //     sleep/wake screen, long-press 3s power on/off, long-press 10s
+  //     factory reset) is read by the ESP32S3 side (it directly drives
+  //     the touchscreen/UI), not the RP2040 — no button alias appears
+  //     anywhere in this board's own pins_arduino.h.
+  //   - The RP2040 side instead drives a passive buzzer on GPIO19 (PWM/
+  //     analogWrite-driven per wiki.seeedstudio.com/
+  //     SenseCAP_Indicator_RP2040_Buzzer/) — GPIO19 has no alias in this
+  //     board's pins_arduino.h at all (not even a raw "spare" one), and
+  //     a buzzer is not part of this repo's button/led/neopixel tagging
+  //     vocabulary, so it is out of scope for chipGpios tagging here.
+  //   - The onboard microSD card uses this board's already-declared
+  //     SPI1 bus verbatim (SCK=10, MOSI=11, MISO=12, CS/SS=13 — exactly
+  //     matching PIN_SPI1_SCK/MOSI/MISO/SS in pins_arduino.h, per
+  //     wiki.seeedstudio.com/SenseCAP_Indicator_RP2040_MicroSD/ sample
+  //     code `SPI1.setSCK(10); SPI1.setTX(11); SPI1.setRX(12);
+  //     chipSelect = 13`) — a bona fide SPI bus already correctly
+  //     exposed as spi_sck/spi_mosi/spi_miso/spi_ss, not a button/LED
+  //     colliding with a bus, so no pins_arduino.h edit is needed.
+  //   - No PIN_LED, PIN_NEOPIXEL, or any button/key macro is declared in
+  //     this board's own pins_arduino.h (only Serial1/Serial2/SPI0/SPI1/
+  //     Wire0/Wire1 bus aliases), and no vendor source (Seeed wiki pages
+  //     above, the Seeed-Solution/SenseCAP_Indicator_RP2040 GitHub repo
+  //     README/examples) documents any LED, NeoPixel, or button pin
+  //     wired to this RP2040.
+  //
+  // NO CHANGE applied. This board's pins_arduino.h already correctly
+  // exposes only its genuine bus aliases (Serial1/Serial2/SPI0/SPI1/
+  // Wire0/Wire1); no plain-GPIO button/LED/NeoPixel capability could be
+  // confirmed to add, and no bus-collision fix was needed. Per this
+  // audit's standing rule (report NO CHANGE rather than guess), chipGpios
+  // is left empty.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/seeed_indicator_rp2040/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h fallback
+  // (NUM_ANALOG_INPUTS = 3, ADC_RESOLUTION = 12). This board's own
+  // pins_arduino.h declares no board-specific analog aliases beyond that
+  // shared default.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

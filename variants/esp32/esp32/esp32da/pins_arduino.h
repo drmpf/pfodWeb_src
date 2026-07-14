@@ -22,18 +22,18 @@ static const uint8_t A6 = 34;
 static const uint8_t A7 = 35;
 static const uint8_t A10 = 4;
 static const uint8_t A11 = 0;
-static const uint8_t A12 = 2;
+// pfodWeb NOTE: A12 (GPIO2) deliberately NOT declared - same as ANT1 below.
 static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
 static const uint8_t A15 = 12;
 static const uint8_t A16 = 14;
 static const uint8_t A17 = 27;
-static const uint8_t A18 = 25;
+// pfodWeb NOTE: A18 (GPIO25) deliberately NOT declared - same as ANT2 below.
 static const uint8_t A19 = 26;
 
 static const uint8_t T0 = 4;
 static const uint8_t T1 = 0;
-static const uint8_t T2 = 2;
+// pfodWeb NOTE: T2 (GPIO2) deliberately NOT declared - same as ANT1 below.
 static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
@@ -46,7 +46,7 @@ static const uint8_t DAC1 = 25;
 static const uint8_t DAC2 = 26;
 
 #define BOARD_HAS_DUAL_ANTENNA
-static const uint8_t ANT1 = 2;
-static const uint8_t ANT2 = 25;
+// pfodWeb NOTE: ANT1/ANT2 (GPIO2/25) deliberately NOT declared -
+// dedicated dual-antenna switch control lines, not general-purpose.
 
 #endif /* Pins_Arduino_h */

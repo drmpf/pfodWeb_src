@@ -1,0 +1,111 @@
+{
+  // This directory (`variants/arduino/avr/chiwawa/`) backs exactly ONE
+  // boards.txt entry: `chiwawa` (Arduino Industrial 101). Split off from
+  // the shared `yun` directory (2026-07-14, follow-up pass) — Industrial
+  // 101 is architecturally identical to the Yún family (same ATmega32U4
+  // + Atheros AR9331 Linux-bridge design, same pins_arduino.h #include
+  // chain), but its own official datasheet (Arduino part A000126) proves
+  // it physically exposes far fewer pins on a usable header than
+  // yun/yunmini/one — see the "Digital I/O Pins: 20 (7 exported on
+  // header)" finding below. A single shared board.json could not
+  // correctly describe both groups, so this directory exists purely to
+  // carry a narrower chipGpios map; see
+  // boardsDetails/arduino/avr/chiwawa/notes.txt for the full research
+  // trail (reusing sources already gathered for boardsDetails/arduino/avr/yun/notes.txt).
+  "boardName": "chiwawa",
+  "displayName": "Arduino Industrial 101",
+
+  "family": "avr",
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  "dac": {},
+
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "5.0" },
+
+  "inputOnlyGpios": [],
+
+  // pfod connections for 32U4 boards: hardware serial only (D0=RX1, D1=TX1).
+  // Same as the rest of the Yún family: Serial1 is the AVR<->Linux
+  // "Bridge"/"Ciao" link to the onboard Atheros AR9331 co-processor, not
+  // a free-standing UART (confirmed via the official Arduino Industrial
+  // 101 datasheet, identical wording to the general Yún docs). The
+  // existing parser already excludes D0/D1 as serial_rx/serial_tx
+  // automatically, so no additional chipGpios action is needed for them.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // D13 — onboard status LED, active-high, inherited unchanged from the
+  // Leonardo pin map. Confirmed present and behaving identically on
+  // Industrial 101 via its own official datasheet (A000126): "There is a
+  // built-in LED connected to digital pin 13. When the pin is HIGH
+  // value, the LED is on, when the pin is LOW, it's off." — same as
+  // documented for yun/yunmini in boardsDetails/arduino/avr/yun/notes.txt.
+  // D13 is also one of the 7 pins physically exposed on this board's J7
+  // header, so it's genuinely usable, not just present on-chip.
+  //
+  // CRITICAL FINDING (from the Industrial 101 datasheet, Arduino part
+  // A000126, PDF read directly): the spec table states "Digital I/O
+  // Pins: 20 (7 exported on header)" and "Analog I/O Pins: 12 (4
+  // exported on header)" — unlike Yún/Yún Mini/Linino One, whose own
+  // official specs state the full 20-pin/12-analog set with NO such
+  // "(N exported)" qualifier. The datasheet's own header pinout diagram
+  // (connector J7, the only general-purpose header on this board) lists
+  // exactly: GND, 5V, 5V, GND, 13, 6, 5, A0, A1, A2, A3 — i.e. only
+  // D5, D6, D13, A0, A1, A2, A3 (7 pins) are physically wired to a
+  // usable header. D0-D7 are instead routed to a separate OLED-expansion-
+  // only connector (J6, marked "for dogOLED"), not general-purpose.
+  //
+  // Because this chip's own pin map (inherited unchanged from Leonardo)
+  // dual-numbers several digital pins as analog channels too (D4=A6,
+  // D6=A7, D8=A8, D9=A9, D10=A10, D12=A11 — same physical silicon pin,
+  // two Arduino-API names), BOTH index numbers for each excluded
+  // physical pin are excluded below — excluding only the D<n> key would
+  // leave the identical physical pin fully exposed under its A<n> entry
+  // (same lesson learned auditing leonardoeth's D4/D10 dual-numbering
+  // earlier this pass). D6 (kept, on the header) is ALSO dual-numbered
+  // as A7/index 25 — since the header genuinely does expose this one
+  // physical pin (labeled "6" on the silkscreen, per the datasheet), both
+  // its D6 and A7 index are left available; this is the one dual-numbered
+  // pin that's kept rather than excluded, because it really is wired to
+  // the J7 header.
+  //
+  // D2 (SDA)/D3 (SCL) — general I2C bus per the shared Yún-family
+  // documentation ("reserved for Oled slot", an optional plug-in
+  // accessory) — but on THIS specific board, D2/D3 are not physically
+  // exposed on the general-purpose J7 header at all (they're routed to
+  // the OLED-only J6 connector per the datasheet), so they are excluded
+  // here as genuinely inaccessible, unlike on yun/yunmini/one where they
+  // remain a general-purpose bus.
+  //
+  // D14-D17 (the ICSP SPI bus, MISO/SCK/MOSI/SS) — same "also wired to
+  // AR9331 GPIOs for optional software SPI" fact documented on
+  // yun/board.json applies to the underlying chip, but none of these 4
+  // pins are exposed on this board's J7 header either, so excluded here
+  // as inaccessible on this specific compact form factor.
+  "chipGpios": {
+    "2":  { "capabilities": [], "note": "SDA — not physically exposed on the J7 general-purpose header (Industrial 101 datasheet, part A000126); routed to the OLED-only J6 connector instead." },
+    "3":  { "capabilities": [], "note": "SCL — not physically exposed on the J7 header; routed to the OLED-only J6 connector instead." },
+    "4":  { "capabilities": [], "note": "Not physically exposed on the J7 header (Industrial 101 datasheet). Same physical pin as A6/index 24 — see that entry." },
+    "24": { "capabilities": [], "note": "A6 — same physical pin as D4/index 4 (dual-numbered on this chip). Not exposed on the J7 header." },
+    "7":  { "capabilities": [], "note": "Not physically exposed on the J7 header (Industrial 101 datasheet)." },
+    "8":  { "capabilities": [], "note": "Not physically exposed on the J7 header. Same physical pin as A8/index 26 — see that entry." },
+    "26": { "capabilities": [], "note": "A8 — same physical pin as D8/index 8 (dual-numbered on this chip). Not exposed on the J7 header." },
+    "9":  { "capabilities": [], "note": "Not physically exposed on the J7 header. Same physical pin as A9/index 27 — see that entry." },
+    "27": { "capabilities": [], "note": "A9 — same physical pin as D9/index 9 (dual-numbered on this chip). Not exposed on the J7 header." },
+    "10": { "capabilities": [], "note": "Not physically exposed on the J7 header. Same physical pin as A10/index 28 — see that entry." },
+    "28": { "capabilities": [], "note": "A10 — same physical pin as D10/index 10 (dual-numbered on this chip). Not exposed on the J7 header." },
+    "11": { "capabilities": [], "note": "Not physically exposed on the J7 header (Industrial 101 datasheet)." },
+    "12": { "capabilities": [], "note": "Not physically exposed on the J7 header. Same physical pin as A11/index 29 — see that entry." },
+    "29": { "capabilities": [], "note": "A11 — same physical pin as D12/index 12 (dual-numbered on this chip). Not exposed on the J7 header." },
+    "14": { "capabilities": [], "note": "MISO — ICSP SPI bus not physically exposed on the J7 header (Industrial 101 datasheet)." },
+    "15": { "capabilities": [], "note": "SCK — same ICSP SPI bus as MISO, not exposed on the J7 header." },
+    "16": { "capabilities": [], "note": "MOSI — same ICSP SPI bus as MISO/SCK, not exposed on the J7 header." },
+    "17": { "capabilities": [], "note": "SS — same ICSP SPI bus as MISO/SCK/MOSI, not exposed on the J7 header." },
+    "22": { "capabilities": [], "note": "A4 — not physically exposed on the J7 header (Industrial 101 datasheet lists only A0-A3)." },
+    "23": { "capabilities": [], "note": "A5 — not physically exposed on the J7 header (Industrial 101 datasheet lists only A0-A3)." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED, active-high (confirmed via the Industrial 101 datasheet). Physically exposed on the J7 header." },
+    "30": { "capabilities": [], "note": "TXLED — Leonardo's internal USB-TX-activity indicator line (PD5), not one of the chip's 20 counted digital I/O pins and not exposed on the J7 header at all. Not physically accessible on this board." }
+  }
+}

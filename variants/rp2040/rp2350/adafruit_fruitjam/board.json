@@ -1,0 +1,163 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Adafruit Fruit Jam RP2350" (variants/rp2040/boards.txt:
+  // adafruit_fruitjam.name=).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.  This board's own pins_arduino.h
+  // documents an onboard ESP32-C6 WiFi/BLE co-processor reached via a
+  // dedicated UART (Serial1, GPIO8/9) and/or SPI-hosted "Airlift"-style
+  // link (SPI1 + busy/ready + reset, GPIO3/22/28/30/31/46) — NOT the
+  // native RP2040/RP2350 + CYW43439 combo that Pico W/2W use, so
+  // variants/rp2040/tcp.ino, http.ino and ble.ino (which only target the
+  // native cyw43 WiFi.h stack) do not apply here.  This board would need
+  // its own dedicated .ino templates for its ESP32-C6 co-processor
+  // protocol before it could offer tcp/http/ble connections.
+  "connections": ["serial"],
+
+  // RP2040/RP2350 boot from an internal ROM/BOOTSEL, not GPIO-driven
+  // flash-mode strapping pins like ESP32/ESP8266 — no boot-time
+  // restrictions to flag at the chip level.  See notes.txt for GPIO20/21
+  // (STEMMA QT I2C bus) shared-onboard-device documentation, which is
+  // informational only (capabilities unchanged).
+  "pinNotes": {
+    "20": "Main I2C0 SDA — also the STEMMA QT connector's data line. This same bus additionally reaches the onboard TLV320DAC3100 audio codec (I2C address 0x18, used by the codec's control interface alongside its separate I2S audio-data pins) and, when a display is connected, EDID readout over the DVI port (learn.adafruit.com/adafruit-fruit-jam/i2c-3 confirms all of these appear on one I2C scan). Left general-purpose: this is the board's standard user-facing Wire/STEMMA QT bus, matching this repo's precedent of keeping a shared expansion I2C bus general-purpose even when onboard devices also sit on it.",
+    "21": "Main I2C0 SCL — see GPIO20 note (STEMMA QT connector + onboard TLV320DAC3100 audio codec control + DVI EDID readout share this bus). Left general-purpose."
+  },
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Adafruit "Fruit Jam" (product 6200, adafruit.com/product/6200)
+  // — an RP2350B-based ($55, 2025-era) retro-computing/mini-computer
+  // board with DVI/HSTX video output, a 2-port USB-A host hub, I2S
+  // stereo audio via an onboard TLV320DAC3100 codec, a microSD card slot
+  // (SPI or 4-bit SDIO), 16MB flash + 8MB PSRAM, an onboard ESP32-C6
+  // WiFi/BLE co-processor, 5x onboard NeoPixels, 3x tactile buttons, an
+  // onboard status LED (dual-purpose with an IR receiver), and a
+  // STEMMA QT I2C connector + 16-pin GPIO/analog header for expansion.
+  // This board's own pins_arduino.h is unusually well-commented (already
+  // documents which GPIOs are USB host / SDIO / I2S / DVI / ESP32-link /
+  // PSRAM) and every pin below was cross-checked against a live fetch of
+  // learn.adafruit.com/adafruit-fruit-jam/pinout (the authoritative,
+  // per-GPIO vendor pinout reference), .../overview (feature list: "DVI
+  // output on the HSTX port", "2-port USB type A hub", "I2S stereo
+  // headphone + mono speaker via the TLV320DAC3100", "Micro SD card with
+  // SPI or SDIO", "5x NeoPixels", "3x tactile switches", "RP2350B dual
+  // 150MHz Cortex M33", "ESP32-C6 for WiFi / Internet connectivity",
+  // "16 MB Flash + 8 MB PSRAM"), .../i2c-3 (onboard I2C device list:
+  // TLV320DAC3100 at 0x18, EDID devices over DVI), and .../digital-input
+  // + a targeted web search confirming CircuitPython button code uses
+  // `pull=digitalio.Pull.UP` for BUTTON1/2/3 (active-low, pulled up).
+  //
+  // Two real findings from this audit:
+  // 1. GPIO29 (`PIN_LED`, CircuitPython `board.LED`) is a genuine onboard
+  //    LED — but wired REVERSED from most boards: anode to 3.3V, cathode
+  //    to GPIO29, so LOW turns it on and HIGH turns it off (led_low),
+  //    confirmed verbatim by learn.adafruit.com/adafruit-fruit-jam/pinout
+  //    ("setting the pin to LOW results in the LED turning on... This is
+  //    unusual and is the reverse from most other boards"). The SAME
+  //    physical pin is ALSO wired to an onboard IR receiver (silkscreen
+  //    "IR In", CircuitPython `board.IR`) per the same source — a
+  //    genuine dual-purpose pin, not a guess. No existing capability
+  //    vocabulary models "IR receiver", so this pin is tagged
+  //    digital_input + digital_output + led_low: led_low documents the
+  //    confirmed reversed-LED behavior, and digital_input is kept (rather
+  //    than dropped, unlike a plain single-purpose LED) because the same
+  //    pin is a real, sourced, general digital-input-capable IR-receiver
+  //    line — matching this repo's policy of tagging every confirmed
+  //    physical function on a shared pin rather than picking just one.
+  // 2. Every other dedicated-hardware GPIO (USB host D+/D-/5V-enable,
+  //    ESP32-C6 co-processor UART/SPI/reset/ready, I2S audio codec data/
+  //    clock/wordsel/mclk/irq, DVI/HSTX 4-lane diff-pair output, microSD
+  //    SPI/SDIO, PSRAM chip-select) has only a plain `#define`, never a
+  //    `static const uint8_t` alias, in this board's pins_arduino.h — so
+  //    build_boards.js's parser (parseEsp32Consts) never harvested any
+  //    of them and none reached the Designer at all before this
+  //    board.json existed. The chipGpios entries below add them back in
+  //    explicitly (capabilities:[] + a researched note each) so the pin
+  //    picker shows *why* each is present/absent, matching this repo's
+  //    wiznet_5500_evb_pico2 / pimoroni_explorer precedent rather than
+  //    leaving them silently missing.
+  //
+  // KEEP (left general-purpose, no chipGpios override):
+  //   - GPIO6, GPIO7, GPIO10 (D6/D7/D10) — plain breakout GPIOs on the
+  //     board's 16-pin expansion header, no dedicated function documented
+  //     anywhere (vendor overview: "16-pin socket header with 10 A/D
+  //     GPIO... pins").
+  //   - GPIO40-45 (A0-A5) — the header's six analog-friendly JST-PH /
+  //     expansion-header inputs (vendor pinout: "Accessible only on
+  //     JST-PH connector"), a genuine user-facing expansion feature, not
+  //     a fixed onboard sensor — matches this repo's established
+  //     onboard-analog-expansion KEEP policy (e.g. pimoroni_explorer
+  //     ADC0-5, bigtreetech_SKR_Pico thermistor inputs).
+  //   - GPIO20/21 (SDA/SCL) — the STEMMA QT connector's I2C0 bus (see
+  //     pinNotes above for the onboard-device-sharing detail).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/adafruit_fruitjam/notes.txt
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"], "note": "PIN_BUTTON1 / board.BUTTON1 — onboard tactile button (also doubles as the UF2/BOOTSEL button per this board's own pins_arduino.h comment \"'Boot0' button also on GPIO #0\"). Confirmed active-low with internal pull-up via CircuitPython example code (`button.switch_to_input(pull=digitalio.Pull.UP)`) referenced from learn.adafruit.com/adafruit-fruit-jam. Input-only, matching this repo's simple-tactile-button precedent (e.g. pimoroni_explorer SWITCH_A-Z)." },
+    "1":  { "capabilities": [], "note": "PIN_USB_HOST_DP — onboard 2-port USB-A host hub, USB D+ line (vendor overview: \"2-port USB type A hub for both keyboard and mouse or game controllers\"). #define only in pins_arduino.h (no static-const alias). Not general purpose." },
+    "2":  { "capabilities": [], "note": "PIN_USB_HOST_DM — onboard USB host hub, USB D- line. Same source/reasoning as GPIO1." },
+    "3":  { "capabilities": [], "note": "SPIWIFI_ACK — busy/ready handshake line for the onboard ESP32-C6 WiFi/BLE co-processor's SPI-hosted link (pins_arduino.h comment: \"a.k.a BUSY or READY pin\"). #define only. Not general purpose." },
+    "4":  { "capabilities": ["digital_input", "button"], "note": "PIN_BUTTON2 / board.BUTTON2 — onboard tactile button. Same confirmation/reasoning as GPIO0 (active-low, internal pull-up)." },
+    "5":  { "capabilities": ["digital_input", "button"], "note": "PIN_BUTTON3 / board.BUTTON3 — onboard tactile button. Same confirmation/reasoning as GPIO0 (active-low, internal pull-up)." },
+    "8":  { "capabilities": [], "note": "PIN_SERIAL1_TX — dedicated UART1 TX to the onboard ESP32-C6 WiFi/BLE co-processor (`#define SerialESP32 Serial1`). #define only, no static-const alias. Not general purpose." },
+    "9":  { "capabilities": [], "note": "PIN_SERIAL1_RX — dedicated UART1 RX to the onboard ESP32-C6 co-processor. Same source/reasoning as GPIO8." },
+    "11": { "capabilities": [], "note": "PIN_5V_EN — onboard USB host hub's 5V power-enable line (`PIN_5V_EN_STATE` documents the active-enable level in pins_arduino.h). #define only. Not general purpose." },
+    "12": { "capabilities": [], "note": "PIN_CKN — DVI/HSTX video output, differential clock negative line (vendor overview: \"DVI output on the HSTX port\"). #define only. Dedicated video hardware, not general purpose." },
+    "13": { "capabilities": [], "note": "PIN_CKP — DVI/HSTX video output, differential clock positive line. Same source/reasoning as GPIO12." },
+    "14": { "capabilities": [], "note": "PIN_D0N — DVI/HSTX video output, differential data-lane-0 negative line. Same source/reasoning as GPIO12." },
+    "15": { "capabilities": [], "note": "PIN_D0P — DVI/HSTX video output, differential data-lane-0 positive line. Same source/reasoning as GPIO12." },
+    "16": { "capabilities": [], "note": "PIN_D1N — DVI/HSTX video output, differential data-lane-1 negative line. Same source/reasoning as GPIO12." },
+    "17": { "capabilities": [], "note": "PIN_D1P — DVI/HSTX video output, differential data-lane-1 positive line. Same source/reasoning as GPIO12." },
+    "18": { "capabilities": [], "note": "PIN_D2N — DVI/HSTX video output, differential data-lane-2 negative line. Same source/reasoning as GPIO12." },
+    "19": { "capabilities": [], "note": "PIN_D2P — DVI/HSTX video output, differential data-lane-2 positive line. Same source/reasoning as GPIO12." },
+    "22": { "capabilities": [], "note": "PIN_PERIPHERAL_RESET (also `ESP32_RESETN`) — shared reset line for BOTH the onboard ESP32-C6 co-processor and the onboard TLV320DAC3100 audio codec, confirmed via learn.adafruit.com/adafruit-fruit-jam/pinout (\"GPIO22 (PERIPH_RESET): Shared reset with ESP32-C6\") and the i2s page. #define only. Not general purpose." },
+    "23": { "capabilities": [], "note": "PIN_I2S_IRQ (also `ESP32_GPIO0`) — dual-purpose: I2S audio codec interrupt line AND the ESP32-C6 co-processor's GPIO0 bootstrap/mode-select pin (`#define ESP32_GPIO0 PIN_I2S_IRQ` in pins_arduino.h). #define only. Not general purpose." },
+    "24": { "capabilities": [], "note": "PIN_I2S_DATAOUT — I2S audio data line to the onboard TLV320DAC3100 codec (vendor overview: \"I2S stereo headphone + mono speaker via the TLV320DAC3100\"). #define only. Not general purpose." },
+    "25": { "capabilities": [], "note": "PIN_I2S_MCLK — I2S audio master-clock line to the onboard TLV320DAC3100 codec (optional clock per vendor pinout doc). #define only. Not general purpose." },
+    "26": { "capabilities": [], "note": "PIN_I2S_BITCLK — I2S audio bit-clock line to the onboard TLV320DAC3100 codec. #define only. Not general purpose." },
+    "27": { "capabilities": [], "note": "PIN_I2S_WORDSEL — I2S audio word-select (L/R clock) line to the onboard TLV320DAC3100 codec. #define only. Not general purpose." },
+    "28": { "capabilities": [], "note": "PIN_SPI1_MISO — dedicated SPI1 MISO for the onboard ESP32-C6 co-processor's SPI-hosted link (`SPIWIFI SPI1`). #define only. Not general purpose." },
+    "29": { "capabilities": ["digital_input", "digital_output", "led_low"], "note": "PIN_LED / board.LED / LED_BUILTIN — onboard status LED, wired REVERSED from most boards: anode to 3.3V, cathode to GPIO29, so LOW turns it on and HIGH turns it off. Confirmed verbatim via learn.adafruit.com/adafruit-fruit-jam/pinout (\"setting the pin to LOW results in the LED turning on... This is unusual and is the reverse from most other boards\"). The SAME physical pin is ALSO wired to an onboard IR receiver (silkscreen \"IR In\", CircuitPython board.IR) per the same source — a confirmed dual-purpose pin. No 'IR receiver' capability exists in this codebase's vocabulary, so digital_input is kept alongside led_low (rather than dropped as on a single-purpose LED pin) to reflect that this pin is a genuine, sourced, general digital-input-capable line as well as an LED output." },
+    "30": { "capabilities": [], "note": "PIN_SPI1_SCK — dedicated SPI1 SCK for the onboard ESP32-C6 co-processor's SPI-hosted link. #define only. Not general purpose." },
+    "31": { "capabilities": [], "note": "PIN_SPI1_MOSI — dedicated SPI1 MOSI for the onboard ESP32-C6 co-processor's SPI-hosted link. #define only. Not general purpose." },
+    "32": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — 5x onboard addressable NeoPixel LEDs (`NUM_NEOPIXEL 5`), powered from 3.3V, confirmed via learn.adafruit.com/adafruit-fruit-jam/neopixels-4 and vendor overview (\"5x NeoPixels\")." },
+    "33": { "capabilities": [], "note": "PIN_SD_DETECT — onboard microSD card slot's card-detect line (vendor overview: \"Micro SD card with SPI or SDIO\"). #define only. Not general purpose." },
+    "34": { "capabilities": [], "note": "PIN_SD_CLK (also `PIN_SPI0_SCK`) — onboard microSD card slot's SPI0/SDIO clock line. #define only. Not general purpose." },
+    "35": { "capabilities": [], "note": "PIN_SD_CMD_MOSI (also `PIN_SPI0_MOSI`) — onboard microSD card slot's SPI0 MOSI / SDIO CMD line. #define only. Not general purpose." },
+    "36": { "capabilities": [], "note": "PIN_SD_DAT0_MISO (also `PIN_SPI0_MISO`) — onboard microSD card slot's SPI0 MISO / SDIO DAT0 line. #define only. Not general purpose." },
+    "37": { "capabilities": [], "note": "PIN_SD_DAT1 — onboard microSD card slot's 4-bit SDIO DAT1 line (only used in SDIO mode, not plain SPI mode). #define only. Not general purpose." },
+    "38": { "capabilities": [], "note": "PIN_SD_DAT2 — onboard microSD card slot's 4-bit SDIO DAT2 line. #define only. Not general purpose." },
+    "39": { "capabilities": [], "note": "PIN_SD_DAT3_CS (also `PIN_SPI0_SS`) — onboard microSD card slot's SPI0 chip-select / SDIO DAT3 line. #define only. Not general purpose." },
+    "46": { "capabilities": [], "note": "SPIWIFI_SS (also `PIN_SPI1_SS`) — dedicated SPI1 chip-select for the onboard ESP32-C6 co-processor's SPI-hosted link. #define only. Not general purpose." },
+    "47": { "capabilities": [], "note": "RP2350_PSRAM_CS — dedicated chip-select for the onboard 8MB PSRAM (vendor overview: \"16 MB Flash + 8 MB PSRAM\"). #define only. Not general purpose." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 6-channel 12-bit ADC (GPIO40-45 / A0-A5) — matches this board's own
+  // pins_arduino.h (`__PIN_A0`..`__PIN_A5` plus the `A0`..`A5` static
+  // const aliases). Left fully general-purpose (no chipGpios override):
+  // these are the board's advertised JST-PH-connector analog inputs, a
+  // genuine user-facing expansion feature, not a fixed onboard sensor.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

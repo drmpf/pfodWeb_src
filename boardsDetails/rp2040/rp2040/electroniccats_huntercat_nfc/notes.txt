@@ -1,0 +1,189 @@
+Board: electroniccats_huntercat_nfc (chip: rp2040)
+Electronic Cats "Hunter Cat NFC" — RP2040 hardware revision
+("HunterCat NFC RP2040" per variants/rp2040/boards.txt display name and
+this board's own USB product string), onboard NXP PN7150 NFC controller.
+Audit date: 2026-07-13.
+
+SUMMARY
+-------
+Added variants/rp2040/rp2040/electroniccats_huntercat_nfc/board.json
+(full per-board override file). 10 GPIOs corrected out of this board's
+own pins_arduino.h alias set (D0-D22, A0-A2): GPIO4/5 (PN7150 I2C0,
+capabilities emptied, bus role auto-supplied), GPIO8/9/10 (3-channel PWM
+RGB status LED, tagged led_high+pwm_output), GPIO17/18 (PN7150 VEN/IRQ,
+capabilities emptied), GPIO19/20/21 (3 user mode-select buttons, tagged
+button). No pins_arduino.h edit was needed (no SPI/I2C/SS alias-collision
+bug found on any of these pins).
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h (already in this repo, matches
+   upstream arduino-pico byte-for-byte — verified by fetching
+   https://raw.githubusercontent.com/earlephilhower/arduino-pico/master/variants/electroniccats_huntercat_nfc/pins_arduino.h).
+   Declares: PIN_LED=(8u); Serial1 TX=0/RX=1; SPI0 entirely "not pinned
+   out" (31u, GPIO31 doesn't exist); Wire0 SDA=4/SCL=5; Wire1 "not pinned
+   out"; D0-D22 (GPIO0-22) and A0-A2 (GPIO26-28) aliases; PINS_COUNT=26.
+   Notably this file contains NO PN7150-specific aliases (no
+   PIN_PN7150_IRQ_B / PIN_PN7150_RST_B style macros, unlike the sibling
+   challenger_2040_nfc board) — the PN7150 wiring had to be found from
+   other sources.
+
+2. variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios:{}
+   deliberately empty) and variants/rp2040/rp2040/challenger_2040_nfc/
+   board.json (sibling NFC-equipped RP2040 board audited earlier this
+   session, same general PN7150 class) — read as precedent/structure
+   templates before writing this board's file.
+
+3. variants/rp2040/boards.txt lines 14945-15186 — confirms
+   electroniccats_huntercat_nfc.name=ElectronicCats HunterCat NFC RP2040,
+   build.chip=rp2040, build.variant=electroniccats_huntercat_nfc,
+   usb_product="HunterCat NFC RP2040".
+
+4. https://github.com/ElectronicCats/HunterCatNFC (official open-hardware
+   repo, CERN-OHL-1.2 hardware / AGPL-3.0 firmware). README/releases
+   confirm this is a real, actively maintained security-research NFC tool
+   ("audit, read or emulate cards"). Releases: v1.0-v1.4 = original
+   SAMD21-based hardware; v2.040/v2.041 ("New Chip RP2040!!") = the RP2040
+   redesign this pfodWeb board variant targets. Twitter announcement
+   (2022-07-19, @electronicats) confirms "HunterCat NFC RP2040... supports
+   Arduino, CircuitPython, and MicroPython... available at DEFCON30".
+
+5. Official Arduino firmware, THIS board's own repo, all 3 example
+   sketches (fetched via raw.githubusercontent.com from the `main` branch):
+     - Firmware/hunterCatNFC_AllOne/hunterCatNFC_AllOne.ino
+     - Firmware/huntercat_nfc_detect_readers/huntercat_nfc_detect_readers.ino
+     - Firmware/HunterCatNFC_P2P/HunterCatNFC_P2P.ino
+   All three independently contain the identical block:
+     #ifdef ARDUINO_ARCH_SAMD
+     #define PN7150_IRQ (15)
+     #define PN7150_VEN (14)
+     #else
+     #define PN7150_IRQ (18)
+     #define PN7150_VEN (17)
+     #endif
+     #ifdef ARDUINO_ARCH_RP2040
+     #define PIN_LED  8
+     #define PIN_LED2 9
+     #define PIN_LED3 10
+     #define BUTTON_0 19
+     #define BUTTON_1 20
+     #define BUTTON_2 21
+     #endif
+   `PIN_LED`=GPIO8 matches this board's own upstream pins_arduino.h
+   (`PIN_LED (8u)`) exactly — cross-validated between the Arduino core
+   variant file and 3 independent, mutually-consistent official firmware
+   sketches.
+   Further confirmed from the same sketches:
+     - `void RGB(int R,int G,int B){ analogWrite(PIN_LED,R);
+        analogWrite(PIN_LED2,B); analogWrite(PIN_LED3,g); }` — all 3 LED
+       pins are PWM-driven (colour-mixed), not simple digital on/off.
+     - `void blink(int pin,...){ digitalWrite(pin,HIGH); delay(...);
+        digitalWrite(pin,LOW); ...}` and initial
+       `digitalWrite(LED_BUILTIN, LOW)` (off at boot) — confirms
+       active-high.
+     - `pinMode(BUTTON_0, INPUT_PULLUP); ... if (digitalRead(BUTTON_0)
+        == 0) {...}` — confirms the 3 buttons are momentary, pulled up,
+       active-low (press = LOW). These select the tool's operating mode
+       (reader/writer, emulation, etc.) — matches the product's
+       "specially created to identify NFC readers and sniffing tools...
+       audit, read or emulate cards" description.
+
+6. ElectronicCats/ElectronicCats-PN7150 Arduino library (the NFC driver
+   used by all 3 firmware sketches above):
+   src/Electroniccats_PN7150.h line ~124:
+     Electroniccats_PN7150(uint8_t IRQpin, uint8_t VENpin,
+                           uint8_t I2Caddress, ChipModel chipModel=PN7150,
+                           TwoWire *wire = &Wire);
+   src/Electroniccats_PN7150.cpp, connectNCI():
+     // uses setSDA and set SCL with compatible boards
+     //_wire->setSDA(0);  // GPIO 0 como SDA   <- commented out, NOT executed
+     //_wire->setSCL(1);  // GPIO 1 como SCL   <- commented out, NOT executed
+     _wire->begin();
+     if (_VENpin != 255) { digitalWrite(_VENpin, HIGH); delay(1);
+       digitalWrite(_VENpin, LOW); delay(1); digitalWrite(_VENpin, HIGH);
+       delay(3); }
+   Since none of this board's 3 firmware sketches pass an explicit `wire`
+   argument to the `Electroniccats_PN7150` constructor, the PN7150 uses
+   the DEFAULT global `Wire` object — i.e. this board's own already-
+   declared Wire0 (PIN_WIRE0_SDA=4u / PIN_WIRE0_SCL=5u), not a second/
+   separate I2C bus. `WIRE_HOWMANY (1u)` in this board's pins_arduino.h
+   confirms only one I2C bus exists on this variant at all. No evidence of
+   a Stemma QT/Qwiic external I2C connector was found for this specific
+   product (unlike some other Electronic Cats/Adafruit RP2040 boards), so
+   GPIO4/GPIO5 are treated as dedicated to the onboard PN7150.
+   The VEN pin drive sequence (HIGH-LOW-HIGH pulse) confirms GPIO17 is a
+   reset/enable OUTPUT from the RP2040's perspective, not general-purpose.
+
+7. A manual geometric trace of this board's own KiCad schematic
+   (github.com/ElectronicCats/HunterCatNFC, tag v2.041,
+   Hardware/HunterCat-NFC/HunterCat-NFC.kicad_sch — fetched and parsed as
+   raw S-expression text, computing each RP2040 GPIO pin's absolute
+   schematic coordinate from the chip symbol's pin offsets + placement,
+   then matching against net "(label ...)" coordinates) was attempted
+   FIRST, before finding the firmware sources above. It produced a
+   DIFFERENT, INTERNALLY-PLAUSIBLE-LOOKING but ultimately WRONG mapping:
+   GPIO8/9 = IRQ/VEN, GPIO16/17/18 = 3 status LEDs, GPIO21/22 = SCL/SDA,
+   GPIO5/6/7 = 3 buttons. This schematic-only mapping is explicitly NOT
+   used in the shipped board.json — it disagreed with three mutually-
+   consistent, independent official firmware sketches AND with upstream
+   arduino-pico's own PIN_LED=8 definition, and a manual, un-rendered
+   KiCad coordinate trace is inherently more error-prone (transform/unit/
+   offset mistakes are easy to make and hard to self-check without an
+   actual schematic viewer) than reading the vendor's own shipped, working
+   firmware source, which is direct proof of what each GPIO actually does
+   on real hardware. This discrepancy and the reasoning for preferring the
+   firmware are recorded here per this audit's "confirm via real vendor
+   documentation, report NO CHANGE rather than guess" standard — in this
+   case there WAS a confident, well-corroborated answer (the firmware
+   path), just not the one the schematic trace initially suggested.
+
+PER-PIN REASONING (see board.json chipGpios comments for the same,
+slightly condensed)
+--------------------------------------------------------------------
+GPIO4  (D4, PIN_WIRE0_SDA)  - PN7150 I2C data line (default/only Wire
+                               bus). capabilities: [] (i2c_sda
+                               auto-supplied by build_boards.js).
+GPIO5  (D5, PIN_WIRE0_SCL)  - PN7150 I2C clock line. capabilities: []
+                               (i2c_scl auto-supplied).
+GPIO8  (D8, PIN_LED/LED_BUILTIN) - RGB status LED, red channel.
+                               capabilities: [digital_output, led_high,
+                               pwm_output].
+GPIO9  (D9, PIN_LED2)       - RGB status LED, blue channel. Same tags as
+                               GPIO8.
+GPIO10 (D10, PIN_LED3)      - RGB status LED, green channel. Same tags as
+                               GPIO8/9. (Tagged as 3 independent PWM LED
+                               pins, not led_neopixel — this is a discrete
+                               3-GPIO RGB LED, not a WS2812-style
+                               single-wire addressable pixel.)
+GPIO17 (D17, PN7150_VEN)    - PN7150 reset/enable output, driven by
+                               RP2040. capabilities: [] (not
+                               general-purpose, no bus alias to preserve).
+GPIO18 (D18, PN7150_IRQ)    - PN7150 interrupt input, read by RP2040.
+                               capabilities: [] (not general-purpose, no
+                               bus alias to preserve).
+GPIO19 (D19, BUTTON_0)      - user mode-select pushbutton, active-low.
+                               capabilities: [digital_input, button].
+GPIO20 (D20, BUTTON_1)      - user mode-select pushbutton, active-low.
+                               Same tags as GPIO19.
+GPIO21 (D21, BUTTON_2)      - user mode-select pushbutton, active-low.
+                               Same tags as GPIO19.
+
+BUG-CLASS CHECK (button/LED pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK)
+--------------------------------------------------------------------
+None of GPIO8/9/10/17/18/19/20/21 carry any SPI/I2C/UART bus alias in
+this board's pins_arduino.h (SPI0 is entirely "not pinned out" = 31u;
+Serial1 is TX=0/RX=1; Wire0 is SDA=4/SCL=5; Wire1 is "not pinned out").
+No collision found, so no pins_arduino.h edit was needed.
+
+NOT IN SCOPE / NO CHANGE
+--------------------------------------------------------------------
+- GPIO0/GPIO1 (Serial1 TX/RX) — already correctly typed, no NFC-specific
+  conflict found.
+- No onboard NeoPixel found — this board uses a discrete 3-pin PWM RGB
+  LED (GPIO8/9/10), not a WS2812-style addressable pixel.
+- No onboard user button beyond BUTTON_0/1/2 (GPIO19/20/21) and the
+  standard RUN-pin reset/BOOTSEL (not a normal GPIO on RP2040, out of
+  scope per the same reasoning already documented in rpipico/board.json).
+- GPIO23/24/25/29 are not aliased at all in this board's own
+  pins_arduino.h (no D23/D24/D25/A3 declared), so they already receive no
+  capability under the chip-level default and needed no override here.

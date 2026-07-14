@@ -44,15 +44,11 @@
 static const uint8_t TX = 42;
 static const uint8_t RX = 41;
 
-// BMA423,PCF8563,AXP2101,DRV2605L share I2C Bus
-static const uint8_t SDA = 10;
-static const uint8_t SCL = 11;
+// BMA423,PCF8563,AXP2101,DRV2605L share I2C Bus (internal-only — GPIO10/
+// 11 deliberately NOT declared as pins here; see board.json)
 
-// Default sd cs pin
-static const uint8_t SS = 5;
-static const uint8_t MOSI = 1;
-static const uint8_t MISO = 4;
-static const uint8_t SCK = 3;
+// Default sd cs pin (GPIO5/1/4/3 deliberately NOT declared — shared
+// SD+LoRa SPI bus, not general-purpose; see board.json)
 
 // LoRa and SD card share SPI bus
 #define LORA_SCK  (SCK)   // share spi bus

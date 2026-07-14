@@ -1,0 +1,97 @@
+{
+  "boardName": "ESP8266",
+  "displayName": "WiFi Slot",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  "pinNotes": {
+    "0":  "Also this board's I2C SCL (see chipGpios) — must be HIGH or floating for normal boot",
+    "2":  "Also this board's I2C SDA and onboard LED — must be HIGH at boot",
+    "4":  "Also one of this board's 8 mux-routed 'analog' channel pins (vendor A6) — usable as plain digital I/O, but NOT exposed here as analog_input; see chipGpios comment",
+    "5":  "Also one of this board's 8 mux-routed 'analog' channel pins (vendor A4) — usable as plain digital I/O, but NOT exposed here as analog_input; see chipGpios comment",
+    "12": "Also one of this board's 8 mux-routed 'analog' channel pins (vendor A7) — usable as plain digital I/O, but NOT exposed here as analog_input; see chipGpios comment",
+    "13": "Also one of this board's 8 mux-routed 'analog' channel pins (vendor A3) — usable as plain digital I/O, but NOT exposed here as analog_input; see chipGpios comment",
+    "14": "Also one of this board's 8 mux-routed 'analog' channel pins (vendor A5) — usable as plain digital I/O, but NOT exposed here as analog_input; see chipGpios comment",
+    "15": "Dedicated mux channel-select/counter-clock line for the onboard 74HC4052 + SN74HC393 analog mux — not broken out for general use, excluded entirely",
+    "16": "Also one of this board's 8 mux-routed 'analog' channel pins (vendor A2) — usable as plain digital I/O (RTC-domain pin: no PWM/interrupt), but NOT exposed here as analog_input; see chipGpios comment",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. This is the single real ADC pin the onboard mux feeds."
+  },
+
+  // Per-board override: this board (Amperka WiFi Slot) has an onboard
+  // 74HC4052 analog multiplexer + SN74HC393 counter feeding the ESP8266's
+  // single real ADC pin (GPIO17), giving 8 vendor-labelled "A0-A7" sensor
+  // channels via a board-specific analogRead(PIN_Ax) indirection (see
+  // pins_arduino.h's analog_pin_to_mux_channel[] table) that pfodWeb's
+  // simple per-pin capability model cannot represent. GPIO15 is the mux's
+  // channel-select/counter-clock line (PIN_A0-PIN_A7 are NOT declared as
+  // static const aliases in pins_arduino.h specifically so the parser
+  // never attaches a misleading analog_input tag to GPIO1/3/4/5/12/13/14/16).
+  //
+  // 2026-07-12 REFINEMENT: the vendor's own product description (from
+  // WebSearch aggregate snippets quoting the Amperka wiki page — direct
+  // fetch is bot-blocked, see notes.txt) states "10 digital I/O with PWM
+  // (8 usable as analog input)". That maps EXACTLY onto this board's real
+  // pin set: 10 digital-capable GPIOs = {0,1,2,3,4,5,12,13,14,16}, of
+  // which 8 (all except the two I2C pins 0/2) are ALSO routed through the
+  // mux = {1,3,4,5,12,13,14,16} — precisely PIN_A0-PIN_A7's values. GPIO15
+  // (the mux/counter control line) is notably NOT part of either count,
+  // confirming it alone is purely internal and excluded entirely below.
+  // The prior pass (2026-07-11) had over-excluded GPIO4/5/12/13/14/16 as
+  // fully unavailable; this pass restores them as plain digital I/O
+  // (matching the vendor's own "10 digital I/O" count) while still
+  // withholding analog_input, since reading them as analog requires the
+  // vendor's custom PIN_Ax/mux-channel indirection, not a real per-GPIO
+  // ADC. GPIO1/3 stay forced to serial_tx/serial_rx (needed for the pfod
+  // Serial connection on every board in this family) even though the
+  // vendor counts them among the 10 digital pins. See
+  // boardsDetails/esp8266/esp8266/wifi_slot/notes.txt for full research.
+  //
+  // pfodWeb NOTE: no button/LED capability tags added. Verified via the
+  // official Amperka wiki product page (https://wiki.amperka.ru/products:wifi-slot):
+  // the board has "PROG" and "RESET" service buttons plus PWR/RX/TX
+  // indicator LEDs, but the page never names a specific GPIO for the PROG
+  // button (only the standard hold-PROG/tap-RESET/release-PROG procedure),
+  // and lists only PWR/RX/TX as indicator LEDs — no separate GPIO2 user
+  // LED is documented (unlike this board's pins_arduino.h LED_BUILTIN=2
+  // alias, which per this task's rules is not by itself sufficient
+  // evidence). The wifi-slot_schematic.png linked from that page could not
+  // be retrieved (blocked by the wiki's bot-protection for automated
+  // fetches) to confirm exact GPIO wiring.
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  // pfodWeb NOTE: defaultRefVolts CORRECTED from the previous "1.0" to
+  // "3.3". The ESP8266's native ADC pin (GPIO17/A0) is indeed 10-bit,
+  // 0-1.0V full scale on its own, but this board does not feed sensor
+  // signals to it directly — the 74HC4052 mux output passes through an
+  // on-board resistor voltage divider first. The official Amperka wiki
+  // product page (https://wiki.amperka.ru/products:wifi-slot) states this
+  // explicitly: "резисторный делитель поднимает верхний порог измеряемого
+  // напряжения до 3,3 В" ("a resistor divider raises the upper threshold
+  // of the measured voltage to 3.3 V"), so a full-scale 3.3V signal at any
+  // of the board's A0-A7 header pins reads as the chip's native 1.0V max.
+  // Exact resistor values/designators could not be obtained (schematic
+  // PNG linked from that page returned an anti-bot block page on fetch),
+  // but the vendor's own stated result (3.3V) is unambiguous. See
+  // boardsDetails/esp8266/esp8266/wifi_slot/notes.txt for full research.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.3" }
+}

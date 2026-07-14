@@ -1,0 +1,90 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Pimoroni PGA2040" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. boards.txt shows plain USB VID/PID
+  // entries and no WiFi-radio build flags — this is a bare-chip RP2040
+  // breakout, not a WiFi-equipped board.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, 2026-07-13):
+  //
+  // Board: "Pimoroni PGA2040" — a minimal 21mm-square Pin Grid Array
+  // bare-RP2040 breakout intended for embedded/PCB integration, NOT a
+  // dev-kit form factor. Confirmed via Pimoroni's own product page
+  // (shop.pimoroni.com/en-us/products/pga2040): "it has no fripperies
+  // like LEDs, buttons and USB connectors - you'll need to attach your
+  // own USB connector to be able to program it." The board exposes 30
+  // GPIO (4 ADC-capable) plus only the essential support circuitry
+  // (crystal, 8MB QSPI flash, 3V3 regulator) — deliberately no onboard
+  // LED, NeoPixel, or button of any kind.
+  //
+  // This board's own pins_arduino.h
+  // (variants/rp2040/rp2040/pimoroni_pga2040/pins_arduino.h) is a bare
+  // passthrough: `#include "../generic/pins_arduino.h"` with the comment
+  // "This is a bare board with no real predefined pins, so use generic".
+  // That generic/pins_arduino.h (shared fallback for boards with no
+  // custom pin file) declares `#define PIN_LED (25u)` — copied from the
+  // reference Raspberry Pi Pico's own pinout — which via generic/common.h
+  // becomes LED_BUILTIN=25 and, through the chip-level board.json's empty
+  // chipGpios default, would otherwise receive full digital_input/
+  // digital_output/pwm_output capability with no button/LED semantic tag
+  // attached (since no board-specific chipGpios override existed before
+  // this audit). GPIO25 on the real PGA2040 PCB is a plain general-purpose
+  // GPIO like any other broken-out pin — it is NOT wired to an onboard
+  // LED, since the vendor explicitly states no onboard LED exists at all.
+  // The PIN_LED/LED_BUILTIN alias here is purely an inherited generic-
+  // fallback template artifact, not a real hardware feature of this
+  // specific board.
+  //
+  // NO CHANGE applied (no button/LED/NeoPixel capability tags added
+  // anywhere). This is a stronger case than the usual "no vendor pinout
+  // found" NO CHANGE precedent (e.g. DudesCab, degz_suibo): here the
+  // vendor explicitly and affirmatively confirms the ABSENCE of any
+  // onboard LED or button, rather than pinout documentation simply being
+  // unavailable. Per this audit's standing rule (report NO CHANGE rather
+  // than guess, and never tag hardware that isn't actually there),
+  // GPIO25/PIN_LED is deliberately left untagged.
+  //
+  // No SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies either: this
+  // board falls through to generic/pins_arduino.h's bus aliases
+  // (SPI0 MISO=16/MOSI=19/SCK=18/SS=17, Wire0 SDA=4/SCL=5, Wire1
+  // SDA=26/SCL=27) via generic/common.h, none of which coincide with
+  // GPIO25 (or with anything else being tagged here, since nothing is).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/pimoroni_pga2040/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h fallback
+  // (NUM_ANALOG_INPUTS = 3, ADC_RESOLUTION = 12). Note: Pimoroni's
+  // product page advertises "4 ADC-capable" pins on the real PCB (30
+  // GPIO total, 4 more than a Pico), but this board's pins_arduino.h
+  // does not declare a 4th analog alias (A3) — out of scope for this
+  // button/LED/NeoPixel audit, left as-is per this repo's "don't
+  // refactor beyond the requested change" policy.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

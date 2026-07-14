@@ -19,18 +19,17 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 9;
 static const uint8_t SCL = 10;
 
-static const uint8_t SS = 0;
+// pfodWeb NOTE: the default SS alias was deleted - it pointed at the
+// same GPIO as this board's confirmed onboard button, and
+// build_boards.js unconditionally attaches an spi_ss capability to any
+// GPIO matching the SS alias, which was silently contaminating the
+// button's capability list.
 static const uint8_t MOSI = 11;
 static const uint8_t MISO = 13;
 static const uint8_t SCK = 12;
 
-static const uint8_t TF_CS = 46;
-
-static const uint8_t TS_CS = 45;
-static const uint8_t TFT_CS = 48;
-static const uint8_t TFT_DC = 47;
-static const uint8_t TFT_RST = 21;
-static const uint8_t TFT_LED = 14;
+// pfodWeb NOTE: TF_CS/TS_CS/TFT_CS/DC/RST/LED deliberately NOT declared
+// - dedicated onboard microSD + touch + TFT display pins (see board.json).
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
@@ -45,7 +44,7 @@ static const uint8_t A9 = 10;
 static const uint8_t A10 = 11;
 static const uint8_t A11 = 12;
 static const uint8_t A12 = 13;
-static const uint8_t A13 = 14;
+// pfodWeb NOTE: A13 (GPIO14) deliberately NOT declared - same as TFT_LED above.
 static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
 static const uint8_t A16 = 17;
@@ -64,6 +63,6 @@ static const uint8_t T10 = 10;
 static const uint8_t T11 = 11;
 static const uint8_t T12 = 12;
 static const uint8_t T13 = 13;
-static const uint8_t T14 = 14;
+// pfodWeb NOTE: T14 (GPIO14) deliberately NOT declared - same as TFT_LED above.
 
 #endif /* Pins_Arduino_h */

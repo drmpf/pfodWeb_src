@@ -1,0 +1,137 @@
+Board: intorobot-fig (chip: esp32) - IntoRobot Fig
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\intorobot-fig\
+Audit date: 2026-07-12
+Task: dedicated-hardware pin-exclusion audit, flagged by a fresh discovery
+sweep for:
+  static const uint8_t RGB_R_BUILTIN = 27;
+  static const uint8_t RGB_G_BUILTIN = 21;
+  static const uint8_t RGB_B_BUILTIN = 22;
+  static const uint8_t KEY_BUILTIN = 0;
+
+FILE REVIEWED
+-------------
+C:\ai\aicode\pfodWeb\variants\esp32\esp32\intorobot-fig\pins_arduino.h (57
+lines, read in full). Also declares LED_BUILTIN=4, TX=1/RX=3, SDA=23/SCL=19,
+SS=5/MOSI=16/MISO=17/SCK=18, A0-A9/D0-D6/T0-T6 aliases (re-use the same
+GPIOs, no new pins), DAC1=25/DAC2=26. No pre-existing board.json override -
+chip-level default at variants/esp32/esp32/board.json was authoritative
+until this pass.
+
+SOURCES CONSULTED
+-----------------
+1. https://www.espboards.dev/esp32/intorobot-fig/ - third-party pinout
+   aggregator for this exact board. Independently lists RGB_R_BUILTIN=27,
+   RGB_G_BUILTIN=21, RGB_B_BUILTIN=22, KEY_BUILTIN=0, consistent with
+   pins_arduino.h. No polarity/schematic detail present.
+2. https://github.com/espressif/arduino-esp32/tree/master/variants/intorobot-fig
+   - upstream vendor source; directory listing confirmed but file contents
+   not retrievable via WebFetch (GitHub tree view only) - relied on the
+   local pins_arduino.h copy (source of truth per task instructions) plus
+   espboards.dev corroboration instead.
+3. http://esp32.net/images/IntoRobot/Fig/ - index of auto-generated pinout
+   diagram images (IntoRobot_Fig_DiagramPinout.png etc.). WebFetch failed
+   ("self signed certificate"). These are third-party auto-rendered
+   diagrams of pins_arduino.h pin names (same class of source as
+   espboards.dev, which mirrors this same image set) - would not have
+   contained schematic/polarity data even if reachable.
+4. https://github.com/IntoRobot - IntoRobot's own GitHub organisation.
+   Lists hardware_atom ("IntoRobot Atom 硬件开源资料"), hardware_fox
+   ("IntoRobot-Fox 硬件原理图"), hardware_ant ("IntoRobot-Ant 硬件原理图")
+   - i.e. IntoRobot DOES publish open schematic repos for several of its
+   other boards (Atom, Fox, Ant, Neutron) - but NO repository named for
+   "Fig" exists in the organisation. No schematic source available this
+   way.
+5. http://docs.intorobot.com - official IntoRobot documentation site.
+   Unreachable (ECONNREFUSED on port 443; self-signed cert on the images
+   host too) - could not be fetched by any available tool.
+6. https://www.indiegogo.com/projects/intorobot-iot-development-kit-anyone-anywhere
+   - original IntoRobot crowdfunding campaign. Fetched page contained only
+   the title, no technical/schematic content retrievable via WebFetch.
+7. https://kknews.cc/tech/k8qo4kb.html - Chinese-language article on the
+   IntoRobot Fig ("新一代高性能Wifi+藍牙雙模單"). Returned HTTP 403
+   Forbidden, not retrievable.
+8. Multiple WebSearch queries (English and Chinese) for "IntoRobot Fig"
+   combined with "schematic", "RGB LED", "common anode/cathode",
+   "原理图", "指示灯" etc. - none surfaced a vendor schematic, datasheet,
+   or any explicit statement of RGB LED drive polarity or button pull
+   direction. General ESP32 RGB LED tutorials (unrelated boards) dominated
+   the results and were not used as evidence for this specific board.
+
+REASONING PER FLAGGED PIN
+--------------------------
+GPIO0 (KEY_BUILTIN): TAGGED. Same KEY_BUILTIN=0 naming pattern already
+confirmed this session as a real onboard user button on the sibling
+widora-air board (see boardsDetails/esp32/esp32/widora-air/notes.txt and
+variants/esp32/esp32/widora-air/board.json) - the standard ESP32 GPIO0/BOOT
+strapping pin doubling as a physical user "key" button, a well-established
+pattern across this ESP32 board family. espboards.dev's independent pinout
+table for this exact board corroborates the GPIO0/KEY_BUILTIN association.
+Decision: KEEP GPIO0, capabilities set to exactly ["digital_input",
+"button"] (dropped analog_input_serial/digital_output/pwm_output from the
+chip-level default, matching the button-tag exclusion convention used
+throughout this codebase). Existing "Must be HIGH or floating on reboot"
+pinNotes entry for GPIO0 left unchanged (inherited from chip default).
+
+GPIO21/22/27 (RGB_G_BUILTIN/RGB_B_BUILTIN/RGB_R_BUILTIN): ROLE CONFIRMED,
+POLARITY NOT CONFIRMED. This is a genuine discrete 3-GPIO RGB LED (three
+separate named constants driving three separate GPIOs - not a single
+WS2812/NeoPixel data pin), corroborated independently by espboards.dev's
+pinout table for this exact board matching pins_arduino.h. However, despite
+consulting every source found (items 1-8 above, including IntoRobot's own
+GitHub organisation, which DOES publish schematic repos for several of its
+other boards but has none for "Fig"; the official docs.intorobot.com site,
+unreachable by any available tool; and both English and Chinese-language
+web searches), no vendor schematic, datasheet, or documentation stating
+active-high vs active-low drive polarity for this RGB LED was found
+anywhere. Per the audit's explicit "don't guess if polarity evidence is
+weak" instruction, NO led_r_high/led_r_low (or _g_/_b_) capability tag is
+applied to any of the three channels - applying one would risk driving the
+LED backwards (inverted brightness, or a channel appearing permanently on)
+in the Designer UI. Decision: chipGpios capabilities for GPIO21/22/27 are
+left UNCHANGED from the chip-level default. A pinNotes entry was added for
+each of the three GPIOs documenting the confirmed RGB-channel role and the
+unconfirmed polarity, so a Designer user sees the context instead of a
+silently generic GPIO. This mirrors the precedent set this session by the
+d1_mini32 board's GPIO35/_VBAT treatment (confirmed role, unconfirmed
+circuit detail -> pinNotes documentation, no guessed capability tag) and
+the nina_w10 board's fuller precedent of leaving RGB LED channels untagged
+entirely when no polarity evidence exists.
+
+ALIAS-COLLISION CHECK (task step 4, critical)
+-----------------------------------------------
+This board's bus-role aliases (from pins_arduino.h): TX=1, RX=3, SDA=23,
+SCL=19, SS=5, MOSI=16, MISO=17, SCK=18. None of these equal 0, 21, 22, or
+27 - the button pin and all three RGB LED channel pins are free of any
+SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias. build_boards.js's unconditional
+bus-capability appends (which run independent of chipGpios settings) will
+not silently attach an i2c_sda/spi_mosi/etc. capability to the button tag
+or contaminate the RGB channel pins. No pins_arduino.h edit was required
+for this board - no colliding boilerplate alias exists to delete.
+
+MECHANISM APPLIED
+------------------
+Created variants/esp32/esp32/intorobot-fig/board.json as a full copy of the
+chip-level esp32/esp32/board.json default, with:
+  1. chipGpios["0"] capabilities changed to ["digital_input", "button"].
+  2. pinNotes["21"], pinNotes["22"], pinNotes["27"] added, documenting the
+     confirmed RGB LED role and unconfirmed polarity for each channel.
+  3. chipGpios["21"], ["22"], ["27"] left unchanged from the chip default.
+All other chip-level defaults (pwm, dac, adc, inputOnlyGpios, connections,
+remaining pinNotes/chipGpios entries) left unchanged. Added a "// pfodWeb
+NOTE:" header comment block citing the reasoning and sources above.
+pins_arduino.h was left unmodified - no exclusion was warranted (no alias
+collision found), so there was nothing to delete.
+
+SUMMARY
+-------
+GPIO0 (KEY_BUILTIN): confirmed onboard user button (same pattern as sibling
+widora-air board this session), tagged ["digital_input", "button"].
+GPIO21/22/27 (RGB_G/B/R_BUILTIN): confirmed real discrete 3-channel RGB
+LED, but no vendor schematic or documentation could be found anywhere
+(including IntoRobot's own GitHub org and official docs site, both
+checked) confirming active-high/active-low polarity - left as plain GPIOs
+per the "don't guess" policy, each with a documenting pinNotes entry
+instead of a guessed led_r/g/b_high/low capability tag. No SDA/SCL/SS/
+MOSI/MISO/SCK/TX/RX alias collision found for any of the four flagged
+pins - no pins_arduino.h edit needed. board.json override created;
+pins_arduino.h unmodified.

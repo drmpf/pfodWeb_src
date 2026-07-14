@@ -1,0 +1,163 @@
+esp32c3-devkit-lipo board.json dedicated-hardware pin-exclusion audit research notes
+=====================================================================================
+
+Board: esp32c3-devkit-lipo (variants/esp32/esp32c3/esp32c3-devkit-lipo), chip esp32c3.
+Real-world identity: Olimex ESP32-C3-DevKit-Lipo (open-source-hardware RISC-V
+board, ESP32-C3-MINI-1 module, built-in LiPo battery charger, USB-C).
+pins_arduino.h declares LED_BUILTIN=8, BUT_BUILTIN=9, TX=21, RX=20, plus the
+generic ESP32-C3 core template's SDA/SCL/SPI/analog boilerplate (SDA=8,
+SCL=9, SS=7, MOSI=6, MISO=5, SCK=4, A0-A5=0-5), and two commented-out
+placeholder lines (PWR_SENSE=4, BAT_SENSE=3). No board.json override existed
+before this audit (used the chip-level esp32c3/board.json default). Flagged
+by the discovery sweep for having BUT_BUILTIN=9 declared but never
+individually reviewed.
+
+Sources consulted
+------------------
+- https://www.olimex.com/Products/IoT/ESP32-C3/ESP32-C3-DevKit-Lipo/open-source-hardware
+  Official Olimex product page. Confirms board identity and lists "User
+  button" and "Status LED" among the feature bullets (WebFetch summary;
+  page did not itself give GPIO numbers).
+- https://www.electrokit.com/upload/product/41020/41020799/ESP32-C3-Devkit-Lipo-user-manual-2.pdf
+  Official Olimex user manual, Rev.1.0 September 2022 (read directly as a
+  PDF - it is image-based/scanned, not text-searchable). The labelled board
+  photo identifies "RESET" (RST1, physical reset button near the module)
+  and "STATUS LED" (LED1) plus "CHARGE LED" (LiPo-charger status LED,
+  CHARGING1). The separate pinout-description page's EXT1/EXT2 header
+  diagram lists GPIO9 as a plain EXT2 header pin (row "GPIO9") without
+  calling out a second button in that diagram - this earlier-revision
+  manual does not itself show a dedicated GPIO9 user-button symbol.
+- https://github.com/OLIMEX/ESP32-C3-DevKit-Lipo
+  Vendor's open-hardware GitHub repo (root README + HARDWARE folder
+  listing). Confirms the repo structure (DOCS/HARDWARE/README/LICENSE) and
+  points to per-revision KiCad project folders (Rev_A, Rev_B, Rev_C).
+- https://raw.githubusercontent.com/OLIMEX/ESP32-C3-DevKit-Lipo/main/HARDWARE/ESP32-C3-DevKit-Lipo_Rev_C/ESP32-C3-DevKit-Lipo_Rev_C.kicad_sch
+  Official Olimex KiCad schematic source for hardware Rev C (the current
+  revision, title block dated 2026-01-09), fetched and grepped directly as
+  plain-text KiCad S-expression source - this is the ground-truth net-level
+  schematic, not a marketing rendering or a third-party guess. Findings:
+    * A "Main-BUS" bus_alias explicitly lists net names including
+      "GPIO9\USER_BUT" and "GPIO8\USER_LED" (bus_alias line, verbatim).
+    * A pushbutton component (lib symbol "OLIMEX_Buttons:T1107A(6x3,8x2,5MM)",
+      Reference designator "SW") appears in the schematic, and multiple
+      "GPIO9\USER_BUT" net labels are placed near it.
+    * A schematic text callout reads "USER\nButton" positioned directly
+      next to the GPIO9/SW circuitry (bold italic label text, not a code
+      comment - an intentional schematic annotation for a human reader).
+    * A separate schematic note text reads: "Note: ESP32-C3 family has
+      three strapping pins: GPIO2, GPIO8 and GPIO9. By default, GPIO9 is
+      connected to the internal pull-up resistor." - consistent with a
+      user button that pulls GPIO9 to GND when pressed (idle-high via the
+      chip's internal pull-up, low when pressed), the standard ESP32-C3
+      BOOT-button wiring pattern.
+    * Also present (informational, outside this button-only audit's scope,
+      but relevant to the pins_arduino.h commented-out placeholders and to
+      the "battery-voltage-sense pin" check called out in the task): a
+      "Battery\nMeasurement" text block and "GPIO5\BAT_MEASURE" net labels
+      - the real battery-voltage-sense pin is GPIO5, NOT the commented-out
+      `BAT_SENSE = 3` placeholder in this board's pins_arduino.h. Likewise
+      "GPIO1\EXT_PWR_SENSE" - the real external-power-sense pin is GPIO1,
+      not the commented-out `PWR_SENSE = 4` placeholder. And
+      "GPIO7\I2C_SDA" / "GPIO3\I2C_SCK" - the board's real (schematic-level)
+      I2C bus sits on GPIO7/GPIO3, neither of which is GPIO8 or GPIO9,
+      confirming the pins_arduino.h SDA=8/SCL=9 lines are unrelated,
+      unconfirmed generic-template boilerplate rather than this board's
+      actual I2C wiring.
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32c3/pins_arduino.h
+  Upstream generic (non-board-specific) Espressif Arduino-ESP32 core
+  template for the bare esp32c3 chip. Confirms SDA=8/SCL=9/SS=7/MOSI=6/
+  MISO=5/SCK=4/TX=21/RX=20/A0-A5=0-5 are the generic chip-level defaults
+  copied into many board variants' pins_arduino.h files verbatim - this is
+  the same boilerplate origin identified on the sibling board found earlier
+  this session with GPIO9 aliased as SCL.
+
+Reasoning per pin
+------------------
+GPIO9 (BUT_BUILTIN) - CONFIRMED onboard physical user button. The vendor's
+  own Rev C KiCad schematic (ground-truth, fetched directly from
+  github.com/OLIMEX/ESP32-C3-DevKit-Lipo) shows: a real pushbutton
+  component wired to the GPIO9 net, that net explicitly bus-aliased as
+  "GPIO9\USER_BUT", and a "USER Button" schematic text callout placed next
+  to it - not a guess, not a boilerplate name reused from another product.
+  Also the ESP32-C3's standard strapping pin (chip-level pinNotes entry
+  "Must be HIGH for normal boot" retained unchanged, not removed - expected
+  for this pin, and the schematic's own strapping-pin note corroborates the
+  pull-up-idle/press-to-low wiring). Checked this board's own
+  pins_arduino.h for any other I2C/SPI/UART alias landing on GPIO9: TX=21,
+  RX=20, SDA=8, SS=7, MOSI=6, MISO=5, SCK=4 - none is 9 except the
+  now-removed SCL=9 line (see below). Tagged capabilities
+  ["digital_input","button"] only, per the playbook's exclusion rule for
+  button pins (no analog/output/pwm mixed in).
+
+Alias-conflict check (per this session's new playbook step)
+-------------------------------------------------------------
+GPIO9 WAS also aliased as SCL in this board's original pins_arduino.h
+(`static const uint8_t SCL = 9;`), inherited unmodified from the generic
+espressif/arduino-esp32 esp32c3 template. This is the same
+build_boards.js bug pattern found on a sibling board earlier this session
+(GPIO9 doubled as SCL there too): build_boards.js unconditionally appends
+"i2c_scl" to any GPIO equal to the parsed SCL constant (lines ~698-703 of
+pfodWeb_src/build_boards.js), regardless of what a board.json chipGpios
+override sets for that pin - so leaving the boilerplate SCL=9 line in place
+would have silently re-added "i2c_scl" to this confirmed button-only
+GPIO9 capability list at every rebuild. Per the playbook instruction, and
+because the Rev C schematic independently confirms the board's real I2C
+SCL line is GPIO3 (not GPIO9), the `static const uint8_t SCL = 9;` line was
+DELETED outright from pins_arduino.h (not commented out), with a
+pfodWeb NOTE comment left in its place explaining why and citing the
+schematic evidence. SDA (GPIO8) was left as-is - it collides only with
+LED_BUILTIN (GPIO8\USER_LED per the same schematic), which is a separate,
+out-of-scope finding for this button-only audit (see below).
+
+Findings noted but NOT acted on (out of scope for this audit)
+-----------------------------------------------------------------
+- GPIO8 (LED_BUILTIN, SDA boilerplate alias): the Rev C schematic confirms
+  GPIO8\USER_LED - this board does have a real onboard status LED on GPIO8,
+  matching LED_BUILTIN=8 in pins_arduino.h. It also collides with the
+  boilerplate SDA=8 alias (same unconfirmed-boilerplate bug pattern as
+  GPIO9/SCL), which would let build_boards.js append "i2c_sda" to GPIO8 on
+  top of any future LED capability tag. This board was flagged for this
+  audit specifically for BUT_BUILTIN=9, not LED_BUILTIN=8 - left untouched
+  here, but should be picked up in a future LED-focused retrofit pass for
+  this board (add "led_..." capability to GPIO9... GPIO8's chipGpios entry
+  and resolve the SDA=8 boilerplate collision the same way SCL=9 was
+  resolved here).
+- GPIO5 (real BAT_MEASURE) / GPIO1 (real EXT_PWR_SENSE): the schematic shows
+  these are the board's actual battery-voltage-sense and external-power-
+  sense pins, which do NOT match this board's own commented-out
+  pins_arduino.h placeholders (`BAT_SENSE = 3`, `PWR_SENSE = 4`). Recorded
+  here for the record per the task's request to check for a
+  battery-voltage-sense pin; no pins_arduino.h or board.json edit was made
+  for these, since they were commented-out (inactive) lines outside the
+  scope of the flagged BUT_BUILTIN pin, and correcting hardware-identity
+  placeholder values is a separate task from this button audit.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0-8, 10, 11, 20, 21) were left at the
+chip-level esp32c3/board.json default - this audit's scope was limited to
+the flagged BUT_BUILTIN=9 pin and the alias-conflict check it triggered.
+
+What was tagged/changed
+-------------------------
+1. Created variants/esp32/esp32c3/esp32c3-devkit-lipo/board.json (none
+   existed before) as a full copy of the chip-level esp32c3/board.json
+   default, with:
+     - GPIO9 capabilities changed to ["digital_input","button"] (was
+       ["digital_input","digital_output","pwm_output"])
+   plus a pfodWeb NOTE comment block at the top of the file citing the
+   sources above.
+2. Edited variants/esp32/esp32c3/esp32c3-devkit-lipo/pins_arduino.h:
+   deleted the boilerplate `static const uint8_t SCL = 9;` line (was
+   colliding with the confirmed BUT_BUILTIN=9 button), replacing it with a
+   pfodWeb NOTE comment explaining why. SDA=8 line left unchanged. No other
+   pins_arduino.h lines were touched.
+
+One-line summary
+------------------
+GPIO9 confirmed via Olimex's own Rev C KiCad schematic as a real onboard
+USER button (bus-aliased "GPIO9\USER_BUT" with a matching pushbutton
+symbol and "USER Button" text callout) - tagged ["digital_input","button"]
+in a new board.json; the boilerplate SCL=9 alias colliding with it was
+deleted from pins_arduino.h to stop build_boards.js from re-contaminating
+the button's capability list with "i2c_scl" on every rebuild.

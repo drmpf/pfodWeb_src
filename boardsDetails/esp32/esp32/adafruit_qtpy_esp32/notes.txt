@@ -1,0 +1,180 @@
+adafruit_qtpy_esp32 board.json dedicated-hardware pin-exclusion audit research notes
+=====================================================================================
+
+Board: adafruit_qtpy_esp32 (variants/esp32/esp32/adafruit_qtpy_esp32), chip esp32.
+Product: Adafruit QT Py ESP32 Pico (product #5395), built on the ESP32-PICO-D4
+SiP module. pins_arduino.h declares: PIN_NEOPIXEL=5, NEOPIXEL_POWER=8,
+SDA1=22/SCL1=19 (STEMMA QT second I2C, Wire1), BUTTON=0, TX1=32/RX1=7 (which
+are literal aliases of the primary TX=32/RX=7), plus the usual SPI/I2C/UART/
+analog boilerplate (SDA=4, SCL=33, SS=27, MOSI=13, MISO=12, SCK=14, A0-A10,
+T0/T3-T9, DAC1/DAC2). No board.json override existed before this audit (used
+the chip-level esp32/esp32/board.json default). Flagged by the discovery
+sweep for having these declarations never individually reviewed.
+
+Sources consulted
+------------------
+- https://learn.adafruit.com/adafruit-qt-py-esp32-pico/pinouts
+  Official Adafruit Learn guide pinout page (authoritative vendor source).
+  States: "BOOT button - can be read in code as SWITCH or GPIO 0" (set as
+  input-with-pullup) for the onboard user/BOOT button. States the STEMMA QT
+  connector's "IO pins in Arduino are 19 (SCL1) and 22 (SDA1) and are
+  available on Wire1" - exact match to this board's pins_arduino.h. Lists
+  RX/TX (GPIO7/GPIO32) among the genuine broken-out general-purpose header
+  pads ("can do capacitive touch"), not internal-only pins. Mentions the
+  RGB NeoPixel LED (PIN_NEOPIXEL) with a separate NEOPIXEL_POWER pin.
+- https://learn.adafruit.com/adafruit-qt-py-esp32-pico?view=all
+  Overview page: "RGB NeoPixel (with controllable power pin to allow for
+  ultra-low-power usage)" - confirms NEOPIXEL_POWER is a deliberate,
+  software-controlled power gate, not an always-on line.
+- WebSearch aggregate (multiple sources incl. Adafruit forum, ESPHome
+  issue tracker) - consistently confirms: "There is a NEOPIXEL_POWER power
+  pin that is pulled high in Arduino by default... necessary for the
+  NeoPixel to work", and that Adafruit's own Arduino NeoPixel example
+  boilerplate (used identically across the whole QT Py/Feather line) is:
+    #if defined(NEOPIXEL_POWER)
+      pinMode(NEOPIXEL_POWER, OUTPUT);
+      digitalWrite(NEOPIXEL_POWER, HIGH);
+    #endif
+- https://github.com/esphome/esphome/issues/3717
+  ("adafruit_qtpy_esp32 neopixel gpio8") - ESPHome's generic ESP32 pin
+  table rejects GPIO8 as "already used by the flash interface (function:
+  Flash Data 1)" - correct for WROOM/WROVER modules with external flash
+  wired across GPIO6-11, but this board uses the ESP32-PICO-D4 SiP, and
+  Adafruit's own shipped Arduino core (the file being audited) deliberately
+  assigns real functions to GPIO7 (RX1) and GPIO8 (NEOPIXEL_POWER). Treated
+  Adafruit's own board definition + Learn guide as authoritative over
+  ESPHome's generic (non-SiP-aware) table.
+- https://www.adafruit.com/product/5395
+  Vendor product listing corroborating board identity (QT Py ESP32 Pico).
+- Existing repo precedent (checked per task instructions for consistency):
+  variants/esp32/esp32s2/adafruit_qtpy_esp32s2/board.json,
+  variants/esp32/esp32s3/adafruit_qtpy_esp32s3_nopsram/board.json,
+  variants/esp32/esp32s3/adafruit_qtpy_esp32s3_n4r2/board.json,
+  variants/esp32/esp32/adafruit_itsybitsy_esp32/board.json,
+  variants/esp32/esp32c3/adafruit_qtpy_esp32c3/board.json (the last one is
+  the closest prior-session precedent - same board family, same audit
+  template). All of these EXCLUDE their NEOPIXEL_POWER pin from chipGpios
+  while KEEPing the NeoPixel data pin tagged ["digital_output",
+  "led_neopixel",...]. The esp32c3 sibling's BUTTON pin was tagged
+  ["digital_input","button"], matching this board's GPIO0 treatment.
+
+Reasoning per flagged pin group
+---------------------------------
+
+GPIO5 (PIN_NEOPIXEL) - CONFIRMED onboard status NeoPixel (WS2812-style
+  addressable RGB LED), directly stated by Adafruit's Learn guide and the
+  RGB_BUILTIN/rgbLedWrite() mechanism in pins_arduino.h (LED_BUILTIN =
+  SOC_GPIO_PIN_COUNT + PIN_NEOPIXEL, a virtual sentinel mapping back to
+  this real GPIO). Checked against this board's own alias list - SDA=4,
+  SCL=33, SDA1=22, SCL1=19, SS=27, MOSI=13, MISO=12, SCK=14, TX=32, RX=7 -
+  GPIO5 is not any of those, so no boilerplate alias conflict. Tagged
+  capabilities ["digital_output","led_neopixel"] per task instruction
+  (matches the repo's led_neopixel precedent, e.g. adafruit_qtpy_esp32c3
+  GPIO2, waveshare_esp32_s3_zero GPIO21).
+
+GPIO8 (NEOPIXEL_POWER) - EXCLUDED (no chipGpios entry). This is an internal
+  power-gate MOSFET control line for the onboard NeoPixel. Adafruit's own
+  Arduino examples DO require the sketch to drive it (pinMode/OUTPUT +
+  digitalWrite/HIGH in setup()) - the same boilerplate pattern is identical
+  on every other Adafruit NEOPIXEL_POWER board already audited in this
+  repo (qtpy_esp32s2, qtpy_esp32s3_nopsram, qtpy_esp32s3_n4r2,
+  itsybitsy_esp32), all of which already exclude the power-gate pin for
+  consistency: it is a fixed, one-time, internal setup-time line the
+  sketch sets alongside the NeoPixel's own initialization, not a pin meant
+  to be freely assignable to arbitrary pfod widgets in the Designer's pin
+  picker. Excluded here to match that established, repeatedly-applied
+  precedent. Also not present in the chip-level default to begin with
+  (GPIO6-11 excluded there as WROOM/WROVER external-flash pins), so no
+  entry needed to omit it.
+
+GPIO22/GPIO19 (SDA1/SCL1) - CONFIRMED general-purpose second I2C bus
+  (Wire1) broken out to the STEMMA QT connector, per Adafruit's own Learn
+  guide ("IO pins in Arduino are 19 (SCL1) and 22 (SDA1)... available on
+  Wire1"). This is a generic expansion connector for user-attached
+  sensors/breakouts (matches the "general I2C without documented exclusive
+  consumer" KEEP policy), not dedicated onboard hardware wired to a fixed
+  onboard peripheral. Left at chip-level default capabilities (digital_
+  input/digital_output/pwm_output, already present for both GPIOs) with no
+  special i2c tag - build_boards.js only auto-tags the *primary* SDA/SCL
+  aliases (GPIO4/GPIO33 on this board), not SDA1/SCL1, so no contamination
+  risk either way.
+
+GPIO0 (BUTTON) - CONFIRMED onboard physical BOOT/user button, directly
+  stated by Adafruit's Learn guide ("can be read in code as SWITCH or
+  GPIO 0"). Standard ESP32 strapping pin; the chip-level pinNotes entry
+  "Must be HIGH or floating on reboot" is expected/documented for exactly
+  this pin and was retained unchanged (matches the esp32c3 sibling's
+  treatment of its own strapping-pin BUTTON). Checked against this board's
+  alias list - TX=32, RX=7, SDA=4, SCL=33, SS=27, MOSI=13, MISO=12, SCK=14
+  - none is 0, so no conflicting boilerplate alias to strip. Tagged
+  capabilities ["digital_input","button"] only (no analog/output/pwm mixed
+  in, per the playbook's button-pin exclusion rule).
+
+GPIO32 (TX1) / GPIO7 (RX1) - CONFIRMED these are literal aliases of the
+  *same* physical pins as the primary TX/RX (pins_arduino.h: "#define TX1
+  32" / "#define RX1 7", identical values to "static const uint8_t TX =
+  32" / "static const uint8_t RX = 7"), not a separate second UART -
+  Serial1 naming reuses the same physical pins as the primary Serial.
+  Adafruit's Learn guide pinout page lists RX/TX as genuine broken-out
+  general-purpose header pads ("can do capacitive touch"), consistent with
+  this. GPIO32 was already present in the chip-level default (general-
+  purpose, left unchanged). GPIO7 was NOT present in the chip-level
+  default (chip-level excludes GPIO6-11 as WROOM/WROVER external-flash
+  pins) - added as a new chipGpios entry with ["digital_input",
+  "digital_output","pwm_output"] for documentation/consistency with how
+  GPIO32 is represented, though in practice build_boards.js's TX/RX
+  special-case (buildEsp32Board(): "if (g === rx || forcedRole ===
+  'serial_rx') { ...capabilities: ['serial_rx']...; continue; }") forces
+  both GPIO32 and GPIO7 into dedicated serial_tx/serial_rx roles at
+  generation time regardless of the chipGpios capabilities listed here -
+  same as how the pre-existing GPIO32 entry in the chip-level default is
+  already silently overridden by this same mechanism for this board. No
+  ADC capability was given to GPIO7 despite the pins_arduino.h alias
+  "A7 = 7": GPIO7 has no true ADC channel per the ESP32 datasheet's
+  ADC1/ADC2 channel tables (ADC1 lives on GPIO32-39, ADC2 on GPIO0/2/4/
+  12-15/25-27) - the A7 alias is cosmetic CircuitPython board-pin-numbering
+  continuity, not real analog hardware, consistent with how other non-ADC
+  digital pins in the chip-level default (GPIO1/3/18/19/21/22/23) already
+  omit analog_input.
+
+Alias-conflict check (per this session's playbook step)
+-----------------------------------------------------------
+Explicitly checked whether GPIO0, GPIO5, or GPIO8 is separately aliased
+anywhere else in this board's pins_arduino.h as the *primary* SDA/SCL/SS/
+MOSI/MISO/SCK (the build_boards.js mechanism that unconditionally appends
+i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck capabilities to any GPIO
+matching those primary alias values - primary only, NOT SDA1/SCL1, per
+inspection of build_boards.js lines 541-548/697-703, which read
+consts.SDA/consts.SCL/consts.SS/consts.MOSI/consts.MISO/consts.SCK only).
+Primary aliases on this board: SDA=4, SCL=33, SS=27, MOSI=13, MISO=12,
+SCK=14. None of these is 0, 5, or 8. No conflict exists; no
+pins_arduino.h edit was necessary or performed.
+
+What was changed
+-------------------
+Created variants/esp32/esp32/adafruit_qtpy_esp32/board.json (none existed
+before) as a full copy of the chip-level esp32/esp32/board.json default,
+with:
+  - GPIO0 capabilities changed to ["digital_input","button"] (was
+    ["analog_input_serial","digital_input","digital_output","pwm_output"])
+  - GPIO5 capabilities changed to ["digital_output","led_neopixel"] (was
+    ["digital_input","digital_output","pwm_output"])
+  - GPIO7 added as a new chipGpios entry: ["digital_input",
+    "digital_output","pwm_output"] (not present in the chip-level default)
+  - GPIO8 left absent from chipGpios (already absent in the chip-level
+    default; documented explicitly as an intentional exclusion)
+  - GPIO19, GPIO22, GPIO32 left unchanged at chip-level default
+    capabilities (general-purpose)
+plus a pfodWeb NOTE comment block at the top of the file citing all
+sources above. No pins_arduino.h edit was needed (no alias conflict found
+on this board).
+
+Summary: PIN_NEOPIXEL (GPIO5) kept and tagged led_neopixel; NEOPIXEL_POWER
+(GPIO8) excluded per repo-wide precedent despite vendor examples driving it
+manually (same boilerplate as already-excluded siblings); STEMMA QT second
+I2C (GPIO22/19, SDA1/SCL1) kept as general-purpose; onboard BOOT button
+(GPIO0) kept and tagged button; TX1/RX1 (GPIO32/7) confirmed to be the same
+physical pins as the primary TX/RX header pads, kept general-purpose (GPIO7
+newly added to chipGpios since chip-level default omitted it as a nominal
+flash pin, which does not apply on this board's ESP32-PICO-D4 SiP). No
+alias-collision bug found.

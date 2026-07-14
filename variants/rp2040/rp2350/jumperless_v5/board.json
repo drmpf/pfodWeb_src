@@ -1,0 +1,125 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name). Copied verbatim from the
+  // chip-level variants/rp2040/rp2350/board.json, same as every other
+  // per-board override file in this chip bucket.
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same pin-declaration style as every other RP2040/RP2350 board — see
+  // variants/rp2040/rp2350/board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only, copied verbatim from the chip-level
+  // file. This board's own pins_arduino.h declares no wifi/BLE transport.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family audit, 2026-07-13):
+  //
+  // Board: "Jumperless V5" by Architeuthis Flux — the newer RP2350B-based
+  // hardware generation of the "Jumperless" breadboard-replacement device
+  // (the RP2040-based "v1"/JumperlessNano generation was audited earlier
+  // this session: variants/rp2040/rp2040/jumperless_v1/board.json +
+  // boardsDetails/rp2040/rp2040/jumperless_v1/notes.txt — read in full as
+  // precedent before starting this board). Like v1, this is architecturally
+  // unlike a normal dev board: a crossbar switch matrix connects most GPIOs
+  // to a virtual breadboard grid, plus a rotary encoder, a probe input,
+  // buffered DACs/ADCs, INA219 sensors, and (per this board's own
+  // pins_arduino.h header comment sourcing
+  // https://github.com/Architeuthis-Flux/JumperlessV5/tree/main/Hardware/
+  // Jumperless23V50) is confirmed RP2350B (48-pin: `#define PICO_RP2350A 0
+  // // RP2350B`), using variants/rp2040/rp2350/generic_2350b/common.h (the
+  // 48-pin D<n>/A<n> fallback) rather than the 30-pin generic/common.h.
+  //
+  // Unlike v1, this generation's vendor firmware source proved INTERNALLY
+  // CONSISTENT across independent fetches (a materially more reliable
+  // research trail than v1's contradictory extractions) — see notes.txt for
+  // the full source list. Two independent firmware header files
+  // (JumperlessDefines.h: `#define LED_DATA_OUT 17`; LEDs.h: `#define
+  // LED_PIN 17`, `#define LED_COUNT 300`) agree that GPIO17 — this board's
+  // own pins_arduino.h `PIN_LED` — is NOT a plain on/off status LED despite
+  // its name, but is the single data line driving a 300-pixel WS2812/
+  // NeoPixel chain (`Adafruit_NeoPixel bbleds(LED_COUNT + LED_COUNT_TOP,
+  // LED_PIN, NEO_GRB + NEO_KHZ800)` in LEDs.cpp) that lights up under each
+  // breadboard row for visual feedback — the same physical mechanism v1 has
+  // (there confirmed via LEDs.cpp/main.cpp), just relocated to a different
+  // GPIO and scaled up. main.cpp was checked and contains NO
+  // digitalWrite(LED_BUILTIN/PIN_LED)/pinMode(LED_BUILTIN/PIN_LED) calls
+  // anywhere — the pin is exclusively driven through the addressable-LED
+  // library, never as a plain digital LED. This rules out led_high/led_low
+  // entirely for this pin (unlike v1, where the LED's simple/addressable
+  // nature was ambiguous and the pin was conservatively tagged led_high on
+  // schematic-sourced-header + commented-out-firmware-sequence evidence
+  // alone). Tagged "led_neopixel" instead, matching this repo's established
+  // led_neopixel precedent (e.g. challenger_2350_bconnect/board.json GPIO22,
+  // adafruit_fruitjam/board.json GPIO32) — digital_input dropped, pwm_output
+  // kept per the same precedent. No SPI/Wire/Serial alias exists on GPIO17
+  // in this board's own pins_arduino.h (the file was grepped in full for
+  // "17" — only PIN_LED matches), so the "confirmed button/LED pin also
+  // aliased as a bus signal" bug class flagged for this audit does not apply
+  // here — no pins_arduino.h edit needed.
+  //
+  // A second/third NeoPixel-driven LED group was found in the same vendor
+  // firmware — `LED_PIN_TOP` (GPIO3, a 145-pixel "top" strip) and
+  // `PROBE_LED_PIN` (GPIO2, a single-pixel probe indicator) in LEDs.h/
+  // LEDs.cpp — but NEITHER GPIO2 nor GPIO3 is referenced by any alias
+  // anywhere in this board's own pins_arduino.h (only Serial1/2, SPI0/1,
+  // Wire0/1, and PIN_LED are declared), unlike the challenger_2350_bconnect
+  // NEOPIXEL precedent where the macro did exist in that board's own header.
+  // Per this audit's alias-driven tagging mechanism (and the same
+  // out-of-scope reasoning v1's notes.txt applied to Jumperless's rotary-
+  // encoder pushbutton, which also has no header alias), GPIO2/GPIO3 receive
+  // NO chipGpios entry — build_boards.js's parser does not surface them as
+  // pins at all without one, and adding one would be introducing a pin the
+  // Designer doesn't otherwise expose, on hardware this audit was told to
+  // treat conservatively. Not a missed tag — genuinely out of scope.
+  //
+  // Matrix/crossbar/encoder/probe control pins (BUTTON_ENC=11,
+  // QUADRATURE_A/B_PIN=12/13, PROBE_PIN=10, BUTTON_PIN=9, plus whatever
+  // drives the crossbar switch chips themselves) were checked for a
+  // possible collision against this board's aliased bus pins (I2C0_SDA=4/
+  // SCL=5 and UART0_TX/RX=0/1 both independently confirmed to match this
+  // board's own PIN_WIRE0/PIN_SERIAL1 aliases exactly — reassuring
+  // consistency between the vendor firmware and the arduino-pico
+  // pins_arduino.h) but none of 9/10/11/12/13 match any alias in this
+  // board's own pins_arduino.h either, so — same reasoning as v1 and as
+  // GPIO2/3 above — these remain fully out of scope for this audit's
+  // alias-driven chipGpios mechanism. No active (uncommented) CS_A..CS_L/
+  // CH446/crossbar-chip-select #defines were found in this generation's
+  // JumperlessDefines.h at all (several exist but are commented out),
+  // suggesting the crossbar addressing scheme may have moved off direct
+  // GPIO bit-banging for this hardware generation — but since nothing here
+  // collides with an aliased pin either way, this required no decision.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/jumperless_v5/notes.txt
+  "chipGpios": {
+    "17": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "PIN_LED — despite the name, this is the WS2812/NeoPixel data line for a 300-pixel under-breadboard LED chain, not a plain on/off LED. Confirmed via two independent vendor firmware headers agreeing on GPIO17 (JumperlessDefines.h LED_DATA_OUT=17; LEDs.h LED_PIN=17, used directly in LEDs.cpp's Adafruit_NeoPixel constructor). main.cpp contains no plain digitalWrite/pinMode calls against this pin. See pfodWeb NOTE above and notes.txt for full trail." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on the RP2350 chip itself — this board does have
+  // onboard buffered DAC ICs for its analog breadboard rails (same
+  // architecture as the v1 sibling), but those are separate SPI/I2C-driven
+  // chips, not RP2350 GPIO analogWrite/DAC pins, so this chip-level field is
+  // unaffected.
+  "dac": {},
+
+  // RP2350's 12-bit ADC (0-4095), ~3.3V reference — same as every other
+  // RP2040/RP2350 board. This board also has onboard buffered ADC ICs for
+  // its analog breadboard rails, but those are separate chips reached over
+  // SPI/I2C, not the RP2350's own ADC GPIOs, so this chip-level field is
+  // unaffected.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

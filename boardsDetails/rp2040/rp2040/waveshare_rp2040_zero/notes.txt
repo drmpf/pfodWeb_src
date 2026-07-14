@@ -1,0 +1,53 @@
+Board: waveshare_rp2040_zero (chip: rp2040) — Waveshare RP2040-Zero
+Audit date: 2026-07-12
+
+SOURCES CONSULTED
+- pfodWeb source: variants/rp2040/rp2040/waveshare_rp2040_zero/pins_arduino.h (full file + ASCII
+  pinout diagram comment) — declares only PIN_NEOPIXEL (16u); no PIN_LED, no button alias.
+  Includes ../generic_full/common.h for the blanket D0-D31 fallback.
+- pfodWeb source: variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {} by design).
+- Precedents read: variants/rp2040/rp2040/rpipico/board.json (LED-only case, BOOTSEL out-of-scope
+  rationale reused here for RP2040-Zero's BOOT button), variants/rp2040/rp2040/vccgnd_yd_rp2040/board.json
+  (closest precedent: PIN_NEOPIXEL on a plain-rp2040-family board, GPIO23, capabilities
+  ["digital_output","led_neopixel"], no pwm_output — copied this style/schema).
+- Waveshare wiki: https://www.waveshare.com/wiki/RP2040-Zero (fetch blocked with HTTP 403; used
+  WebSearch snippet + product page instead).
+- Waveshare product page: https://www.waveshare.com/rp2040-zero.htm (via WebSearch summary) —
+  "WS2812 RGB LED", "RGB LED data pin connected to GPIO16"; "BOOT button: press it when resetting
+  to enter download mode" and a separate "RESET button" — no other buttons documented.
+- https://www.teachmemicro.com/rp2040-zero-getting-started/ (WebFetch) — "the RP2040-Zero does not
+  have a separate standard LED. The onboard LED is exclusively a WS2812B RGB LED... the RGB LED data
+  pin is connected to GPIO16." Confirms Arduino-style plain-LED code will NOT work on this board.
+  Also confirms only BOOT and RESET buttons exist.
+- https://mischianti.org/waveshare-rp2040-zero-high-resolution-pinout-and-specs/ (WebFetch,
+  also linked directly in this board's pins_arduino.h header comment) — lists "WS2812: RGB LED" as
+  the sole onboard LED component; lists only BOOT button and RESET button as user controls; does not
+  specify whether RESET is GPIO-wired or tied to RUN (moot — no pins_arduino.h alias for it either way).
+  TinyGo board definition (found via WebSearch) — NEOPIXEL = WS2812 = GPIO16, corroborating.
+
+PER-PIN REASONING
+- GPIO16 (PIN_NEOPIXEL): Onboard WS2812 addressable RGB LED, confirmed via three independent
+  sources (Waveshare product page, teachmemicro.com, mischianti.org) plus TinyGo's board definition,
+  all agreeing on GPIO16. This is the board's ONLY onboard visual indicator — confirmed there is no
+  separate plain LED (teachmemicro.com is explicit on this point, consistent with the task's hint
+  about Waveshare "Zero" form-factor boards). Tagged output-only:
+  "capabilities": ["digital_output", "led_neopixel"] — matches the established
+  vccgnd_yd_rp2040/board.json GPIO23 precedent (same rp2040 family, same PIN_NEOPIXEL alias pattern).
+  pwm_output omitted per this repo's NeoPixel convention (WS2812 is a bit-serial protocol data line,
+  not a PWM-dimmable output). digital_input dropped since the pin is write-only in normal use, same
+  rationale as every other NeoPixel-tagged pin in this codebase.
+- No PIN_LED alias exists anywhere in this board's pins_arduino.h — nothing to tag as led_high/led_low.
+- BOOT button: standard RP2040 bootloader-entry button, out of scope per task instructions (same
+  BOOTSEL rationale already established in rpipico/board.json — not a normal GPIO digitalRead(),
+  and this board's pins_arduino.h declares no alias for it anyway).
+- RESET button: hardware reset, not represented by any pins_arduino.h alias — no GPIO to tag.
+- No other user-accessible buttons found in any consulted source.
+- inputOnlyGpios / pinNotes / pwm / dac / adc all left at chip-level defaults (12-bit ADC, 8-bit
+  analogWrite, no DAC) — this board's pins_arduino.h declares no board-specific analog aliases beyond
+  ../generic_full/common.h.
+
+SUMMARY
+Created variants/rp2040/rp2040/waveshare_rp2040_zero/board.json (full per-board override file) tagging
+GPIO16 (PIN_NEOPIXEL) as ["digital_output","led_neopixel"] — the board's sole onboard indicator, with
+no separate plain LED and no user button beyond the out-of-scope BOOT/RESET pair. JSON validity
+verified via manual `//`-comment stripping + JSON.parse (no build script executed).

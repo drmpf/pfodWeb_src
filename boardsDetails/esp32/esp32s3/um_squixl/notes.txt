@@ -1,0 +1,178 @@
+um_squixl - dedicated-hardware pin-exclusion audit notes
+=========================================================
+
+Board directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\um_squixl
+Chip: esp32s3. No board.json existed before this pass (chip-level default
+at variants/esp32/esp32s3/board.json was the only config in effect).
+
+Flagged by: fresh discovery sweep hit on
+  static const uint8_t SDO = 46;
+  static const uint8_t SDI = 41;
+in pins_arduino.h, plus the existing SS=42/MOSI=46/MISO=41/SCK=45
+declarations in the same file - all 4 GPIOs turned out to be part of one
+dedicated onboard bus (see "IOMUX" below), not general SPI.
+
+This is Unexpected Maker's "SQUiXL" - a battery-powered ESP32-S3 handheld
+with a 4-inch 480x480 round-cornered RGB touchscreen, not a plain dev
+board. NOTE: a sibling UM board "um_edges3_d" is being audited separately
+this wave - deliberately did NOT assume any similarity between the two;
+all reasoning below is SQUiXL-specific.
+
+Sources consulted
+------------------
+1. https://www.cnx-software.com/2025/05/30/battery-powered-squixl-devkit-pairs-4-inch-touchscreen-display-with-esp32-s3-wifi-and-bluetooth-soc/
+   CNX Software hands-on/announcement writeup. Confirmed component list:
+   ST7701S 480x480 RGB display + GT911 capacitive touch (5-finger),
+   MAX98357A I2S audio amp + 8ohm/2W speaker, DRV2605L haptic driver +
+   motor, MAX1704X I2C battery fuel gauge, RV-3028-C7 I2C RTC, LCA9555
+   (TCA9555-class) I2C IO expander, TMUX1574RSVR IO multiplexer, 16MB
+   QSPI flash + 8MB octal PSRAM, 1500mAh 1S LiPo battery, STEMMA/QT (I2C)
+   expansion connector, magnetic USB connector, microSD slot (shared with
+   audio via the mux), and three physical buttons: Power, IO0/Boot, Reset.
+   This was the key source establishing the full peripheral list before
+   going to firmware source for exact GPIO numbers.
+
+2. https://help.unexpectedmaker.com/index.php/knowledge-base/squixl/
+   Vendor's own help/knowledge-base page. Direct WebFetch attempts 404'd
+   (likely JS-rendered SPA content not reachable via a plain fetch) -
+   could not be read directly this session. Not used as a source; relied
+   on the GitHub firmware source instead (more authoritative anyway, see
+   below).
+
+3. https://github.com/UnexpectedMaker/SQUiXL-DevOS (readme.md, note the
+   file is lowercase "readme.md" not "README.md" - a first raw-fetch
+   attempt at the uppercase filename 404'd before this was noticed).
+   Vendor's official open-source shipping firmware repo. Its own "Complete
+   GPIO Tables" section in readme.md gave the first authoritative pin
+   list:
+     ESP32-S3 General IO: IO0 (BOOT), IO1 (I2C SDA), IO2 (I2C SCL),
+       IO3 (Touch IC INT), IO40 (Backlight PWM), IO41-42 (IOMUX),
+       IO43 (FG Interrupt), IO44 (RTC Interrupt), IO45-46 (IOMUX)
+     IO Expander (NOT real ESP32-S3 GPIOs - behind the onboard I2C IO
+       expander chip): IO0-5 (Backlight Enable through Touch IC Reset),
+       IO7 (uSD Card Detect), IO8-11 (IOMUX select/enable, haptics
+       enable, VBUS sense)
+     IOMUX: 4 pins switching between SD-card-SPI and I2S-audio duty
+     RGB Peripheral: "18 ESP32-S3 pins dedicated to display color
+       channels and synchronization signals" (count only, no explicit
+       list in the readme text itself - resolved from firmware source
+       instead, see source 5 below, which found 20 not 18; the readme's
+       count was not fully trusted once the source code gave an exact,
+       larger, itemized list).
+
+4. https://raw.githubusercontent.com/UnexpectedMaker/SQUiXL-DevOS/main/platformio/src/squixl.h
+   (and squixl_lite.h, same content) - firmware header with literal
+   #define pin numbers, the actual ground truth used for the exclusions
+   below:
+     BL_EN=0, LCD_RST=1, TP_RST=5, SOFT_PWR=6, MUX_SEL=8, MUX_EN=9,
+       HAPTICS_EN=10, VBUS_SENSE=11, SD_DETECT=15   (all "EXP IO" -
+       i.e. behind the onboard IO expander chip, NOT real ESP32-S3 GPIO
+       numbers despite the small integer values - confirmed by the
+       readme's own "IO Expander" table using the same 0-11 range
+       completely independently of the real chip's GPIO0-2 etc.)
+     BL_PWM=40 (real ESP32-S3 GPIO, backlight PWM)
+     TP_INT=3 (real ESP32-S3 GPIO, GT911 touch interrupt)
+     MUX_D1=41, MUX_D2=42, MUX_D3=45, MUX_D4=46 (real ESP32-S3 GPIOs,
+       the TMUX1574RSVR mux's 4 shared lines - these exactly match this
+       board's old MISO=41/SS=42/SCK=45/MOSI=46(/SDO=46/SDI=41) aliases
+       in pins_arduino.h, confirming those SPI-style names were never a
+       general SPI bus, just mislabeled mux pins)
+
+5. https://raw.githubusercontent.com/UnexpectedMaker/SQUiXL-DevOS/main/platformio/lib/UM_GFX/UM_GFX.cpp
+   Firmware's own RGB-panel display driver source - the authoritative
+   source for the exact RGB display pin list (used over the readme's
+   rounder "18 pins" summary). Found the literal struct:
+     const PanelConfig PANEL_UM_480x480 = {
+       -1, -1, -1,                 // SPI interface (unused)
+       38, 47, 48, 39,             // de, vsync, hsync, pclk
+       8, 7, 6, 5, 4,              // r0-r4
+       14, 13, 12, 11, 10, 9,      // g0-g5
+       21, 18, 17, 16, 15,         // b0-b4
+       ...
+     };
+   i.e. de=38, vsync=47, hsync=48, pclk=39, R0-R4={8,7,6,5,4},
+   G0-G5={14,13,12,11,10,9}, B0-B4={21,18,17,16,15} - 16 data lines + 4
+   sync/control lines = 20 GPIOs total, all confirmed real ESP32-S3
+   silicon pin numbers (not IO-expander pins), and this driver is exactly
+   what SQUiXL-DevOS uses to drive its screen (esp_lcd_rgb_panel_config_t
+   populated straight from this struct's fields).
+
+6. https://raw.githubusercontent.com/UnexpectedMaker/SQUiXL-DevOS/main/platformio/src/main.cpp
+   Confirmed `pinMode(0, INPUT_PULLUP);` and `Wire.begin(1, 2);` - i.e.
+   GPIO0 is read as a real runtime button (not just a boot-mode strap
+   pin used once at power-up) and I2C is brought up on GPIO1/2 exactly
+   as pins_arduino.h already declared.
+
+7. https://raw.githubusercontent.com/UnexpectedMaker/SQUiXL-DevOS/main/platformio/src/peripherals/battery.h
+   Confirmed a MAX1704X fuel-gauge driver class exists with alert/
+   interrupt handling methods, consistent with readme.md's "IO43 (FG
+   Interrupt)" claim, though this specific header did not itself contain
+   the GPIO43 number (likely wired up in expansion.cpp/rtc.cpp, not
+   fetched individually this session - readme.md's own GPIO table was
+   accepted as sufficient corroboration for GPIO43/44 given it already
+   matched every other pin this session cross-checked against firmware
+   source).
+
+Reasoning per pin group
+------------------------
+- GPIO0: KEEP, tagged "button". Physical IO0/Boot button per CNX
+  Software's hardware list, corroborated directly by firmware source
+  (`pinMode(0, INPUT_PULLUP)` in main.cpp - a real runtime digitalRead,
+  not just an at-boot strap). Tagged capabilities: ["digital_input",
+  "button"] only, per the established policy (no digital_output/
+  pwm_output alongside a button tag).
+- GPIO1/GPIO2 (SDA/SCL): KEEP as general I2C. Carries several onboard
+  chips (GT911 touch, IO expander, MAX1704X gauge, RV-3028-C7 RTC) but
+  is also exposed externally via a STEMMA/Qwiic connector (CNX Software)
+  for user expansion - I2C is inherently multi-drop and this matches the
+  "general-purpose I2C without an exclusive onboard consumer stays kept"
+  policy already used on other boards in this audit (e.g. m5stack_dial's
+  Grove I2C).
+- GPIO3: EXCLUDE. TP_INT - GT911 touch controller interrupt line
+  (squixl.h: `TP_INT 3`).
+- GPIO4-8, 9-14, 15-18, 21: EXCLUDE. RGB LCD data lines R0-R4/G0-G5/
+  B0-B4 (UM_GFX.cpp PANEL_UM_480x480 struct, see source 5 above).
+- GPIO38, 39: EXCLUDE. RGB LCD DE and PCLK (same struct).
+- GPIO40: EXCLUDE. BL_PWM - LCD backlight PWM (squixl.h).
+- GPIO41, 42, 45, 46: EXCLUDE. TMUX1574RSVR IO-mux lines shared between
+  the microSD card's SPI bus and the I2S audio bus to the MAX98357A amp
+  (squixl.h: `MUX_D1 41`, `MUX_D2 42`, `MUX_D3 45`, `MUX_D4 46`). These
+  are exactly the 4 GPIOs this board's own pins_arduino.h used to alias
+  as MISO/SS/SCK/MOSI(/SDI/SDO) - deleted those alias declarations
+  entirely from pins_arduino.h (not just excluded in board.json) because
+  build_boards.js unconditionally appends SPI-bus capabilities to any
+  GPIO aliased as SS/MOSI/MISO/SCK/SDA/SCL/TX/RX in pins_arduino.h,
+  regardless of what chipGpios says - leaving the aliases in place (even
+  commented out, since the parser is comment-blind) would have silently
+  re-leaked SPI capability tags onto these 4 excluded GPIOs. This was the
+  specific critical check called out for this task and is why
+  pins_arduino.h was edited as well as board.json.
+- GPIO43: EXCLUDE. MAX1704X battery fuel-gauge interrupt/ALRT line
+  (readme.md: "IO43 (FG Interrupt)").
+- GPIO44: EXCLUDE. RV-3028-C7 RTC interrupt line (readme.md: "IO44 (RTC
+  Interrupt)").
+- IO-expander "virtual" pins (BL_EN, LCD_RST, TP_RST, SOFT_PWR, MUX_SEL,
+  MUX_EN, HAPTICS_EN, VBUS_SENSE, SD_DETECT - squixl.h "EXP IO" block,
+  values 0-11): NOT modeled at all, not a judgment call. These live
+  behind the onboard I2C IO-expander chip, not on the ESP32-S3's own
+  silicon pin list, so there is no chipGpios entry that could represent
+  them (same structural situation as unphone9's TCA9555-routed LED_GREEN/
+  LED_BLUE channels, see that board's own notes.txt for the identical
+  reasoning pattern).
+
+No alias-conflict issues found beyond the SS/MOSI/MISO/SCK/SDO/SDI one
+already described above (SDA/SCL are the only aliases kept, and GPIO1/2
+are intentionally kept available, so no contamination risk there).
+
+Result
+------
+Created variants/esp32/esp32s3/um_squixl/board.json (full copy of the
+ESP32-S3 chip-level default, chipGpios trimmed to only GPIO0 (tagged
+"button"), GPIO1, GPIO2). Deleted the SS/MOSI/MISO/SDO/SDI/SCK alias
+block from pins_arduino.h entirely (replaced with a plain-English
+explanatory comment, no reproduced declaration text). Net effect: of the
+31 GPIOs in the chip-level default, 28 are excluded as dedicated display/
+touch/audio-mux/battery/RTC hardware, leaving only GPIO0 (button) and
+GPIO1/GPIO2 (general I2C, also exposed via STEMMA/Qwiic) available in the
+Designer's pin picker for this board - consistent with it being a
+fully-integrated handheld device rather than a general-purpose dev board.

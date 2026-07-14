@@ -1,0 +1,86 @@
+Board: sparkfun_esp32s3_thing_plus
+Path: variants/esp32/esp32s3/sparkfun_esp32s3_thing_plus
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32-S3/hardware_overview/
+    Official SparkFun hardware overview page. States: RESET button is tied
+    to the ESP32-S3's EN pin (not a GPIO). BOOT button "puts the ESP32-S3
+    into bootloader mode when held down during power on or reset" (standard
+    GPIO0 boot-strap behaviour). Lists a red PWR LED (3.3V rail indicator,
+    not GPIO-driven), a yellow CHG LED (MCP73831 charge status, not
+    GPIO-driven), a green STAT LED described as "tied to IO0", and a WS2812
+    RGB LED whose "Data In signal" connects to IO46.
+
+https://github.com/sparkfun/SparkFun_Thing_Plus_ESP32-S3/blob/main/docs/hardware_overview.md
+    Source markdown for the above docs page (same repo as the board
+    definition) - corroborates the same button/LED descriptions verbatim
+    (BOOT button = bootloader-entry function; STAT LED "tied to IO0"; WS2812
+    RGB LED Data-In on IO46).
+
+pins_arduino.h (already present in the variant directory, read locally, not
+web-fetched): declares `LED_PIN 46` with CHIPSET WS2812/COLOR_ORDER GRB/
+NUM_LEDS 1 (matches the NeoPixel finding above), `STAT_LED = 0` and
+`BTN = 0` (both pointing at GPIO0, matching the vendor docs' claim that the
+STAT LED and the boot-mode strap/button share IO0), and TX=43/RX=44 (used
+below to rule out TX/RX conflicts).
+
+WebSearch queries "SparkFun Thing Plus ESP32-S3 boot button GPIO0 NeoPixel
+GPIO46 schematic" and "SparkFun Thing Plus C ESP32-S3 hookup guide status
+LED WS2812" were used to locate the above two pages; no additional distinct
+sources were opened (search snippets pointed at the same hardware_overview
+content).
+
+WHAT WAS TAGGED
+------------------
+GPIO0  -> ["digital_input","button"]   (onboard BOOT button)
+GPIO46 -> ["digital_output","led_neopixel","pwm_output"]  (onboard WS2812 NeoPixel, pwm_output kept because it was already present on this pin)
+
+JUDGMENT CALLS / NOT TAGGED - FOR HUMAN REVIEW
+------------------------------------------------
+GPIO0 dual-purpose LED vs button conflict:
+  SparkFun's own hardware_overview docs state the green STAT LED is "tied
+  to IO0", and the vendor pins_arduino.h separately declares both
+  `BTN = 0` and `STAT_LED = 0` - i.e. GPIO0 appears to be wired to BOTH the
+  BOOT pushbutton and a status LED simultaneously. The pfodWeb tag scheme
+  only allows a single capability role per GPIO (button OR led_high/
+  led_low/led_neopixel, not both), and every other board.json in this
+  chip family that tags GPIO0 does so as "button" only (BOOT/DFU button
+  precedent seen in adafruit_metro_esp32s3, Bee_Data_Logger,
+  Bee_Motion_S3, circuitart_zero_s3, crabik_slot_esp32_s3,
+  cytron_maker_feather_aiot_s3, deneyapkart1Av2, deneyapkartv2,
+  esp32s3-devkit-lipo, esp32s3usbotg, fobe_quill_esp32s3_mesh,
+  fri3d_2024_esp32s3, etc). I made the judgment call to keep GPIO0 tagged
+  as "button" only and NOT also add an led_high/led_low tag for the STAT
+  LED, for two reasons: (1) it would violate the single-role tag pattern
+  used consistently elsewhere in this codebase, and (2) GPIO0 already
+  carries a pinNotes warning ("Must be HIGH for normal boot") - driving it
+  as a software-controlled digital_output LED risks interfering with the
+  boot-strap function, which the STAT LED circuit is presumably designed
+  around passively/hardware-side rather than via general firmware GPIO
+  writes. This is a best-guess judgment call, not a certainty - a human
+  reviewer with access to the actual schematic (not just the prose
+  hardware-overview page) may want to confirm whether the STAT LED and
+  BOOT button are really both on the same physical GPIO0 net, and if so
+  whether the STAT LED deserves its own capability tag under a different
+  scheme.
+
+No TX/RX conflicts: board's TX=43, RX=44 (from pins_arduino.h) - neither
+GPIO0 nor GPIO46 coincide with these, so no tags were discarded/suppressed
+by the TX/RX hard-reservation in build_boards.js.
+
+No other candidate GPIOs (PWR LED, CHG LED, RESET button) were considered
+for tagging - PWR and CHG LEDs are hardware-driven charge/power-rail
+indicators not connected to any ESP32-S3 GPIO, and RESET is tied to the
+chip's EN pin, not a GPIO, so none of these are software-controllable pins
+in the first place.
+
+SUMMARY
+------------------
+Tagged GPIO0 as "button" (BOOT button) and GPIO46 as "led_neopixel" (WS2812
+RGB LED). Both confirmed via SparkFun's official hardware_overview
+documentation (docs.sparkfun.com and the mirrored GitHub docs source) plus
+the vendor pins_arduino.h. GPIO0's additional documented role as the STAT
+LED node was deliberately left untagged as an LED - see judgment-call notes
+above.

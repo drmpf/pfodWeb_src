@@ -1,0 +1,158 @@
+Board: olimex_pico2xl (chip bucket: rp2040/rp2350)
+Audit: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion. Session date 2026-07-13.
+
+SUMMARY (one line): Added chipGpios entry for GPIO25 (PIN_LED / User_Led,
+onboard green 0603 LED, active-high) via a new per-board board.json. No
+button found (only BOOT/BOOTSEL and RESET, both out of Arduino-GPIO scope).
+No NeoPixel. No pins_arduino.h bug / bus-collision found — no source file
+changes made, only the new board.json.
+
+SOURCES CONSULTED
+1. Local file: variants/rp2040/rp2350/olimex_pico2xl/pins_arduino.h
+   Full contents:
+     #pragma once
+     #define PICO_RP2350A 0 // RP2350B
+     #define PIN_LED        (25u)
+     #define PIN_SERIAL1_TX (0u)
+     #define PIN_SERIAL1_RX (1u)
+     #define PIN_SERIAL2_TX (8u)
+     #define PIN_SERIAL2_RX (9u)
+     #define PIN_SPI0_MISO  (16u)
+     #define PIN_SPI0_MOSI  (19u)
+     #define PIN_SPI0_SCK   (18u)
+     #define PIN_SPI0_SS    (17u)
+     #define PIN_SPI1_MISO  (12u)
+     #define PIN_SPI1_MOSI  (15u)
+     #define PIN_SPI1_SCK   (14u)
+     #define PIN_SPI1_SS    (13u)
+     #define PIN_WIRE0_SDA  (4u)
+     #define PIN_WIRE0_SCL  (5u)
+     #define PIN_WIRE1_SDA  (26u)
+     #define PIN_WIRE1_SCL  (27u)
+     #define SERIAL_HOWMANY (3u)
+     #define SPI_HOWMANY    (2u)
+     #define WIRE_HOWMANY   (2u)
+     #include "../generic/common.h"
+   Only one board-specific alias exists: PIN_LED = GPIO25. No button or
+   NeoPixel #define anywhere. GPIO25 does not collide with any SPI/Wire
+   pin declared in this file (SPI0=16-19, SPI1=12-15, Wire0=4-5,
+   Wire1=26-27) - so no build_boards.js bus-capability-contamination bug
+   exists on GPIO25 for this board.
+
+2. Local file: variants/rp2040/rp2350/board.json (chip-level defaults -
+   chipGpios: {} deliberately empty, every GPIO gets full digital_input/
+   digital_output/pwm_output by default).
+
+3. Local file: variants/rp2040/rp2350/olimex_pico2xxl/pins_arduino.h - read
+   for comparison. Identical to olimex_pico2xl's own file except for one
+   extra line `#define RP2350_PSRAM_CS 8`. This independently confirms the
+   two Arduino board ids are the same underlying hardware family, with XXL
+   adding a PSRAM chip-select.
+
+4. Local precedent files read for method/format (both already-audited
+   RP2040/RP2350 boards in this codebase, used only to confirm the
+   board.json field layout and comment style - all findings below were
+   independently sourced for THIS board, not copied from these):
+     variants/rp2040/rp2350/rpipico2/board.json (RP2350A Pico 2 sibling -
+       confirms the BOOT-button-is-ROM-bootloader / RESET-is-hardware-line
+       out-of-scope rationale used below).
+     variants/rp2040/rp2350/waveshare_rp2350_zero/board.json (confirms the
+       led_high/led_neopixel capability-tagging convention and comment
+       style used in this repo).
+     variants/rp2040/rp2350/solderparty_rp2350_stamp_xl/board.json (confirms
+       the general per-board board.json file layout/structure).
+
+5. WebFetch (authoritative, olimex.com/github.com/OLIMEX): official Olimex
+   "RP2350-PICO2-XXL User Manual" Rev.1.0, January 2025, obtained from
+   github.com/OLIMEX/RP2350-PICO2-XXL/blob/main/DOCUMENTS/
+   RP2350-PICO2-XXL-user-manual.pdf (this manual is explicitly the shared
+   manual for BOTH the XL and XXL boards - see below).
+   Key extracted content:
+     - "Introduction" section states both boards' relationship explicitly:
+       "Both RP2350-PICO2-XL and RP2350-PICO2-XXL share same PCB with same
+       silkscreen where PP2350-PICO2-XXL is written! The only difference is
+       that in XL version PSRAM, micro SD card (both on bottom side of the
+       PCB) are not populated." Also lists board features: all 48 RP2350
+       GPIOs exposed, USB-C, DCDC 3.3V regulator, 2MB or 16MB flash (-XL and
+       -XXL), 8MB PSRAM for XXL only, microSD for XXL only, "RESET button is
+       add[ed]" (new vs. plain Pico 2), UEXT connector, Qwiic/Stemma
+       connector, 50x28mm.
+     - "RP2350-PICO2-XXL layout" page (top view, applies to both XL and
+       XXL per the page's own "Top for XL and XXL" caption): labels RESET,
+       UEXT, RP2350B, 2MB or 16MB Flash, USB-C, LED, Qwiic/Stemma, Boot
+       button, Power supply. Only two buttons shown: RESET and Boot.
+     - "Bottom for XL" page: no SD card/PSRAM footprint populated (blank
+       silkscreen-only positions) - confirms XL lacks these vs. XXL.
+     - "LED connection" schematic (page 16): net label
+       `GPIO25\User_Led` -> R15 (2.2k/0402, in series) -> LED1 (LED/GREEN/
+       0603) anode -> LED1 cathode -> GND directly. This is a standard
+       current-sourcing drive: GPIO25 driven HIGH sources current through
+       R15 into the LED's anode and out its cathode to GND, i.e. HIGH =
+       LED on (active-high). Silkscreen note: "Place Close to the PCB's
+       edge!". Matches this board's own `PIN_LED (25u)` alias exactly (same
+       GPIO number).
+     - No NeoPixel/WS2812 component, net, or mention appears anywhere in
+       the manual - "LED connection" section shows exactly one discrete
+       LED and no addressable/RGB component.
+     - "SOFTWARE" section confirms Arduino/C-SDK/CircuitPython/MicroPython
+       support, consistent with this board having an arduino-pico
+       pins_arduino.h.
+   (Note: the manual's own GPIO pinout diagram, page 9, prints the RP2350
+   chip's hardware alternate-function silkscreen labels for each GPIO, e.g.
+   "GPIO4\SPI0_RX(MISO)", "GPIO2\I2C1_SDA" etc. - these differ numerically
+   from arduino-pico's own default Wire0/Wire1/SPI0/SPI1 pin assignments in
+   this board's pins_arduino.h, GPIO4/5 for Wire0 and GPIO16-19 for SPI0.
+   This is expected and not a discrepancy: the schematic labels show which
+   hardware peripheral functions the RP2350 silicon can mux onto each pin
+   in general, not the specific pins the arduino-pico core's C++ Wire/SPI
+   objects are configured to use by default - the two are independent and
+   both legitimate.)
+
+6. WebSearch queries performed (results informed which official documents
+   to fetch above): "Olimex RP2350-PICO-XL board LED button GPIO25",
+   "Olimex RP2350-PICO-XL github pins_arduino", "\"RP2350-PICO2-XL\" github
+   OLIMEX hardware schematic", "github.com/OLIMEX RP2350-PICO2-XL
+   repository". No separate GitHub hardware repo exists for the bare
+   "PICO2-XL" name alone (only OLIMEX/RP2350-PICO2-XXL and
+   OLIMEX/RP2350-PICO2-BB48 repos found) - confirmed this is expected/
+   correct, since the User Manual explicitly documents XL and XXL as
+   sharing one PCB design and thus one repo/manual.
+
+PER-PIN REASONING
+
+GPIO25 (PIN_LED / User_Led):
+  capabilities: ["digital_output", "pwm_output", "led_high"]
+  Onboard user LED (green, 0603), active-high (see schematic detail above).
+  digital_input dropped, matching this repo's established led_high/led_low
+  convention for dedicated onboard LED pins (see rpipico2/board.json GPIO25
+  precedent - the direct RP2350A sibling of this board, same LED-GPIO
+  number). pwm_output kept since arduino-pico's analogWrite() works on any
+  RP2350 GPIO (enables LED brightness dimming). No SPI/I2C bus alias
+  collision on GPIO25 in this board's own pins_arduino.h (Wire0/Wire1/SPI0/
+  SPI1 pins are GPIO4-5, 12-19, 26-27 - GPIO25 is untouched), so no
+  build_boards.js bus-capability contamination is possible here.
+
+All other GPIOs: no chipGpios entry added. No button alias exists in this
+board's pins_arduino.h to tag, and the only physical buttons (BOOT/BOOTSEL,
+RESET) are out of this audit's GPIO-based tagging scope - BOOTSEL enters
+the RP2350's ROM bootloader (not a normal digitalRead()-able GPIO in
+Arduino) and RESET is a hardware reset line, not a GPIO at all. Same
+out-of-scope rationale already established for this board's RP2350A
+sibling (rpipico2/board.json) and the original RP2040 rpipico board. No
+NeoPixel present on this board (confirmed absent from the official user
+manual's LED-connection documentation) - no led_neopixel tag added.
+
+BUG CHECK: No SPI/I2C alias collision found on the LED pin (GPIO25) or any
+other pin in this board's pins_arduino.h relative to its own Wire0/Wire1/
+SPI0/SPI1 definitions. No #define lines were removed or modified - this
+board's pins_arduino.h is unchanged.
+
+FILES WRITTEN THIS SESSION
+- variants/rp2040/rp2350/olimex_pico2xl/board.json (new, full file - chip
+  defaults + chipGpios GPIO25 entry)
+- boardsDetails/rp2040/rp2350/olimex_pico2xl/notes.txt (this file)
+
+No build commands were run (per task instructions). JSON validity of the
+new board.json was checked manually via a plain JSON.parse after stripping
+"//" line comments with a script - result: VALID JSON.

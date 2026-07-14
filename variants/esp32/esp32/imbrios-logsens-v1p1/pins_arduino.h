@@ -22,19 +22,10 @@ static const uint8_t LED_BUILTIN = 33;
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;
 
-#ifdef BOARD_VARIANT_RS485
-/* UART2: Serial Port connected to RS485 transceiver on the LogSens V1.1 Board */
-static const uint8_t UART2_TX = 17;
-static const uint8_t UART2_RX = 16;
-static const uint8_t UART2_RTS = 4;
-#endif /* BOARD_VARIANT_RS485 */
-
-#ifdef BOARD_VARIANT_CAN
-/* CAN Bus connected to CAN transceiver on the LogSens V1.1 Board */
-static const uint8_t CAN_TX = 17;
-static const uint8_t CAN_RX = 16;
-static const uint8_t CAN_TXDE = 4;
-#endif /* BOARD_VARIANT_CAN */
+// pfodWeb NOTE: UART2_TX/RX/RTS and CAN_TX/RX/TXDE (GPIO17/16/4)
+// deliberately NOT declared - this board is built with either an RS485
+// or a CAN transceiver permanently wired to these 3 pins, not
+// general-purpose (see board.json chipGpios override).
 
 /* I2C Bus: Shared between RTC chip, Expansion Header (X3), Sensor Header (X7) on the LogSens V1.1 Board */
 static const uint8_t SDA = 21;
@@ -46,11 +37,13 @@ static const uint8_t MOSI = 13;
 static const uint8_t MISO = 12;
 static const uint8_t SCK = 14;
 
-static const uint8_t SS1 = 23;  // SPI Chip Select - 1; connected to MicroSD Card on the LogSens V1.1 Board
+// pfodWeb NOTE: SS1 (GPIO23) deliberately NOT declared - dedicated
+// microSD card chip-select, not general-purpose.
 
 /* Software Controlled: IO, LEDs and Switches */
-static const uint8_t BUZZER_CTRL = 19;     // Signal connected to MOSFET gate pin to control connector (X8)
-static const uint8_t SD_CARD_DETECT = 35;  // MicroSD Card (X6): Card Detect Signal
+static const uint8_t BUZZER_CTRL = 19;  // Signal connected to MOSFET gate pin to control connector (X8)
+// pfodWeb NOTE: SD_CARD_DETECT (GPIO35) deliberately NOT declared -
+// dedicated microSD card detect switch, not general-purpose.
 
 static const uint8_t SW2_BUILDIN = 0;   // Tactile Switch-2 (SW2); ESP32 BOOT0 pin, Use it with care !!
 static const uint8_t SW3_BUILDIN = 36;  // Tactile Switch-3 (SW3)

@@ -20,11 +20,8 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 18;
 static const uint8_t SCL = 17;
 
-// SD Card SPI
-static const uint8_t SS = 13;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 2;
-static const uint8_t SCK = 14;
+// SD Card SPI (deliberately NOT declared as pins — dedicated onboard
+// microSD bus, not general-purpose; see board.json chipGpios override)
 
 #define LORA_SCK  5  // SX1280PA SCK
 #define LORA_MISO 3  // SX1280PA MISO
@@ -50,9 +47,9 @@ static const uint8_t PIN_43 = 43;
 static const uint8_t PIN_44 = 44;
 static const uint8_t PIN_38 = 38;
 
-// P2
+// P2 (pfodWeb NOTE: PIN_36/8 deliberately NOT declared — those header
+// positions are wired to the same GPIOs as LORA_BUSY/RST above)
 static const uint8_t PIN_37 = 37;
-static const uint8_t PIN_36 = 36;
 static const uint8_t PIN_0 = 0;
 static const uint8_t PIN_35 = 35;
 static const uint8_t PIN_34 = 34;
@@ -60,7 +57,6 @@ static const uint8_t PIN_33 = 33;
 static const uint8_t PIN_47 = 47;
 static const uint8_t PIN_48 = 48;
 static const uint8_t PIN_12 = 12;
-static const uint8_t PIN_8 = 8;
 static const uint8_t PIN_15 = 15;
 static const uint8_t PIN_16 = 16;
 

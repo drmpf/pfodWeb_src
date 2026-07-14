@@ -1,0 +1,60 @@
+// pfodWeb NOTE: excludes GPIO2/13/14/15 - dedicated onboard microSD SPI
+// bus (vendor comment: "SPI has been configured as an SD card slot").
+// Excludes GPIO23/32/38 - touch panel controller (TP_SDA/SCL/INT).
+// Excludes GPIO35/37/39 - dedicated interrupt lines from onboard AXP20x
+// PMU, RTC, and BMA42x accelerometer. Excludes GPIO33/34 - dedicated
+// GPS/LoRa module UART (vendor comment: "Serial1 Already assigned to
+// GPS LORA"). GPIO21/22 (SDA/SCL) stay available - vendor comment
+// confirms this is a SHARED bus ("Already assigned to BMA423 PCF8563
+// and external extensions").
+// 2026-07-14 POST-REVIEW CORRECTION (real independent verification pass):
+// confirmed all of the above via the official LILYGO/Xinyuan-LilyGO
+// TTGO_TWatch_Library GitHub repo (docs/pinmap.md + src/TTGO.h) - FT6236
+// touch SDA/SCL/INT = GPIO23/32/38, AXP192/PCF8563/BMA423 interrupts =
+// GPIO35/37/39, GPS/LoRa & SIM800L UART = GPIO33/34, all exact matches.
+// BUTTON (GPIO36) confirmed correctly NOT tagged: official pinmap.md
+// shows BUTTON=GPIO36 on the 2019/NO-TOUCH/T-Block variants but N/A on
+// "T-Watch2020 V1" - this variant's TX1/RX1 GPS-LoRa wiring identifies it
+// as the 2020 V1 revision, so GPIO36 genuinely has no button on this
+// specific hardware. NEW FINDING/CORRECTION: GPIO5/12/18/19/27 (TFT_CS/
+// TFT_BL/TFT_SCLK/TFT_MOSI/TFT_DC) were NOT excluded by the original
+// audit pass (this vendor pins_arduino.h never declares them via any
+// static const alias, so the regex parser never saw them) but are
+// confirmed by the official pinmap.md to be the ST7789 TFT display's
+// dedicated SPI/control bus on every T-Watch variant - now excluded.
+// GPIO2/13/14/15 (claimed microSD SPI) could NOT be independently
+// corroborated - official pinmap.md shows SD MISO/MOSI/SCLK/CS as N/A
+// on every documented variant, and GPIO13 is separately documented as
+// "IR Send" for T-Watch2020 V1, not SD-SPI-SS. Per the "trust the file"
+// policy (both are equally dedicated/non-general-purpose functions
+// either way), the exclusion is KEPT unchanged, but this discrepancy is
+// recorded honestly rather than claimed as fully confirmed - see notes.txt.
+// GPIO4 (MOTOR per pinmap.md, T-Watch2020 V1 only) was NOT excluded -
+// TTGO.h's own source comments the motor pin "JUST ONLY SIM868" (tied to
+// an optional bottom-plate accessory, not a fixed onboard actuator on
+// this core module) - left unchanged as NO CHANGE per the "don't guess"
+// policy; see notes.txt.
+{
+  "boardName": "ESP32",
+  "displayName": "ESP32 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

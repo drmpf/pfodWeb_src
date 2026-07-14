@@ -1,0 +1,63 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases, and the BOOTSEL button is NOT a normal GPIO on the
+  // classic RP2040 Pico — it's wired to the QSPI flash chip-select line
+  // and read via a special SDK trick (tri-state the CS pin, disable
+  // interrupts, sample, all while running from RAM) rather than
+  // digitalRead(). arduino-pico exposes it as a `BOOTSEL` boolean object,
+  // not a numbered GPIO pin (confirmed against arduino-pico's own
+  // bootsel.rst docs: "The BOOTSEL button on the Pico is not connected to
+  // a standard GPIO, so it cannot be read using the usual digitalRead
+  // function"). Since this repo's capability tagging is keyed by GPIO
+  // number, there is no pin to attach a "button" capability to — out of
+  // scope, not a missed tag.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED / LED_BUILTIN) is the Pico's only onboard peripheral
+  // beyond USB — confirmed via the official Raspberry Pi Pico datasheet
+  // and Raspberry Pi's own microcontroller documentation ("LED is
+  // connected to GP25"), and confirmed active-high (HIGH = LED on, per
+  // the standard `digitalWrite(LED_BUILTIN, HIGH); // LED on` idiom used
+  // throughout Pico example code and tutorials — GP25 drives the LED
+  // anode through a series resistor to 3V3, cathode to GND). No onboard
+  // NeoPixel and no onboard general-purpose button exist on the plain
+  // Pico (unlike Pico W / third-party boards). digital_input dropped to
+  // match this repo's established led_high/led_low precedent for
+  // dedicated onboard LED pins (see esp32/esp32c5/XIAO_ESP32C5 GPIO27,
+  // esp8266/esp8266/wiolink GPIO2) — pwm_output kept since arduino-pico's
+  // analogWrite() works on any RP2040 GPIO (all 8 PWM slices cover
+  // GPIO0-29), enabling LED brightness dimming.
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard user LED, active-high, confirmed via official Raspberry Pi Pico datasheet/documentation (see pfodWeb NOTE above)" }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

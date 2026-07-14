@@ -17,7 +17,11 @@ static const uint8_t SCL = 9;
 static const uint8_t SS = 10;
 static const uint8_t MOSI = 11;
 static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
+// pfodWeb NOTE: the default SCK alias was deleted - it pointed at the
+// same GPIO as this board's confirmed onboard NeoPixel, and
+// build_boards.js unconditionally attaches an spi_sck capability to any
+// GPIO matching the SCK alias, which was silently contaminating the
+// NeoPixel's capability list.
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;

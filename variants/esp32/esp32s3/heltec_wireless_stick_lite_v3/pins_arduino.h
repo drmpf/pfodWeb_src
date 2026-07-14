@@ -18,10 +18,13 @@ static const uint8_t SDA = 2;
 static const uint8_t SCL = 3;
 
 static const uint8_t SS = 34;
-static const uint8_t MOSI = 35;
-static const uint8_t SCK = 36;
+// pfodWeb NOTE: MOSI (GPIO35) deliberately NOT declared - same GPIO as
+// LED_BUILTIN/LED below (kept via that alias instead). SCK (GPIO36)
+// deliberately NOT declared - same GPIO as the Vext power-gate below.
 static const uint8_t MISO = 37;
 
+// pfodWeb NOTE: A7/A8/A11/A12 deliberately NOT declared - dedicated
+// onboard LoRa RST/DIO0 and OLED SDA/SCL pins (see below).
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
@@ -29,12 +32,8 @@ static const uint8_t A3 = 4;
 static const uint8_t A4 = 5;
 static const uint8_t A5 = 6;
 static const uint8_t A6 = 7;
-static const uint8_t A7 = 12;
-static const uint8_t A8 = 14;
 static const uint8_t A9 = 15;
 static const uint8_t A10 = 16;
-static const uint8_t A11 = 17;
-static const uint8_t A12 = 18;
 static const uint8_t A13 = 19;
 static const uint8_t A14 = 20;
 
@@ -46,14 +45,10 @@ static const uint8_t T4 = 5;
 static const uint8_t T5 = 6;
 static const uint8_t T6 = 7;
 
-static const uint8_t Vext = 36;
 static const uint8_t LED = 35;
-static const uint8_t RST_OLED = 21;
-static const uint8_t SCL_OLED = 18;
-static const uint8_t SDA_OLED = 17;
-
-static const uint8_t RST_LoRa = 12;
-static const uint8_t BUSY_LoRa = 13;
-static const uint8_t DIO0 = 14;
+// pfodWeb NOTE: Vext (power-gate), RST_OLED/SCL_OLED/SDA_OLED, and
+// RST_LoRa/BUSY_LoRa/DIO0 deliberately NOT declared - internal control
+// line and dedicated onboard OLED (reserved pins, even though this
+// board's DISPLAY_HEIGHT/WIDTH are 0) + LoRa radio control lines.
 
 #endif /* Pins_Arduino_h */

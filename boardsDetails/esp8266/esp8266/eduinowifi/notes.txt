@@ -1,0 +1,173 @@
+Eduino WiFi (Schirmilabs) — research notes
+Board dir: variants/esp8266/esp8266/eduinowifi/
+Date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+1. https://schirmilabs.de/?page_id=165 (vendor product page, German)
+   - "1 Analogeingang (3.2V max. Eingangsspannung)" = "1 analog input (3.2V max
+     input voltage)". Confirms an on-board voltage divider extending the
+     ESP8266's native 0-1.0V ADC range.
+   - Mentions "two red LEDs" for overcurrent display, but no GPIO/pin details.
+   - No mention of any onboard user pushbutton.
+
+2. https://www.espboards.dev/esp8266/eduinowifi/ (third-party pinout aggregator)
+   - Corroborates: "1 analog input (3.2V maximum input voltage)".
+   - Lists LED_BUILTIN = GPIO2 (pulled from pins_arduino.h, not independently
+     verified hardware) but explicitly notes it does not know active-high/low.
+   - No button information.
+
+3. https://github.com/schirmilabs/Eduino-WiFi (official vendor GitHub repo)
+   - hardware/eduino_wifi_rev3.pdf / .sch — actual KiCad/Eagle schematic export,
+     downloaded and read directly (this is the authoritative source used for
+     the final decision). Findings:
+     * A0/ADC line has a resistor divider: R15 = 220K (series, external A0 to
+       ESP12 ADC pin) and R16 = 100K (ADC pin to GND). Ratio (220k+100k)/100k
+       = 3.2, so native 1.0V full-scale becomes 3.2V external full-scale.
+       This exactly matches the vendor's own published "3.2V max" spec above,
+       and uses the identical divider values already documented for the
+       WeMos/LOLIN D1 family (see ../d1/board.json in this repo).
+     * GPIO2: only wired to a 10K pull-up resistor (R13, boot-mode strap) and
+       broken out to the IOL pin header. No LED component near it. The
+       pins_arduino.h `#define LED_BUILTIN 2` comment ("new ESP-12E GPIO2") is
+       boilerplate carried over from the generic ESP-12E default file and does
+       NOT correspond to a real onboard LED on this board's actual hardware.
+     * GPIO0: only wired to a 10K pull-up resistor (R12, boot-mode strap) as
+       part of the standard DTR/RTS auto-program transistor circuit (T1/T2,
+       BC547). No pushbutton wired to GPIO0.
+     * SW1 (the only switch on the schematic) sits in the RESET/DTR/RTS
+       auto-program circuit block alongside R6/R8/R14/R17/R18, T1, T2, D3, D4 —
+       i.e. a manual RESET button wired to the ESP12's RESET line directly,
+       not a GPIO-readable user button.
+     * LED1-LED5 (5 onboard 3mm LEDs total): traced to the TPS2041BD/TPS2051BD
+       power-distribution-switch ICs (OC#/overcurrent outputs — matches
+       jpralves.net's "two red LEDs" for overcurrent display) and to the
+       PIC16F1455 USB-serial bridge / 5V-3.3V regulator area (power/USB status
+       indicators). None are wired to any ESP8266 GPIO pin.
+   - documentation/EduinoWifiAssemblyManual.pdf exists (18MB) but was not
+     needed — the schematic already gave a definitive answer.
+
+4. https://jpralves.net/post/2020/03/12/eduino-wifi.html (third-party review, PT)
+   - "Overcurrent display via two red LEDs" — corroborates schematic finding
+     that LED4/LED5 are overcurrent indicators on the TPS204x/205x ICs, not
+     ESP8266-driven. No button mentioned.
+
+5. https://www.instructables.com/Eduino-WiFi/ — fetch returned only page
+   chrome (nav/footer), no usable body content; not relied upon.
+
+6. variants/esp8266/boards.txt (in this repo) — confirms
+   eduinowifi.name=Schirmilabs Eduino WiFi, build.variant=eduinowifi, so the
+   displayName fallback in board.json is correctly overridden at build time.
+
+CONSIDERED BUT NOT CHANGED
+---------------------------
+- GPIO2 "button"/"led_high"/"led_low" tags: NOT applied. pins_arduino.h's
+  LED_BUILTIN=2 alias is unsupported by the actual schematic (no LED
+  component present on that net) — per task instructions, alias names alone
+  are not sufficient evidence, and real evidence points the other way here.
+- GPIO0 "button" tag: NOT applied. Only a boot-mode pull-up is present; the
+  board's one switch (SW1) is a non-GPIO hardware RESET button, same pattern
+  already established for ../d1/board.json.
+- No other GPIO was considered for LED/button tagging — no additional
+  switches or LEDs appear on the schematic tied to any broken-out GPIO
+  (GPIO4, GPIO5, GPIO12, GPIO13, GPIO14, GPIO15, GPIO16).
+- TX/RX (GPIO1/GPIO3) were not touched — chip-level default already reserves
+  them as serial_tx/serial_rx and no capability changes were made near them.
+
+SUMMARY
+-------
+No onboard user button and no onboard GPIO-driven LED found on this board
+(pins_arduino.h's LED_BUILTIN=2 is inaccurate boilerplate) — board.json
+created as a copy of the chip-level default with chipGpios unchanged, only
+documentation notes added. ADC: created board.json with defaultRefVolts
+changed from chip default 1.0V to 3.2V, based on a resistor divider
+(R15=220K/R16=100K) confirmed directly from the vendor's own schematic file
+and matching the vendor's published "3.2V max" analog input spec.
+
+====================================================================
+[2026-07-12] Follow-up pass: full dedicated-hardware pin-exclusion audit
+(broader than the LED/button/ADC scope above)
+====================================================================
+
+REASON FOR THIS PASS
+---------------------
+A fresh board-discovery sweep flagged eduinowifi because pins_arduino.h
+defines the standard Wemos-style D0-D15 numbering aliases (D0=3, D1=1,
+D2=16, D3=5, D4=4, D5=14, D6=12, D7=13, D8=0, D9=2, D10=15, D11=13,
+D12=12, D13=14, D14=4, D15=5) plus PIN_WIRE_SDA=4/PIN_WIRE_SCL=5. This
+pass re-examined the board for any dedicated onboard peripheral (SD
+card, display, relay, sensor, etc.) that a full pin-exclusion sweep
+would care about, beyond the earlier LED/button/ADC-only scope.
+
+SOURCES RE-CONSULTED
+---------------------
+1. https://github.com/schirmilabs/Eduino-WiFi (vendor GitHub repo,
+   re-fetched) — confirms board is "DIY Arduino UNO compatible WiFi
+   development board based on the ESP8266EX". No new peripheral beyond
+   what the earlier pass's direct schematic read already found (ESP8266EX,
+   PIC16F1455 USB-serial bridge, TPS2041BD/TPS2051BD power-distribution
+   switches, 5 status/overcurrent LEDs, SW1 reset button, USB-B connector,
+   6-12V power jack). No SD card slot, no display, no relay, no sensor
+   IC, no buzzer, no RTC chip, no external EEPROM/flash mentioned or
+   visible on the schematic.
+2. https://schirmilabs.de/?page_id=165 (vendor product page, re-checked) —
+   full published feature list: 11 digital I/O (interrupt/PWM/I2C/OneWire
+   capable, except D0), 1 analog input (3.2V max), USB Type-B, 6-12V power
+   jack, TPS2041/TPS2051 power switches with current limiting and reverse-
+   polarity protection, 2 red overcurrent LEDs, PIC16F1455 USB bridge.
+   No SD/display/relay/sensor/buzzer/RTC/EEPROM listed.
+3. https://www.espboards.dev/esp8266/eduinowifi/ (third-party aggregator,
+   re-checked) — lists ESP8266EX/Xtensa LX106 @160MHz, 802.11b/g/n WiFi,
+   4MB flash (all internal to the ESP8266EX module itself, not a separate
+   board peripheral), LED_BUILTIN=GPIO2 (pulled from pins_arduino.h, same
+   caveat as before — not independently verified against hardware), and
+   SDA=GPIO4/SCL=GPIO16 (this SCL=16 figure conflicts with this board's
+   own pins_arduino.h, which defines PIN_WIRE_SCL=5; the .h file, backed
+   by the vendor's own schematic reviewed in the earlier pass, is treated
+   as authoritative — this is the same third-party-aggregator inaccuracy
+   pattern already flagged in the earlier pass's notes for LED_BUILTIN).
+   No SD/display/relay/sensor mentioned.
+
+FULL PERIPHERAL INVENTORY (conclusion)
+----------------------------------------
+No SD card, display, relay, sensor, buzzer, RTC, or external EEPROM/flash
+peripheral exists on this board. The only onboard ICs besides the ESP8266EX
+itself are: PIC16F1455 (USB-to-serial bridge, not GPIO-exposed to sketches),
+TPS2041BD/TPS2051BD (USB/VIN power-distribution switches with overcurrent
+LEDs, not GPIO-connected), and voltage regulators. All of this was already
+identified from the direct schematic read in the earlier pass (see above) —
+this pass's re-consultation of vendor/GitHub/third-party sources corroborates
+it and found no additional dedicated hardware.
+
+CRITICAL CHECK — SDA/SCL/SS/MOSI/MISO/SCK alias collision with tagged/
+excluded GPIOs (per session-wide ESP32-side pattern)
+------------------------------------------------------------------------
+build_boards.js's buildEsp32Board() (used for esp8266 family too) parses
+PIN_WIRE_SDA/PIN_WIRE_SCL from this board's own pins_arduino.h (resolved
+via #include) and PIN_SPI_SS/MOSI/MISO/SCK from the included
+../generic/common.h, then unconditionally appends i2c_sda/i2c_scl/spi_ss/
+spi_mosi/spi_miso/spi_sck capability tags to whichever GPIO numbers match,
+regardless of what chipGpios says for that pin. Checked this board's
+mapping:
+  - SDA = GPIO4, SCL = GPIO5 (this board's own pins_arduino.h)
+  - SS = GPIO15, MOSI = GPIO13, MISO = GPIO12, SCK = GPIO14
+    (chip-generic, from ../generic/common.h, same for every ESP8266 board)
+None of GPIO4, GPIO5, GPIO12, GPIO13, GPIO14, GPIO15 carry a button/led_*/
+excluded tag in this board's chipGpios (all six remain plain
+digital_input/digital_output/pwm_output, unchanged from the chip-level
+default — no LED or button was found anywhere on this board in either
+pass). So the auto-appended i2c_*/spi_* capability tags land cleanly on
+untagged general-purpose pins; there is no silent misattachment risk here,
+unlike the ESP32-side cases found elsewhere this session where a bus alias
+pointed at a GPIO already carrying a researched button/LED tag.
+
+DECISION
+--------
+NO CHANGE. No new dedicated onboard peripheral was found beyond what the
+earlier LED/button/ADC pass already discovered and documented (which
+resulted in ADC defaultRefVolts=3.2V and no button/LED capability tags).
+The D0-D15 numbering aliases flagged by the discovery sweep are ordinary
+Wemos-style board pin-numbering convenience, not evidence of new dedicated
+hardware. The SDA/SCL/SPI alias check (above) confirms no capability-tag
+collision exists on this board. board.json and pins_arduino.h are
+unmodified by this pass.

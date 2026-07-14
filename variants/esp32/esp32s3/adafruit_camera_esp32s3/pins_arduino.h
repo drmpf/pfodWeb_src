@@ -22,23 +22,15 @@ static const uint8_t LED_BUILTIN = PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT;
 #define RGB_BUILTIN    (PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT)
 #define RGB_BRIGHTNESS 64
 
-static const uint8_t TFT_BACKLIGHT = 45;
-static const uint8_t TFT_DC = 40;
-static const uint8_t TFT_CS = 39;
-static const uint8_t TFT_RESET = 38;
-static const uint8_t TFT_RST = 38;
-
-static const uint8_t SD_CS = 48;
-static const uint8_t SD_CHIP_SELECT = 48;
+// pfodWeb NOTE: TFT_BACKLIGHT/DC/CS/RESET/RST, SD_CS/SD_CHIP_SELECT, and
+// SS/MOSI/SCK/MISO deliberately NOT declared as pins — this is a fixed
+// camera board with an onboard TFT (GPIO38/39/40/45) and microSD slot
+// sharing one SPI bus (SS=SD_CS=48, MOSI/SCK/MISO=35/36/37), not
+// general-purpose (see this board's own board.json chipGpios override).
 static const uint8_t SPEAKER = 46;
 
 static const uint8_t SCL = 33;
 static const uint8_t SDA = 34;
-
-static const uint8_t SS = 48;
-static const uint8_t MOSI = 35;
-static const uint8_t SCK = 36;
-static const uint8_t MISO = 37;
 
 static const uint8_t A0 = 17;
 static const uint8_t A1 = 18;

@@ -1,0 +1,79 @@
+Board: heltec_wifi_lora_32_V2 (Heltec WiFi LoRa 32 V2)
+Research date: 2026-07-11
+
+Vendor pins_arduino.h aliases (NOT used alone as proof, but as a lead):
+- LED_BUILTIN = 25, LED = 25, DAC1 = 25, A18 = 25
+- KEY_BUILTIN = 0, A11 = 0, T1 = 0
+- TX = 1, RX = 3 (checked for conflict - neither GPIO0 nor GPIO25 coincide with TX/RX, so no reservation conflict)
+
+Sources consulted:
+
+1. https://api.riot-os.org/esp32-heltec-lora32-v2_2include_2board_8h.html
+   RIOT-OS official board support header reference for THIS EXACT board
+   (esp32-heltec-lora32-v2). Defines LED0_PIN = GPIO25, LED0_ACTIVE = 1
+   (high-active) and BTN0_PIN = GPIO0, BTN0_MODE = GPIO_IN,
+   BTN0_INT_FLANK = GPIO_FALLING (falling edge = active-low button,
+   normally pulled high, connects to GND when pressed). This is the
+   strongest confirming source found - independent open-source board
+   support package with board-specific low-level pin definitions matching
+   real hardware, not just an Arduino alias name.
+
+2. https://api.riot-os.org/group__boards__esp32__heltec-lora32-v2.html
+   RIOT-OS board group page for the same board; corroborates the board.h
+   reference above (accessed as part of the same search chain).
+
+3. https://www.espboards.dev/esp32/heltec-wifi-lora-32-v2/
+   Third-party ESP32 board reference site. Pin mapping table shows
+   "25 A18 PWM LED_BUILTIN DAC1 LED" and "0 A11 T1 KEY_BUILTIN" - consistent
+   with pins_arduino.h aliases but does not independently confirm
+   active-high/active-low polarity or physical LED/button presence beyond
+   naming. Used as corroborating (not primary) evidence.
+
+4. https://docs.heltec.org/en/node/esp32/wifi_lora_32/index.html
+   Official Heltec docs product overview page. Did not contain explicit
+   GPIO-level LED/button wiring details (page is mostly a product/version
+   comparison with links to datasheet/schematic PDFs).
+
+5. https://resource.heltec.cn/download/WiFi_LoRa_32/WIFI_LoRa_32_V2.pdf
+   Official Heltec pinout diagram PDF. Fetched but content came back as
+   unreadable binary/garbled text via WebFetch's HTML-conversion pipeline,
+   so it could NOT be used to confirm or deny anything. Listed here for
+   completeness/transparency - a human reviewer with a PDF viewer could
+   check this directly for a schematic-level view.
+
+6. https://nrfconnectdocs.nordicsemi.com/ncs/2.6.0/zephyr/boards/xtensa/heltec_wifi_lora32_v2/doc/index.html
+   Zephyr/Nordic board doc page (redirected from docs.nordicsemi.com).
+   Fetched but returned only navigation/TOC content, no board-specific
+   LED/button GPIO details were retrievable via WebFetch.
+
+7. https://github.com/HelTecAutomation/Heltec_ESP32/blob/master/src/heltec.h
+   Official Heltec Arduino library header. Checked for LED/button pin
+   defines; contains only board-classification macros (e.g. WIFI_LORA_32_V2)
+   and VextON/VextOFF/begin() methods - no explicit LED_PIN/BUTTON_PIN
+   macros in this particular file, so it neither confirms nor contradicts.
+
+8. https://meshtastic.org/docs/hardware/devices/heltec-automation/lora32/buttons/
+   Meshtastic device docs page about Heltec LoRa32 buttons. Describes
+   button *behavior* (reset/shutdown/screen nav/ping/GPS functions) but
+   does not state the GPIO pin number or polarity explicitly, so used only
+   as general corroboration that this board family has a functional
+   onboard user button.
+
+Pins considered and NOT tagged:
+- None additional. Only GPIO0 (button) and GPIO25 (LED) were candidates,
+  based on the KEY_BUILTIN/LED_BUILTIN aliases, and both were confirmed by
+  the RIOT-OS board-specific source (source #1 above) and tagged. No
+  TX/RX conflict (TX=1, RX=3). No ambiguity found requiring a "best guess"
+  judgment call - source #1 is board-specific (not a generic ESP32 default)
+  and gives explicit polarity, so both tags were applied with high
+  confidence.
+- GPIO26 (DAC2 in the chip-wide DAC list) was NOT considered a button/LED
+  candidate; it's already excluded from chipGpios entirely per the
+  pre-existing pin-exclusion NOTE (dedicated onboard LoRa DIO0 pin) and was
+  left untouched.
+
+Summary of what was tagged:
+- GPIO25 -> ["digital_output", "led_high", "pwm_output"] (onboard
+  single-color LED, active-high, confirmed via RIOT-OS board.h LED0_ACTIVE=1).
+- GPIO0 -> ["digital_input", "button"] (onboard PRG/BOOT button, active-low,
+  confirmed via RIOT-OS board.h BTN0_PIN/BTN0_INT_FLANK=GPIO_FALLING).

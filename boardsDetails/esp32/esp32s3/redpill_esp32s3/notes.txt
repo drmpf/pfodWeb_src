@@ -1,0 +1,87 @@
+redpill_esp32s3 - pfodWeb capability tagging research notes
+=============================================================
+
+Sources consulted
+------------------
+https://www.espboards.dev/esp32/redpill-esp32s3/
+  Third-party auto-generated pinout table (likely parsed from
+  arduino-esp32 pins_arduino.h itself, not independent). Shows GPIO3
+  labelled "LED_BUILTIN" in its pin table. Corroborating but not primary
+  evidence since it is derived from the same core file we already have.
+
+https://gist.github.com/razvan-mocanu/198a248cde2ac3c37b373898cd634704
+  "RedPill ESP32S3 - Arduino RGB LED Example" gist by razvan-mocanu, who
+  is also the person who submitted the official board-support PR (see
+  below). Working FastLED example: `#define LED_PIN LED_BUILTIN // 3`,
+  `#define LED_TYPE SK6812`, `NUM_LEDS 1`. Independent confirmation (by
+  the board's own core contributor, with real working code, not just a
+  name alias) that the onboard addressable RGB LED is SK6812-type and
+  wired to GPIO3.
+
+https://github.com/espressif/arduino-esp32/pull/7523
+  ("Add new board: RedPill ESP32S3.") Official PR that added this board
+  to the Arduino-ESP32 core, authored by razvan-mocanu. PR description
+  links to https://munich-labs.com/index.php/redpill-esp32-s3/ as the
+  board's official vendor page. No LED/button pin details in the PR
+  body/diff itself (boards.txt only, no pin specifics); used to establish
+  vendor identity/provenance of the gist author.
+
+https://api.github.com/repos/espressif/arduino-esp32/issues/7523 and
+.../7523/comments
+  Confirms PR title/body/author as above; no additional LED/button info.
+
+https://munich-labs.com/product/redpill/ (and https://munich-labs.com/
+redpill-esp32-s3/redpill-esp32-s3-rgb-led-demo-micropython/ ,
+https://munich-labs.com/redpill-esp32-s3/redpill-esp32-s3-pinout/)
+  Official vendor (Munich-Labs) product/pinout pages for the RedPill
+  ESP32-S3. Direct WebFetch of these URLs returned HTTP 403/404 (site
+  appears to block non-browser fetchers), but a WebSearch query
+  ("site:munich-labs.com redpill esp32-s3") surfaced an indexed snippet
+  from the vendor site stating verbatim: "it has an RGB addressable LED
+  (Neopixel / SK6812), connected to the GPIO3 pin." This is the primary
+  vendor confirmation used for the tag applied below. Could not directly
+  browse the page to see a schematic image or button-specific wording.
+
+pins_arduino.h (this board, at
+variants/esp32/esp32s3/redpill_esp32s3/pins_arduino.h)
+  `static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + 3;` /
+  `#define RGB_BUILTIN LED_BUILTIN` — this is the arduino-esp32 core's
+  standard "virtual pin" encoding for an RMT-driven addressable RGB LED,
+  where the real GPIO number is (LED_BUILTIN - SOC_GPIO_PIN_COUNT) = 3.
+  Not used alone as evidence per task rules (alias names are not
+  trusted on their own) — used only as a cross-check against the
+  vendor/gist sources above, all three of which agree on GPIO3.
+  TX = 43, RX = 44 in this file — GPIO3 does not conflict with the
+  hard-reserved serial TX/RX pins.
+
+Pins considered but NOT tagged
+--------------------------------
+GPIO0 (potential BOOT/user button): pins_arduino.h for this board defines
+NO button/BOOT/BTN alias at all (unlike some other boards' pins_arduino.h
+which define e.g. `static const uint8_t BUTTON = 0;`). General ESP32-S3
+knowledge confirms GPIO0 is the universal boot-mode strapping pin present
+on virtually every ESP32-S3 board/module, but strapping-pin presence
+alone does not confirm a populated, user-accessible physical pushbutton
+on this specific board — that requires a schematic or vendor statement,
+which was not found (WebFetch of the vendor's dedicated pinout page was
+blocked by the site, and no vendor text or schematic diagram confirming
+a button could be retrieved). This is a case of "no guess made" rather
+than "guessed and decided not to tag" — genuinely inconclusive from the
+sources actually reached. Left untagged for human review; a reviewer
+with direct browser access to https://munich-labs.com/redpill-esp32-s3/
+redpill-esp32-s3-pinout/ or a board photo could likely resolve this
+quickly.
+
+No other candidate LED/button pins were found in pins_arduino.h for this
+board (no discrete R/G/B pin defines, no second LED alias).
+
+Summary of what was tagged
+----------------------------
+GPIO3 tagged led_neopixel (["digital_output", "pwm_output", "led_neopixel"])
+in variants/esp32/esp32s3/redpill_esp32s3/board.json (newly created, full
+copy of the esp32s3 chip-level default board.json with only GPIO3's
+capability array changed), based on vendor confirmation (Munich-Labs
+product page: "RGB addressable LED (Neopixel / SK6812), connected to the
+GPIO3 pin") cross-checked against the pins_arduino.h LED_BUILTIN/RGB_BUILTIN
+encoding and an independent working SK6812/FastLED example on GPIO3 from
+the board's own core contributor. No button was tagged (see above).

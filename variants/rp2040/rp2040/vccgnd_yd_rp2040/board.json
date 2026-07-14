@@ -1,0 +1,103 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "VCC-GND YD-RP2040" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — all
+  // three identity pins (NeoPixel/key/LED) are handled entirely via the
+  // chipGpios capability overrides below.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) RP2040 board,
+  // no onboard radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-12):
+  //
+  // Board: "YD-RP2040" — a widely-cloned Pico-form-factor RP2040 board
+  // designed by VCC-GND Studio (also resold under many other brand
+  // names, e.g. "Makers Electronics", "alfa-tronics") with USB-C, an
+  // onboard WS2812 addressable RGB LED, a user pushbutton, and a plain
+  // status LED. This board's own pins_arduino.h declares:
+  //   #define PIN_NEOPIXEL   (23u)
+  //   #define PIN_USRKEY     (24u)
+  //   #define PIN_LED        (25u)
+  // matching the identity pins researched below.
+  //
+  // Sources consulted (multiple independent community sources agree —
+  // no single official vendor datasheet exists, but the board is
+  // popular enough that MicroPython, Rust HAL and CircuitPython all
+  // ship board support with matching pin assignments):
+  //  - probonopd's YD-RP2040 gist (community pinout reference, widely
+  //    cited): https://gist.github.com/probonopd/2a1e8ce64142fdefe20a89d0d540ab0d
+  //    — "Added RGB lights (GPIO23)", "Added the USRkey user button
+  //    (GPIO24)", "Added PWR power LED"; notes the RGB pads (silkscreen
+  //    "RGB", sometimes misread "R68") must be bridged/soldered for
+  //    GPIO23 to actually reach the NeoPixel on some board revisions.
+  //  - vcc-gnd-yd-rp2040 Rust HAL crate docs (docs.rs/lib.rs):
+  //    "WS2812 RGB LED on GPIO23 ... user key on GPIO24 ... built-in
+  //    blue LED" (GPIO25, per the same crate's pin map).
+  //  - MicroPython PR #12281 (micropython/micropython) adding this
+  //    board: pins.csv lists `led,GPIO25` / `key,GPIO24` /
+  //    `neopixel,GPIO23`; board.py initializes
+  //    `led = Pin(25, Pin.OUT, value=0)` (driven HIGH to light — active
+  //    high) and `key = Pin(24, Pin.IN, Pin.PULL_UP)` (reads LOW when
+  //    pressed — active low, using the MCU's internal pull-up since the
+  //    board has no external pull-up resistor on this line).
+  //  - en.neonhero.dev YD-RP2040 writeup: confirms `gpio_put(LED, true)`
+  //    lights GPIO25 (active-high) and documents GPIO24's
+  //    `GPIO_IRQ_EDGE_FALL` interrupt usage plus the "lacks an external
+  //    pull-up resistor to VCC ... internal pull-up resistor must be
+  //    enabled in software" caveat for the button; also confirms the
+  //    R68 NeoPixel jumper must be soldered by default.
+  //
+  // Per-pin findings:
+  //   GPIO23 (PIN_NEOPIXEL) — onboard WS2812 addressable RGB LED,
+  //     output-only data line (some board revisions require a solder
+  //     jumper to actually connect it, but the declared alias/intended
+  //     hardware role is unambiguous across every source above).
+  //   GPIO24 (PIN_USRKEY) — onboard user pushbutton, active-low,
+  //     requires the MCU's internal pull-up (no external pull-up on
+  //     the board) — same "digital_input,digital_output,pwm_output,
+  //     button" full-capability precedent as this repo's ESP8266
+  //     FLASH/PRG buttons (nodemcu, espino, wifi_kit_8 board.json),
+  //     since it is an ordinary GPIO merely wired to a switch, not a
+  //     dedicated/capacitive-only pin.
+  //   GPIO25 (PIN_LED) — onboard status LED, active-high — same
+  //     standard-Pico-LED-circuit precedent as rpipico/board.json and
+  //     wiznet_5500_evb_pico/board.json (digital_input dropped,
+  //     pwm_output kept for brightness dimming via analogWrite()).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/vccgnd_yd_rp2040/notes.txt
+  "chipGpios": {
+    "23": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard WS2812 addressable RGB LED, output-only. Confirmed via probonopd's YD-RP2040 gist, vcc-gnd-yd-rp2040 Rust HAL docs, and MicroPython PR #12281 pins.csv/board.py (neopixel,GPIO23 / Pin.OUT). Some board revisions need the R68 solder-jumper bridged for the LED to actually respond." },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_USRKEY — onboard user pushbutton, active-low, requires the MCU's internal pull-up (board has no external pull-up on this line). Confirmed via probonopd's gist, MicroPython PR #12281 board.py (Pin.IN, Pin.PULL_UP), and en.neonhero.dev (GPIO_IRQ_EDGE_FALL + explicit no-external-pull-up caveat)." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard status LED, active-high, standard Pico LED circuit. Confirmed via MicroPython PR #12281 board.py (led = Pin(25, Pin.OUT, value=0), driven HIGH to light) and en.neonhero.dev (gpio_put(LED, true) lights it)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other plain RP2040 board (this board's pins_arduino.h declares no
+  // custom analog pins, falling back to generic/common.h's default).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

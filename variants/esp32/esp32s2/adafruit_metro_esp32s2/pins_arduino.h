@@ -31,7 +31,10 @@ static const uint8_t RX = 6;
 static const uint8_t SDA = 33;
 static const uint8_t SCL = 34;
 
-static const uint8_t SS = 42;
+// pfodWeb NOTE: the default SS alias was deleted - it pointed at the
+// same GPIO as this board's confirmed onboard LED, and build_boards.js
+// unconditionally attaches an spi_ss capability to any GPIO matching the
+// SS alias, which was silently contaminating the LED's capability list.
 static const uint8_t MOSI = 35;
 static const uint8_t SCK = 36;
 static const uint8_t MISO = 37;

@@ -1,0 +1,148 @@
+waveshare_esp32_c6_zero board.json dedicated-hardware pin-exclusion audit research notes
+=========================================================================================
+
+Board: waveshare_esp32_c6_zero (variants/esp32/esp32c6/waveshare_esp32_c6_zero), chip esp32c6.
+Directory: variants/esp32/esp32c6/waveshare_esp32_c6_zero/
+Audit date: 2026-07-12
+
+pins_arduino.h summary (read in full):
+  Header comment is a silkscreen-accurate pinout table titled "Arduino Pin
+  Definitions for Waveshare ESP32-C6-Zero", labeling physical pin 23
+  (GPIO8) as "RGB_LED" and physical pin 22 (GPIO9) as "BOOT".
+  PIN_RGB_LED = 8, RGB_BUILTIN/LED_BUILTIN wired to it, RGB_BRIGHTNESS 32.
+  TX=16, RX=17, SDA=14, SCL=15, SS=18, MOSI=19, MISO=20, SCK=21.
+  A0..A6 = GPIO0..GPIO6.
+  WIRE1_PIN_DEFINED, SDA1=6, SCL1=7, with the comment "LP I2C Pins are
+  fixed on ESP32-C6" - identical wording to the sibling generic
+  esp32c6/esp32c6 variant's pins_arduino.h.
+  No BUTTON alias/#define exists in the file - GPIO9's "BOOT" identity is
+  only present in the ASCII silkscreen table comment, not as code.
+  No existing board.json override before this audit (used the chip-level
+  esp32c6/board.json default).
+
+Flagged by the discovery sweep for PIN_RGB_LED=8 and WIRE1_PIN_DEFINED
+SDA1=6/SCL1=7. The BOOT label on GPIO9 was also opportunistically checked
+per this session's section 7a button-audit step.
+
+Sources consulted
+------------------
+1. https://docs.waveshare.com/ESP32-C6-Zero (fetched via WebFetch)
+   Waveshare's own documentation platform for this exact product. States
+   the board's onboard hardware includes a "WS2812 Colorful RGB LED" and
+   both a "BOOT Button" and a "RESET Button", with "BOOT Button: Hold
+   this button and press the RESET button to enter download mode". The
+   page's text content references a pinout diagram image but does not
+   spell out individual GPIO numbers in prose, so this source was used to
+   confirm the RGB LED and BOOT button genuinely exist as onboard
+   hardware on this specific product, not to source the exact pin
+   numbers.
+2. https://www.waveshare.com/wiki/ESP32-C6-Zero and
+   https://www.waveshare.com/esp32-c6-zero.htm - both returned HTTP 403
+   Forbidden when fetched directly via WebFetch (blocked request), same
+   as the analogous waveshare_esp32_s3_zero audit earlier this session.
+   docs.waveshare.com (source 1) was used as the working mirror instead.
+3. pins_arduino.h (local, already in repo) - Espressif's own official
+   Arduino-core pin definition file for this exact board, explicitly
+   titled "Arduino Pin Definitions for Waveshare ESP32-C6-Zero" with a
+   silkscreen-accurate pinout diagram in its header comment labeling
+   GPIO8 "RGB_LED" and GPIO9 "BOOT", consistent with the code below it
+   (PIN_RGB_LED = 8) and the chip-level pinNotes strapping-pin entry for
+   GPIO9 ("Must be HIGH for normal boot"). Used as corroboration only,
+   not as the sole source, per task rules.
+4. WebSearch general corroboration: multiple independent summaries
+   (including a GitHub example sketch for this exact product using
+   "constexpr uint8_t LED_PIN = 8" with the Adafruit_NeoPixel library)
+   confirm GPIO8 drives the onboard NeoPixel on the Waveshare
+   ESP32-C6-Zero. One secondary source (espboards.dev's "esp32-c6-zero-
+   mini" page) gave conflicting pin numbers (RGB on IO23, not IO8) and
+   was judged to describe a different/unrelated clone board, not this
+   Waveshare product, and was therefore disregarded in favor of the
+   vendor's own docs.waveshare.com page and the official pins_arduino.h.
+5. https://github.com/waveshareteam/ESP32-C6-Zero-Basic-Kit - official
+   Waveshare GitHub repository of example code for this board. Its
+   tutorial folder names (ButtonControlLED, ButtonPressCounter,
+   ReadButtonState, etc.) describe external breadboard components used
+   in the "Basic Kit" curriculum, not the onboard BOOT button or onboard
+   NeoPixel specifically, so it was not used as direct evidence for
+   either pin - only browsed to rule out a conflicting claim.
+6. Sibling chip-level entry esp32c6/esp32c6 (audited earlier this
+   session; see its own board.json/notes.txt): Espressif's
+   ESP32-C6-DevKitC-1 user guide shows GPIO6 = MTCK/LP_GPIO6/LP_I2C_SDA/
+   ADC1_CH6/FSPICLK and GPIO7 = MTDO/LP_GPIO7/LP_I2C_SCL/FSPID - the
+   chip's fixed low-power I2C pin mux, not evidence of a dedicated
+   onboard peripheral.
+
+Reasoning per pin
+------------------
+GPIO8 (PIN_RGB_LED) - CONFIRMED onboard WS2812 addressable RGB LED for
+  this exact product. docs.waveshare.com lists a "WS2812 Colorful RGB
+  LED" as onboard hardware, this board's own pins_arduino.h (an
+  Espressif/Waveshare-submitted, board-specific file, not generic
+  boilerplate) declares PIN_RGB_LED=8 and labels the physical pin
+  "RGB_LED" in its silkscreen diagram, and independent web corroboration
+  (community example code) matches. High confidence. Tagged capabilities
+  ["digital_output","led_neopixel","pwm_output"], matching this repo's
+  led_neopixel precedent (waveshare_esp32_s3_zero GPIO21, esp32c6/esp32c6
+  GPIO8, adafruit_qtpy_esp32c3 GPIO2).
+
+  Alias-collision check (this session's playbook step): compared GPIO8
+  against this variant's own TX/RX/SDA/SCL/SS/MOSI/MISO/SCK alias values
+  (16/17/14/15/18/19/20/21) - GPIO8 is not aliased as any of those, so no
+  conflicting boilerplate bus capability gets silently appended by
+  build_boards.js for this pin. No pins_arduino.h edit was needed.
+
+GPIO9 (silkscreen "BOOT") - CONFIRMED onboard physical BOOT button for
+  this exact product. docs.waveshare.com states the board has a BOOT
+  button used together with RESET to enter download mode, and this
+  board's own pins_arduino.h silkscreen table independently labels the
+  same physical pin "BOOT". This is also the ESP32-C6's standard
+  strapping pin - the chip-level pinNotes entry "Must be HIGH for normal
+  boot" is expected and was retained unchanged, not removed. Tagged
+  capabilities ["digital_input","button"] only, per this session's
+  button-pin convention (waveshare_esp32_s3_zero GPIO0,
+  adafruit_qtpy_esp32c3 GPIO9) - no analog/output/pwm mixed in.
+
+  Alias-collision check: GPIO9 is not TX/RX/SDA/SCL/SS/MOSI/MISO/SCK on
+  this variant either (values are 16/17/14/15/18/19/20/21) - no conflict,
+  no pins_arduino.h edit was needed.
+
+GPIO6/GPIO7 (SDA1/SCL1, second/LP I2C bus) - KEEP as general-purpose I2C.
+  Same reasoning as the sibling esp32c6/esp32c6 chip-level entry: these
+  are the chip's fixed LP_I2C controller pins (a hardware pin-mux
+  constraint per Espressif's own documentation), not evidence of an
+  onboard I2C device. This variant's pins_arduino.h carries the identical
+  "LP I2C Pins are fixed on ESP32-C6" comment as the sibling generic
+  board (boilerplate copied across ESP32-C6 variants, not board-specific
+  research), and docs.waveshare.com's onboard-hardware list for this
+  product names only the RGB LED, BOOT/RESET buttons, USB-C, and
+  broken-out GPIO headers - no onboard I2C peripheral. Left unchanged
+  from chip-level board.json defaults (GPIO6: analog_input+digital_input
+  +digital_output+pwm_output; GPIO7: digital_input+digital_output+
+  pwm_output).
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0-7, 10, 11, 14-23 excluding 8/9) were left
+at the chip-level esp32c6/board.json default - no evidence found of any
+other dedicated onboard hardware beyond the RGB LED and BOOT button.
+
+What was tagged/changed
+-------------------------
+Created variants/esp32/esp32c6/waveshare_esp32_c6_zero/board.json (none
+existed before) as a full copy of the chip-level esp32c6/board.json
+default, with:
+  - GPIO8 capabilities changed to ["digital_output","led_neopixel",
+    "pwm_output"] (was ["digital_input","digital_output","pwm_output"])
+  - GPIO9 capabilities changed to ["digital_input","button"] (was
+    ["digital_input","digital_output","pwm_output"])
+plus a pfodWeb NOTE comment block at the top of the file citing the
+sources above. No alias-collision bug was found on this board (GPIO8 and
+GPIO9 are not double-aliased as SDA/SCL/SS/MOSI/MISO/SCK/TX/RX), so no
+pins_arduino.h edit was needed. GPIO6/GPIO7 (SDA1/SCL1) left unchanged as
+general-purpose I2C.
+
+Summary: GPIO8 confirmed as a genuine onboard WS2812 NeoPixel and tagged
+led_neopixel; GPIO9 confirmed as a genuine onboard BOOT button and tagged
+button; GPIO6/GPIO7 (SDA1/SCL1) confirmed as fixed LP_I2C pin-mux only,
+left as general-purpose I2C-capable GPIOs, matching the sibling
+esp32c6/esp32c6 chip-level entry's conclusion.

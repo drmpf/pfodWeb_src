@@ -72,18 +72,6 @@ if %errorlevel% neq 0 (
 )
 
 REM ── Check Node.js (needed to sync version into Cargo.toml) ──────────
-where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo ERROR: Node.js not found — needed to sync version into Cargo.toml.
-    echo Install from https://nodejs.org/
-    echo.
-    pause
-    exit /b 1
-)
-
-REM ── Sync version from pfodWeb_src/version.js into Cargo.toml ─────────
-node -e "var fs=require('fs');var m=fs.readFileSync('pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('pfodProxy_rs/Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('pfodProxy_rs/Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
-
 REM ── Build pfodProxy for Linux ─────────────────────────────────────────
 REM wslpath is called inside bash to avoid \r contamination from capturing output.
 echo.

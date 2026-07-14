@@ -1,0 +1,114 @@
+m5stack_atom - button/NeoPixel GPIO research notes
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32\m5stack_atom
+
+WHICH PRODUCT THIS VARIANT REPRESENTS
+--------------------------------------
+This generic "m5stack_atom" variant's pins_arduino.h (TX=1/RX=3,
+SDA=26/SCL=32 as the Grove-exposed I2C pins, SS=19/MOSI=33/MISO=23/SCK=22,
+and the plain G0/G9/G10/G12/G19/G21/G22/G23/G25/G26/G27/G32/G33/G36/G37/G39
+aliases) is pin-identical to both the M5Stack ATOM Lite (SKU K016) and the
+M5Stack ATOM Matrix (SKU K017) - both boards use the same ESP32-PICO-D4
+module, the same Grove/HY2.0-4P expansion port (G26/G32), and the same
+onboard RGB LED pin (G27) and onboard button pin (G39). There is no
+Echo-specific (I2S mic/speaker) pin declared here, ruling out ATOM Echo as
+the specific target. Because the two candidate SKUs (Lite/Matrix) are
+electrically identical on every pin this file declares, this variant is
+best understood as representing the shared ATOM Lite/Matrix pin-compatible
+base, with "Lite" the more common default assumption for a plain
+"m5stack_atom" id (the Matrix's only extra hardware - a 5x5 LED grid
+instead of 1 LED, plus an onboard IMU - does not add or change any GPIO
+beyond what's already covered).
+
+SOURCES CONSULTED
+------------------
+https://docs.m5stack.com/en/core/ATOM%20Lite
+  Official M5Stack docs page for ATOM Lite. Pin-map table lists:
+    G27 -> RGB LED
+    G39 -> Button
+    G12 -> IR (Infrared)
+    G21 -> I2C SCL (internal, MPU/other) / G25 -> I2C SDA (internal)
+    Grove port: G26, G32 (custom I/O)
+    Expandable pins: G19, G21, G22, G23, G25, G33
+  Confirms GPIO27 = onboard RGB LED (WS2812/SK6812-class addressable LED),
+  GPIO39 = onboard programmable button.
+
+https://docs.m5stack.com/en/core/ATOM%20Matrix
+  Official M5Stack docs page for ATOM Matrix. Pin-map table lists:
+    G27 -> RGB LED (the 5x5/25-LED matrix, same data pin as ATOM Lite's
+           single LED - it's the same WS2812-style chain, just 25 pixels
+           instead of 1)
+    G39 -> Button
+    G12 -> IR Transmitter
+    MPU6886 (onboard IMU) SCL -> G21, SDA -> G25
+    Grove port (HY2.0-4P): yellow wire G26, white wire G32
+  Confirms identical GPIO27/GPIO39 assignment to ATOM Lite.
+
+https://community.m5stack.com/topic/3955/atom-button-at-gpio39-without-pullup
+  M5Stack community forum thread specifically discussing the onboard
+  button being on GPIO39 without an external pull-up resistor (GPIO39 is
+  an ADC/input-only strapping-adjacent pin on ESP32, consistent with the
+  chip-level inputOnlyGpios list already in this repo's esp32/esp32
+  board.json). Corroborates the docs.m5stack.com pin-map finding
+  independently.
+
+https://github.com/m5stack/M5Atom (M5Atom Arduino library repo) and
+https://community.m5stack.com/topic/3812/atom-lite-led - both referenced
+in search results as further corroboration of GPIO27 driving the onboard
+NeoPixel-class LED via FastLED/Adafruit_NeoPixel-style libraries on this
+board family; not fetched directly since the two docs.m5stack.com pin-map
+pages already gave an authoritative, explicit GPIO-to-function table.
+
+Local repo files also reviewed (not web sources, but load-bearing):
+  variants/esp32/esp32/m5stack_atom/pins_arduino.h - declares G27=27 and
+  G39=39 as plain generic GPIO-number aliases (no LED/button-specific
+  macro name), plus TX/RX/SDA/SCL/SS/MOSI/MISO/SCK/DAC1/DAC2/ADC1/ADC2
+  aliases and the rest of the G<n> block. No LED_BUILTIN, RGB_BUILTIN,
+  PIN_NEOPIXEL, or KEY/BUTTON-named declaration of any kind is present in
+  this file - the SOC_GPIO_PIN_COUNT+N virtual-pin convention used on some
+  other ESP32-S3 M5Stack boards (e.g. m5stack_atoms3) is NOT used here.
+  variants/esp32/esp32/board.json (chip-level default) - confirms GPIO27
+  has capabilities ["digital_input","digital_output","pwm_output"] (no
+  analog) and GPIO39 is in inputOnlyGpios with capabilities
+  ["analog_input","digital_input"] at the chip level.
+  variants/esp32/esp32/magicbit/board.json - existing precedent in this
+  same chip-level default (esp32/esp32) tagging input-only GPIO34/35 as
+  ["digital_input","button"], confirming the restricted-capability-set
+  convention applies identically to input-only button pins on this chip.
+
+ALIAS-COLLISION CHECK (build_boards.js bus-capability contamination)
+-----------------------------------------------------------------------
+Checked GPIO27 and GPIO39 against every SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+alias declared in this board's own pins_arduino.h:
+  TX=1, RX=3, SDA=26, SCL=32, SS=19, MOSI=33, MISO=23, SCK=22
+Neither 27 nor 39 matches any of these values, so no collision - the
+"led_neopixel" and "button" tags will not be silently overwritten/extended
+with a bus capability by build_boards.js.
+
+WHAT WAS APPLIED
+------------------
+Created board.json (full copy of the chip-level esp32/esp32/board.json
+default) with two chipGpios changes:
+  GPIO27: ["digital_input","digital_output","pwm_output"]
+       -> ["digital_output","led_neopixel","pwm_output"]
+    (onboard addressable RGB LED - single pixel on ATOM Lite, 5x5/25-pixel
+    matrix on ATOM Matrix; both use G27 as the WS2812-style data line)
+  GPIO39: ["analog_input","digital_input"]
+       -> ["digital_input","button"]
+    (onboard programmable push button; input-only pin, so the restricted
+    ["digital_input","button"] set is used per this repo's established
+    button-tag convention, dropping analog_input the same way
+    esp32/esp32/magicbit's GPIO34/35 button tags do)
+
+No changes were made to pins_arduino.h itself - G27 and G39 were already
+present as plain generic aliases (not misleadingly named, not colliding
+with any bus alias), so only the board.json capability tags needed to
+change to KEEP+tag the confirmed hardware.
+
+ONE-LINE SUMMARY
+------------------
+m5stack_atom (ATOM Lite/Matrix-compatible ESP32-PICO-D4 base): GPIO27
+tagged led_neopixel (onboard WS2812-class RGB LED/LED matrix) and GPIO39
+tagged button (onboard push button), both vendor-doc-confirmed via
+docs.m5stack.com; new board.json created as a chip-level-default copy with
+only those two chipGpios entries changed, no pins_arduino.h edits needed,
+no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias collisions found on either pin.

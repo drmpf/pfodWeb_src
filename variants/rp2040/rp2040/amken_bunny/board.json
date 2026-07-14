@@ -1,0 +1,139 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Amken Bunny" (variants/rp2040/boards.txt), vendor's own internal
+  // product name is "BunnyBoard" per tools/json/amken_bunny.json.
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins confirmed on this
+  // board (see pfodWeb NOTE below) — nothing beyond the chip-level
+  // default is asserted here.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. boards.txt declares no WiFi
+  // radio for this board (plain "rp2040" chip bucket, USB VID/PID
+  // 0x2E8A/0x00C0 and 0x2770/0x7303 for CDC serial + UF2/picotool
+  // upload, no cyw43 references).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-13): NO CHANGE — chipGpios deliberately left empty.
+  //
+  // Board: "Amken Bunny" / vendor product name "BunnyBoard" — an
+  // RP2040-based 3D-printer control mainboard from Amken LLC (Amken3D,
+  // amken.us / amken3d.com, Springfield VA, USA — NOT a Japanese/Asian
+  // educational-robotics vendor; "Bunny" is simply an Amken product
+  // codename, alongside their other animal-themed internal projects,
+  // e.g. the "Rabbit-Feeder" pick-and-place feeder in the amken3d
+  // GitHub org). Added to earlephilhower/arduino-pico in PR #2283 ("Add
+  // Amken boards", merged 2024-07-19, commit
+  // 1f71135a2b31350e40370b84c54c3e19f5e7ba55, co-authored by Amken's
+  // H.Keni), alongside three sibling boards: Amken Revelop, Amken
+  // Revelop Plus, Amken Revelop eS. The PR description states these
+  // boards were originally designed for Klipper firmware and are being
+  // adapted for Marlin via the Arduino-Pico core; no per-board hardware
+  // description, datasheet, schematic, or pinout diagram was included
+  // in the PR, its discussion, or the commit.
+  //
+  // Sources consulted (WebSearch/WebFetch, 2026-07-13):
+  //  1. This board's own pins_arduino.h — vendor-authored comments
+  //     confirm "// LEDs" above `PIN_LED (24u)` (GPIO24 genuinely has
+  //     an onboard LED — vendor's own labeling, not a guess) and
+  //     "// TMC UART" above `PIN_SERIAL2_TX/RX (4u/5u)` (GPIO4/5 are
+  //     the UART bus to an onboard TMC stepper-driver chip, not
+  //     general-purpose — already correctly excluded from this file's
+  //     D-alias list by omission, confirmed by this file's own earlier
+  //     "pfodWeb NOTE" comment; no chipGpios override is needed to fix
+  //     this since build_boards.js's parser never harvests a routable
+  //     pin without a `static const uint8_t` alias in the first place).
+  //     Unlike the bigtreetech_SKR_Pico precedent, this vendor's
+  //     pins_arduino.h does NOT name any STEP/DIR/EN/thermistor/heater/
+  //     endstop pins — GPIO0-3, 6-23, 25-29 are declared as plain
+  //     D-aliases with no board-specific role comment at all, so no
+  //     further dedicated-hardware pins can be identified from this
+  //     file alone (Amken's actual stepper/heater/endstop pin wiring
+  //     for this board is evidently defined outside this Arduino-core
+  //     variant, e.g. in a separate Marlin/Klipper board config not
+  //     found in the arduino-pico repo).
+  //  2. github.com/earlephilhower/arduino-pico — tools/json/
+  //     amken_bunny.json (PlatformIO board descriptor): confirms
+  //     vendor name "Amken", product name "BunnyBoard", url
+  //     "https://www.amken3d.com", USB VID/PID 0x2E8A/0x00C0 and
+  //     0x2770/0x7303, 128MB max flash, boot2 "w25q128jvxq" — no
+  //     hardware/pin description beyond what pins_arduino.h contains.
+  //  3. amken.us and amken3d.com (official vendor sites, live
+  //     2026-07-13): Amken LLC/Amken3D describes itself as a 3D-printer
+  //     motion-control hardware maker ("Amken3D", "Praxis MC" series
+  //     multi-axis controllers on RP2350B, "Crea8" 7-axis stepper
+  //     controller). The current product lineup shown is "revelop" and
+  //     "revelop e-S" only — "Bunny"/"BunnyBoard" is NOT listed as a
+  //     current product on either site, suggesting it is an earlier or
+  //     discontinued/superseded SKU with no public product page,
+  //     manual, schematic, or datasheet currently reachable.
+  //  4. github.com/amken3d (org repos: gopper — a TinyGo port of
+  //     Klipper firmware targeting RP2040/RP2350 — and Pingo, a
+  //     desktop RP2040/RP2350 pin-conflict-detection tool): neither
+  //     repo's browsable content contains a "Bunny"-specific board
+  //     profile, pin table, or LED polarity information.
+  //  5. WebSearch across many query variations ("Amken Bunny board",
+  //     "BunnyBoard Amken RP2040 stepper", "Amken Bunny review/forum/
+  //     reddit", "amken3d BunnyBoard datasheet pinout schematic pdf",
+  //     etc.) and grep.app/Sourcegraph code search: no independent
+  //     product page, forum thread, review, schematic, or pinout
+  //     diagram for this specific board was found anywhere.
+  //
+  // Given GPIO24's onboard LED existence is vendor-confirmed but its
+  // drive polarity (active-high vs active-low) is NOT documented
+  // anywhere found, this audit's explicit rule ("if you cannot find
+  // authoritative vendor documentation, report NO CHANGE rather than
+  // guess at polarity from the alias name alone") applies. GPIO24 is
+  // left at its full chip-default derived capabilities (digital_input/
+  // digital_output/pwm_output) — no led_high/led_low tag applied. No
+  // SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies to GPIO24 or
+  // GPIO4/5 either: this board's SPI0/SPI1/Wire0/Wire1 pins are all
+  // sentineled to (31u) — GPIO31 does not physically exist on RP2040 —
+  // and are correctly left undeclared as D-aliases in pins_arduino.h,
+  // so no bus role auto-append can fire on any real GPIO here. No
+  // button or NeoPixel alias of any kind is declared on this board.
+  //
+  // For future reference (sibling boards still in the audit queue):
+  // amken_revelop's pins_arduino.h is nearly identical to this board's
+  // (same PIN_LED=24, same TMC UART on 4/5) except it declares real
+  // Wire0 SDA=28/SCL=29 (this board's Wire0 is sentineled to 31,
+  // i.e. not pinned out). amken_revelop_es is a substantially
+  // different, more capable board: PIN_LED/PIN_NEOPIXEL both at GPIO5
+  // (a NeoPixel, not a plain LED, with NEOPIXEL_POWER at GPIO20), an
+  // onboard LIS2D accelerometer (SPI0, CS=GPIO1), an onboard MAX31865
+  // RTD temperature sensor (CS=GPIO24), and an onboard CAN transceiver
+  // (SPI1 + CS=GPIO9, interrupt=GPIO29) — its own pfodWeb NOTE comment
+  // already documents GPIO0-3 and GPIO8-11 as dedicated. amken_
+  // revelop_plus was not inspected in this session. Same amken.us /
+  // amken3d.com vendor-site limitation (no public docs found) should
+  // be expected for all three.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/amken_bunny/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — matches this
+  // board's own pins_arduino.h A0-A3 = GPIO26-29 declarations exactly.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

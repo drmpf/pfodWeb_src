@@ -1,0 +1,269 @@
+Board: Waveshare RP2350B-Plus-W
+Chip bucket: variants/rp2040/rp2040w/waveshare_rp2350b_plus_w/
+Audit: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion, 2026-07-13.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040w/waveshare_rp2350b_plus_w/board.json (did not
+exist before this audit). Added ONE chipGpios override: GPIO23 (LED2, a real
+RP2350B silicon pin, active-high, tagged digital_output + pwm_output +
+led_high). Confirmed all other CRITICAL-background-fact claims from the
+original import: this board's pins_arduino.h is a real, self-contained
+48-pin RP2350B design (not built on the shared rp2040w/generic/common.h
+template) that already correctly excludes/labels every WiFi-module pin by
+omission. No pins_arduino.h edits were made (no SPI/I2C bus-alias collision
+bug found on GPIO23 or anywhere else). No button or NeoPixel capability was
+added anywhere (neither exists on this board per the schematic + reviews).
+
+FILES READ
+----------
+- variants/rp2040/rp2040w/waveshare_rp2350b_plus_w/pins_arduino.h (full
+  file, 46 declared digital pins + 7 analog, RP2350B, includes
+  <cyw43_wrappers.h>, self-contained -- own real 48-pin layout with pad
+  breakouts P1-P15, NOT the shared generic/common.h template)
+- variants/rp2040/rp2040w/board.json (chip-level defaults, chipGpios: {},
+  connections ["serial","tcp","http","ble"])
+- variants/rp2040/rp2040w/rpipico2w/board.json +
+  boardsDetails/rp2040/rp2040w/rpipico2w/notes.txt (WiFi RP2350 flagship,
+  CYW43 pin-64/LED_BUILTIN precedent)
+- variants/rp2040/rp2040w/pimoroni_pico_plus_2w/board.json + its notes.txt
+  (48-pin RP2350B WiFi board, similar chip variant -- GPIO45 BOOT-button
+  precedent, GPIO47 PSRAM-CS no-override precedent, pin-64 precedent)
+- variants/rp2040/rp2350/pimoroni_pico_plus_2/board.json (non-W sibling in
+  a different chip bucket -- direct precedent for a "#define-only LED with
+  no static-const alias needs a manual chipGpios override" situation,
+  GPIO25 there)
+
+pins_arduino.h KEY FACTS
+-------------------------
+- PINS_COUNT / NUM_DIGITAL_PINS = 46, NUM_ANALOG_INPUTS = 7
+- Includes <cyw43_wrappers.h> (this board uses a Raspberry Pi Radio Module
+  2 / RM2, CYW43439-based, per its own header comment: "NOTE: LED1:
+  LED_WLGP0 B1_GPIO0 (Raspberry Pi Radio Module 2 / RMC20452T)")
+- LED_BUILTIN = (64u) -- LED1, the arduino-pico "pseudo-GPIO 64" convention
+  routed through the RM2/CYW43 wireless chip's own WL_GPIO0, NOT a real
+  RP2350B pin. UNUSUAL: on this board LED_BUILTIN != PIN_LED (they are
+  two different physical LEDs), unlike every other board in this family
+  audited so far.
+- PIN_LED = (23u) -- LED2, a real RP2350B silicon GPIO. Bare #define only,
+  no static-const uint8_t peer alias anywhere in the file (the D0-D22
+  sequence covers GPIO0-22 sequentially and never revisits GPIO23; D23 is
+  remapped to header pin 40 instead).
+- SPI0: MISO=16, MOSI=19, SCK=18, SS=17 (aliased via static const SS/MOSI/
+  MISO/SCK = PIN_SPI0_*)
+- SPI1: MISO=12, MOSI=15, SCK=14, SS=13 (declared via #define only, not
+  aliased to bare SS/MOSI/MISO/SCK)
+- Wire0: SDA=8, SCL=9; Wire1: SDA=6, SCL=7
+- RP2350_PSRAM_CS = (47u) -- bare #define, no static-const peer alias.
+  Comment explicitly states "NOTE: does not come with a PSRAM chip"
+  (footprint present on PCB per schematic, unpopulated on this variant).
+- DVI connector pins (CKN/CKP/D0N/D0P/D1N/D1P/D2N/D2P) declared via
+  #define, overlapping GPIO12-19 (shared with SPI1/D12-D19) -- outside
+  this task's scope, not a button/LED/NeoPixel/pin-exclusion issue.
+- D0-D22 (GPIO0-22), D23-D25 = header pins 40-42, D26-D37 = pad-mapped
+  GPIO24-35 (P1-P15), A0-A6 = GPIO40-46. Confirmed via direct read: NO
+  static-const alias anywhere in the file resolves to GPIO23, GPIO36,
+  GPIO37, GPIO38, or GPIO39.
+- Header comment already documents "GPIO36 = WL_ON, GPIO37 = WL_D, GPIO38
+  = WL_CS, GPIO39 = WL_CLK" (RM2 wireless-module control bus) -- these 4
+  GPIOs have zero static-const aliases anywhere in the file, matching the
+  comment's own claim that they're dedicated to the wireless module.
+- No PIN_NEOPIXEL / NUM_NEOPIXEL define anywhere in the file.
+- No PIN_BUTTON alias anywhere in the file.
+
+VENDOR/PRIMARY SOURCES CONSULTED
+----------------------------------
+1. files.waveshare.com/wiki/RP2350B-Plus-W/RP2350B-Plus-W.pdf (official
+   schematic PDF, linked directly from this board's own pins_arduino.h
+   header comment). The wiki page itself (waveshare.com/wiki/
+   RP2350B-Plus-W) returned HTTP 403 to WebFetch, and web.archive.org is
+   blocked for this tool -- so the schematic PDF was fetched directly
+   instead, matching the method used for other Waveshare boards this
+   session. The PDF text/vector content (Altium Designer export) WAS
+   readable directly via the Read tool (unlike some other boards' PDFs
+   this session that came back as opaque binary streams to WebFetch's
+   own extractor). Confirmed by direct inspection of the schematic:
+     - LED1: net "LED_WLGP0", sourced from the RM2 module connector's
+       "B1_GPIO0" pin, through resistor R17 (470R) to the LED1 anode,
+       cathode tied to GND. This is the CYW43/RM2 wireless chip's own
+       GPIO0, matching pins_arduino.h's `LED_BUILTIN (64u)`.
+     - LED2: net "LED_GP23"/"LED GP23", sourced directly from RP2350B
+       silicon pin GPIO23 (schematic pin 23 on the RP2350B symbol),
+       through resistor R22 (470R) to the LED2 anode, cathode tied to
+       GND -- IDENTICAL topology to LED1's R17/LED1 pair, just driven
+       from a real chip pin instead of the wireless module. Anode-toward-
+       driver / cathode-toward-GND is the standard "GPIO HIGH lights the
+       LED" (active-high) wiring.
+     - Key1: connected to the "USB_BOOT" net, which ties to QSPI_SS --
+       the standard RP2350 BOOTSEL button (selects USB mass-storage
+       bootloader at reset), read via the boot ROM rather than a normal
+       digitalRead()-capable GPIO.
+     - Key2: connected directly to the RUN pin -- a hardware reset
+       button, not a GPIO at all.
+     - GPIO36/37/38/39 (labelled WL_ON/WL_D/WL_CS/WL_CLK on the
+       schematic's "GPIO_OUT" block) route to the RM2 module connector's
+       A5_DI/A6_DO/A3_SCLK and B2_CS/B5_WLON pins -- confirms the wireless
+       control bus assignment already stated in pins_arduino.h's own
+       header comment.
+     - GPIO47/RP2350_PSRAM_CS routes to a "PSRAM" schematic block (U1,
+       standard SPI PSRAM footprint: /CS, DO, /WP, GND, DI, CLK, /HOLD,
+       VDD) -- footprint exists on the PCB design but this board variant
+       ships without the chip populated, per pins_arduino.h's own "does
+       not come with a PSRAM chip" comment.
+     - No NeoPixel/WS2812/addressable-RGB-LED footprint anywhere on the
+       schematic -- only the two plain single-color LED1/LED2 circuits
+       described above.
+2. github.com/earlephilhower/arduino-pico issue #3297, "bug: LED1 on
+   Waveshare RP2350B Plus W (controlled by CYW43/RM2 GPIO0) apparently not
+   64u?" (fetched directly). Independently confirms LED1 = RM2/CYW43 GPIO0
+   (the pin-64 convention) and LED2 = RP2350's GPIO23, and specifically
+   reports "LED2 (GPIO23) behaves correctly, turning off reliably when set
+   LOW" -- i.e. LOW = off, HIGH = on, active-high, corroborating the
+   schematic-derived polarity above. The reported bug in that issue is
+   about pin 64/LED1 misbehaving on the reporter's arduino-pico core
+   version (a runtime/core issue), not about GPIO23/LED2 -- out of scope
+   for this board.json.
+3. www.cnx-software.com/2026/06/01/waveshare-rp2350b-plus-w-raspberry-pi-pico-2-w-sized-board-with-41-gpios-16mb-flash-usb-c-port/
+   (review article, fetched directly): confirms "2x user LEDs" and "Reset
+   and Boot buttons" -- no mention of any additional GPIO-45-style
+   repurposable user button (unlike the Pimoroni Pico Plus 2/2W boards),
+   consistent with the schematic showing only Key1 (BOOTSEL) and Key2
+   (RUN/reset). Confirms Raspberry Pi RM2 module (WiFi 4 + Bluetooth 5.2),
+   RP2350B, 16MB flash, USB-C.
+4. WebSearch cross-check ("Waveshare RP2350B-Plus-W LED2 GPIO23 active
+   high low BOOT button") -- LLM-summarised secondary sources broadly
+   agreed with the above (LED2 = GPIO23, Key1/Key2 = BOOT/RESET) but one
+   summary mischaracterised the polarity as "active-low"; the schematic
+   (source 1) and the arduino-pico GitHub issue (source 2) are primary/
+   authoritative and were relied on for the final active-high conclusion
+   recorded in board.json, not the search-engine summary.
+5. This board's own pins_arduino.h header comment (already present before
+   this audit) independently states "NOTE: LED2: GPIO23" and "NOTE: LED1:
+   LED_WLGP0 B1_GPIO0 (Raspberry Pi Radio Module 2 / RMC20452T)" plus the
+   WL_ON/WL_D/WL_CS/WL_CLK GPIO36-39 mapping -- this audit's schematic-
+   derived findings match that comment exactly, confirming the original
+   repo import already got every pin role right for this board. This
+   audit's contribution is making LED2/GPIO23's Designer capabilities
+   (tagging that a header comment cannot express) an explicit, sourced
+   part of the per-board board.json.
+6. variants/rp2040/rp2040w/rpipicow/board.json, rpipico2w/board.json, and
+   pimoroni_pico_plus_2w/board.json (sibling WiFi-bucket boards audited
+   earlier this session) -- used as direct schema/style/reasoning
+   precedent for the pin-64/LED_BUILTIN "leave completely untagged"
+   conclusion and for the "#define-only LED with no static-const alias
+   needs a manual chipGpios override" mechanism (cross-referenced against
+   variants/rp2040/rp2350/pimoroni_pico_plus_2/board.json's GPIO25 case,
+   the closest direct analogue: a real, non-wireless-chip GPIO LED
+   declared #define-only).
+
+PER-PIN FINDINGS
+-----------------
+GPIO23 (PIN_LED / LED2, a real RP2350B silicon pin -- NOT LED_BUILTIN,
+which is the separate pin-64 wireless-chip LED1):
+  CONFIRMED active-high via the official schematic (GPIO23 -> 470R R22 ->
+  LED2 anode -> cathode -> GND) and corroborated by the arduino-pico
+  GitHub issue #3297's independent behavioural report ("turning off
+  reliably when set LOW"). #define-only in pins_arduino.h (no
+  static-const alias), so build_boards.js's alias-sweep never picks it up
+  automatically -- added via chipGpios: capabilities
+  ["digital_output","pwm_output","led_high"], matching the established
+  pimoroni_pico_plus_2/GPIO25 and rpipico/rpipico2/GPIO25 "#define-only
+  real-GPIO LED" precedent (pwm_output kept since arduino-pico's
+  analogWrite() works on any RP2350 GPIO, enabling brightness dimming).
+  No SPI/I2C alias collision: this board's SPI0 (16/17/18/19), SPI1
+  (12/13/14/15), Wire0 (8/9), Wire1 (6/7) pins do not include GPIO23, so
+  build_boards.js's unconditional SS/SDA/SCL/MOSI/MISO/SCK alias
+  auto-append never contaminates this pin.
+
+Pin 64 (LED_BUILTIN, RM2/CYW43 wireless-chip pseudo-GPIO for LED1 /
+WL_GPIO0): CONFIRMED wireless-chip-controlled via the schematic (net
+"LED_WLGP0" sourced from the RM2 connector's B1_GPIO0 pin) -- NOT a real
+RP2350B silicon pin, outside the chip's real GPIO0-47 address space, and
+driving it correctly requires cyw43_arch_init() to have already run
+(guaranteed only by this chip bucket's tcp.ino/http.ino templates calling
+WiFi.mode()/WiFi.begin(), not by the shared serial.ino template). Left
+completely untagged -- no chipGpios entry -- identical reasoning already
+fully documented in rpipicow/board.json, rpipico2w/board.json, and
+pimoroni_pico_plus_2w/board.json for the same pseudo-pin-64 mechanism.
+
+GPIO36/37/38/39 (WL_ON/WL_D/WL_CS/WL_CLK, RM2 wireless-module control
+bus): CONFIRMED via the schematic (routes to the RM2 connector's
+A5_DI/A6_DO/A3_SCLK/B2_CS/B5_WLON pins) and matching this board's own
+pre-existing pins_arduino.h header comment verbatim. Already fully
+excluded from the generated pin set by omission -- no D<n>/A<n> or other
+static-const alias anywhere in pins_arduino.h resolves to any of these
+four GPIO numbers. No chipGpios entry added -- adding one would
+incorrectly re-introduce pins that are not physically user-accessible on
+this board, per the same reasoning documented for rpipicow/rpipico2w's
+GPIO23/24/25/29 and pimoroni_pico_plus_2w's GPIO23/24/25/29 (different
+GPIO numbers here because this board uses a dedicated RM2 module
+connector rather than the shared-SPI scheme those boards use, but the
+same "already excluded, leave alone" conclusion applies).
+
+GPIO47 (RP2350_PSRAM_CS) -- NO CHANGE, deliberately no chipGpios entry:
+Routes to an unpopulated "PSRAM" footprint (U1) on the schematic; this
+board's own pins_arduino.h explicitly comments "NOTE: does not come with
+a PSRAM chip" next to the #define. Bare #define only, no static-const
+peer alias anywhere in the file, so build_boards.js's alias-sweep never
+picks it up regardless of the board.json. Already correctly absent from
+the generated pin list with zero board.json change needed -- matching the
+identical pimoroni_pico_plus_2/GPIO47 and pimoroni_pico_plus_2w/GPIO47
+precedent. Adding a chipGpios entry would incorrectly re-introduce a pin
+that isn't real, populated hardware on this specific board variant.
+
+BUTTON -- NOT FOUND (BOOTSEL/RESET only), NO CHANGE:
+Schematic shows exactly two buttons: Key1 (BOOTSEL, tied to QSPI_SS,
+read via boot ROM -- never tagged per this repo's established
+convention) and Key2 (tied directly to the RUN/reset pin, not a GPIO at
+all). No third, GPIO-connected, repurposable "user button" exists on this
+board (unlike the Pimoroni Pico Plus 2/2W siblings' GPIO45 BOOT-as-
+user-button) -- independently corroborated by cnx-software.com's review
+listing only "Reset and Boot buttons". No "button" capability tag added
+anywhere.
+
+NEOPIXEL -- NOT FOUND, NO CHANGE:
+No PIN_NEOPIXEL/NUM_NEOPIXEL define in pins_arduino.h, no addressable/
+WS2812 LED footprint anywhere on the schematic, and cnx-software.com's
+review describes only "2x user LEDs" (both plain single-color, per the
+schematic circuits above). Per this audit's "report NO CHANGE rather than
+guess" policy, no led_neopixel tag added.
+
+BUS-COLLISION CHECK (per task's known bug class)
+--------------------------------------------------
+Confirmed board's SPI0 (16/17/18/19), SPI1 (12/13/14/15), Wire0 (8/9),
+Wire1 (6/7) pin numbers do not coincide with GPIO23 (LED2, the only
+tagged real GPIO on this board). build_boards.js's unconditional
+SS/SDA/SCL/MOSI/MISO/SCK alias auto-append therefore never contaminates
+GPIO23 -- no #define removal needed anywhere in pins_arduino.h.
+
+CRITICAL-BACKGROUND-FACT VERIFICATION
+---------------------------------------
+Per the task's stated background ("this board ... was already confirmed
+during the original import to correctly omit or clearly SPI-label its
+WiFi-chip pins"): CONFIRMED STILL TRUE. This board's pins_arduino.h
+already correctly (a) has no static-const alias for any of GPIO36-39
+(the RM2 wireless-bus lines) or GPIO23 vs pin-64 confusion, and (b)
+carries an explicit, accurate header comment documenting the WL_ON/WL_D/
+WL_CS/WL_CLK mapping and both LED locations. The only genuinely NEW
+finding from this audit is LED2/GPIO23's Designer capability tagging
+(active-high digital_output/pwm_output/led_high) -- a capability that a
+plain header comment cannot express and that pre-dates this repo's
+board.json mechanism entirely. No button or NeoPixel findings were newly
+discovered (both confirmed absent).
+
+RESULT
+------
+- variants/rp2040/rp2040w/waveshare_rp2350b_plus_w/board.json: CREATED
+  (new file -- full chip-level defaults copied verbatim + one chipGpios
+  override for GPIO23/LED2).
+- JSON validity confirmed via manual `//`-comment-stripping (line-by-line,
+  skipping "://" inside URLs) + JSON.parse -- no build_boards.js
+  invocation, per task instructions. Result: valid, chipGpios keys: ["23"].
+- No pins_arduino.h edits needed (no bus-collision bug found).
+- No button or NeoPixel tag added (neither exists on this board).
+- No chipGpios entry added for pin 64 (LED1/WL_GPIO0 pseudo-pin), for
+  GPIO36/37/38/39 (RM2 wireless-bus lines, already excluded by omission),
+  or for GPIO47/PSRAM-CS (unpopulated footprint, already excluded by the
+  parsing mechanism itself) -- all documented above as deliberate,
+  precedent-matching non-changes.

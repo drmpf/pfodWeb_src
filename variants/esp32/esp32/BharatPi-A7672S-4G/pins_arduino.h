@@ -17,8 +17,10 @@ static const uint8_t A5 = 0;
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;
 
-static const uint8_t TX_4G = 17;
-static const uint8_t RX_4G = 16;
+// pfodWeb NOTE: TX_4G/RX_4G (GPIO17/16) deliberately NOT declared -
+// dedicated onboard A7672S cellular modem UART. Already absent from the
+// ESP32-classic chip default (PSRAM-reserved range), so removing the
+// alias is sufficient - no board.json override needed.
 
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;

@@ -1,0 +1,96 @@
+Board: heltec_wireless_stick_lite_v3 (variants/esp32/esp32s3/heltec_wireless_stick_lite_v3)
+Research date: 2026-07-11
+
+1. SOURCES CONSULTED
+
+https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/heltec/heltec_wireless_stick_lite_v3/heltec_wireless_stick_lite_v3_procpu.dts
+  - PRIMARY CONFIRMING SOURCE. Official Zephyr vendor board devicetree.
+    Contains explicit gpio-leds and gpio-keys nodes:
+      led0: led { gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>; label = "White LED"; };
+        -> &gpio1 pin 3 = GPIO 32+3 = GPIO35 (matches ESP32-S3 Zephyr gpio0/gpio1
+           bank split convention: gpio0 = pins 0-31, gpio1 = pins 32+).
+        -> Confirms GPIO35 = single-color (white) LED, ACTIVE_HIGH polarity.
+      button0: button_0 { gpios = <&gpio0 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+                label = "USER SW"; zephyr,code = <INPUT_KEY_0>; };
+        -> Confirms GPIO0 = onboard user button ("USER SW"), active-low with
+           internal pull-up (standard button wiring: press pulls pin low).
+
+https://docs.zephyrproject.org/latest/boards/heltec/heltec_wireless_stick_lite_v3/doc/index.html
+  - Zephyr board doc page. Pinout table lists "GPIO35 - PWM LED Control" and
+    "GPIO0 - User Switch" (header J3.6). Also lists a separate hardware
+    "NC Reset Switch" at J3.14 (not a GPIO/programmable button, just reset).
+    Corroborates the devicetree findings above.
+
+https://www.espboards.dev/esp32/heltec-wifi-lora-32-v3/
+  - Combined pin-reference page for WiFi LoRa 32(V3)/Wireless shell(V3)/
+    Wireless stick lite(V3) (treated as one shared pinout). Lists pin table
+    entries "35 PWM LED" and "48 LED_BUILTIN" (the GPIO48 entry belongs to a
+    different sibling board variant's RGB_BUILTIN, not this board - this
+    board's own pins_arduino.h has no GPIO48 LED reference at all).
+
+https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wireless-stick-lite/
+  - Official Heltec product overview page for this exact board. Confirms
+    links to vendor datasheet/schematic/pin-map but the fetched page excerpt
+    itself contained no inline LED/button pin details.
+
+https://resource.heltec.cn/download/Wireless_Stick_Lite_V3/HTIT-WSL_V3(Rev1.1).pdf
+  - Official Heltec datasheet PDF (Rev 1.1, Sep 2022). Located via search but
+    could not be reliably text-extracted by the fetch tool (binary/compressed
+    PDF stream). Not used as a direct source beyond confirming its existence
+    and title/date. Left for a human reviewer to inspect visually if desired:
+    https://resource.heltec.cn/download/Wireless_Stick_Lite_V3/HTIT-WSL_V3_Schematic_Diagram.pdf
+
+    (WebSearch AI-summarized snippets also repeatedly asserted "an addressable
+    RGB LED driven by GPIO38" for this board. This claim was NOT corroborated
+    by the Zephyr devicetree (the authoritative machine-readable source, which
+    only defines one plain gpio-leds node on GPIO35) or by this board's own
+    pins_arduino.h (no GPIO38 LED reference, no RGB_BUILTIN macro, no
+    soc_caps.h include - unlike the sibling heltec_wireless_stick_v3 board,
+    which DOES use an RGB_BUILTIN pattern on GPIO48). Treated as an unreliable/
+    likely-conflated search-summary artifact and NOT used as evidence.)
+
+/c/ai/aicode/pfodWeb/variants/esp32/esp32s3/heltec_wireless_stick_lite_v3/pins_arduino.h (local, vendor-authored)
+  - static const uint8_t LED_BUILTIN = 35; (plain alias, no RGB_BUILTIN macro)
+  - static const uint8_t TX = 43; RX = 44; (checked for conflict - no clash
+    with GPIO0 or GPIO35)
+  - Consistent with, but NOT used alone as proof for, the Zephyr-confirmed
+    GPIO35 LED / GPIO0 button assignments above (per task rules, alias names
+    alone are not sufficient evidence - Zephyr devicetree + doc page were the
+    deciding sources).
+
+2. PINS CONSIDERED BUT NOT TAGGED
+
+GPIO35 (LED, confirmed active-high single-color/white LED via Zephyr dts) -
+  NOT TAGGED. Reason: GPIO35 does NOT currently exist as an entry in this
+  board's chipGpios map, nor in the chip-level default
+  variants/esp32/esp32s3/board.json. The chip-level file's own comment states
+  GPIOs 33-37 are blanket-excluded chip-wide as "octal flash/PSRAM" pins for
+  ALL ESP32-S3 boards, regardless of whether a given board's specific module
+  (this one is ESP32-S3FN8, no PSRAM) actually uses octal PSRAM. This board's
+  own vendor pins_arduino.h clearly repurposes GPIO34/35/36/37 for other
+  functions (SS/LED/Vext/MISO), so the blanket exclusion may not really apply
+  to this specific board - but that is a chip-level/base-file pin-exclusion
+  policy question, not something in scope for this capability-tagging task.
+  Per task instructions ("do NOT touch existing pin-exclusions... only modify
+  the specific GPIO capability array(s) you're tagging"), adding a brand-new
+  chipGpios["35"] entry would go beyond tagging an existing entry and would
+  effectively reverse an inherited chip-level exclusion decision. This is a
+  genuine, confirmed-by-evidence LED pin that I deliberately left UNTAGGED
+  and unmodified - not a guess, not an oversight. Flagging for human review:
+  should GPIO35 (and by extension GPIO34/36/37 on this board, already
+  documented as excluded/reserved for SS/Vext/MISO) be reinstated into
+  chipGpios as a board-specific override of the chip-level octal-PSRAM
+  assumption, given this module has no PSRAM?
+
+No other candidate button/LED pins were found for this board (only one LED,
+one user button, and one separate non-GPIO hardware reset switch per the
+Zephyr board documentation).
+
+3. SUMMARY OF WHAT WAS TAGGED
+
+TAGGED: GPIO0 -> ["digital_input", "button"] (onboard "USER SW" / PRG button,
+confirmed via Zephyr board devicetree gpio-keys node). GPIO0 already existed
+in chipGpios with no TX/RX conflict (TX=43, RX=44), so the capability array
+was safely modified in place.
+GPIO35 (LED) was investigated and confirmed via vendor/Zephyr sources but was
+NOT tagged, for the chip-level pin-exclusion reason explained above.

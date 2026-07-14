@@ -1,0 +1,75 @@
+Board: waveshare_esp32_s3_touch_lcd_5 (Waveshare ESP32-S3-Touch-LCD-5, 5.0" model)
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_lcd_5
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+1. https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-5
+   WebFetch returned HTTP 403 (blocked). Relied on WebSearch AI-summary snippets of
+   this page instead (see below) plus mirrors of the same content.
+
+2. https://docs.waveshare.com/ESP32-S3-Touch-LCD-5
+   WebFetch succeeded. States board has a BOOT button ("press and hold while powering
+   on for program flashing") and a RESET button ("press to reset the ESP32S3"), with
+   no GPIO pin numbers documented for either. Also lists status LEDs DONE (battery
+   charge complete), CHG (battery charging), PWR (power) as indicators driven by the
+   onboard charge-management chip (CS8501), not by MCU GPIO. States GPIO pins are
+   nearly all consumed by the 5" LCD interface, and a CH422G IO expander chip is used
+   for extra control lines (TP_RST, LCD_BL, LCD_RST, SD_CS, USB_SEL, isolated I/O),
+   not for a user button or user LED.
+
+3. https://www.utsource.net/wiki/ESP32-S3-Touch-LCD-5 (mirror of Waveshare wiki)
+   WebFetch succeeded. Confirms BOOT + RESET buttons (same wording as above, no GPIO
+   numbers given for either). Confirms DONE/CHG/PWR are the only onboard LEDs, all
+   battery/power indicators, not user/GPIO controllable. Gives CH422G expander pin
+   table: EXIO1=TP_RST, EXIO2=LCD_BL(backlight), EXIO3=LCD_RST, EXIO4=SD_CS,
+   EXIO0/EXIO5=isolated digital inputs (DI0/DI1), OD0/OD1=digital outputs (DO0/DO1).
+   Explicitly no RGB/NeoPixel/WS2812 LED and no GPIO-assigned user button mentioned.
+
+4. https://spotpear.com/wiki/ESP32-S3N16R8-5-inch-LCD-Captive-TouchScreen-Display-LVGL-HMI-800x480.html
+   (third-party reseller wiki, same board) WebFetch succeeded. Same conclusion:
+   BOOT + RESET buttons with no GPIO numbers documented; DONE/CHG/PWR charge-status
+   LEDs only; no RGB/NeoPixel LED mentioned; no GPIO tie for buttons/LEDs given.
+
+5. WebSearch query "ESP32-S3-Touch-LCD-5 schematic BOOT GPIO0 RESET EN" (search
+   snippets only, page not fetched directly). Snippet stated the DTR/RTS
+   auto-program-download circuit ties to GPIO0 and EN(CHIP_PU) — i.e. the classic
+   ESP32 USB-serial auto-reset/bootloader circuit, not a general-purpose
+   software-readable user button.
+
+6. WebSearch queries for "files.waveshare.com .../ESP32-S3-Touch-LCD-5 schematic" and
+   "github waveshare ESP32-S3-Touch-LCD-5 demo schematic" — no accessible schematic
+   PDF or GitHub repo specific to this 5.0" board was found/fetchable; only sibling
+   boards' schematic PDFs turned up (LCD-2, LCD-3.5, LCD-1.69), which are for
+   different products and were not used as evidence for this board.
+
+PINS CONSIDERED AND NOT TAGGED
+-------------------------------
+- GPIO0 (BOOT/flash-mode strap pin): This is the standard ESP32-S3 BOOT button,
+  tied to GPIO0 per the DTR/RTS auto-reset circuit description found in source 5.
+  However GPIO0 is ALREADY in this board's existing pin-exclusion list in board.json
+  (used onboard as WS_LCD_G3, the ST7262 LCD's green-3 data line — see
+  pins_arduino.h line 24 and the board.json header NOTE). Per task rules, pins
+  inside an existing chip-level/board-level exclusion must NOT be re-added even if
+  a button is confirmed on them. No guess made; left untagged and excluded exactly
+  as before. No board.json edit made for this reason.
+- EN/CHIP_PU (RESET button): hardware reset line, not a GPIO readable by firmware,
+  so not taggable as a "button" capability under this scheme regardless. Not a
+  chipGpios entry at all.
+- CH422G expander pins (EXIO0-5, OD0/OD1 - TP_RST/LCD_BL/LCD_RST/SD_CS/DI0/DI1/DO0/DO1):
+  these are behind an I2C IO-expander chip, not native ESP32-S3 GPIOs, so they have
+  no corresponding chipGpios entry to tag in board.json regardless of function. Not
+  a button or user LED anyway (backlight/reset/CS/isolated-IO functions only).
+- DONE/CHG/PWR LEDs: confirmed across 3 independent sources as passive battery
+  charge/power indicators wired to the CS8501 charge-management chip, not to any
+  ESP32-S3 GPIO. Not user-controllable, not tagged.
+- No WS2812/NeoPixel/RGB LED found anywhere in the fetched documentation for this
+  specific 5.0" model (cross-checked per this session's known hallucination risk
+  on Waveshare sibling-board pages) — none exists on this board, nothing to tag.
+
+SUMMARY OF WHAT WAS TAGGED
+----------------------------
+Nothing was tagged. No confirmable onboard user-readable button or user-controllable
+LED exists on a native (non-expander) GPIO for this board; the one candidate
+(BOOT button on GPIO0) sits on a pin already excluded for a dedicated LCD data-line
+role. board.json was NOT modified.

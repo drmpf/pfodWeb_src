@@ -1,0 +1,36 @@
+Board: crabik_slot_esp32_s3 (Crabik Slot ESP32-S3), chip esp32s3
+Date: 2026-07-14 (documentation backfill — findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- Official CrabikBoards/slot-esp32-s3-hardware KiCad schematic (Switch:SW_Push
+  on net GPIO0/BOOT; Device:LED for the onboard user LED)
+- Vendor docs listing "LEDs indicate power, charge and user"
+- pins_arduino.h BOOT_BTN / LED_BUILTIN / USER_LED aliases
+
+Per-pin findings:
+- This is the Crabik Slot ESP32-S3, a modular connector board where
+  S1-S20 are genuinely general-purpose numbered slots.
+- GPIO15: excluded entirely from chipGpios - EN_TROYKA, the power-enable
+  line for the whole Troyka modular connector ecosystem, not a slot pin
+  itself; toggling it would cut power to every attached Troyka module.
+- GPIO0: tagged "button" - confirmed physical BOOT_BTN pushbutton
+  (Switch:SW_Push on net GPIO0/BOOT) in the official
+  CrabikBoards/slot-esp32-s3-hardware KiCad schematic; matches BOOT_BTN
+  alias in pins_arduino.h. Capabilities: ["digital_input", "button"].
+- GPIO21: considered but NOT tagged - LED_BUILTIN/USER_LED. An onboard LED
+  is confirmed (Device:LED in schematic; vendor docs list "LEDs indicate
+  power, charge and user") but its active-high/active-low polarity could
+  not be independently confirmed from the available schematic text, so it
+  was left as-is with standard capabilities ["digital_input",
+  "digital_output", "pwm_output"].
+- GPIO1,2,3,4,5,6,7,8,9,10: no tag - standard capabilities
+  ["analog_input", "digital_input", "digital_output", "pwm_output"].
+- GPIO11,12,13,14,16,17,18: no tag - standard ADC2-range capabilities
+  ["analog_input_serial", "digital_input", "digital_output", "pwm_output"].
+- GPIO38,39,40,41,42,43,44,45,46,47,48: no tag - standard capabilities
+  ["digital_input", "digital_output", "pwm_output"].
+
+Summary: GPIO15 excluded (Troyka ecosystem power-enable line, not a slot
+pin); GPIO0 tagged button (BOOT_BTN, confirmed via vendor KiCad schematic);
+GPIO21 onboard LED identified but left untagged due to unconfirmed
+polarity.

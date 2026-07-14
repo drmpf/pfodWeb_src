@@ -1,0 +1,60 @@
+Board: lilygo_t3_s3_lr1121
+Path: variants/esp32/esp32s3/lilygo_t3_s3_lr1121
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/docs/en/t3_s3_lr1121/t3_s3_lr1121_hw.md
+  Official LilyGo hardware doc for THIS exact board (plain "t3_s3_lr1121",
+  not the "_pa" sibling). States: "BOOT: Boot mode button, customizable"
+  (GPIO0) confirming a real onboard user/BOOT button. Also states:
+  "The LED is connected to ESP32 GPIO37, and the LED is turned on or off
+  by writing a high or low level" confirming a real onboard single-color
+  LED on GPIO37, but does not state polarity (HIGH=on vs LOW=on) and does
+  not say whether it is a simple LED or addressable/NeoPixel. Also
+  mentions a separate CHG (charge status) LED which is a fixed-function
+  charger IC indicator, not GPIO-controlled, so out of scope.
+
+https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/master/docs/en/t3_s3_lr1121/t3_s3_lr1121_hw.md
+  Raw fetch of the same page, re-checked verbatim wording for the BOOT
+  button and LED entries; confirms wording above, no additional polarity
+  detail available on this page.
+
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/tree/master/docs/en
+  Used to confirm the repo has a dedicated "t3_s3_lr1121" doc folder
+  distinct from "t3_s3_lr1121_pa" (and the sx1262/sx127x/sx1280/sx1280pa
+  siblings), so the doc fetched above is for the correct exact variant.
+
+https://wiki.lilygo.cc/get_started/en/LoRa_GPS/T3-S3-LR1121/T3-S3-LR1121.html
+  Returned HTTP 404 when fetched directly; not usable as a source (search
+  snippet only, not verified page content, so not relied upon).
+
+Local repo file read: variants/esp32/esp32s3/board.json (chip-level
+default for esp32s3) - confirmed GPIO37 (and the whole GPIO22-37 range)
+has no chipGpios entry there either, i.e. the exclusion is pre-existing
+at the chip level (not something introduced by this board's own prior
+pin-exclusion audit note about the SD card / LR1121 radio lines).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+GPIO37 (onboard user LED, per vendor doc above) - NOT TAGGED.
+  Reason: GPIO37 has no entry in this board's chipGpios map, and it also
+  has no entry in the chip-level default esp32s3/board.json - it falls
+  inside the chip-level pin-exclusion range GPIO22-37 (this range covers
+  the ESP32-S3's octal SPI PSRAM/flash pins on modules that use them).
+  Per task instructions, re-adding an excluded GPIO is out of scope for
+  this pass even though the LED is genuinely confirmed to exist there.
+  This is a clear pre-existing-exclusion case, not a guess - flagging
+  for human review in case the exclusion should be reconsidered for this
+  specific board variant (i.e. confirm whether GPIO22-37 really is
+  reserved for octal PSRAM/flash on this exact module, or whether that
+  chip-level exclusion is overly broad for boards that don't use octal
+  PSRAM).
+  No polarity (HIGH=on vs LOW=on) was determined either, since it became
+  moot once the exclusion was found - left fully undetermined, no guess
+  made.
+
+TAGGED
+------
+GPIO0 -> ["digital_input", "button"] (BOOT/user button, confirmed by
+official LilyGo hardware doc for this exact board variant).

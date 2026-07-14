@@ -1,0 +1,195 @@
+RP2040 family audit — board: vicharak_shrike-lite (chip bucket: rp2040)
+Date: 2026-07-13
+
+SUMMARY (one line): Vicharak Shrike-Lite is a real, selectable board
+(confirmed in variants/rp2040/boards.txt, NOT an orphan); its sole
+identity pin is GPIO4 (PIN_LED / LED_BUILTIN), confirmed as an
+active-high onboard "Blue LED" via Zephyr's official upstream board
+port; no onboard button is wired to any normal GPIO; no SDA/SCL/SS/
+MOSI/MISO/SCK collision exists on GPIO4 for this board. Added a
+per-board board.json tagging GPIO4
+["digital_output","pwm_output","led_high"].
+
+BOARDS.TXT CHECK
+----------------
+Grepped variants/rp2040/boards.txt for "vicharak_shrike-lite" and found
+a full, complete stanza (not a stray/partial leftover):
+  vicharak_shrike-lite.name=Vicharak Shrike-Lite
+  vicharak_shrike-lite.vid.0=0x2e8a / pid.0=0xf00a
+  vicharak_shrike-lite.vid.1=0x2e8a / pid.1=0xf10a
+  vicharak_shrike-lite.build.usbvid/usbpid = same 0x2e8a/0xf00a
+  vicharak_shrike-lite.build.board=VICHARAK_SHRIKELITE
+  vicharak_shrike-lite.build.mcu=cortex-m0plus
+  vicharak_shrike-lite.build.chip=rp2040
+  vicharak_shrike-lite.build.variant=vicharak_shrike-lite   <-- matches
+    this directory name exactly, confirming the boards.txt entry
+    resolves to variants/rp2040/rp2040/vicharak_shrike-lite/
+  vicharak_shrike-lite.build.usb_manufacturer="Vicharak"
+  vicharak_shrike-lite.build.usb_product="Shrike-Lite"
+  ...plus full upload/flash-menu configuration.
+Conclusion: this board IS real and selectable in the Designer's board
+picker. The task brief's "orphan" caveat did NOT apply here — this is
+a fully-wired boards.txt entry, not a leftover variant directory.
+
+FILES READ
+----------
+- variants/rp2040/rp2040/vicharak_shrike-lite/pins_arduino.h (full file,
+  11 #define lines + `#include "../generic/common.h"`). Comment at top
+  of the file cites https://github.com/vicharak-in/shrike-lite.git as
+  the pin source (that GitHub URL 404s directly via WebFetch, but
+  independent upstream sources below corroborate its pin assignments).
+- variants/rp2040/rp2040/generic/common.h (the shared fallback this
+  board's pins_arduino.h includes) — confirms:
+    static const uint8_t SS = PIN_SPI0_SS;
+    static const uint8_t MOSI = PIN_SPI0_MOSI;
+    static const uint8_t MISO = PIN_SPI0_MISO;
+    static const uint8_t SCK = PIN_SPI0_SCK;
+    static const uint8_t SDA = PIN_WIRE0_SDA;
+    static const uint8_t SCL = PIN_WIRE0_SCL;
+- variants/rp2040/rp2040/board.json (chip-level defaults - boardName,
+  family, pwm, dac, adc, empty chipGpios).
+- variants/rp2040/rp2040/rpipico/board.json (precedent: single onboard
+  LED, active-high, digital_input dropped / pwm_output kept for
+  dimming — this is the pattern followed here).
+- variants/rp2040/rp2040/vccgnd_yd_rp2040/board.json (precedent: full
+  chipGpios override file structure, combo LED+button+NeoPixel board,
+  used as the template/structure for the new board.json).
+
+PINS_ARDUINO.H CONTENTS (for reference)
+----------------------------------------
+  PIN_LED        (4u)      -> LED_BUILTIN
+  PIN_SERIAL1_TX (16u), PIN_SERIAL1_RX (17u)
+  PIN_SERIAL2_TX (8u),  PIN_SERIAL2_RX (9u)
+  PIN_SPI0_MISO  (20u), PIN_SPI0_MOSI (19u), PIN_SPI0_SCK (18u), PIN_SPI0_SS (21u)
+  PIN_SPI1_MISO  (28u), PIN_SPI1_MOSI (27u), PIN_SPI1_SCK (26u), PIN_SPI1_SS (29u)
+  PIN_WIRE0_SDA  (24u), PIN_WIRE0_SCL (25u)
+  PIN_WIRE1_SDA  (6u),  PIN_WIRE1_SCL (7u)
+No NeoPixel or button alias of any kind is declared by this board's
+own pins_arduino.h.
+
+BUS-COLLISION CHECK (task brief's flagged concern)
+---------------------------------------------------
+The task brief specifically flagged this board as "a likely candidate"
+for the confirmed-bug class where a button/LED/NeoPixel GPIO is ALSO
+aliased as SDA/SCL/SS/MOSI/MISO/SCK, because this board's
+pins_arduino.h happens to declare PIN_WIRE0_SDA (24u) as a separate
+#define from PIN_LED (4u) (superficially resembling the
+adafruit_feather_scorpio precedent bug).
+
+Checked ALL SIX bus alias values against GPIO4 explicitly:
+  SS   = PIN_SPI0_SS   = 21  -- not 4
+  MOSI = PIN_SPI0_MOSI = 19  -- not 4
+  MISO = PIN_SPI0_MISO = 20  -- not 4
+  SCK  = PIN_SPI0_SCK  = 18  -- not 4
+  SDA  = PIN_WIRE0_SDA = 24  -- not 4
+  SCL  = PIN_WIRE0_SCL = 25  -- not 4
+(Wire1's SDA=6/SCL=7 are not aliased to the bare SDA/SCL globals in
+common.h — only Wire0's are — but neither equals 4 either way.)
+
+CONCLUSION: No collision exists for this board. GPIO4 is not aliased
+to any SPI/Wire signal, so build_boards.js's auto-append-bus-capability
+behavior will NOT contaminate the confirmed "led_high" tag on GPIO4.
+No pins_arduino.h edit was required (unlike adafruit_feather_scorpio,
+where the collision was real and the #define was removed). The task
+brief's suspicion was reasonable to check but did not pan out for this
+particular board — documented here rather than silently assumed.
+
+VENDOR / ONLINE RESEARCH
+------------------------
+Vendor: Vicharak (vicharak.in / store.vicharak.in), an Indian
+electronics company. Product: "Shrike-Lite" — a low-cost RP2040 +
+small FPGA (Renesas/Silego SLG47910, 1120 LUTs) combo board, marketed
+around $4 (Hackster.io coverage: "The SHRIKE-lite Combines an FPGA and
+RP2040 for Just $4").
+
+Sources consulted for the LED pin/polarity and button question:
+1. Zephyr RTOS's own official upstream board port for this exact
+   board (zephyrproject-rtos/zephyr repo,
+   boards/vicharak/shrike_lite/shrike_lite.dts, fetched directly via
+   raw.githubusercontent.com — fetched twice independently, both times
+   returning matching content):
+     leds {
+       compatible = "gpio-leds";
+       blue_led: blue_led {
+         gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+         label = "Blue LED";
+       };
+     };
+     aliases {
+       fpga-i2c1 = &i2c1;
+       watchdog0 = &wdt0;
+       led0 = &blue_led;
+     };
+   This is the single strongest source: an official, actively
+   maintained upstream board port (not a community guess) explicitly
+   naming GPIO0 pin 4 as a "Blue LED" driven GPIO_ACTIVE_HIGH. No
+   gpio-keys (button) node exists anywhere in this devicetree file.
+2. TinyGo's board definition for vicharak_shrike-lite
+   (tinygo.org/docs/reference/microcontrollers/machine/vicharak_shrike-lite/):
+   `LED = IO4` — an independent toolchain's board file agreeing
+   exactly on GPIO4 as the LED pin. No button constant is defined for
+   this board in TinyGo either.
+3. DeepWiki's auto-generated "Complete Pin Reference" for the
+   vicharak-in/shrike-lite GitHub repo
+   (deepwiki.com/vicharak-in/shrike-lite/10.1-complete-pin-reference):
+   lists GPIO4 as "RP2040 user LED indicator", default state "Off"; no
+   onboard button or NeoPixel pin listed among RP2040 user I/O.
+4. CIRCUITSTATE Electronics "Getting Started with Vicharak Shrike-Lite
+   RP2040 + SLG47910 FPGA Development Board" tutorial: states the board
+   has "User LEDs: 2" in its features list, plus separate "Debug LEDs"
+   (one for RP2040, one for FPGA) and a "Power LED". Cross-referencing
+   against DeepWiki's mention of a distinct "FPGA User LED" on "FPGA
+   Pin 16", the two "User LEDs" are: (a) the RP2040's GPIO4 blue LED
+   confirmed above, and (b) an FPGA-side user LED wired to an FPGA pin,
+   not an RP2040 GPIO at all — out of scope for this repo's GPIO-keyed
+   tagging (no #define in pins_arduino.h references it either). The
+   same tutorial documents onboard Reset and Boot pushbuttons for the
+   RP2040 — these are dedicated reset/bootloader-strapping buttons
+   (the same category as the classic Pico's BOOTSEL button — see
+   rpipico/board.json's note on BOOTSEL not being a normal
+   digitalRead()-able GPIO), not wired to any ordinary GPIO, so no
+   "button" capability applies to any pin on this board.
+5. github.com/vicharak-in/shrike-lite (the repo pins_arduino.h's own
+   top-of-file comment cites as its pin source) returned HTTP 404 via
+   direct WebFetch — likely a private/renamed/moved repo, or the
+   WebFetch tool's GitHub-blob-page limitation. Not load-bearing since
+   sources 1-4 above independently corroborate the same GPIO4/active-high
+   answer via unrelated projects (Zephyr, TinyGo, DeepWiki, CIRCUITSTATE).
+
+PER-PIN REASONING
+------------------
+GPIO4 (PIN_LED / LED_BUILTIN):
+  - Onboard "Blue LED", confirmed ACTIVE-HIGH by Zephyr's official
+    upstream devicetree (GPIO_ACTIVE_HIGH flag), independently
+    corroborated by DeepWiki's separate pin-reference page and by
+    TinyGo's LED=IO4 definition (three independent projects, same pin).
+  - No onboard button is wired to a normal, digitalRead()-able GPIO on
+    this board (Reset/Boot are dedicated strapping buttons, not
+    exposed as ordinary GPIOs) — no "button" capability applies
+    anywhere.
+  - No NeoPixel/addressable RGB LED exists on this board per any
+    source consulted.
+  - Capability set applied: ["digital_output", "pwm_output",
+    "led_high"] — digital_input dropped, matching this repo's
+    established precedent for dedicated onboard LED pins on plain
+    (non-multiplexed) GPIOs (rpipico GPIO25, vccgnd_yd_rp2040 GPIO25).
+    pwm_output kept since arduino-pico's analogWrite() works on any
+    RP2040 GPIO (enables brightness dimming).
+  - No SDA/SCL/SS/MOSI/MISO/SCK collision (see Bus-Collision Check
+    section above) — no pins_arduino.h edit needed.
+
+All other GPIOs on this board (UART/SPI0/SPI1/Wire0/Wire1 pins, plus
+the D0-D22/A0-A2 fallbacks from generic/common.h) were left at their
+chip-level auto-derived defaults — no vendor documentation was found
+suggesting any of them carry a button/LED/NeoPixel role, and none
+collides with GPIO4.
+
+FILE WRITTEN
+------------
+variants/rp2040/rp2040/vicharak_shrike-lite/board.json — full file
+(chip-level defaults copied verbatim + chipGpios override for GPIO4).
+Validated as syntactically correct JSON-with-comments by manually
+stripping `//` line comments (comment-aware, string-safe stripper) and
+running it through JSON.parse() — no build_boards.js require() was
+used per task instructions. Confirmed valid; chipGpios round-tripped
+correctly.

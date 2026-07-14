@@ -1,0 +1,80 @@
+Board: waveshare_esp32_s3_touch_amoled_164 (Waveshare "ESP32-S3-Touch-AMOLED-1.64")
+Task: confirm onboard button/LED and tag GPIO capabilities in board.json.
+
+SOURCES CONSULTED
+-----------------
+1. https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.64
+   (fetched full page HTML directly with curl + browser User-Agent, since
+   the WebFetch tool got HTTP 403 from this domain — grepped the raw HTML.)
+   - Features list states: "Onboard RST and BOOT side buttons, BOOT supports
+     custom button functions, making development and use more flexible."
+     This confirms the BOOT button is a documented, usable, GPIO-readable
+     user button, not just a boot-strap-only pin. Standard ESP32-S3 BOOT
+     button is wired to GPIO0, matching this board's own pins_arduino.h
+     `#define KEY_0 0`.
+   - RST button is the hardware EN/reset button (chip reset line), not a
+     GPIO — confirmed by download-mode instructions ("Long press the BOOT
+     button, press RESET at the same time..."). Not GPIO-tagggable, not a
+     candidate.
+   - Searched the entire fetched page for "LED", "RGB", "WS2812",
+     "NeoPixel", "indicator", "light" (case-insensitive). NO onboard LED of
+     any kind (single-color or addressable) is mentioned anywhere on this
+     board's vendor wiki page. The only "RGB" hits are (a) LVGL color-depth
+     macro documentation (LV_COLOR_DEPTH, RGB565/RGB332/ARGB8888 - unrelated
+     to hardware) and (b) the AMOLED demo firmware description: "first
+     display RGB colors every 1.5 seconds, which can be used to observe if
+     there are any issues with the screen" — this is the SCREEN showing a
+     color test pattern, not a physical WS2812/RGB LED.
+
+2. https://www.waveshare.com/esp32-s3-touch-amoled-1.64.htm (product page)
+   - Consulted via WebSearch tool only (WebFetch got 403). Search-engine
+     AI summary described specs (ESP32-S3R8, IMU, TF slot, battery) but no
+     button/LED GPIO specifics beyond what the wiki page already gave.
+
+3. https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-1.64
+   - Returned HTTP 404 (page does not exist yet on Waveshare's newer docs
+     platform for this specific 1.64" model, confirmed via curl -I). Could
+     not be used. (For comparison, the equivalent page for the 2.16" sibling
+     board, docs.waveshare.com/ESP32-S3-Touch-AMOLED-2.16, does exist and
+     documents a genuine GPIO18 user button + WS2812 LED for THAT different
+     board — not used here since it is a different product.)
+
+4. https://github.com/waveshareteam/Docs_en and
+   https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.64 (attempted)
+   - Both returned HTTP 404 via curl/WebFetch — no dedicated GitHub repo or
+     docs-repo path could be located for this exact 1.64" board at the time
+     of this research. Not used as a source.
+
+5. WebSearch query "ESP32-S3-Touch-AMOLED-1.64 LED RGB WS2812 status
+   indicator" — IMPORTANT CAVEAT: the AI-generated search summary initially
+   asserted "The board features a WS2812 RGB LED and supports both Arduino
+   and LVGL...". This claim was NOT corroborated by the actual vendor wiki
+   page content (see source #1) and is judged to be a hallucination/mix-up,
+   likely bleeding over from other Waveshare boards that do carry an
+   onboard WS2812 (e.g. ESP32-S3-Zero, ESP32-S3-Matrix, and the 2.16"
+   AMOLED sibling board — all mentioned in the same search results).
+   Per task instructions, inference from search-summary text alone (without
+   corroboration from the vendor's own page content) is not sufficient
+   confirmation, so this WS2812 claim was REJECTED and NOT acted on.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- No WS2812/RGB LED GPIO was tagged. Reason: no confirming evidence in the
+  actual vendor wiki page content (source #1) despite an initial (rejected)
+  search-summary claim to the contrary (source #5). This was a deliberate
+  "no guess" decision, not a judgment call — if a human reviewer can find
+  a genuine WS2812 pin definition in Waveshare's official demo firmware or
+  schematic PDF, that would need to be re-verified and tagged separately.
+- RST button: not tagged. It is the ESP32-S3's hardware EN/reset button
+  (resets the whole chip), not a GPIO the firmware can read as a normal
+  digital input, so it is not eligible for the "button" capability tag.
+- Checked GPIO0 (BOOT/KEY_0 button) against this board's TX/RX pins
+  (pins_arduino.h: TX=43, RX=44) — no conflict, GPIO0 is safe to tag.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 capabilities changed from ["digital_input","digital_output",
+"pwm_output"] to exactly ["digital_input","button"], confirmed as the
+onboard BOOT button per Waveshare's own wiki page (see source #1) and
+matching this board's own pins_arduino.h `#define KEY_0 0`. No LED tag
+applied (no confirmable onboard LED found).

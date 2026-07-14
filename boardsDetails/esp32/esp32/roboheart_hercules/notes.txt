@@ -1,0 +1,90 @@
+RoboHeart Hercules — onboard button/LED research notes
+=======================================================
+
+Sources consulted:
+
+1. https://www.espboards.dev/esp32/roboheart-hercules/
+   Third-party pinout summary. Table lists "GPIO0" as "BUTTON_ROBOHEART G0"
+   and (older revision) "GPIO14" as "LED_ROBOHEART". Useful cross-check but
+   not primary vendor evidence on its own.
+
+2. https://github.com/espressif/arduino-esp32/pull/9494
+   ("change(roboheart): Update of LED_ROBOHEART in RoboHeart Hercules pins…")
+   Merged PR by a contributor (evgenimelan) stating: "The built-in 'Blink'
+   LED on the new version of the RoboHeart development board is connected
+   to IO13 instead of IO14," tested on board v0.6L with ESP32-WROOM-32E.
+   Confirms current hardware revision uses GPIO13 for the LED (matches this
+   board's pins_arduino.h: LED_ROBOHEART=13). No button info in this PR.
+
+3. https://github.com/Augmented-Robotics/roboheart-arduino-library
+   (vendor's own GitHub org — Augmented Robotics is the maker of RoboHeart)
+   Repo README, confirmed board is "RoboHeart Hercules Board" (roboheart.de).
+
+4. https://raw.githubusercontent.com/Augmented-Robotics/roboheart-arduino-library/master/pins_RoboHeart.h
+   Vendor's own header file: #define LED_ROBOHEART 13, #define
+   BUTTON_ROBOHEART 0. No polarity comments in the header itself.
+
+5. https://raw.githubusercontent.com/Augmented-Robotics/roboheart-arduino-library/master/examples/RoboHeartLED/RoboHeartLED.ino
+   Vendor's own example sketch. Uses pinMode(LED_ROBOHEART, OUTPUT) and
+   digitalWrite(LED_ROBOHEART, HIGH) to turn the LED ON (prints "LED status:
+   High"). Confirms: simple single-color LED (plain digitalWrite, not
+   NeoPixel/FastLED), ACTIVE-HIGH (HIGH = on).
+
+6. https://raw.githubusercontent.com/Augmented-Robotics/roboheart-arduino-library/main/README.md
+   Vendor README; links to board pinout images
+   images/RoboHeart_Top_Pinout.jpg and images/RoboHeart_Bottom_Pinout.jpg.
+
+7. https://raw.githubusercontent.com/Augmented-Robotics/roboheart-arduino-library/main/images/RoboHeart_Top_Pinout.jpg
+   Vendor's own official pinout diagram (downloaded and visually inspected).
+   Shows two physical pushbuttons silkscreened "RESET" and "BOOT" between
+   the IO12-IO15/JTAG header and the +3.3V/IO0 header, plus a small LED
+   component "D4" with vertical silkscreen text "BLINK" positioned right
+   next to those buttons. This is the strongest single piece of evidence:
+   it visually confirms (a) a real onboard "BOOT" pushbutton exists (the
+   standard ESP32 GPIO0 flash/boot button, matching BUTTON_ROBOHEART=0),
+   and (b) a real onboard LED silkscreened "BLINK" (component D4) exists,
+   matching LED_ROBOHEART and the PR #9494 "built-in 'Blink' LED" language.
+   The "RESET" button is the EN/CHIP_PU reset line, not a GPIO, so it was
+   NOT considered for tagging (pfodWeb button tag only applies to GPIO
+   pins).
+
+8. https://augmented-robotics.com/roboheart/ and https://augmented-robotics.com/roboheart/de/
+   and https://robo-heart.com/en/ — vendor product pages. DNS/network
+   fetch failed from this environment (getaddrinfo ENOTFOUND) so these
+   could not be consulted directly; relied on the GitHub-hosted vendor
+   library/README/images instead (same vendor org, same content per PR
+   #9494 and README links).
+
+9. https://www.instructables.com/Your-Guide-to-Installing-the-RoboHeart-Arduino-Lib/
+   and https://www.hackster.io/news/... — fetch returned only nav/footer
+   content or 403; no usable technical detail obtained, not relied upon.
+
+Pins considered but NOT tagged:
+- GPIO14 (old LED_ROBOHEART location, pre-v0.6L boards): NOT tagged.
+  This board's chipGpios has no entry for GPIO14 in this variant's
+  board.json — GPIO14 falls inside an existing chip-level pin-exclusion
+  (documented in the file's own NOTE as one of the GSM Vela connector's
+  control lines, PWRKEY/RTS/CTS). Per task rules, an excluded pin is not
+  re-added even though older-revision boards used it for the LED. This is
+  a deliberate no-guess: current board.json/pins_arduino.h targets the
+  current hardware revision (LED on GPIO13 per PR #9494), so no conflict
+  in practice, but flagging for human review in case this variant is
+  meant to also represent pre-v0.6L boards.
+- "RESET" pushbutton: NOT tagged. It is the chip EN/reset line, not a
+  GPIO digital input, so it is out of scope for the "button" capability
+  tag (no digital-input GPIO corresponds to it).
+- No RGB/NeoPixel LED was found anywhere in the vendor documentation,
+  library, or example sketches — only the single "BLINK" LED (D4) and the
+  BOOT pushbutton were identified as user-facing GPIO-connected
+  indicator/input components.
+
+TX/RX conflict check: this board's pins_arduino.h declares
+`static const uint8_t TX = 35;` and `static const uint8_t RX = 34;`.
+Neither GPIO0 (button) nor GPIO13 (LED) coincides with TX/RX, so no
+conflict — both tags were safely applied.
+
+Summary of what was tagged:
+- GPIO0 -> ["digital_input", "button"]  (onboard BOOT pushbutton)
+- GPIO13 -> ["digital_output", "led_high", "pwm_output"]  (onboard BLINK
+  LED, active-high; pwm_output retained because it was already present in
+  this pin's existing capability set before this change)

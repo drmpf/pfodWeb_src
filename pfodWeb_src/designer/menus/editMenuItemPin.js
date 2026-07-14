@@ -72,7 +72,7 @@ const DesignerEditMenuItemPin = (() => {
   /// Remaining entries are board pins that support the required capability
   /// for the current connection type, and are not already used elsewhere
   /// in the design tree.
-  /// @returns {{ label: string, notes: string|null, name: string|null, type: string|null }[]}
+  /// @returns {{ label: string, notes: string|null, busTags: string[], name: string|null, type: string|null }[]}
   function _buildPinList(state) {
     const item = state.getActiveItem();
     if (!item) return [];
@@ -93,6 +93,7 @@ const DesignerEditMenuItemPin = (() => {
       list.push({
         label:    bp.label,
         notes:    bp.notes || null,
+        busTags:  bp.capabilities.busTags(),
         name:     bp.name,
         codeName: bp.codeName,
         type:     pinType,
@@ -122,12 +123,14 @@ const DesignerEditMenuItemPin = (() => {
     let out = '{?dps`' + currentIdx + '~' + DESIGNER_PROMPT_FMT;
     out += 'Select ' + capLabel + ' pin\nfor ' + state.name;
     for (const entry of pinList) {
-      // Append notes in smaller font on a new line when present.
-      // <-2> shrinks two steps; the tag-stack resets between options so
-      // no explicit close tag is needed (matches addMenuItem.js convention).
-      const optLabel = entry.notes
-        ? entry.label + '\n<-2>' + entry.notes
-        : entry.label;
+      // Append notes (plus any I2C/SPI bus-role tags, in parentheses) in
+      // smaller font on a new line when present. <-2> shrinks two steps;
+      // the tag-stack resets between options so no explicit close tag is
+      // needed (matches addMenuItem.js convention).
+      const busTagsStr = entry.busTags && entry.busTags.length ? entry.busTags.join(', ') : null;
+      let subtitle = entry.notes;
+      if (busTagsStr) subtitle = subtitle ? subtitle + ' (' + busTagsStr + ')' : busTagsStr;
+      const optLabel = subtitle ? entry.label + '\n<-2>' + subtitle : entry.label;
       out += '|' + optLabel;
     }
     out += '}';
@@ -149,20 +152,56 @@ const DesignerEditMenuItemPin = (() => {
     if (entry.name === null) {
       item.pin = null;
     } else {
-      // Keep existing invertOutput when re-picking the same pin so a
-      // user tweaking other settings doesn't accidentally lose their
-      // polarity choice.
-      const prevInvert = (item.pin && item.pin.name === entry.name)
-                         ? item.pin.invertOutput : false;
-      item.pin = { name: entry.name, codeName: entry.codeName, type: entry.type, invertOutput: prevInvert };
+      // invertOutput only applies to onoff (output drive polarity) —
+      // onoffdisplay/pwm/datadisplay pins never get it set via the UI,
+      // so it's omitted for those types rather than stamping a
+      // meaningless invertOutput: false onto them.  Keep existing
+      // invertOutput when re-picking the same pin so a user tweaking
+      // other settings doesn't accidentally lose their polarity choice.
+      const usesInvert = item.type === 'onoff';
+      if (usesInvert) {
+        const prevInvert = (item.pin && item.pin.name === entry.name)
+                           ? item.pin.invertOutput : false;
+        item.pin = { name: entry.name, codeName: entry.codeName, type: entry.type, invertOutput: prevInvert };
+      } else {
+        item.pin = { name: entry.name, codeName: entry.codeName, type: entry.type };
+      }
     }
     state.save();
     return PFOD_EMPTY;   // back-nav returns to editMenuItem
   }
 
+  /// Boards with zero routable pins (Unlisted Board, and any future
+  /// target that isn't "Minimal C Code") have no real list for the
+  /// picker to offer, but — unlike Minimal C, which has no Arduino pin
+  /// API at all — their generated code is still a normal Arduino/C++
+  /// sketch, so the user may still want the pin-dependent code emitted
+  /// with a `?` placeholder to fill in by hand once the real pin number
+  /// is known.  See editMenuItem.js's itemHasPin rendering for the
+  /// matching enabled-toggle-vs-disabled-label UI logic.
+  function _togglePlaceholder(state) {
+    const item = state.getActiveItem();
+    if (!item) return PFOD_EMPTY;
+    const requiredCap = ITEM_TYPE_TO_PIN_CAP[item.type];
+    if (!requiredCap) return PFOD_EMPTY;
+    if (item.pin && item.pin.name === PLACEHOLDER_PIN_NAME) {
+      item.pin = null;
+    } else {
+      item.pin = { name: PLACEHOLDER_PIN_NAME, codeName: PLACEHOLDER_PIN_NAME, type: requiredCap };
+    }
+    state.save();
+    // Unlike _applyPick's list-submit (which gets a free re-render via
+    // pfod's automatic back-navigation on selection), this fires from a
+    // plain button click — nothing re-renders the screen unless we
+    // explicitly do it here.
+    return DesignerEditMenuItem.renderUpdateScreen(state);
+  }
+
   /// Dispatch entry-point — called from editMenuItem.send's
   /// EMI_IO_PIN_CMD ('p') case with depth pointing to 'd'.
-  ///   {dp}        → rawCmd[depth+2] = '}' → render picker
+  ///   {dp}        → rawCmd[depth+2] = '}' → render picker (or toggle
+  ///                 the `?` placeholder — see _togglePlaceholder — on
+  ///                 a non-ccode board with no real pins)
   ///   {dps`<idx>} → rawCmd[depth+2] = 's' → apply pick
   /// @param {string}        rawCmd
   /// @param {DesignerState} state
@@ -170,6 +209,9 @@ const DesignerEditMenuItemPin = (() => {
   function send(rawCmd, state, depth) {
     if (rawCmd[depth + 2] === 's') {
       return _applyPick(state, rawCmd, depth + 3);
+    }
+    if (state.board.pins.length === 0 && state.board.family !== 'ccode') {
+      return _togglePlaceholder(state);
     }
     return { pfod: _renderPicker(state), skipSave: true };
   }

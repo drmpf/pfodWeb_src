@@ -1,0 +1,211 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Cytron Maker Pi RP2040" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board beyond
+  // what chipGpios already fully overrides below (buttons are handled
+  // via explicit ["digital_input","digital_output","pwm_output","button"]
+  // capability sets, not this list).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // "rp2040" chip bucket; the Maker Pi RP2040 has no onboard WiFi radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-13):
+  //
+  // Board: Cytron "Maker Pi RP2040" — official Cytron robotics/education
+  // board, RP2040-based, with an onboard 2-channel DC motor H-bridge
+  // driver (1.0A continuous), 4 servo headers, 7 Grove I/O connectors, a
+  // piezo buzzer with mute switch, 2 push buttons, a 2-pixel WS2812
+  // NeoPixel strip, and 13 GPIO-linked status LEDs. This board's own
+  // pins_arduino.h declares:
+  //   #define PIN_LED             (3u)
+  //   #define PIN_NEOPIXEL        (18u)   // NUM_NEOPIXEL=2, PIN_RGB alias
+  //   #define PIN_BUZZER          (22u)   // no tagging vocabulary, out of scope
+  //   #define PIN_M1A (8u)  PIN_M1B (9u)  PIN_M2A (10u)  PIN_M2B (11u)
+  // and declares no PIN_BUTTON alias at all (GPIO20/GPIO21 are only ever
+  // exposed as plain D20/D21) even though the real board has two
+  // GPIO-connected user pushbuttons there — confirmed independently below.
+  //
+  // Sources consulted (all independently cross-referenced):
+  //   1. Zephyr Project official board documentation + devicetree source
+  //      for this exact board (docs.zephyrproject.org/latest/boards/cytron/
+  //      maker_pi_rp2040/doc/index.html and the underlying
+  //      zephyr/boards/cytron/maker_pi_rp2040/maker_pi_rp2040.dts, derived
+  //      from Cytron's official schematic):
+  //        button_gp20 { gpios = <&gpio0 20 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; };
+  //        button_gp21 { gpios = <&gpio0 21 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; };
+  //        ws2812 { gpios = <&gpio0 18 GPIO_ACTIVE_HIGH>; chain-length = <2>; };
+  //        led_gp4 { gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>; };
+  //        led_gp5 { gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>; };
+  //      confirming GPIO20/GPIO21 buttons are active-low with an internal
+  //      pull-up, and the NeoPixel strip is on GPIO18, chain-length 2
+  //      (matches this board's own NUM_NEOPIXEL=2). led_gp4/led_gp5 are
+  //      two of this board's 13 GPIO-linked status LEDs (see point 3
+  //      below), used by Zephyr's own blinky-style samples as convenient
+  //      LED aliases — NOT evidence of a second/different dedicated LED
+  //      pin distinct from PIN_LED.
+  //   2. Cytron's own official CircuitPython "Out-of-the-box Demo Code"
+  //      (github.com/CytronTechnologies/MAKER-PI-RP2040,
+  //      "Examples/CircuitPython/Out-of-the-box Demo Code/code.py" — the
+  //      actual factory-shipped demo program):
+  //        LED_PINS = [board.GP0, board.GP1, board.GP2, board.GP3,
+  //                    board.GP4, board.GP5, board.GP6, board.GP7,
+  //                    board.GP16, board.GP17, board.GP26, board.GP27,
+  //                    board.GP28]   # 13 pins, driven via
+  //                    digitalio.DigitalInOut(...).direction = OUTPUT,
+  //                    turned on with `.value = True` (confirms
+  //                    active-high) as a "running lights" pattern.
+  //        pixels = neopixel.NeoPixel(board.GP18, 2)   # confirms GPIO18,
+  //                    2 pixels, matching NUM_NEOPIXEL=2 exactly.
+  //        btn1 = digitalio.DigitalInOut(board.GP20); btn1.pull = Pull.UP
+  //        btn2 = digitalio.DigitalInOut(board.GP21); btn2.pull = Pull.UP
+  //        polled as `if not btn1.value:` / `if not btn2.value:` —
+  //        confirms both buttons active-low with the MCU's internal
+  //        pull-up (no external pull-up resistor used), matching the
+  //        Zephyr dts polarity above independently.
+  //        PIEZO_PIN = board.GP22, driven via simpleio.tone() — matches
+  //        PIN_BUZZER=22 in this board's own pins_arduino.h.
+  //   3. Cytron's official datasheet (summarized via the CMU "Robotics for
+  //      Creative Practice" course page, which cites it directly:
+  //      courses.ideate.cmu.edu/16-375/f2025/text/circuitpython/
+  //      cy-mpi-rp2040-hardware.html): "13x Status indicator LEDs for
+  //      GPIO pins", "2x RGB LED (Neopixel)", "2x Push button", "1x Piezo
+  //      buzzer with mute switch", "2x DC motors ... (dual-channel
+  //      H-bridge, rated at 1.0A continuous)", "4x Servo motors (GPIO12,
+  //      GPIO13, GPIO14, GPIO15)". This independently confirms the 13
+  //      status-LED GPIO set (exactly matching the demo code's LED_PINS
+  //      list above, GPIO3 included), the 2-pixel NeoPixel count, and the
+  //      2-button count.
+  //   4. CircuitPython upstream board definition
+  //      (github.com/adafruit/circuitpython
+  //      ports/raspberrypi/boards/cytron_maker_pi_rp2040/pins.c):
+  //      `board.LED` -> GPIO0 (CircuitPython's own arbitrary pick among
+  //      the 13 status-LED pins for its LED_BUILTIN-equivalent — does NOT
+  //      override arduino-pico's own choice of GPIO3 for the Arduino
+  //      LED_BUILTIN, since these are two independently-authored firmware
+  //      ports each picking their own representative pin from the same
+  //      13-pin status-LED array). `board.RGB`/`board.NEOPIXEL` -> GPIO18,
+  //      `board.BUZZER` -> GPIO22, `board.M1A/M1B/M2A/M2B` ->
+  //      GPIO8/9/10/11 — all matching this board's own pins_arduino.h
+  //      exactly, corroborating the shared aliases independently of the
+  //      Arduino core.
+  //
+  // Per-pin findings and disposition:
+  //   GPIO3 (PIN_LED / LED_BUILTIN) — confirmed one of this board's 13
+  //     GPIO-linked status LEDs (source 2's LED_PINS array includes
+  //     board.GP3; source 3 independently confirms "13x Status indicator
+  //     LEDs for GPIO pins" as a board-wide feature, not a single unique
+  //     LED). Unlike the Cytron Maker Nano/Uno RP2040 siblings (each of
+  //     which has exactly ONE single dedicated onboard status LED,
+  //     electrically separate from any other GPIO), this board wires an
+  //     identical small indicator LED in parallel with 13 different
+  //     header GPIOs (GP0-GP7, GP16, GP17, GP26-GP28) as a general
+  //     "activity/demo" feature — GPIO3 is simply the one arduino-pico's
+  //     own pins_arduino.h designates via #define PIN_LED as the
+  //     Arduino-core LED_BUILTIN representative of that set, not a
+  //     functionally distinct/dedicated pin. All 13 are declared as
+  //     ordinary D-pins (D0-D7, D16, D17, A0-A2) with no other special
+  //     treatment, and the demo code drives all 13 identically as plain
+  //     digital outputs. Tagged "led_high" (informational — GPIO3 does
+  //     genuinely drive an onboard LED, confirmed active-high by the demo
+  //     code's `.value = True` = on pattern) but digital_input is
+  //     DELIBERATELY KEPT (deviating from the Nano/Uno GPIO2/GPIO3
+  //     precedent) since this is not a dedicated-only pin — matches this
+  //     repo's existing esp8266/oak GPIO5 precedent (single plain-LED pin
+  //     tagged led_high while keeping full digital_input/digital_output/
+  //     pwm_output capabilities, because the LED there similarly does not
+  //     preclude ordinary GPIO use of the same pin).
+  //   GPIO18 (PIN_NEOPIXEL / PIN_RGB) — onboard 2-pixel WS2812 NeoPixel
+  //     data line, output-only — confirmed by the Zephyr devicetree
+  //     (ws2812 node, chain-length 2, GPIO_ACTIVE_HIGH, PIO-driven), the
+  //     official demo code (`neopixel.NeoPixel(board.GP18, 2)`), and the
+  //     datasheet's "2x RGB LED (Neopixel)" spec — three independent
+  //     matches to this board's own NUM_NEOPIXEL=2. digital_input/
+  //     pwm_output dropped to match this repo's led_neopixel convention
+  //     (NeoPixel data is bit-banged/PIO-driven, not a PWM brightness
+  //     line) — matches the cytron_maker_nano_rp2040 GPIO11 and
+  //     cytron_maker_uno_rp2040 GPIO25 precedents exactly.
+  //   GPIO20 / GPIO21 — two onboard programmable pushbuttons, active-low,
+  //     requiring the MCU's internal pull-up (confirmed by both the
+  //     Zephyr dts, GPIO_ACTIVE_LOW | GPIO_PULL_UP, and the official demo
+  //     code's `digitalio.Pull.UP` + `if not btn1.value:`/`if not
+  //     btn2.value:` pattern — no external pull-up resistor is used on
+  //     either). Neither is aliased by name in this board's own
+  //     pins_arduino.h (only plain D20/D21), but the underlying GPIO
+  //     numbers are still declared, so a chipGpios override applies just
+  //     as it would for a named alias. Full digital_input + digital_output
+  //     + pwm_output + button capability set kept (not reduced to
+  //     input-only) since these are ordinary GPIOs merely wired to
+  //     switches, not dedicated/capacitive-only pins — matches this
+  //     repo's cytron_maker_nano_rp2040 GPIO20 and vccgnd_yd_rp2040
+  //     GPIO24 (PIN_USRKEY) precedents.
+  //   PIN_BUZZER (GPIO22) — left untagged per task scope (no buzzer
+  //     capability vocabulary exists in this codebase yet), matching the
+  //     cytron_maker_uno_rp2040 GPIO8 (PIN_BUZZER) precedent.
+  //   Motor driver pins GPIO8/9/10/11 (PIN_M1A/PIN_M1B/PIN_M2A/PIN_M2B) —
+  //     investigated per task instructions. The datasheet describes these
+  //     as driving a "dual-channel H-bridge" motor driver IC (rated
+  //     1.0A continuous) — the H-bridge chip is downstream of these
+  //     GPIOs, and from the RP2040's own perspective these are ordinary
+  //     PWM-capable GPIOs (exactly how a sketch is meant to control motor
+  //     speed/direction: digitalWrite/analogWrite on these same pins).
+  //     No dedicated-hardware restriction applies; left at the chip-level
+  //     default full digital_input/digital_output/pwm_output capability
+  //     set, no chipGpios entry added.
+  //   Servo header pins GPIO12/13/14/15 — datasheet-confirmed "4x Servo
+  //     motors (GPIO12, GPIO13, GPIO14, GPIO15)" header pins. Same
+  //     reasoning as the motor pins: ordinary PWM-capable GPIOs routed to
+  //     3-pin servo headers, not dedicated non-GPIO hardware. Left at
+  //     chip-level defaults, no chipGpios entry added.
+  //   SPI1 alias collision (PIN_SPI1_SCK=10, PIN_SPI1_MISO=11,
+  //     PIN_SPI1_MOSI=12, PIN_SPI1_SS=15) — noted but NOT fixed. These
+  //     four GPIOs are exactly the motor (GPIO10/11) and servo
+  //     (GPIO12/15) pins above, all deliberately left general-purpose per
+  //     the reasoning above (not "confirmed dedicated" in the
+  //     button/LED sense that would make an auto-appended bus capability
+  //     spurious/misleading) — this matches the vendor's own upstream
+  //     arduino-pico pins_arduino.h verbatim (confirmed identical to this
+  //     repo's copy via
+  //     github.com/earlephilhower/arduino-pico/variants/
+  //     cytron_maker_pi_rp2040/pins_arduino.h), so it is not a defect
+  //     introduced in this repo. See notes.txt for the full reasoning
+  //     trail on why this was investigated and intentionally left as-is.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/cytron_maker_pi_rp2040/notes.txt
+  "chipGpios": {
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — one of this board's 13 GPIO-linked status LEDs (GP0-GP7, GP16, GP17, GP26-GP28), active-high. Confirmed via Cytron's official demo code (LED_PINS array incl. board.GP3, driven via .value = True) and the official datasheet's \"13x Status indicator LEDs for GPIO pins\" spec. Not a dedicated-only pin (13 identical siblings remain plain GPIOs) — digital_input kept, matching this repo's esp8266/oak GPIO5 precedent." },
+    "18": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL / PIN_RGB — onboard 2-pixel WS2812 NeoPixel strip, output-only. Confirmed via Zephyr's maker_pi_rp2040.dts ws2812 node (chain-length 2, PIO-driven), Cytron's official demo code (neopixel.NeoPixel(board.GP18, 2)), and the datasheet's \"2x RGB LED (Neopixel)\" spec — matching NUM_NEOPIXEL=2." },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Onboard user pushbutton 1 (unaliased in this board's pins_arduino.h, only plain D20). Active-low with internal pull-up — confirmed via Zephyr's maker_pi_rp2040.dts (button_gp20: GPIO_ACTIVE_LOW | GPIO_PULL_UP) and the official demo code (btn1.pull = Pull.UP; if not btn1.value:)." },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Onboard user pushbutton 2 (unaliased in this board's pins_arduino.h, only plain D21). Active-low with internal pull-up — confirmed via Zephyr's maker_pi_rp2040.dts (button_gp21: GPIO_ACTIVE_LOW | GPIO_PULL_UP) and the official demo code (btn2.pull = Pull.UP; if not btn2.value:)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other plain RP2040 board (this board's own pins_arduino.h declares
+  // A0-A3 = GPIO26-29 directly, matching the generic default). Not
+  // affected by this button/LED/NeoPixel audit.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

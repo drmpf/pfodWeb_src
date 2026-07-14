@@ -1,0 +1,204 @@
+Board: RAKwireless "RAK11300" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/rakwireless_rak11300/
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+NO CHANGE. The RAK11300 is a bare WisDuo-family LoRaWAN MODULE (an
+RP2040 + SX1262 SiP-style module meant to be soldered/reflowed onto a
+carrier PCB, e.g. RAKwireless's own WisBlock base boards) - not a
+standalone development board. Confirmed via the official RAK datasheet,
+the RAKwireless store product page, and the RAKwireless forum pinout
+thread (the same three sources this board's own pins_arduino.h header
+comment cites) that the module itself has:
+  - NO onboard status LED
+  - NO onboard user button (only the RP2040's internal, non-GPIO
+    BOOTSEL, which - per this audit's established convention - would
+    live on a carrier/programmer board anyway, not this module)
+  - NO onboard NeoPixel/WS2812
+The only onboard peripheral is the SX1262 LoRa radio, wired to GPIO10,
+11, 12, 13 (SPI1), 14 (NRESET), 15 (BUSY), 25 (ANT_PWR), and 29 (DIO1).
+This board's own pins_arduino.h ALREADY fully excludes all eight of
+those GPIOs from its `static const uint8_t D<n>` alias set (confirmed:
+the alias block declares D0-D9, D16-D24, D26-D28 only - GPIO10, 11, 12,
+13, 14, 15, 25, and 29 are conspicuously and completely absent) and
+already carries an explicit "pfodWeb NOTE" comment (line 46) recording
+this as deliberate: "GPIO10,11,12,13,14,15,25,29 are dedicated to an
+onboard peripheral on this board ... not general-purpose." That prior-
+session exclusion was independently re-verified against the official
+datasheet's own GPIO pin-function table this session and found to be
+100% correct - all eight radio pins match, and no additional dedicated
+pins were found beyond what's already excluded.
+
+Because (a) there is no LED, button, or NeoPixel to tag, and (b) the
+radio's dedicated pins are already fully hidden from the Designer's pin
+picker by the existing pins_arduino.h alias exclusion (same mechanism
+used by the challenger_2040_lora and waveshare_rp2040_lora sibling
+audits - see "WHY NO board.json IS CREATED" below), there is nothing
+for a per-board board.json to override. Creating one would just be a
+byte-for-byte duplicate of the chip-level variants/rp2040/rp2040/
+board.json with an empty chipGpios:{} - i.e. a no-op. Per this audit's
+own stated principle ("Report NO CHANGE rather than guess"), no
+board.json was created for this board.
+
+No pins_arduino.h edit was made either - no bus-alias collision exists
+(see BUG-CLASS CHECK below), and the existing exclusion is already
+correct.
+
+SOURCES CONSULTED
+------------------
+1. Local pins_arduino.h (variants/rp2040/rp2040/rakwireless_rak11300/
+   pins_arduino.h) - header comment cites three RAK sources directly:
+   github.com/RAKWireless/RAK-RP-Arduino/, the official RAK11300
+   datasheet (docs.rakwireless.com), and a RAKwireless forum pinout
+   thread. Declares PIN_SPI1_MISO=12, PIN_SPI1_MOSI=11, PIN_SPI1_SCK=10,
+   PIN_SPI1_SS=13 ("Hardwired to SX1262 Radio"), PIN_SX1262_NRESET=14,
+   PIN_SX1262_BUSY=15, PIN_SX1262_DIO1=29, PIN_SX1262_ANT_PWR=25. Also
+   carries a pre-existing "pfodWeb NOTE" (line 46, from a prior session
+   before this board.json audit) confirming GPIO10,11,12,13,14,15,25,29
+   are already understood to be dedicated and are already omitted from
+   the D-alias block below it.
+2. docs.rakwireless.com/product-categories/wisduo/rak11300-module/
+   datasheet/ (official RAK datasheet - authoritative, fetched
+   directly) - GPIO pin-function table confirms exactly: SPI_NSS=
+   GPIO13, SPI_SCK=GPIO10, SPI_MISO=GPIO12, SPI_MOSI=GPIO11, NRESET=
+   GPIO14, ANT_SW=GPIO25 ("SX1262 RF switch power"), DIO1=GPIO29,
+   BUSY=GPIO15 - an exact match, pin-for-pin, to the local
+   pins_arduino.h. The datasheet's "Available GPIO Pins" list (GPIO7,
+   8, 9, 22, 23, 24, 26/ADC1, 27, 28/ADC0, plus the exposed
+   SPI0/Wire0/Wire1/Serial1/Serial2 pins) matches this board's D-alias
+   set with no discrepancies. The datasheet contains no mention of any
+   onboard LED, button, or NeoPixel component.
+3. store.rakwireless.com/products/wisduo-lpwan-module-rak11300
+   (official RAKwireless store product page, cross-check) - lists only
+   LoRaWAN stack, RP2040 MCU, 133MHz clock, 246kB RAM, and SX1262
+   transceiver as key features; package contents list only "1 pcs
+   RAK11300" - no LED/button/NeoPixel accessory or feature mentioned
+   anywhere on the page.
+4. forum.rakwireless.com/t/rak11300-pinout-rp2040-to-sx1262/8414 (the
+   exact forum thread cited in this board's own pins_arduino.h header
+   comment) - independently confirms "The antenna switch power is
+   controlled with GPIO25" and "The antenna switch direction is
+   controlled by the SX1262 itself through DIO2" (i.e. DIO2 is internal
+   to the SX1262/antenna-switch circuit, not a separate RP2040 GPIO).
+   No LED or button mentioned in the thread.
+5. Cross-check web search (multiple independent sources: nico-maas.de
+   RadioLib/arduino-pico writeup, RadioLib GitHub issue #864, OpenELAB
+   and ODL Store reseller listings) - all corroborate the identical
+   GPIO10/11/12/13/14/15/25/29 SX1262 pin mapping with no source
+   mentioning an onboard LED, button, or NeoPixel for the bare RAK11300
+   module.
+6. variants/rp2040/rp2040/board.json (chip-level defaults, re-read to
+   confirm chipGpios:{} baseline and confirm what a per-board override
+   would need to add - concluded: nothing).
+7. Precedent/schema reference: variants/rp2040/rp2040/
+   challenger_2040_lora/board.json and variants/rp2040/rp2040/
+   waveshare_rp2040_lora/board.json (both onboard-LoRa-radio sibling
+   audits from this same session, read in full before analysing this
+   board) - both establish the "if pins_arduino.h already excludes the
+   radio pins via missing D-aliases, don't re-add them via chipGpios"
+   reasoning that applies identically here. Both of those boards DID
+   warrant a board.json (each has a confirmed onboard LED); this board
+   does not, since it has no LED/button/NeoPixel at all.
+
+WHY NO board.json IS CREATED
+------------------------------
+build_boards.js's buildEsp32Board() parser (the "rp2040" family routes
+through it - see ../board.json's own family-selection comment) only
+lists a GPIO in the Designer's pin picker if it appears either (a) as a
+`static const uint8_t` alias in pins_arduino.h, or (b) as a key in a
+per-board board.json's chipGpios object. This board's pins_arduino.h
+already declares NO alias resolving to GPIO10, 11, 12, 13, 14, 15, 25,
+or 29 (verified above), so all eight SX1262-dedicated GPIOs are already
+100% absent from the Designer's pin list - no board.json involvement
+needed to hide them. Since no LED, button, or NeoPixel exists on this
+module to additionally tag, there is no chipGpios entry this audit
+could correctly add. A board.json containing only a byte-for-byte copy
+of the chip-level defaults with an empty chipGpios:{} would be a
+functional no-op (the chip-level variants/rp2040/rp2040/board.json
+already supplies those exact same defaults via fallback), so none was
+created - consistent with this audit's "Report NO CHANGE rather than
+guess" principle.
+
+BUG-CLASS CHECK (button/LED aliased onto a bus pin)
+-------------------------------------------------------
+Not applicable in the usual sense (no button/LED exists to collide with
+a bus alias), but checked anyway for the SX1262-dedicated GPIOs against
+this board's OTHER (non-radio) SPI0/Wire0 bus aliases: SS=GPIO17,
+MOSI=GPIO19, MISO=GPIO16, SCK=GPIO18 (PIN_SPI0_*), SDA=GPIO2, SCL=GPIO3
+(PIN_WIRE0_*). None of these six numbers (16, 17, 18, 19, 2, 3) overlap
+with the eight excluded radio pins (10, 11, 12, 13, 14, 15, 25, 29), so
+no spurious spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl capability
+would be auto-appended to a radio-dedicated pin even if it were
+re-exposed. No pins_arduino.h edit needed.
+
+PER-PIN REASONING
+------------------
+GPIO10 (PIN_SPI1_SCK, LoRa SPI1 clock): no pins_arduino.h alias exists;
+  already fully excluded from the Designer pin list. Confirmed dedicated
+  via datasheet (SPI_SCK=GPIO10). No board.json entry needed.
+
+GPIO11 (PIN_SPI1_MOSI, LoRa SPI1 data out): same - no alias, already
+  excluded. Confirmed via datasheet (SPI_MOSI=GPIO11).
+
+GPIO12 (PIN_SPI1_MISO, LoRa SPI1 data in): same - no alias, already
+  excluded. Confirmed via datasheet (SPI_MISO=GPIO12).
+
+GPIO13 (PIN_SPI1_SS, LoRa SPI1 chip-select): same - no alias, already
+  excluded. Confirmed via datasheet (SPI_NSS=GPIO13).
+
+GPIO14 (PIN_SX1262_NRESET, radio reset line): same - no alias, already
+  excluded. Confirmed via datasheet (NRESET=GPIO14).
+
+GPIO15 (PIN_SX1262_BUSY, radio busy/ready status line): same - no
+  alias, already excluded. Confirmed via datasheet (BUSY=GPIO15).
+
+GPIO25 (PIN_SX1262_ANT_PWR, antenna-switch power control - forum thread
+  confirms it "needs to be set as OUTPUT and pulled HIGH for any
+  transmission/receive operation"): same - no alias, already excluded.
+  Confirmed via datasheet (ANT_SW=GPIO25) and independently via the
+  RAKwireless forum thread.
+
+GPIO29 (PIN_SX1262_DIO1, radio interrupt/IRQ line): same - no alias,
+  already excluded. Confirmed via datasheet (DIO1=GPIO29).
+
+No onboard LED found - confirmed absent across all sources consulted
+  (official datasheet, official store product page, official forum
+  thread, independent third-party writeups). This is expected: the
+  RAK11300 is sold as a bare surface-mount MODULE for integration onto
+  a carrier PCB (e.g. RAKwireless's own WisBlock base boards, which
+  carry their own LEDs/buttons separately - out of scope for this
+  module's own board.json). No chipGpios tag applied.
+
+No onboard NeoPixel found - same reasoning/sources as above. No
+  chipGpios tag applied.
+
+No onboard GPIO-controllable user button found - same reasoning/sources
+  as above; only the RP2040's internal BOOTSEL exists (not a normal
+  GPIO, and would in any case live on a carrier/programmer board, not
+  this module). No chipGpios tag applied.
+
+VALIDATION
+----------
+- No board.json was created for this board, so there is nothing to
+  JSON.parse()-validate for this audit. The board's existing
+  pins_arduino.h was re-read in full and its D-alias set (D0-D9,
+  D16-D24, D26-D28) was manually cross-checked against the eight
+  radio-dedicated GPIOs (10,11,12,13,14,15,25,29) confirmed via the
+  official datasheet - zero overlap, confirming the pre-existing
+  exclusion is complete and correct.
+- No build script was executed and build_boards.js was never
+  require()'d, per task instructions.
+
+FILES CHANGED
+-------------
+- variants/rp2040/rp2040/rakwireless_rak11300/board.json: NOT created
+  (would be a no-op duplicate of chip-level defaults - see "WHY NO
+  board.json IS CREATED" above).
+- variants/rp2040/rp2040/rakwireless_rak11300/pins_arduino.h: NOT
+  modified this session (already correctly excludes all eight
+  SX1262-dedicated GPIOs via a prior-session edit; re-verified against
+  the official datasheet and found fully correct; no bus-alias
+  collision found).
+- Created: boardsDetails/rp2040/rp2040/rakwireless_rak11300/notes.txt
+  (this file).

@@ -16,7 +16,19 @@ static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
 static const uint8_t TX = 21;
 static const uint8_t RX = 20;
 
-static const uint8_t SDA = 8;
+// pfodWeb: upstream Espressif core aliases the default SDA pin to the same
+// GPIO number as PIN_RGB_LED above (the onboard WS2812 NeoPixel on the
+// actual ESP32-C3-DevKitM-1/DevKitC-02 reference boards this generic
+// variant represents). Set below to -1 (no default Wire pin) rather than
+// that GPIO number so build_boards.js doesn't auto-append an i2c_sda
+// capability onto the NeoPixel-dedicated pin. See board.json's pfodWeb
+// NOTE and boardsDetails/esp32/esp32c3/esp32c3/notes.txt for sources.
+// NOTE TO FUTURE EDITORS: do not write the literal original
+// "static const uint8_t SDA = <number>;" text in this comment - the
+// parser in build_boards.js is comment-blind (plain regex scan) and will
+// match ANY text of that exact shape, even inside a // comment, silently
+// reintroducing the exact bug this fix prevents.
+static const uint8_t SDA = -1;
 static const uint8_t SCL = 9;
 
 static const uint8_t SS = 7;

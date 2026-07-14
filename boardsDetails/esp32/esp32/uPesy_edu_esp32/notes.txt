@@ -1,0 +1,116 @@
+uPesy_edu_esp32 - dedicated-hardware pin-exclusion audit + button/LED
+opportunistic review, 2026-07-12
+============================================================================
+
+Why flagged: discovery sweep hit on
+  #define PIN_A0 A0  // backward compatibility
+"uPesy EDU ESP32" is an Arduino-UNO-form-factor ESP32 devkit marketed by
+uPesy for classroom/educational use (shield-compatible). The "EDU" in the
+name suggested it might carry onboard buttons/LEDs/sensors beyond the usual
+generic devkit boilerplate, so it was reviewed individually for the first
+time this session (never previously audited).
+
+Full pins_arduino.h read (53 lines) - contents:
+  TX=1, RX=3, SDA=21, SCL=22, SS=5, MOSI=23, MISO=19, SCK=18,
+  A0=33, A1=32, A2=35, A3=34, A4=36, A5=39,
+  LED_BUILTIN=2 (+ BUILTIN_LED/LED_BUILTIN redefinition boilerplate),
+  PIN_WIRE_SDA/PIN_WIRE_SCL (= SDA/SCL) backward-compat macros,
+  D0=3 .. D13=18 (Arduino-Uno-style digital pin aliases, all mapping onto
+  the same TX/RX/SPI/etc pins already declared above),
+  PIN_SPI_SS/MOSI/MISO/SCK (= SS/MOSI/MISO/SCK) backward-compat macros,
+  PIN_A0 (= A0) backward-compat macro - the flagged declaration.
+No battery-monitor, sensor, motor, or other board-specific pin was found
+anywhere in the file - every declaration is either a bus alias (TX/RX/
+SDA/SCL/SPI), an Arduino-Uno-style D0-D13 alias, an analog-input alias
+(A0-A5), or the LED_BUILTIN pin.
+
+Sources consulted
+------------------
+1. https://www.upesy.com/blogs/tutorials/upesy-edu-esp32-board-documentation-version-latest
+   Official uPesy documentation for this exact board. States (French):
+   "Une LED orange est reliee a la broche physique IO2 de l'ESP32" (an
+   orange LED is connected to physical pin IO2 of the ESP32), referenced
+   via LED_BUILTIN in code, lights up when the pin outputs high (3.3V) and
+   is off at low (0V) - i.e. active-high. Also documents a separate green
+   power-indicator LED that is hardwired to the power rail (not GPIO-
+   driven, so no capability tag applies) and confirms IO0 carries the BOOT
+   button, explicitly described as a button that "should not be used"
+   except when troubleshooting firmware uploads. No onboard sensors,
+   battery-monitoring circuitry, or other dedicated peripherals are
+   mentioned anywhere in this page.
+
+2. https://www.upesy.com/blogs/tutorials/upesy-edu-esp32-board-quick-start
+   Official uPesy quick-start guide for this board. Confirms the board is
+   "au format UNO" (Arduino UNO form factor, shield-compatible) and
+   documents the Arduino-Uno-style D0-D13 correspondence (Serial on D0/D1,
+   SPI on D10-D13, etc. - all already represented in pins_arduino.h). Adds
+   no further onboard-component detail beyond source 1.
+
+3. Sibling board comparison: boardsDetails/esp32/esp32/uPesy_esp32_wroom_devkit/notes.txt
+   (reviewed earlier this same session). That board's own uPesy
+   documentation independently confirms the identical GPIO2 orange/blue
+   LED_BUILTIN, active-high pattern, and the same EN/BOOT-only button
+   situation (no general-purpose user button). This corroborates that the
+   EDU board's LED/button situation is a consistent, deliberate uPesy
+   product-line design choice, not a one-off anomaly needing extra
+   scrutiny.
+
+Alias-collision check (critical step per this session's task)
+----------------------------------------------------------------
+The only GPIO being retagged is GPIO2 (LED_BUILTIN). Checked against every
+bus alias declared in this board's pins_arduino.h: SDA=21, SCL=22, SS=5,
+MOSI=23, MISO=19, SCK=18, TX=1, RX=3. GPIO2 matches none of these, so
+tagging it "led_high" in chipGpios cannot be silently overwritten or
+contaminated by build_boards.js's unconditional bus-alias capability
+appends (see build_boards.js's SDA/SCL/SS/MOSI/MISO/SCK/TX/RX handling).
+No alias declarations needed to be deleted from pins_arduino.h for this
+board - pins_arduino.h was left completely unmodified.
+
+PIN_A0 flag - confirmed harmless (no action taken)
+----------------------------------------------------------------
+`#define PIN_A0 A0` is a plain alias of the already-declared
+`static const uint8_t A0 = 33;` two lines earlier in the same file - same
+GPIO, no new pin introduced, and GPIO33 does not collide with any bus
+alias (SDA/SCL/SS/MOSI/MISO/SCK/TX/RX all point elsewhere). This is the
+same "backward compatibility" macro boilerplate pattern seen across many
+other ESP32 variants and does not indicate any real dedicated hardware.
+Confirmed false positive, matching the discovery sweep's own suspicion.
+No pins_arduino.h or board.json change was made for PIN_A0/A0.
+
+Pins considered but NOT changed (explicit reasoning)
+-------------------------------------------------------
+- GPIO0 (BOOT button): NOT tagged "button". Vendor documentation (source 1)
+  explicitly frames this as a boot-mode-entry pin to avoid using in normal
+  sketches, not a general-purpose user-facing button. Matches this repo's
+  no-guess policy established on the sibling uPesy_esp32_wroom_devkit board
+  and the oroca_edubot precedent (EN/BOOT-style pins are only tagged
+  "button" when a vendor source explicitly calls them a user button).
+- A0-A5 (GPIO33/32/35/34/36/39): KEPT unchanged - ordinary Arduino-Uno-style
+  analog pin aliases matching the chip-level default capabilities already
+  present (GPIO33/32 bidirectional analog_input; GPIO34/35/36/39 input-only
+  analog_input, all already correctly excluded from digital_output/
+  pwm_output by the chip-level inputOnlyGpios list). No dedicated sensor
+  wiring found on any of these pins.
+- SDA/SCL (GPIO21/22), SS/MOSI/MISO/SCK (GPIO5/23/19/18), TX/RX (GPIO1/3):
+  KEPT unchanged - ordinary general-purpose bus pins, no vendor evidence of
+  any onboard dedicated consumer (no I2C sensor, SPI peripheral, or second
+  UART device documented for this board).
+- Green power-indicator LED: not GPIO-driven per vendor doc (always on
+  when the board has power), so no capability tag applies - it is not
+  software-controllable and has no associated pin in pins_arduino.h.
+
+Summary of what was changed
+-------------------------------
+- Created board.json (previously used the chip-level esp32/esp32/board.json
+  default; none existed for this board before).
+- Retagged GPIO2 (LED_BUILTIN) -> ["digital_output", "led_high",
+  "pwm_output"] (was ["analog_input_serial","digital_input",
+  "digital_output","pwm_output"]) - confirmed onboard orange LED,
+  active-high, per uPesy's own documentation (source 1).
+- pins_arduino.h: NO CHANGES. The flagged PIN_A0 declaration is a genuine
+  false positive (harmless alias-of-an-alias, no collision with any bus
+  alias) and was left in place.
+- No other GPIO was excluded, retagged, or otherwise modified. This board
+  has no confirmed onboard button, sensor, or battery-monitor hardware
+  beyond the single orange status LED on GPIO2 and the standard EN/BOOT
+  reset/bootloader pins common to all ESP32 DevKit-style boards.

@@ -1,0 +1,89 @@
+Board: dfrobot_beetle_rp2040 (chip: rp2040) — DFRobot Beetle RP2040 (SKU DFR0959)
+Audit date: 2026-07-13
+
+SOURCES CONSULTED
+- pfodWeb source: variants/rp2040/rp2040/dfrobot_beetle_rp2040/pins_arduino.h (full file) —
+  declares PIN_LED (13u, with a "// Not pinned out" comment directly above it), PIN_SERIAL1_TX/RX
+  (28/29), PIN_SERIAL2_TX/RX (4/5), SPI0 MISO/MOSI/SCK/SS (0/3/2/1), SPI1 "not pinned out"
+  (all 31), Wire0 SDA/SCL (4/5, sharing pins with Serial2), Wire1 SDA/SCL (2/3, sharing pins with
+  SPI0 SCK/SS). Includes ../generic_full/common.h for the D0-D29/A0-A3 fallback.
+- pfodWeb source: variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {} by design).
+- pfodWeb source: variants/rp2040/rp2040/generic_full/common.h (30-pin full variant, confirms
+  PINS_COUNT=30, NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12, A0-A3 = GPIO26-29).
+- Precedents read: variants/rp2040/rp2040/rpipico/board.json (LED-only case; BOOTSEL/reset
+  out-of-scope rationale reused here), variants/rp2040/rp2040/adafruit_feather_scorpio/pins_arduino.h
+  (real precedent for the button/LED-vs-bus-collision #define-removal fix — checked but found NOT
+  applicable to this board, see below).
+- https://wiki.dfrobot.com/SKU_DFR0959_Beetle_RP2040 (WebFetch) — main wiki page: "Onboard LED:
+  GPIO Connection Pin 13, Color Green, Polarity Active high"; "BOOT Button: ... bootloader mode";
+  "Reset Button: Performs program reset when pressed"; explicit GPIO pinout table listing only
+  GP0, GP1, GP2, GP3, GP4, GP5, GP28, GP29 as broken-out pins (matching this board's 8-GPIO
+  "carefully-selected" header, confirmed by a second product-description search hit).
+- https://wiki.dfrobot.com/dfr0959/ (WebFetch, board landing page) — explicit onboard-components
+  summary: "LED: 1 (green, connected to pin 13)", "Buttons: 2 (BOOT and RESET). There are no
+  additional user-accessible buttons beyond these", "NeoPixel: None mentioned", "USB Connector:
+  TYPE-C". Confirms no onboard NeoPixel and no onboard general-purpose GPIO button.
+- https://wiki.dfrobot.com/dfr0959/docs/21548 ("Light LED" Arduino example, WebFetch) — code uses
+  LED_BUILTIN with digitalWrite(LED_BUILTIN, HIGH) to turn the LED ON, confirming active-high
+  polarity (matches the main wiki page's explicit "Polarity: Active high" statement).
+- https://wiki.dfrobot.com/dfr0959/docs/21545 ("Read Digital Pins with Internal Pull-up" example,
+  WebFetch) — describes wiring an EXTERNAL pushbutton to GP0 via a breadboard circuit (explicit
+  hardware list: pushbutton + R1 10K pull-up resistor + R2 220-ohm current-limit resistor, "KEY:
+  control key, connect between current-limiting resistor R2 and GND. When pressed, it pulls GP0
+  down to a low level."). This is a generic "how to read a digital input" tutorial, NOT a
+  documentation of an onboard fixed button — confirmed by the separate onboard-components summary
+  above stating only BOOT/RESET exist. GP0 in this board's pins_arduino.h is also PIN_SPI0_MISO;
+  no collision arises because GP0 is not being tagged as a button (it is a generic, unpopulated
+  header pin free for the user's own external circuit).
+- https://wiki.dfrobot.com/dfr0959/docs/21546 ("Read Digital Pins" example, WebFetch) — likewise
+  describes wiring an external switch to a GPIO pin via breadboard, not an onboard component.
+
+PER-PIN REASONING
+- GPIO13 (PIN_LED / LED_BUILTIN): Onboard green status LED, confirmed active-high via two
+  independent wiki.dfrobot.com pages (explicit "Polarity: Active high" statement on the main SKU
+  page, plus the Light-LED example code driving it HIGH to turn it on). Tagged
+  ["digital_output","pwm_output","led_high"] per this repo's established rpipico/board.json GPIO25
+  precedent — digital_input dropped, pwm_output kept (arduino-pico's analogWrite() works on any
+  GPIO). GPIO13 does not collide with any bus alias in this board's pins_arduino.h (SPI0 uses
+  GPIO0-3, Wire0 uses GPIO4-5, Wire1 uses GPIO2-3, Serial1 uses GPIO28-29, Serial2 uses GPIO4-5 —
+  none use GPIO13), so unlike the adafruit_feather_scorpio precedent, no #define removal is needed
+  here to prevent build_boards.js's auto-appended bus-capability bug. Also confirmed GPIO13 is NOT
+  one of this board's 8 broken-out header pins (wiki pinout table lists only GP0-5, GP28, GP29) —
+  consistent with this board's own pins_arduino.h "// Not pinned out" comment directly above the
+  PIN_LED #define. This is an internal-only status LED, invisible to a user probing the board's
+  castellated pads with a meter, but that is a header-exposure detail and does not change its GPIO
+  capability tagging (LED_BUILTIN / digitalWrite still operate on GPIO13 in firmware regardless of
+  whether the pin is broken out).
+- No PIN_NEOPIXEL alias exists in this board's pins_arduino.h, and the wiki's own onboard-components
+  summary explicitly states no NeoPixel is present — nothing to tag as led_neopixel.
+- No PIN_BUTTON alias exists in this board's pins_arduino.h. BOOT and RESET are this board's only
+  physical buttons — both are out of scope per this repo's established rpipico/board.json BOOTSEL
+  rationale (not digitalRead()-able GPIOs; BOOT uses the same non-GPIO QSPI-CS bootloader-entry
+  trick as every other RP2040 board, RESET is a hardware reset with no GPIO alias). The GP0
+  "external button" wiki tutorial does not describe an onboard component (see SOURCES above) and
+  was correctly NOT tagged as a button.
+- GPIO4/GPIO5 are declared as BOTH PIN_SERIAL2_TX/RX and PIN_WIRE0_SDA/SCL (and GPIO2/GPIO3 as
+  both PIN_WIRE1_SDA/SCL and PIN_SPI0_SCK/SS) — this is a genuine UART-vs-I2C-vs-SPI pin-sharing
+  scheme confirmed by the wiki's own pinout table ("SPI0 conflicts with I2C1", "I2C0 conflicts with
+  UART2"), matching the vendor's documented mutually-exclusive-use design. This is out of scope for
+  this audit: the task's bug class is specifically about a CONFIRMED BUTTON/LED pin being
+  double-aliased as a bus pin (which causes build_boards.js to wrongly auto-append a spurious bus
+  capability onto a dedicated-hardware pin); it is not about resolving inherent bus-vs-bus
+  time-multiplexing on general-purpose header pins, which is normal/expected on pin-constrained
+  boards and already handled correctly by simply exposing both capability sets (the user picks
+  one function at a time in their own sketch, same as any Arduino board with shared UART/I2C pins).
+  No #define removal applied for GPIO2/3/4/5.
+- inputOnlyGpios / pinNotes left at chip-level defaults — no boot-strapping restrictions documented
+  for this board beyond the standard RP2040 BOOTSEL mechanism (out of scope, non-GPIO).
+- pwm / dac / adc left at chip-level defaults (8-bit analogWrite, no DAC, 12-bit ADC) — this
+  board's generic_full/common.h declares no board-specific analog deviation.
+
+SUMMARY
+Created variants/rp2040/rp2040/dfrobot_beetle_rp2040/board.json (full per-board override file)
+tagging GPIO13 (PIN_LED / LED_BUILTIN) as ["digital_output","pwm_output","led_high"] — confirmed
+active-high onboard green status LED via wiki.dfrobot.com. No onboard button found beyond the
+out-of-scope BOOT/RESET pair (the wiki's GP0 "button" example is an external user-wired circuit,
+not an onboard component). No onboard NeoPixel. No LED/button-vs-bus #define collision requiring
+removal (GPIO13 is unique to the LED; the GPIO2/3/4/5 UART/I2C/SPI sharing is a normal vendor-
+documented multiplexing scheme, not a button/LED collision). JSON validity verified via manual
+`//`-comment stripping + JSON.parse (no build script executed).

@@ -61,7 +61,8 @@ static const uint8_t T14 = 14;
 static const uint8_t DAC1 = 17;
 static const uint8_t DAC2 = 18;
 
-static const uint8_t LDO_2_POWER = 21;
+// pfodWeb NOTE: LDO_2_POWER (GPIO21) deliberately NOT declared - internal
+// power-enable line for the second LDO regulator, not general-purpose.
 
 static const uint8_t APA_DATA = 40;
 static const uint8_t APA_CLK = 45;

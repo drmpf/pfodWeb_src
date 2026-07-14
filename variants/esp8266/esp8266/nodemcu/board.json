@@ -1,0 +1,101 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  // (boardName/displayName are fallbacks — boards.txt's nodemcu/nodemcuv2
+  // entries override both for the actual output ids.)
+  "boardName": "ESP8266",
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  // pfodWeb NOTE: GPIO0 tagged "button" (onboard FLASH/BOOT pushbutton,
+  // pulled to GND when pressed), GPIO2 tagged "led_low" (LED on the
+  // ESP-12/ESP-12E module itself, silkscreened "D4") and GPIO16 tagged
+  // "led_low" (second LED on the NodeMCU devkit PCB itself, silkscreened
+  // "D0") - both LEDs active-low. Confirmed applicable to BOTH boards.txt
+  // entries sharing this file (nodemcu = "NodeMCU 0.9 (ESP-12 Module)"
+  // and nodemcuv2 = "NodeMCU 1.0 (ESP-12E Module)") via:
+  //   https://lowvoltage.github.io/2017/07/09/Onboard-LEDs-NodeMCU-Got-Two
+  //     "NodeMCU ... got two [LEDs]" - GPIO16/D0 (devkit PCB LED) and
+  //     GPIO2/D4 (ESP-12(E) module's own LED), both 0603 blue LEDs
+  //     through 470-ohm resistors, both wired "inverted" (LOW = on),
+  //     i.e. active-low. Matches this board's own pins_arduino.h
+  //     (`#define LED_BUILTIN 2` / `#define LED_BUILTIN_AUX 16`).
+  //   ESP-12 vs ESP-12E module comparison confirms GPIO16 is present and
+  //   wired identically on both module variants (GPIO16 predates the
+  //   ESP-12E's extra bottom-row pins), and the D0 LED is a devkit-PCB
+  //   feature (not module-dependent) - so this applies equally to the
+  //   0.9/ESP-12 and 1.0/ESP-12E revisions, no per-revision split needed.
+  //   FLASH button (GPIO0, pulled LOW when pressed to enter bootloader
+  //   mode) is documented identically for both revisions - see e.g.
+  //   https://www.etechnophiles.com/nodemcu-esp8266-pinout-specs-board-layout/
+  //   and https://esp8266.com/viewtopic.php?f=32&t=15869 - a plain
+  //   flash/boot button, same convention as this repo's other ESP8266
+  //   boards (e.g. espino, ESPDuino, itead), tagged ["digital_input",
+  //   "button"] with no active-high/low variant defined for "button".
+  //   RST is the chip's physical reset pin, not a GPIO, so it is not
+  //   tagged. See boardsDetails/esp8266/esp8266/nodemcu/notes.txt for
+  //   full research notes.
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. Onboard FLASH/BOOT pushbutton (active-low) — confirmed, see chipGpios note",
+    "2":  "Must be HIGH at boot. Onboard LED on the ESP-12/ESP-12E module itself (active-low, D4/LED_BUILTIN) — confirmed, see chipGpios note",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Onboard LED on the NodeMCU devkit PCB (active-low, D0/LED_BUILTIN_AUX) — confirmed, see chipGpios note. Also commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. NodeMCU has an on-board resistor divider giving A0 a 0-3.2V range (unlike the bare chip's native 0-1.0V) - see adc note below"
+  },
+
+  // Full usable-GPIO map — see variants/esp8266/esp8266/board.json for
+  // the full rationale (A0 analog-only, GPIO1/3 forced serial, PWM
+  // available on GPIO0-15 except 16, per randomnerdtutorials.com above).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Onboard FLASH/BOOT button (active-low) — see pfodWeb NOTE above pinNotes for sources" },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_output", "pwm_output", "led_low"], "note": "Onboard LED on the ESP-12/ESP-12E module (active-low, D4/LED_BUILTIN) — see pfodWeb NOTE above pinNotes for sources" },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_output", "led_low"], "note": "Onboard LED on the NodeMCU devkit PCB (active-low, D0/LED_BUILTIN_AUX) — see pfodWeb NOTE above pinNotes for sources" },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  // pfodWeb NOTE: adc.defaultRefVolts corrected from "3.3" (earlier-session
+  // value, unverified) to "3.2" - NodeMCU's onboard A0 divider uses the
+  // same 220k/100k resistor network confirmed on this repo's other
+  // 220k/100k ESP8266 boards (D1 Mini, D1 R1, ESPino), not a different
+  // ratio. Confirmed via:
+  //   https://esp8266.com/viewtopic.php?f=8&t=16799
+  //     Forum member btidey (well-known contributor): "The Node MCU
+  //     units that have a 0-3.3V range put a resistor divider in front"
+  //     - divider is 220k in series (A0 to ADC node) + 100k (ADC node to
+  //     GND), giving effective input impedance 320k and dividing ratio
+  //     100k/320k.
+  //   https://www.electronicwings.com/nodemcu/nodemcu-adc-with-arduino-ide
+  //     "voltage divider network of resistors (100Kohm & 220Kohm)" -
+  //     "R2 is 100kOhm and R1 equals 220kOhm. The Vout port is connected
+  //     to the ADC pin of the ESP-12 module and Vin is connected to the
+  //     A0 pin on the NodeMCU board."
+  //   Exact math: chip-native ADC max 1.0V * (220k+100k)/100k = 3.2V
+  //   full-scale at A0 - the "0-3.3V" figure quoted informally by both
+  //   sources above (and by this file's own earlier, unverified note) is
+  //   rounded/approximate, not what the resistor math gives - same
+  //   pattern already found and corrected on the D1 Mini/D1 R1/ESPino
+  //   board.json files in this repo.
+  //   No dedicated NodeMCU 0.9-vs-1.0 schematic distinction was found for
+  //   this divider; the 220k/100k network is described identically for
+  //   the "NodeMCU Dev Kit" family across all sources checked (see
+  //   notes.txt) - applies to both boards.txt entries sharing this file.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.2" }
+}

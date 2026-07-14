@@ -1,0 +1,76 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "megaADK" -> designer/boards/megaADK/megaADK.json -> const megaADKData = {...}
+  "boardName": "megaADK",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by boards.txt's "megaADK.name=Arduino Mega ADK" entry when present.
+  "displayName": "Arduino Mega ADK",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "avr",
+
+  // Default PWM output range for analogWrite().  AVR is 8-bit (0-255).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: AVR has no hardware DAC.
+  "dac": {},
+
+  // ADC: ATmega2560 has a 10-bit ADC (0-1023).  Default reference is
+  // AVCC = 5 V.  Internal 1.1 V (INTERNAL1V1) and 2.56 V (INTERNAL2V56)
+  // references also available via analogReference().  Same as plain Mega
+  // -- the MAX3421E USB host controller does not change the analog front
+  // end.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "5.0" },
+
+  // GPIO numbers that are input-only. Leave [] on boards where every pin
+  // is bidirectional (e.g. all AVR variants).
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over. AVR boards typically only
+  // ship Serial -- no on-board radio.
+  "connections": ["serial"],
+
+  // No boot-time pin restrictions on AVR boards.
+  "pinNotes": {},
+
+  // Split into its own directory (2026-07-14 AVR pin audit) from the
+  // shared "mega" variant: Mega ADK is a Mega 2560 plus an onboard
+  // MAX3421E USB host controller (for Android Open Accessory / ADK use)
+  // wired via SPI, which dedicates digital pin 7 as its RST line -- a
+  // pin that is free-for-use on plain Mega.  pins_arduino.h is a one-line
+  // #include of ../mega/pins_arduino.h (identical mechanical pin map;
+  // the USB host controller is additive hardware, not a pin remap).
+  //
+  // Source: official Arduino "Arduino Mega ADK Rev3" documentation
+  // (docs.arduino.cc/retired/boards/arduino-mega-adk-rev3/), which states
+  // under the MAX3421E pin connections:
+  //   "Digital: 7 (RST), 50 (MISO), 51 (MOSI), 52 (SCK)."
+  //   "Please do not use Digital pin 7 as input or output because is
+  //    used in the comunication with MAX3421E"
+  //   "Non broken out on headers: PJ3 (GP_MAX), PJ6 (INT_MAX), PH7 (SS)."
+  // Corroborated by the Arduino Forum thread
+  // (forum.arduino.cc/t/asm-megaadk-what-pins-of-mcu-are-connected-to-max3421e/218237)
+  // which independently lists PH7=SS, PH4(=D7)=RESET, PJ3=GPX, PJ6=INT.
+  //
+  // D7 (RST) -- the only MAX3421E control line that lands on a numbered
+  // Arduino digital pin -- is excluded entirely below. The MAX3421E's
+  // chip-select (PH7) and GPX/INT lines (PJ3/PJ6) are wired directly to
+  // ATmega2560 port pins that are NOT broken out to any Arduino digital
+  // pin number on this board (no D-pin exists for them), so they cannot
+  // be represented in this pin-number-keyed map and need no entry --
+  // sketches have no digitalWrite()/digitalRead() way to reach them
+  // anyway. MISO/MOSI/SCK (D50-D52) are shared external SPI bus lines
+  // (same as plain Mega) and are left as auto-derived; the MAX3421E does
+  // not dedicate them since other SPI peripherals share the same bus.
+  //
+  // D13 -- onboard status LED, active-high (same physical LED as plain
+  // Mega; official Arduino documentation: "The built-in LED of the
+  // Arduino board is connected internally to the 'D13' pin"). Not on
+  // this board's SPI bus (SPI is D50-D53), so no dual-role caveat needed.
+  "chipGpios": {
+    "7": { "capabilities": [], "note": "Dedicated to onboard MAX3421E USB host controller RST (reset) line. Official Arduino Mega ADK documentation: 'Please do not use Digital pin 7 as input or output because is used in the comunication with MAX3421E.'" },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED, active-high." }
+  }
+}

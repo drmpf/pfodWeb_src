@@ -1,0 +1,164 @@
+sparkfun_lora_gateway_1-channel (chip: esp32) - button/LED capability-tagging audit (section 7a)
+Date: 2026-07-12
+
+CONTEXT
+This board already has a board.json override from an earlier dedicated-
+hardware-exclusion pass. That pass already excludes GPIO12/13/14/16 from
+chipGpios entirely (no "12"/"13"/"14"/"16" keys present) because
+pins_arduino.h's own comments identify them as the onboard RFM95W-class
+LoRa concentrator's dedicated SPI bus (SCK/MOSI/MISO/SS). That pass never
+applied button/LED tagging, which is this session's task.
+pins_arduino.h also declares `static const int LED_BUILTIN = 17;` (note:
+type is `int`, not the usual `uint8_t` - this actually means the repo's
+build_boards.js const-parser regex, which only matches
+`static const uint8_t NAME = N;`, does NOT pick this declaration up at
+all, so GPIO17 was previously invisible to the generator on both sides -
+neither excluded-with-reason nor included. This audit adds it explicitly
+via a chipGpios entry.) Also present: TX=1/RX=3, SDA=21/SCL=22 (no SS/
+MOSI/MISO/SCK declared locally - the whole SPI bus is treated as
+dedicated to the radio, per the existing top-of-file comment).
+
+FLAGGED PINS: GPIO17 (LED_BUILTIN) and GPIO0 (candidate onboard button).
+
+SOURCES CONSULTED
+
+1. WebSearch "SparkFun LoRa Gateway 1-Channel schematic GPIO17 LED" and
+   "SparkFun LoRa Gateway 1-Channel pinout ESP32 hookup guide" - both
+   returned strong, consistent search-snippet evidence from SparkFun's own
+   official Hookup Guide: "On the bottom left side of the board you will
+   find the power led and the reset button, while on the opposite side are
+   a button connected to pin 0 and an led connected to pin 17." This is a
+   HIGH CONFIDENCE, vendor-authored, board-specific source (not generic
+   ESP32-WROOM boilerplate) directly naming both GPIO17 as an LED and
+   GPIO0 as a button.
+
+2. https://learn.sparkfun.com/tutorials/sparkfun-lora-gateway-1-channel-hookup-guide/all
+   (official SparkFun Learn hookup guide) - WebFetch succeeded. Confirmed
+   the GPIO0 button is described as usable as "an active-low input for
+   your sketch", and separately confirmed GPIO16 is documented in the
+   guide's SPI pin configuration section as `#define SS 16` (the LoRa
+   radio's Slave Select line) - this corroborates the prior pass's
+   GPIO12-14/16 SPI-bus exclusion independently. No LED polarity detail
+   was present in the fetched guide text itself.
+
+3. https://learn.sparkfun.com/tutorials/sparkfun-lora-gateway-1-channel-hookup-guide/hardware-overview
+   - WebFetch succeeded but the fetched section did not contain LED
+   polarity/schematic detail beyond restating "an led connected to pin
+   17" and the GPIO0 active-low button description.
+
+4. https://github.com/sparkfun/ESP32_LoRa_1Ch_Gateway (official SparkFun
+   GitHub repo for this exact product) - HIGHEST CONFIDENCE SOURCE.
+   Fetched directly via the GitHub API tree listing plus
+   raw.githubusercontent.com file contents:
+   a) Firmware/arduino-esp32/variants/sparkx_esp32_lora/pins_arduino.h -
+      the vendor's own original pins_arduino.h for this board (this
+      repo's copy is a close derivative/subset of it). Confirms
+      `static const int LED_BUILTIN = 17;` and separately declares the
+      radio's full SPI bus as SS=16/MOSI=13/MISO=12/SCK=14 - i.e. GPIO17
+      is NOT one of the radio's SPI/control pins in the vendor's own
+      source of truth.
+   b) Firmware/ESP-1CH-TTN-Device-ABP/ESP-1CH-TTN-Device-ABP.ino - the
+      vendor's own official example sketch for this board. Directly
+      relevant code:
+        - setup(): `pinMode(0, INPUT);` under `#ifdef SEND_BY_BUTTON`
+          (comment: "press the '0' button to trigger a LoRa send"), and
+          `pinMode(LED_BUILTIN, OUTPUT); digitalWrite(LED_BUILTIN, LOW);`
+          (LED explicitly initialized OFF at LOW).
+        - do_send(): `digitalWrite(LED_BUILTIN, HIGH); // Turn on LED
+          while sending` - LED turns ON at HIGH.
+        - onEvent() EV_TXCOMPLETE: `digitalWrite(LED_BUILTIN, LOW); //
+          Turn off LED after send is complete` - LED turns OFF at LOW.
+        - loop(): `if (digitalRead(0) == LOW) { ... do_send(&sendjob); }`
+          - button press reads LOW, confirming active-low, matching the
+          Hookup Guide's own description.
+        - The radio's lmic_pinmap in this same sketch is
+          `.nss = 16, .rst = 5, .dio = {26, 33, 32}` - GPIO17 and GPIO0
+          are absent from the radio's pin list, corroborating that
+          neither is a radio pin.
+   This is vendor first-party example code for this exact board, driving
+   GPIO17 as a plain digitalWrite LED (not a radio pin) and GPIO0 as a
+   plain digitalRead button - the clearest possible confirmation short of
+   a schematic image.
+
+REASONING
+
+GPIO17 (LED_BUILTIN): TAGGED "led_high". Both the official Hookup Guide
+("an led connected to pin 17") and the vendor's own example firmware
+(digitalWrite(LED_BUILTIN, HIGH) turns it on, LOW turns it off) confirm
+this is a genuine onboard LED, not a LoRa radio pin - the radio's SPI/
+control pins are separately and explicitly SS=16/MOSI=13/MISO=12/SCK=14/
+RST=5/DIO0-2=26,33,32 in the vendor's own pin map, none of which is 17.
+Unlike the sibling BharatPi-LoRa board (where the vendor's own LoRa
+example code drove the LED_BUILTIN-numbered pin exclusively as the
+radio's DIO0 interrupt with zero LED code), this board's vendor example
+drives GPIO17 exclusively as an LED with zero radio-pin use, and the
+Hookup Guide independently corroborates it as a distinct board feature
+("opposite" the button, i.e. a separate physical component). Confidence:
+HIGH. Tagged capabilities ["digital_output", "led_high", "pwm_output"]
+(digital_input dropped, matching this repo's established led_high/led_low
+tagging convention e.g. adafruit_itsybitsy_esp32 GPIO13, esp32thing_plus_c
+GPIO13, d32 GPIO5).
+
+GPIO0 (button): TAGGED "button". Both the official Hookup Guide ("a
+button connected to pin 0", "active-low input") and the vendor's own
+example sketch (pinMode(0, INPUT); digitalRead(0) == LOW triggers an
+action) confirm an onboard active-low pushbutton, consistent with this
+board's existing GPIO0 pinNotes strapping warning ("Must be HIGH or
+floating on reboot" - i.e. this is the standard ESP32 BOOT-button pin,
+here also exposed as a general-purpose user button per vendor docs, same
+dual-purpose pattern as several other boards already tagged this way in
+this database, e.g. waveshare_esp32_s3_zero GPIO0). Confidence: HIGH.
+Tagged capabilities ["digital_input", "button"] (analog_input_serial/
+digital_output/pwm_output dropped, matching this repo's established
+button-tagging convention, e.g. Pcbcupid_GLYPH_H2 GPIO9, dfrobot_firebeetle2_esp32c6
+GPIO9, waveshare_esp32_s3_zero GPIO0).
+
+COLLISION CHECK (per playbook step 5): Neither GPIO17 nor GPIO0 is
+aliased anywhere in this board's pins_arduino.h as SDA/SCL/SS/MOSI/MISO/
+SCK (those are GPIO21/22 for SDA/SCL; SS/MOSI/MISO/SCK are deliberately
+NOT declared in this file at all - the whole bus is treated as radio-
+dedicated per the pre-existing top comment). No bus-capability
+contamination risk for either pin; pins_arduino.h was left unmodified -
+no lines needed deletion.
+
+OUT-OF-SCOPE OBSERVATION (not acted on): the vendor's own example
+sketch's lmic_pinmap uses GPIO26/33/32 as the radio's DIO0/DIO1/DIO2
+interrupt lines (`.dio = {26, 33, 32}`). This board's existing chipGpios
+(from the prior dedicated-hardware-exclusion pass, not touched this
+session) currently keeps GPIO26/32/33 as plain general-purpose pins
+(analog/digital/pwm, GPIO26 also dac_output) with no radio-dedication
+exclusion. This session's task scope was button/LED tagging only, per
+task instructions ("this pass never applied button/LED tagging, which is
+what you're doing now") - re-auditing the SPI/DIO exclusion boundary was
+out of scope and was NOT changed. Flagging here for a future dedicated-
+hardware-exclusion re-pass to evaluate, since the DIO0-2 assignment above
+came from only one example sketch (a single specific application
+configuration), not from the board's own pins_arduino.h (which declares
+no DIO/RST aliases at all), so it's weaker evidence than the SPI bus
+aliases already excluded.
+
+CHANGES MADE
+- variants/esp32/esp32/sparkfun_lora_gateway_1-channel/board.json:
+  - Added an explanatory NOTE paragraph to the existing top-of-file
+    comment block documenting this audit's findings and reasoning.
+  - chipGpios["0"]: capabilities changed from
+    ["analog_input_serial", "digital_input", "digital_output",
+    "pwm_output"] to ["digital_input", "button"].
+  - chipGpios["17"]: new entry added,
+    { "capabilities": ["digital_output", "led_high", "pwm_output"] }
+    (this GPIO had no entry at all before - see CONTEXT above on why the
+    vendor's `int`-typed LED_BUILTIN declaration was invisible to the
+    generator's uint8_t-only const parser).
+  - No other JSON content changed.
+- pins_arduino.h: NOT modified (no SDA/SCL/SS/MOSI/MISO/SCK collision
+  found for either flagged pin; task scope was board.json tagging only).
+- Created this notes.txt (board had none before).
+
+SUMMARY
+GPIO17/LED_BUILTIN: TAGGED "led_high" (HIGH confidence) - vendor's own
+Hookup Guide and official example firmware both confirm a genuine onboard
+LED, active-high, fully independent of the LoRa radio's separately-
+declared SPI/control pins. GPIO0: TAGGED "button" (HIGH confidence) -
+same two vendor sources confirm an onboard active-low pushbutton,
+consistent with the existing GPIO0 boot-strapping pinNote. No
+pins_arduino.h changes needed (no bus-alias collision on either pin).

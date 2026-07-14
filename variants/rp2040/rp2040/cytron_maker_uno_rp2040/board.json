@@ -1,0 +1,114 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Cytron Maker Uno RP2040" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board beyond
+  // what chipGpios already fully overrides below (button is handled via
+  // an explicit ["digital_input","button"] capability set, not this
+  // list).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // "rp2040" chip bucket; the Maker Uno RP2040 has no onboard WiFi radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-12):
+  //
+  // Board: Cytron "Maker Uno RP2040" — official Cytron educational/maker
+  // board, RP2040-based, Arduino Uno form factor. This board's own
+  // pins_arduino.h declares PIN_LED=3, PIN_NEOPIXEL=25 (NUM_NEOPIXEL=2,
+  // PIN_RGB alias), PIN_BUZZER=8 (no tagging vocabulary for buzzers in
+  // this repo, left out of scope per task instructions), and
+  // PIN_BUTTON=2. Without a per-board override these four aliased GPIOs
+  // would each get the chip-level default full
+  // digital_input/digital_output/pwm_output capability set (since
+  // ../board.json's chipGpios is deliberately empty for this family —
+  // see that file's own comments), even though GPIO2/3/25 are wired to
+  // dedicated onboard hardware, not general-purpose header pins.
+  //
+  // Sources (independently cross-referenced):
+  //   1. Zephyr Project official board documentation
+  //      (docs.zephyrproject.org/latest/boards/cytron/maker_uno_rp2040/doc/index.html)
+  //      — lists GPIO2 as "User button" (default pin mux "GPIO pull-up"),
+  //      GPIO3 as "(Alias led0)" in the Arduino headers table, and
+  //      confirms "The RGB LEDs are connected to GPIO25, and its pin mux
+  //      setting is PIO0" with hardware spec "2 RGB LEDs (Neopixels)"
+  //      driven via the "worldsemi,ws2812-rpi_pico-pio" compatible —
+  //      i.e. WS2812-style NeoPixels, matching this board's own
+  //      NUM_NEOPIXEL=2 in pins_arduino.h exactly.
+  //   2. Zephyr's own board devicetree source
+  //      (zephyr/boards/cytron/maker_uno_rp2040/maker_uno_rp2040.dts,
+  //      derived from Cytron's official schematic) — the authoritative
+  //      electrical polarity source:
+  //        leds { led0: led_gp3 { gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>; }; };
+  //        gpio_keys { sw0: user_button { gpios = <&gpio0 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; }; };
+  //      confirming GPIO3 LED is active-high and GPIO2 button is
+  //      active-low with an internal pull-up (button pulls the line LOW
+  //      when pressed).
+  //   3. Cytron's own official example code
+  //      (github.com/CytronTechnologies/Cytron-MAKER-UNO-RP2040 ->
+  //      Example_Code/Arduino/Button/Button.ino) — uses
+  //      `pinMode(btn1, INPUT_PULLUP)` on GPIO2, i.e. button reads LOW
+  //      when pressed, HIGH when released — independently confirms the
+  //      Zephyr dts polarity above from the vendor's own Arduino sample.
+  //
+  // Per-pin disposition:
+  //   GPIO2  - PIN_BUTTON, onboard user pushbutton, active-low with
+  //            internal pull-up. digital_output/pwm_output dropped
+  //            (not a general-purpose output pin) per the established
+  //            button-tagging precedent (see esp8266/wiolink,
+  //            esp8266/ESPDuino GPIO0 chipGpios entries).
+  //   GPIO3  - PIN_LED / LED_BUILTIN, onboard user LED, active-high.
+  //            digital_input dropped, pwm_output kept (arduino-pico's
+  //            analogWrite() works on any RP2040 GPIO, enabling LED
+  //            dimming) — matches the rpipico/board.json GPIO25
+  //            led_high precedent.
+  //   GPIO25 - PIN_NEOPIXEL / PIN_RGB, onboard 2-pixel WS2812 NeoPixel
+  //            data line, output-only. digital_input dropped;
+  //            pwm_output omitted per this repo's led_neopixel
+  //            convention (a NeoPixel data pin is bit-banged/PIO-driven,
+  //            not a PWM-dimmable single LED) — matches the
+  //            sparkfun_thingplusrp2350 GPIO14 precedent style (that one
+  //            keeps pwm_output only because its NeoPixel pin doubles as
+  //            a header LED_OUT pin; this board's GPIO25 has no such
+  //            dual role, so pwm_output is left out).
+  //   GPIO8  - PIN_BUZZER: out of scope, no tagging vocabulary exists in
+  //            this repo for buzzers (per task instructions). No
+  //            chipGpios entry added; keeps the chip-level default full
+  //            digital_input/digital_output/pwm_output capability set.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/cytron_maker_uno_rp2040/notes.txt
+  "chipGpios": {
+    "2":  { "capabilities": ["digital_input", "button"], "note": "PIN_BUTTON — onboard user button, active-low with internal pull-up (Zephyr maker_uno_rp2040.dts: GPIO_ACTIVE_LOW | GPIO_PULL_UP; confirmed by Cytron's own Button.ino example using INPUT_PULLUP). See pfodWeb NOTE above." },
+    "3":  { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard user LED, active-high (Zephyr maker_uno_rp2040.dts: led_gp3 gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>). See pfodWeb NOTE above." },
+    "25": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL / PIN_RGB — onboard 2-pixel WS2812 NeoPixel data line (NUM_NEOPIXEL=2), output-only, driven via PIO0 per Zephyr board docs. See pfodWeb NOTE above." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12). Not affected by this button/LED/NeoPixel
+  // audit.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

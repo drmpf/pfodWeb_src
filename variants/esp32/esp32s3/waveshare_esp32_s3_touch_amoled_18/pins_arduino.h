@@ -31,9 +31,8 @@
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
-// Def for I2C that shares the IMU I2C pins
-static const uint8_t SDA = 14;
-static const uint8_t SCL = 15;
+// pfodWeb NOTE: SDA/SCL not declared — shared with the onboard IMU, not
+// a general expansion port (see board.json).
 
 // Mapping based on the ESP32S3 data sheet - alternate for SPI2
 static const uint8_t SS = 34;    // FSPICS0
@@ -47,20 +46,15 @@ static const uint8_t OUTPUT_IO3 = 3;
 static const uint8_t OUTPUT_IO17 = 17;
 static const uint8_t OUTPUT_IO18 = 18;
 
-// Analog capable pins on the header
+// Analog capable pins on the header (pfodWeb NOTE: A3-A6 deliberately
+// NOT declared — GPIO4/5/6/7 are the onboard SH8601 display's QSPI
+// data lines)
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
-static const uint8_t A3 = 4;
-static const uint8_t A4 = 5;
-static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
 
-// GPIO capable pins on the header
-static const uint8_t D0 = 7;
-static const uint8_t D1 = 6;
-static const uint8_t D2 = 5;
-static const uint8_t D3 = 4;
+// GPIO capable pins on the header (pfodWeb NOTE: D0-D3 deliberately NOT
+// declared — same QSPI display lines as above)
 static const uint8_t D4 = 3;
 static const uint8_t D5 = 2;
 static const uint8_t D6 = 1;
@@ -75,13 +69,10 @@ static const uint8_t D14 = 35;
 static const uint8_t D15 = 34;
 static const uint8_t D16 = 33;
 
-// Touch input capable pins on the header
+// Touch input capable pins on the header (pfodWeb NOTE: T4-T7
+// deliberately NOT declared — same QSPI display lines as above)
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
 static const uint8_t T3 = 3;
-static const uint8_t T4 = 4;
-static const uint8_t T5 = 5;
-static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
 
 #endif /* Pins_Arduino_h */

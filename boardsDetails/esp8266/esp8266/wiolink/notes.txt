@@ -1,0 +1,200 @@
+Wio Link (Seeed Studio) — board/LED/button/ADC research notes
+================================================================
+Date: 2026-07-11
+Board dir: C:\ai\aicode\pfodWeb\variants\esp8266\esp8266\wiolink\
+
+1) URLs consulted and what each told me
+----------------------------------------
+- https://wiki.seeedstudio.com/Wio_Link/
+  Official wiki hardware overview. Confirms: BLUE LED = network status
+  indicator, attached to GPIO2 (shared with UART1 TX). RED LED = Grove
+  module power status, controlled via GPIO15 (all six Grove VCC pins
+  converge and are gated by GPIO15). Names the physical Grove analog
+  connector "A3" (a Grove-port label, not an ESP8266 pin name) and lists
+  Digital Ports 0/1/2 = GPIO14/12/13, I2C = GPIO4/5, UART = GPIO1/3. Did
+  NOT give GPIO number or polarity for the CONFIG/FUNCTION button, and
+  did NOT document any ADC voltage-divider/range.
+
+- https://github.com/Seeed-Studio/Wio_Link/wiki/Advanced-User-Guide
+  Official advanced guide. Describes usage: "Press the CONFIG button
+  over 5 seconds and release it, this will put the Wio device into
+  configuration mode" and blue LED breathing/blinking to indicate
+  network state. Confirms GPIO2/GPIO15 LED assignments from the wiki
+  page above. No GPIO number given for the CONFIG button itself, no ADC
+  detail.
+
+- https://raw.githubusercontent.com/SeeedDocument/Wio_Link/master/Wio%20Link.md
+  (raw markdown of the official hardware/resource doc). Confirms same
+  Blue/Red LED functional descriptions, "Configure Button" and "Reset
+  Button" both mentioned as distinct controls, and lists the resource
+  folder (schematic + Eagle files) used below. Labeled the analog Grove
+  port "A3", operating voltage 3.3V, no explicit ADC range given here
+  either.
+
+- https://raw.githubusercontent.com/SeeedDocument/Wio_Link/master/resource/Wio%20Link%20v1.0%20sch.pdf
+  ** Primary/authoritative source — official Seeed Studio schematic
+  (CC-BY-SA), "Wio Link v1.0", designed by Xiangnan Qu, dated Dec
+  2015. **  Downloaded and read directly (not just searched). Sheet
+  4/4 ("I/O") shows:
+    * K1: a tactile pushbutton wired between net "SPICS2/GPIO0" and
+      GND — this is the CONFIG/FUNCTION button. Pulls GPIO0 to GND when
+      pressed (active-low). Matches the Advanced User Guide's "CONFIG
+      button" description and is consistent with GPIO0 being the
+      standard ESP8266 boot-strap/flash-mode pin.
+    * K2: a second tactile pushbutton wired to net "RST"/EXT_RSTB —
+      this is the separate hardware Reset Button mentioned in the docs.
+      It resets the chip directly and is not a GPIO, so it gets no
+      chipGpios capability tag.
+    * D4 (blue LED): anode at 3V3, cathode in series with a 1k resistor
+      (R21) to net "U1TXD/GPIO2" — GPIO2 sinks current to light the LED,
+      i.e. active-low. This matches the existing convention already
+      used in this repo's nodemcu/board.json for the same "ESP-12 style"
+      GPIO2 onboard LED.
+    * D5 (red LED): anode at the switched "3V3B" rail (the Grove-port
+      power rail gated by a Q1/Q2 transistor pair driven from GPIO15),
+      cathode through a 1k resistor (R22) straight to GND. It is a
+      passive "3V3B rail is powered" indicator, not an independently
+      GPIO-toggled LED — GPIO15 remains the correct (indirect) control
+      point, which is already excluded from chipGpios in this board.json
+      (existing pre-2026-07-11 note: repurposing GPIO15 risks cutting
+      Grove-connector power). No new tag added for GPIO15/red LED.
+    * Grove analog port (connector J6): the ESP8266's ADC/TOUT net
+      passes through a resistor divider before reaching the Grove SIG
+      pin — R25 = 220k (1%) in series from the ADC net to the junction,
+      R26 = 180k (1%) from that junction to GND, junction feeds the
+      Grove SIG pin. So Vadc(ESP8266) = Vsig(external) * 180k /
+      (220k+180k) = Vsig * 0.45. Solving for the ESP8266's native 1.0V
+      full-scale: Vsig_max = 1.0 / 0.45 ≈ 2.22V. This is a real,
+      confirmed divider — the previously-set "defaultRefVolts": "1.0"
+      in board.json was WRONG for this board.
+
+2) Considered but NOT tagged/changed, and why
+-----------------------------------------------
+- GPIO15 / red LED (D5): considered tagging as an led capability, but
+  it is not independently GPIO-driven (see schematic finding above) —
+  it merely lights whenever the 3V3B Grove-power rail is live, which is
+  itself gated by GPIO15 through a transistor switch, not a direct
+  GPIO-sink LED circuit. GPIO15 was already excluded from chipGpios
+  entirely by a prior pass (to protect Grove-port power), and that
+  exclusion is correct and was left untouched.
+- K2 / hardware Reset button: tied to the chip's RST/EXT_RSTB pin, not
+  a GPIO — no chipGpios entry is possible or appropriate.
+- GPIO0 and GPIO2 were checked against this board's TX/RX pins
+  (GPIO1/GPIO3 per pins_arduino.h and chipGpios) — no conflict, safe to
+  tag.
+- displayName ("Generic ESP8266 Module") looks like a leftover generic
+  label rather than "Seeed Wio Link" but that field was out of scope
+  for this task (only capability tags + ADC + one-line notes were
+  requested), so it was left unchanged.
+
+3) Summary
+-----------
+TAGGED wiolink: GPIO0 -> ["digital_input","button"] (CONFIG/FUNCTION
+button K1, active-low, schematic-confirmed). GPIO2 -> ["digital_output",
+"pwm_output","led_low"] (onboard blue LED D4, active-low, schematic-
+confirmed). GPIO15/red LED left untagged (rail indicator, not a direct
+GPIO LED — already excluded from chipGpios by prior pass).
+ADC: the pre-existing "defaultRefVolts": "1.0" was INCORRECT — Wio Link
+does have an onboard 220k/180k resistor divider on its Grove analog
+port. Corrected to "2.22" (source: official Seeed "Wio Link v1.0"
+schematic, sheet 4/4, R25/R26).
+
+================================================================
+Date: 2026-07-12 — dedicated-hardware pin-exclusion audit (GPIO15 /
+PIN_GROVE_POWER re-check, plus GPIO0/GPIO2 alias-collision check)
+================================================================
+
+Trigger: a fresh discovery sweep flagged
+`#define PIN_GROVE_POWER 15  //must pull this pin up to enable the power
+ring for the Grove ports, red led will light up` in this board's
+pins_arduino.h as a possible gap — checking whether GPIO15 leaks into
+the pin list and whether the existing exclusion (from the 2026-07-11
+pass above) is still the right call.
+
+1) Parser-mechanics check (no web research needed for this part)
+------------------------------------------------------------------
+- `PIN_GROVE_POWER` is a bare `#define`, with NO peer
+  `static const uint8_t` declaration anywhere in pins_arduino.h. The
+  pin-alias regex in build_boards.js (`static\s+(?:const|constexpr)\s+
+  uint8_t\s+(\w+)\s*=...`) only matches `static const`/`constexpr`
+  declarations, so `PIN_GROVE_POWER` was never reachable via the parser
+  in the first place — confirmed by reading build_boards.js directly
+  (the `defines` map it separately collects is only used as a fallback
+  target for an alias chain that already names them, never harvested
+  wholesale). This board's GPIO15 exclusion is documentation/board.json
+  work only, not a parser workaround.
+- Confirmed this board's pins_arduino.h has NO `#include` directive at
+  all (re-read the full file), so build_boards.js's `resolveIncludes()`
+  is a no-op here — `../generic/common.h`'s `static const uint8_t SS =
+  PIN_SPI_SS;` (which aliases GPIO15) genuinely never gets flattened
+  into this board's parsed source. The existing top-of-file comment
+  claiming this isolation is accurate, verified against the actual
+  parser code, not just trusted from the comment.
+- board.json's `chipGpios` map already omits "15" entirely (excluded by
+  the 2026-07-11 pass) and `pinNotes["15"]` already documents both the
+  ESP8266 boot-strap convention (must be LOW at boot) and the
+  Grove-power-gate role. No mechanism change was needed.
+
+2) GPIO0/GPIO2 alias-collision check (the other required check this
+   pass)
+------------------------------------------------------------------
+Re-read pins_arduino.h in full looking for SDA/SCL/SS/MOSI/MISO/SCK
+aliasing GPIO0 or GPIO2 anywhere that could be silently contaminating
+their already-tagged button/led_low capability lists:
+  SDA = PIN_WIRE_SDA = 4, SCL = PIN_WIRE_SCL = 5, MOSI = PIN_SPI_MOSI =
+  13, MISO = PIN_SPI_MISO = 12, SCK = PIN_SPI_SCK = 14. No `SS` alias
+  exists in this file at all (deliberately, per the file's own
+  top-of-file comment, to avoid re-introducing GPIO15 via the shared
+  common.h convention). NONE of these touch GPIO0 or GPIO2 — no
+  collision found, no change needed.
+
+3) Web research consulted this pass (re-confirming/extending the
+   2026-07-11 findings, not superseding them)
+------------------------------------------------------------------
+- https://wiki.seeedstudio.com/Wio_Link/ (WebFetch) — re-confirms "All
+  the six Grove interface's VCC converge together and can be controlled
+  with GPIO 15... When the node is in deep sleep mode, all the grove
+  modules lose their power too" and the red LED is described purely as
+  a Grove-power-status indicator, not an independently-driven GPIO LED
+  (matches the 2026-07-11 schematic finding). No mention anywhere on
+  this page of GPIO15 being driven automatically by board bootstrap
+  code — it reads as a normal user-sketch responsibility.
+- https://github.com/esphome/issues/issues/223 ("Wio_link grove
+  connectors require GPIO15 turned up") — a real user-reported case
+  confirming the Seeed wiki's own guidance: "you must pull up GPIO 15 in
+  your Arduino sketch to power on the Grove system", with example code
+  `pinMode(15, OUTPUT); digitalWrite(15, 1);`. GPIO15 is NOT powered by
+  default/automatically — a sketch has to explicitly drive it HIGH, and
+  presumably could just as easily (accidentally) drive it LOW at
+  runtime, cutting Grove power. This is new information versus the
+  2026-07-11 pass (which established the schematic-level MOSFET/rail
+  wiring but not this software-level detail).
+
+4) Keep vs exclude decision (re-affirmed)
+------------------------------------------------------------------
+Weighed both sides explicitly: GPIO15 is NOT purely a fire-and-forget
+hardware default (it does need active sketch code to enable Grove
+power, so a pfodWeb user could have a legitimate reason to want a
+Designer-exposed toggle for it) — but pfodWeb's Designer pin picker is
+for exposing individual, isolated GPIOs to a remote GUI control, and
+this pin's LOW state silently cuts power to EVERY attached Grove
+sensor, including any others a user might simultaneously be
+displaying/controlling via the same pfodWeb screen. That whole-board,
+cross-peripheral blast radius is exactly the pin-audit playbook's
+EXCLUDE category ("power-enable lines whose default state a downstream
+peripheral depends on") — which in fact cites this exact board's Grove
+ring as its own canonical example. DECISION: kept EXCLUDED (no change
+from the 2026-07-11 pass's conclusion), with an expanded board.json
+comment recording the new pinMode/digitalWrite-in-sketch detail so a
+future reviewer has the full picture, not just the schematic-level
+reasoning.
+
+5) Summary
+------------------------------------------------------------------
+NO functional/mechanism changes this pass — GPIO15 was already
+correctly excluded and un-aliased, and GPIO0/GPIO2 have no
+SDA/SCL/SS/MOSI/MISO/SCK collisions. board.json's chipGpios-override
+comment block was expanded with the new ESPHome-issue/wiki
+corroboration (sketch must explicitly enable Grove power; it is not
+automatic). This notes.txt file was appended (not overwritten) per the
+existing 2026-07-11 research trail above.

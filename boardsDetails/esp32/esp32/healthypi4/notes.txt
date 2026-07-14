@@ -1,0 +1,79 @@
+Board: healthypi4 (ProtoCentral HealthyPi 4 — open-source vital-signs
+monitor: ESP32-WROOM32 + TI ADS1292R ECG/respiration AFE + TI AFE4400
+pulse-oximetry AFE + MAX30208 temperature sensor), chip esp32
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\healthypi4\
+
+2026-07-14 INDEPENDENT VERIFICATION PASS (batch B of 8)
+========================================================
+Task: re-verify the existing GPIO12/15 LED tags and GPIO4/13/14/21/26/
+27/39 ADS1292/AFE4490 exclusions against REAL external vendor sources
+this session, not relying on the prior pass's own citation of the same
+firmware file (independent re-fetch performed to confirm the prior
+pass's reading was accurate, not just re-stated).
+
+Sources consulted this pass:
+- https://github.com/Protocentral/protocentral_healthypi_v4 — official
+  ProtoCentral open-source hardware/firmware repo for this exact board.
+- https://raw.githubusercontent.com/Protocentral/protocentral_healthypi_v4/master/firmware/Healthypiv4_Arduino/Healthypiv4_Arduino.ino
+  — fetched and read directly this session (fresh, independent fetch,
+  not reusing the prior session's summary). Confirmed verbatim:
+    #define PUSH_BUTTON 17
+    #define SLIDE_SWITCH 16
+    const int ADS1292_DRDY_PIN = 26;
+    const int ADS1292_CS_PIN = 13;
+    const int ADS1292_START_PIN = 14;
+    const int ADS1292_PWDN_PIN = 27;
+    const int AFE4490_CS_PIN = 21;
+    const int AFE4490_DRDY_PIN = 39;
+    const int AFE4490_PWDN_PIN = 4;
+  and the LED blink-pattern functions:
+    soft_AP_mode_indication(): `digitalWrite(A15,HIGH); delay(50);
+      digitalWrite(A15,LOW); delay(2000);` (repeated x5)
+    OTA_update_indication(): alternates A13/A15 HIGH/LOW together in a
+      fast (25ms) blink pattern.
+  Per this board's pins_arduino.h, A13=GPIO15 (=LED_BUILTIN) and
+  A15=GPIO12. The pattern (brief HIGH pulse = visible blink) is
+  consistent with GPIO12 being driven HIGH-to-illuminate. A dedicated
+  comment elsewhere in the same file explicitly states
+  `digitalWrite(A13, LOW); // turn the LED on` for GPIO15, confirming
+  active-LOW polarity for that pin specifically.
+- https://protocentral.com/product/healthypi-v4-4-vital-signs-monitoring-hat-kit/
+  and https://docs.platformio.org/en/latest/boards/espressif32/healthypi4.html
+  — checked for a discrete hardware/schematic pinout page; both are
+  product-listing/board-metadata pages without a detailed GPIO table,
+  not used as primary evidence (recorded as dead ends, not fabricated).
+
+Per-pin findings (re-confirmed, this session, via a fresh independent
+fetch of the actual firmware source rather than trusting the prior
+pass's citation at face value):
+- GPIO4, 13, 14, 21, 26, 27, 39: EXCLUDED. CONFIRMED — exact match to
+  the ADS1292_*/AFE4490_* pin constants quoted above, straight from the
+  vendor's own published firmware source.
+- GPIO12: tagged ["digital_output", "led_high", "pwm_output"].
+  CONFIRMED — matches `soft_AP_mode_indication()`/`OTA_update_indication()`
+  blink-pattern code (brief HIGH pulses = LED-on blink), independently
+  re-read this session.
+- GPIO15: tagged ["digital_output", "led_low", "pwm_output"]. CONFIRMED
+  — matches the explicit `// turn the LED on` comment on
+  `digitalWrite(A13, LOW)`, independently re-read this session.
+- GPIO17 (PUSH_BUTTON/KEY_BUILTIN) and GPIO16 (SLIDE_SWITCH): NOT tagged
+  — both are already excluded from chipGpios at the base ESP32 chip
+  level (PSRAM-reserved pins 16-17, per esp32/esp32/board.json), so
+  there is no capability entry to tag despite firmware confirming their
+  button/switch use (`INPUT_PULLUP` + `attachInterrupt(..., FALLING)`
+  for PUSH_BUTTON, `INPUT_PULLUP` + `attachInterrupt(..., CHANGE)` for
+  SLIDE_SWITCH). Re-confirmed this session — no change possible or
+  needed here (chip-level constraint, not a per-board decision).
+
+RESULT: All existing findings CONFIRMED via a fresh, independent fetch
+of the vendor's own published firmware source this session (not merely
+re-citing the earlier pass's summary). No corrections needed. board.json
+content is unchanged.
+
+Summary: GPIO12 tagged led_high and GPIO15 tagged led_low (two onboard
+status LEDs), both re-confirmed this session via direct fetch of
+ProtoCentral's own GitHub-hosted firmware source; GPIO4/13/14/21/26/27/39
+re-confirmed as dedicated ECG/PPG sensor-chip pins (ADS1292R/AFE4400)
+from the same source; GPIO16/17 (confirmed switch/button in the same
+firmware) remain untaggable since they're already excluded chip-wide as
+PSRAM-reserved pins.

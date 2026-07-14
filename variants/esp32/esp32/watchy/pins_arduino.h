@@ -9,22 +9,16 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 5;
-static const uint8_t MOSI = 23;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard E-ink display SPI bus (no other SPI peripheral on this board).
 
 static const uint8_t MENU_BTN_PIN = 26;
 static const uint8_t BACK_BTN_PIN = 25;
 static const uint8_t DOWN_BTN_PIN = 4;
-static const uint8_t DISPLAY_CS = 5;
-static const uint8_t DISPLAY_RES = 9;
-static const uint8_t DISPLAY_DC = 10;
-static const uint8_t DISPLAY_BUSY = 19;
-static const uint8_t ACC_INT_1_PIN = 14;
-static const uint8_t ACC_INT_2_PIN = 12;
-static const uint8_t VIB_MOTOR_PIN = 13;
-static const uint8_t RTC_INT_PIN = 27;
+// pfodWeb NOTE: DISPLAY_CS/RES/DC/BUSY, ACC_INT_1/2, VIB_MOTOR_PIN, and
+// RTC_INT_PIN deliberately NOT declared - dedicated onboard E-ink
+// display, accelerometer, vibration motor, and RTC pins (see board.json
+// chipGpios override).
 
 #if defined(ARDUINO_WATCHY_V10)
 static const uint8_t UP_BTN_PIN = 32;

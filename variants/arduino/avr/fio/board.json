@@ -1,0 +1,45 @@
+{
+  // boardName / displayName are overridden by boards.txt entry:
+  //   fio.name=Arduino Fio
+  "boardName": "fio",
+  "displayName": "Arduino Fio",
+
+  // Same 8-analog-input ATmega328P pin map as Nano/Mini/BT/Pro — see
+  // pins_arduino.h, which just includes ../eightanaloginputs/pins_arduino.h.
+  // Split into its own variant directory (2026-07-14 AVR pin audit)
+  // because Fio runs at 3.3 V / 8 MHz, unlike the 5 V / 16 MHz
+  // nano/mini/bt siblings sharing "eightanaloginputs" (and unlike "pro",
+  // which is a genuine 3.3V/5V user-selectable menu board in the real
+  // Arduino IDE with no fixed voltage at all) — a single shared
+  // board.json can't correctly state one ADC reference voltage for
+  // groups that actually differ.
+  "family": "avr",
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  // ADC: ATmega328P 10-bit ADC (0-1023).  Fio runs at 3.3 V, so AVCC (the
+  // default reference) is 3.3 V here, not the 5.0 V used by the 5 V
+  // eightanaloginputs-family siblings.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+
+  // Hardware UART on D0/D1 for direct serial connection (also the
+  // XBee socket's DOUT/DIN lines — see pins_arduino.h).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // D13 — onboard status LED, active-high.  Confirmed via the official
+  // "Arduino-Fio-v22" schematic (S. Kobayashi / SparkFun): D13/SCK feeds
+  // R1 (1k) into a red LED (D1) to GND — the classic Arduino sourcing
+  // circuit, same active-high convention as every other AVR board in
+  // this family.  D13 is also this board's PIN_SPI_SCK (classic Arduino
+  // pin-13 LED+SCK sharing, not a bug) — the override below completely
+  // replaces the auto-derived capability list, so the spi_sck tag is
+  // deliberately NOT also appended (matches the standard/lilypad
+  // board.json precedent, avoiding the identity/bus-tag contamination
+  // bug class documented in the pin-audit playbook section 12).
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED, active-high. Also PIN_SPI_SCK (classic Arduino pin-13 LED+SCK sharing, not a conflict for typical use)." }
+  }
+}

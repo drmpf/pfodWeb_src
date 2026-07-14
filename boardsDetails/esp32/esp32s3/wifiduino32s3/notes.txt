@@ -1,0 +1,134 @@
+Board: wifiduino32s3 (chip: esp32s3)
+Directory: variants/esp32/esp32s3/wifiduino32s3/
+
+DISCOVERY SWEEP FLAG
+  No non-boilerplate #define/static const uint8_t declaration found beyond
+  the standard allowlist. The only board-specific item is:
+    #define PIN_RGB_LED 48
+    static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
+    #define RGB_BUILTIN LED_BUILTIN / #define RGB_BRIGHTNESS 64
+  which is the standard modern Arduino-ESP32 addressable-RGB-LED idiom
+  (rgbLedWrite() API), not a plain button/LED alias. No KEY_BUILTIN, BOOT,
+  or RESET alias of any kind is present in this file.
+
+SOURCES CONSULTED
+  - variants/esp32/esp32s3/wifiduino32s3/pins_arduino.h (read in full,
+    58 lines, this repo's copy).
+  - GitHub: espressif/arduino-esp32, master branch,
+    variants/wifiduino32s3/pins_arduino.h (fetched via WebFetch) - byte-
+    for-byte matches this repo's copy, including PIN_RGB_LED=48,
+    TX=43, RX=44, SDA=4, SCL=5, SS=10, MOSI=11, MISO=13, SCK=12, and the
+    D0-D13/A0-A5 alias blocks. No button/key alias present upstream either.
+  - GitHub PR espressif/arduino-esp32#7247 "add boards WiFiduinoV2&
+    WiFiduino32S3" (fetched via WebFetch) - only says "can compiles and
+    build projects"; no discussion of onboard peripherals, GPIO0, or
+    GPIO48.
+  - https://www.espboards.dev/esp32/wifiduino32s3/ (fetched via WebFetch,
+    twice, with different prompts) - third-party board database. States
+    the board "includes an RGB LED" and its auto-generated pin table
+    lists GPIO48 as "LED_BUILTIN". Explicitly does NOT mention any
+    "button", "BOOT", "RESET", "NeoPixel", or "WS2812" text anywhere on
+    the page (checked verbatim). Its auto-generated pin numbers for TX/
+    RX/SDA/SCL/SS/MOSI/MISO/SCK do not match this board's actual
+    pins_arduino.h (looks like a garbled/mismatched auto-scrape), so it
+    was used only as weak corroboration of "onboard RGB LED exists on
+    this board", not as a source for exact pin numbers or for any button
+    claim.
+  - https://www.openjumper.com/doc/wifiduino32s3 (fetched via WebFetch) -
+    vendor's own doc page; only page title text was retrievable, no
+    technical content came through the fetch. Not usable as a source.
+  - WebSearch: "WiFiduino32 S3 openjumper board BOOT button GPIO0 RGB LED
+    GPIO48" and "openjumper wifiduino32 s3 product page buy features" -
+    corroborated "GPIO48 = RGB LED" from espboards.dev, but returned no
+    independent confirmation of a physical BOOT/RESET button anywhere
+    (only generic statements that ESP32-S3 boards "typically" have one on
+    GPIO0, which is chip-strapping-pin folklore, not a vendor fact about
+    this specific board).
+  - Compared against this repo's sibling board wifiduino32 (classic
+    ESP32, not S3), audited earlier this session
+    (boardsDetails/esp32/esp32/wifiduino32/notes.txt): that board's own
+    pins_arduino.h declares an explicit `static const uint8_t KEY_BUILTIN
+    = 0;` vendor alias, which is what justified tagging its GPIO0 as a
+    button. wifiduino32s3's pins_arduino.h has NO equivalent alias, so
+    the two boards are NOT assumed identical (per task instruction) - the
+    S3 variant's GPIO0 is left untagged.
+  - variants/esp32/esp32s3/board.json (chip-level default, used as the
+    copy base).
+  - variants/esp32/esp32s3/esp32s3/board.json (the generic ESP32-S3-
+    DevKitC-1 board in this repo, already tagging GPIO48 as
+    "led_neopixel" for the identical PIN_RGB_LED=48/RGB_BUILTIN pattern -
+    used as the precedent/confirmation for tagging this board's GPIO48
+    the same way).
+  - boardsDetails/esp32/esp32s3/waveshare_esp32_s3_zero/notes.txt (an
+    earlier audit in this session using the same PIN_RGB_LED/RGB_BUILTIN/
+    RGB_BRIGHTNESS macro idiom, on GPIO21 there, tagged "led_neopixel" -
+    used as the schema/wording precedent for this audit).
+
+REASONING
+  GPIO48 (led_neopixel):
+  - This board's own pins_arduino.h wires LED_BUILTIN/RGB_BUILTIN/
+    RGB_BRIGHTNESS to GPIO48 via the PIN_RGB_LED macro - this is the
+    modern Arduino-ESP32 core's marker for an onboard WS2812-style
+    addressable RGB LED driven through rgbLedWrite() (RMT peripheral),
+    not a plain digitalWrite() LED.
+  - Independently corroborated by espboards.dev, which lists an onboard
+    "RGB LED" for this exact board and shows GPIO48 as LED_BUILTIN in its
+    pin table.
+  - Directly precedented in this repo: the generic "esp32s3" (ESP32-S3-
+    DevKitC-1) board.json already tags GPIO48 "led_neopixel" for the
+    exact same PIN_RGB_LED=48 pattern, and waveshare_esp32_s3_zero tags
+    its RGB_BUILTIN pin (GPIO21 there) the same way.
+  - Alias-collision check: SDA=4, SCL=5, SS=10, MOSI=11, MISO=13, SCK=12,
+    TX=43, RX=44 - none equal 48, so build_boards.js's automatic spi_*/
+    i2c_* capability append (keyed off these aliases) does not touch
+    GPIO48. (D5=48 is a plain header-label alias, not one of the bus-
+    alias names the parser watches, so it is not a collision source
+    either.) Safe to retag.
+  - No pins_arduino.h edits were needed for this change (no alias needed
+    deleting), so the "don't write the deleted declaration's literal text
+    in a comment" landmine does not apply here - nothing was deleted.
+
+  GPIO0 (left untagged - NO CHANGE):
+  - No vendor alias (KEY_BUILTIN, BOOT, RESET, or similar) exists in this
+    board's pins_arduino.h, unlike its classic-ESP32 sibling wifiduino32
+    (which has `KEY_BUILTIN = 0`).
+  - No independent documentation source found that confirms a physical
+    BOOT/RESET button on this specific board (espboards.dev's page,
+    checked verbatim for "button"/"BOOT"/"RESET", contains none of those
+    words).
+  - Per audit policy, a "button" capability tag requires an explicit
+    vendor alias or explicit vendor documentation of a physical button,
+    not just the generic ESP32-S3 strapping-pin fact that GPIO0 is
+    commonly wired to a BOOT button on many dev boards. Tagging without
+    that confirmation would be exactly the kind of "discovery-sweep
+    guess" this audit is meant to avoid. GPIO0 capabilities are left at
+    the chip-level default: ["digital_input", "digital_output",
+    "pwm_output"] (already correctly excludes analog_input, matching real
+    ESP32-S3 hardware - GPIO0 has no ADC channel on this chip, despite
+    this board's pins_arduino.h mislabeling it "A0"; that mislabeling
+    predates this audit and needed no fix since the chip-level default
+    already ignores it).
+
+  Dedicated-hardware pin-exclusion check:
+  - All header pin aliases (A0-A5 -> GPIOs 0-5, D0-D13 -> GPIOs
+    44,43,45,46,47,48,18,17,21,42,41,40,38,39) resolve to GPIOs already
+    inside the chip-level default's included set (0-18, 21, 38-48).
+  - None fall inside the excluded flash/PSRAM range (26-37) or USB range
+    (19-20), and none reference GPIOs 22-25 (which do not exist in
+    silicon). No EXCLUDE changes were needed, and no blanket-identity-
+    block aliases needed deleting from pins_arduino.h.
+
+SUMMARY
+  Created board.json for wifiduino32s3 (none existed before) as a full
+  copy of the esp32s3 chip-level default, with GPIO48 retagged
+  ["digital_output", "led_neopixel", "pwm_output"] - confirmed onboard
+  WS2812-style RGB LED (PIN_RGB_LED/RGB_BUILTIN in this board's own
+  pins_arduino.h, corroborated by espboards.dev, and precedented by the
+  identical pattern already tagged on the generic "esp32s3" board in this
+  repo). GPIO0 was investigated as a candidate BOOT button (per the
+  classic-ESP32 sibling wifiduino32's confirmed KEY_BUILTIN=0) but left
+  UNCHANGED - this S3 variant declares no such alias and no independent
+  source confirms a physical button on this exact board, so it was not
+  guessed. No dedicated-hardware EXCLUDE changes or pins_arduino.h
+  deletions were needed; all header-exposed GPIOs are already within the
+  chip-level default's included range.

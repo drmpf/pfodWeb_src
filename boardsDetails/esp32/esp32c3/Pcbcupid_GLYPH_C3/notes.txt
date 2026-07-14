@@ -1,0 +1,243 @@
+Pcbcupid_GLYPH_C3 (PCB Cupid "GLYPH C3", ESP32-C3) - dedicated-hardware pin-exclusion audit notes
+====================================================================================================
+
+Flagged declarations (from fresh discovery sweep)
+---------------------------------------------------
+pins_arduino.h:
+  static const uint8_t BAT_MEASURE = 0;
+  #define BAT_VOLT_PIN BAT_MEASURE
+  #define MSR          BAT_MEASURE
+
+Sources consulted
+------------------
+https://learn.pcbcupid.com/boards/glyph-c3/pinouts/
+  Official PCBCUPID docs for this board. States: "A0/GPIO0 ... ADC1 channel 0"
+  and, under battery measurement: "MSR PADS: Located on the rear of the board.
+  Short this MSR pad to measure battery capacity using IO0 (Marked as A0 on
+  board)." Also documents the BAT pin as "the positive voltage to/from the
+  Battery(+) Positive terminal (This pin is usual at voltage between
+  2.7v-4.2v)" and that the board has 2 pads behind it to solder a LiPo/Li-ion
+  battery.
+
+https://learn.pcbcupid.com/boards/examples/battery-measurement/
+  PCBCUPID's own battery-measurement example/tutorial page. Confirms: "The
+  board utilizes analog pin A0 to read battery voltage through an onboard
+  voltage divider circuit" and gives a "Voltage Divider Ratio" of 1.585
+  (actual battery volts ~= ADC-reported volts x 1.585, before applying an
+  additional ~1.14 calibration factor the page recommends to compensate for
+  ADC non-linearity / resistor tolerance). Confirms the MSR pads must be
+  shorted before battery connection - i.e. this is a solder-selectable
+  jumper, not an always-connected divider network.
+
+https://learn.pcbcupid.com/boards/glyph-c3/power-management
+  Power-management page for this specific board (not the sibling S3/H2/C6
+  boards). Restates "short the MSR pads behind the board" to monitor battery
+  voltage, and lists the board's other power pins (BAT, USB +5V, 3V/600mA
+  regulated out). Did not contain divider schematic detail beyond what the
+  pinouts/battery-measurement pages already gave.
+
+https://www.tindie.com/products/pcbcupid/glyph-c3-compact-esp32c3-dev-board/
+  Product listing. Confirms this is a real hobbyist/maker ESP32-C3 dev board
+  ("Compact ESP32C3 DEV Board", 50.8x22.8x1.6mm, Zigbee/Thread/Matter capable,
+  15 GPIO, 12-bit ADC, Wi-Fi 802.11b/g/n + BLE 5.0) with a "built-in Lipo /
+  Li-ion battery charger and monitoring circuit" - confirms the battery
+  circuit is a genuine onboard feature of this product, matching the
+  pinouts/battery-measurement page details above.
+
+WebSearch: "Pcbcupid GLYPH ESP32-C3 board battery measurement pin",
+"pcbcupid GLYPH_C3 pins_arduino.h"
+  Used to locate the above PCBCUPID docs pages and confirm this board was
+  merged into the official espressif/arduino-esp32 repo as a custom board
+  variant (PR #10671, "Added custom boards variants GLYPH C3, GLYPHC6 &
+  GLYPHH2").
+
+Reasoning
+----------
+GPIO0 (BAT_MEASURE/MSR/A0/D0) is a battery-voltage-sense ADC pin, matching
+the playbook's "battery/voltage monitor -> KEEP" policy (same category as
+pfodWeb's own data-display use case for analog readings). It was NOT
+excluded from the pin picker.
+
+The chip-level ESP32-C3 default (variants/esp32/esp32c3/board.json) already
+grants GPIO0 "analog_input" (plus digital_input/digital_output/pwm_output),
+so no capability change was needed - only documentation. A per-board
+board.json was still created (rather than leaving this board on the bare
+chip default) so a `note` could be attached to GPIO0's chipGpios entry,
+explaining the MSR-pad jumper and the ~1.585x divider ratio for anyone using
+the pin picker to wire up battery monitoring on this specific board.
+
+adc.defaultRefVolts was deliberately left at the ESP32-C3 chip default of
+"3.3" (NOT rescaled to ~5.23 = 3.3 x 1.585, unlike e.g. the esp8266
+agruminolemonv4 board which does rescale its board-wide defaultRefVolts for
+an always-connected divider). Reason: PCBCUPID's own docs are explicit that
+the divider is only in circuit when the MSR pads are bridged/soldered - it
+is a solder-selectable option, not a permanent hardware divider on this
+pin. adc.defaultRefVolts is a single board-wide value that would apply to
+every ADC-capable pin on the board, so rescaling it to account for a
+divider that (a) only exists on GPIO0 and (b) is only present if the user
+has bridged MSR would incorrectly distort readings on every other ADC pin
+(GPIO1-4) and would be wrong for GPIO0 itself whenever MSR is left open.
+Documenting the ratio in the per-pin note (for the user to apply manually,
+matching PCBCUPID's own example code) was judged the correct, non-lossy
+approach.
+
+No onboard user button or notable LED was found elsewhere in
+pins_arduino.h during the opportunistic section 7a check - only
+LED_BUILTIN=1 (GPIO1, a plain onboard LED with no special vendor naming
+beyond the standard Arduino LED_BUILTIN alias), which needs no capability
+tag since GPIO1 already has digital_output. No BUTTON/BOOT-button #define
+present in this file (the chip's usual GPIO9 boot-strap pin has a boot-mode
+pinNote already at the chip-level default, but no button alias/#define is
+declared for it in this board's own pins_arduino.h, so it was left
+untagged, consistent with how other audited boards handle un-named
+strapping pins).
+
+Summary
+--------
+GPIO0 (BAT_MEASURE) confirmed via official PCBCUPID docs as a
+solder-jumper-selected (MSR pads) battery-voltage-sense ADC pin with a
+~1.585x resistor-divider ratio; kept available (not excluded) per KEEP
+policy, documented via a new per-pin `note` in a newly created board.json,
+adc.defaultRefVolts left at chip default 3.3V because the divider is
+conditional/per-pin, not board-wide.
+
+[2026-07-12] RE-CHECK: GPIO1 (LED_BUILTIN) and button re-verification
+=======================================================================
+
+Reason for re-check
+--------------------
+The original pass above concluded "No onboard user button or notable LED
+was found elsewhere in pins_arduino.h... LED_BUILTIN=1 ... needs no
+capability tag since GPIO1 already has digital_output." That reasoning was
+flagged as invalid: "already has digital_output" is a capability check,
+not a hardware-identity check, and is not a valid basis for skipping the
+led_high/led_low tag on a genuinely confirmed onboard LED. This re-check
+redid the research from scratch to determine whether GPIO1 really is a
+populated onboard LED (not just Arduino-core boilerplate) and, if so, its
+polarity.
+
+Sources consulted (fresh, this re-check)
+------------------------------------------
+https://learn.pcbcupid.com/boards/glyph-c3/pinouts/
+  Re-fetched. Does not mention an LED explicitly in the excerpt retrieved
+  (page focuses on pin table / ADC / MSR); GPIO9 BOOT button confirmed
+  here: "this pin is connected to the onboard BOOT button."
+
+https://learn.pcbcupid.com/boards/glyph-c3/overview
+  States plainly: "On-board LED (Connected to GPIO1)." Also documents a
+  physical BOOT button and a separate physical Reset button ("High Quality
+  Reset and Bootloader button for easy access"), plus a battery slide
+  switch (not a programmable button).
+
+https://learn.pcbcupid.com/boards/examples/blink-led/
+  PCBCUPID's own board-specific Blink tutorial page. States: "GLYPH C3 On
+  board LED is on GPIO1(A1)." The example code is the generic stock
+  Arduino IDE Blink.ino sketch (digitalWrite(led, HIGH) turns the LED on,
+  comment "HIGH is the voltage level"/"turn the LED off by making the
+  voltage LOW") — i.e. boilerplate Arduino-core wording, not a
+  board-specific statement about actual circuit polarity. No schematic or
+  wiring diagram accompanies it.
+
+https://learn.pcbcupid.com/documentation/modules/glyph/glyph-esp32c3/pinouts
+  Alternate/newer pinout page for the same module family. Restates the
+  GPIO9 BOOT button ("On your Glyph board, this pin is connected to the
+  onboard BOOT button.") but does not describe the LED or its polarity.
+
+https://www.tindie.com/products/pcbcupid/glyph-c3-compact-esp32c3-dev-board/
+  Product listing includes a photo captioned "PCBCUPID-onboard-led-
+  blinking," confirming the LED is a real, visible, populated onboard
+  component (not merely a code alias) — but gives no GPIO/polarity detail.
+
+https://github.com/pcbcupid
+  PCBCUPID's public GitHub org was checked for a GLYPH C3 hardware/
+  schematic repo (KiCad files, etc.) that might show the LED's drive
+  circuit. No GLYPH/GLYPH C3 hardware repo was found there (only unrelated
+  projects: LoRa sensor networks, KiCad tutorials, an audio player, etc.).
+
+https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/espressif/boards/pcbcupid_glyph_c3/mpconfigboard.h
+  Adafruit's official CircuitPython board definition for this exact
+  board (independent third-party integration, not a PCBCUPID-authored
+  page). Defines the board's status LED as `(&pin_GPIO1)` — independent
+  confirmation the LED really is on GPIO1. No active-high/active-low or
+  inversion flag is present in this file.
+
+https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/espressif/boards/pcbcupid_glyph_c3/pins.c
+  Same CircuitPython board definition, pins table. Contains a dedicated
+  `{ MP_ROM_QSTR(MP_QSTR_LED), MP_ROM_PTR(&pin_GPIO1) }` entry — a second,
+  independent confirmation that GPIO1 is specifically exposed/named as
+  "LED" (not just a generic numbered GPIO), reinforcing this is a real,
+  intentionally-designated onboard LED pin. Again, no polarity/active-
+  state information present.
+
+WebSearch: "PCBCUPID GLYPH C3 onboard LED GPIO1 blink example schematic",
+"GLYPH C3 pcbcupid schematic github kicad LED active low", "github
+adafruit circuitpython pcbcupid_glyph_c3 mpconfigboard.h/pins.c"
+  Used to locate the above pages/files and to search for any independent
+  schematic, device-tree, or review source describing GPIO1's drive
+  polarity. None was found.
+
+Findings
+---------
+(a) Onboard LED at GPIO1 is CONFIRMED REAL — not generic Arduino-core
+    boilerplate. Four independent sources agree: PCBCUPID's own overview
+    page ("On-board LED (Connected to GPIO1)"), PCBCUPID's own blink-led
+    tutorial page ("GLYPH C3 On board LED is on GPIO1(A1)"), the Tindie
+    product listing (photo of the LED lit/blinking), and — critically, as
+    an independent third-party corroboration — Adafruit's official
+    CircuitPython board files for this exact board, which designate
+    GPIO1 as the board's `LED`/status LED via `pin_GPIO1`.
+
+(b) Polarity could NOT be confirmed by any source. PCBCUPID's Blink
+    example is the unmodified stock Arduino Blink.ino sketch (its comment
+    text "HIGH is the voltage level" is the generic Arduino IDE example
+    wording, not a board-specific circuit statement), and no schematic,
+    KiCad file, device-tree gpio-leds node, or CircuitPython active-state
+    flag was found anywhere researched. PCBCUPID's own public GitHub org
+    has no GLYPH C3 hardware/schematic repo.
+
+Comparison to this repo's own established precedent: sparkfun_pro_micro_
+esp32c3's GPIO10 (LED_BUILTIN) re-audit earlier this session hit the exact
+same situation — an official vendor hookup guide confirming a real onboard
+LED, but only the stock unmodified Blink example with no inversion/
+schematic documentation — and that audit explicitly declined to add a
+led_high/led_low tag for that reason, leaving only a descriptive `note`.
+This re-check applies the same evidentiary bar and reaches the same kind
+of outcome for GLYPH C3's GPIO1: LED existence tagged/documented via a
+`note`, but no led_high/led_low capability added, because guessing
+polarity from a generic boilerplate code comment would not be evidence-
+based.
+
+(c) Button re-verification: GPIO9 (BOOT button) reconfirmed via both
+    PCBCUPID pinout pages consulted in this re-check. As before, no
+    #define/alias for a button is declared anywhere in this board's own
+    pins_arduino.h (only LED_BUILTIN, BAT_MEASURE/BAT_VOLT_PIN/MSR, TX,
+    RX, SDA, SCL, SS, MOSI, MISO, SCK, A0-A3, D0-D10 are declared) — so
+    the original pass's "no button alias/#define is declared... left
+    untagged" conclusion is CONFIRMED STILL ACCURATE, not superseded.
+
+(d) Alias-collision check (per this session's playbook requirement):
+    pins_arduino.h aliases GPIO4=SDA, GPIO5=SCL, GPIO3=SS, GPIO6=MOSI,
+    GPIO7=MISO, GPIO10=SCK. None of these is GPIO1, so GPIO1 is not
+    double-aliased as a bus pin and build_boards.js's automatic bus-
+    capability append does not apply here. No pins_arduino.h edit was
+    needed (no line to delete).
+
+Conclusion vs. original pass
+------------------------------
+CHANGED: the original pass's dismissal ("already has digital_output, no
+tag needed") is superseded — it was invalid reasoning, and this re-check
+did the deeper research the original pass should have done. The LED's
+real existence is now properly evidence-confirmed (four sources, including
+an independent third-party CircuitPython board file, versus zero sources
+cited in the original pass beyond noting the plain LED_BUILTIN alias) and
+documented via a `note` on GPIO1 in board.json.
+
+NOT CHANGED: no led_high/led_low capability tag was added, because
+polarity genuinely could not be confirmed by any source found despite a
+real, multi-source research effort — this is an evidence-based "cannot
+confirm" outcome (consistent with this repo's own sparkfun_pro_micro_
+esp32c3 precedent for an identical situation), not a repeat of the
+original pass's shortcut reasoning.
+
+The button conclusion (no untagged BOOT/BUTTON alias in pins_arduino.h)
+is CONFIRMED UNCHANGED from the original pass.

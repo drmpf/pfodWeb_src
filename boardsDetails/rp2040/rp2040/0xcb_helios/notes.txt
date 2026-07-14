@@ -1,0 +1,165 @@
+0xCB Helios (rp2040 family) — button/LED/NeoPixel audit notes
+Audited: 2026-07-13
+
+SUMMARY: Applied chipGpios overrides for GPIO17 (PIN_LED, active-high user
+LED) and GPIO25 (PIN_NEOPIXEL, level-shifted output-only NeoPixel/WS2812
+data pin). A third onboard LED (D1 "Power LED") exists but is NOT wired to
+any GPIO — it is a jumper-only power indicator, out of scope. No button
+capability applies (reset button is wired to ~RUN, not a readable GPIO).
+
+BOARD IDENTIFICATION
+0xCB Helios — an Elite-C/Pro-Micro-footprint RP2040 microcontroller board
+designed by 0xCB (Conor Burns), sold as a drop-in replacement for legacy
+Pro Micro/Elite-C boards used in custom mechanical keyboards. Sold via
+keeb.supply, keycapsss.com, RNDKBD, Ringer Keys, kbd.news listing, etc.
+Open-source hardware: full KiCad project published at
+https://github.com/0xCB-dev/0xCB-Helios (revision rev1.0).
+USB VID/PID (boards.txt): 0x1209 / 0xcb74. USB manufacturer/product
+strings: "0xCB" / "Helios".
+
+pins_arduino.h (variants/rp2040/rp2040/0xcb_helios/pins_arduino.h) declares:
+  #define PIN_LED       (17u)
+  #define PIN_NEOPIXEL  (25u)
+  Serial1: TX=0, RX=1 (UART0)
+  SPI0: MISO=20, MOSI=23, SCK=22, SS=21 (also aliased via static const
+        SS/MOSI/MISO/SCK)
+  Wire1 (the only Wire instance, WIRE_HOWMANY=1): SDA=2, SCL=3
+  PIN_SERIAL2_TX/RX, PIN_SPI1_*, PIN_WIRE0_SDA/SCL all = 31 ("not pinned
+  out" placeholders — GPIO31 doesn't physically exist on RP2040, matches
+  this file's own header comment and the pattern already documented in
+  vccgnd_yd_rp2040's pins_arduino.h NOTE).
+  No button alias declared anywhere in this file.
+
+METHOD: This audit deviated from most prior RP2040 boards in this family
+by tracing the vendor's own published KiCad schematic
+(rev1.0/helios.kicad_sch, S-expression text format) directly, rather than
+relying solely on secondary community documentation. The file was
+downloaded locally and grepped/read (WebFetch's page-summarization could
+not reliably extract instance-level net connectivity from a ~7000-line
+KiCad file — it kept returning only the symbol-library preamble). Net
+tracing method: for each symbol instance, compute each pin's absolute
+sheet coordinate from (instance position, instance rotation, pin's local
+symbol-library position/rotation), then match against wire segments and
+net labels sharing that coordinate. Verified working by cross-checking
+computed coordinates against three independent already-known reference
+points (the RP2040 instance's GPIO25 pin landing exactly on the U5 level
+shifter's pin-A wire, and the net label positions matching computed GPIO
+pin locations for GPIO12 vs GPIO17 disambiguation).
+
+PER-PIN FINDINGS
+
+GPIO17 (PIN_LED) — CHANGED
+  Traced schematic net "LED": RP2040 pin 28 (GPIO17, bidirectional pin in
+  the chip's own symbol) connects via a labeled wire directly to D2's
+  anode. D2 (KiCad reference "D2", BOM Value "User LED", LCSC C130724,
+  a Foshan NationStar NCD0402B1 — the "B1" suffix denotes blue) has its
+  cathode routed through R15 (1k 1%, LCSC C11702) to a GND symbol.
+  Circuit topology: GPIO17 --(anode)-- D2 --(cathode)-- R15(1k) -- GND.
+  This is a current-sourcing configuration: driving GPIO17 HIGH forward-
+  biases D2 and sources current to ground through the resistor -> LED
+  lights. Driving GPIO17 LOW leaves no potential across D2 -> LED off.
+  CONFIRMED ACTIVE-HIGH.
+  Independently corroborated by keeb.supply/keycapsss marketing copy: "a
+  blue user LED that you can program yourself" (color match: blue, and
+  explicitly described as user/GPIO-programmable, distinguishing it from
+  the separate red Power LED below).
+  Capabilities applied: ["digital_output","pwm_output","led_high"].
+  digital_input dropped to match this repo's established led_high
+  precedent for dedicated onboard LED pins (rpipico GPIO25,
+  vccgnd_yd_rp2040 GPIO25). pwm_output kept — arduino-pico's analogWrite()
+  works on any RP2040 GPIO, enabling brightness dimming.
+  No bus-alias collision: GPIO17 is not aliased as SDA/SCL/SS/MOSI/MISO/
+  SCK anywhere in this board's pins_arduino.h, so the "auto-appended bus
+  capability" bug class does not apply here.
+
+GPIO25 (PIN_NEOPIXEL) — CHANGED
+  Traced schematic net "RGB_DO": RP2040 pin 37 (GPIO25) connects via a
+  labeled wire directly to pin 3 ("A") of U5, a Texas Instruments
+  SN74LVC1T45DRL single-bit dual-supply level translator (LCSC C352970).
+  U5's DIR pin (pin 5) is wired directly to a +3V3 power symbol — i.e.
+  permanently driven HIGH, not left floating/auto-sensing. For the
+  SN74LVC1T45 this fixes the translation direction as A-to-B only
+  (RP2040 GPIO25 side -> external 5V side), meaning this pin can only be
+  driven as an output from the RP2040's perspective; there is no path for
+  an external signal to be read back on GPIO25 through this shifter.
+  This confirms GPIO25 is genuinely dedicated, direction-fixed, output-
+  only hardware, not a general-purpose bidirectional GPIO.
+  No addressable LED is actually soldered onto the Helios board itself —
+  GPIO25/U5's B-side (5V, level-shifted) feeds an external connector
+  intended for driving an off-board WS2812/addressable-RGB LED chain
+  (e.g. keyboard per-key backlighting), consistent with vendor marketing:
+  "Helios ... features a level shifter capable of 420 Mbps, making it
+  perfect for driving addressable RGB LEDs with 5V signals" and "a 5V
+  level shifted pin to drive RGB LEDs (GP25)". The #define PIN_NEOPIXEL
+  alias in pins_arduino.h reflects this intended/dedicated hardware role
+  (a level-shifted NeoPixel-driver pin), matching this repo's
+  led_neopixel vocabulary even though the LEDs it drives are off-board.
+  Capabilities applied: ["digital_output","led_neopixel"]. digital_input
+  and pwm_output both dropped to match this repo's led_neopixel precedent
+  (vccgnd_yd_rp2040 GPIO23 — also digital_output + led_neopixel only,
+  no pwm_output, since NeoPixel data-out pins use bit-banged/PIO timing,
+  not analogWrite()).
+  No bus-alias collision: GPIO25 is not aliased as SDA/SCL/SS/MOSI/MISO/
+  SCK anywhere in this board's pins_arduino.h.
+
+D1 "Power LED" — NOT a GPIO pin, no chipGpios entry
+  Traced: D1 (KiCad reference "D1", BOM Value "Power LED", LCSC C130719,
+  NationStar NCD0402R1 — "R1" suffix denotes red) connects on one side to
+  a Jumper:SolderJumper_2_Open (KiCad's default-OPEN 2-pad solder-jumper
+  footprint) which in turn ties to +3V3; full-file grep of the schematic
+  confirms no wire or net label connects D1 to any RP2040 GPIO pin at
+  all. This matches keeb.supply's own product description: "a default off
+  red power LED [that] can be turned on via a jumper" (i.e. bridging the
+  solder jumper permanently lights it whenever 3V3 is present — a pure
+  power-indicator, not a software-controllable pin).
+  There is also no #define alias for this LED anywhere in
+  pins_arduino.h, so there is no GPIO number to attach any capability
+  to in the first place. Confirmed out of scope, not a missed tag.
+
+Reset button — NOT a GPIO pin, no chipGpios entry
+  github.com/0xCB-dev/0xCB-Helios README describes "the awesome one
+  button reset circuit... press the reset button longer than 500ms and
+  release [to enter bootloader]... you can short the RST pin to GND, as
+  it's wired to the reset button." This is the RP2040's hardware ~RUN/
+  reset line, not a normal GPIO — same situation as the classic Pico's
+  BOOTSEL button (see rpipico/board.json's own note): it cannot be
+  digitalRead() and has no GPIO number for a "button" capability to
+  attach to. No alias for it exists in pins_arduino.h either. Confirmed
+  out of scope.
+
+SOURCES CONSULTED
+  - github.com/0xCB-dev/0xCB-Helios (repo root: README.md, LICENSE.svg) —
+    fetched via WebFetch; gives general RP2040 per-GPIO peripheral-mux
+    table (generic chip capability, not board-specific) and the reset-
+    button circuit description.
+  - github.com/0xCB-dev/0xCB-Helios/rev1.0/helios.kicad_sch — downloaded
+    directly via curl to a local scratch file and read/grepped in full
+    (WebFetch's small-model summarization could not reliably surface
+    instance-level connectivity in a file this size — repeated attempts
+    only returned the symbol-library preamble). This is the authoritative
+    source for every finding above (component BOM values, net labels,
+    wire coordinates, level-shifter DIR-pin wiring).
+  - keycapsss.com, rndkbd.com, keeb.supply, kbd.news product listings
+    (via WebSearch) — independently corroborate LED colors/behavior and
+    the "5V level shifted pin to drive RGB LEDs (GP25)" NeoPixel-driver
+    framing; used as corroboration only, not as the primary source (the
+    schematic trace is primary).
+  - docs.keeb.supply/0xcb-helios/guide/ and
+    raw.githubusercontent.com/0xCB-dev/docs.keeb.supply — attempted but
+    returned 404 (paths/branch names did not resolve); not used.
+  - circuitpython.org/board/0xcb_helios/ — appeared in search results,
+    not fetched (schematic trace was already conclusive).
+
+pins_arduino.h and variants/rp2040/rp2040/board.json (chip-level
+defaults) were also read in full before starting, per the standard
+per-board audit procedure; vccgnd_yd_rp2040/board.json and
+rpipico/board.json were read as style/precedent references.
+
+FILES WRITTEN
+  variants/rp2040/rp2040/0xcb_helios/board.json (new — full per-board
+    override file, chip-level defaults copied verbatim + chipGpios for
+    GPIO17 and GPIO25)
+  boardsDetails/rp2040/rp2040/0xcb_helios/notes.txt (this file)
+
+No pins_arduino.h edits were needed — no bus-alias collision (button/LED
+pin also doubling as SDA/SCL/SS/MOSI/MISO/SCK) was found on this board.

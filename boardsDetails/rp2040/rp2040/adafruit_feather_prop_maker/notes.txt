@@ -1,0 +1,78 @@
+Board: Adafruit RP2040 Prop-Maker Feather with I2S Audio Amplifier (product 5768)
+Date: 2026-07-13
+
+Sources consulted:
+1. learn.adafruit.com/adafruit-rp2040-prop-maker-feather/pinouts (official
+   Adafruit guide) — per-pin descriptions for LED, NeoPixel, BOOT button,
+   Btn/Sig/Neo terminals, I2S amp pins, accelerometer interrupt, and the
+   External Power enable pin. Quoted verbatim in board.json's header
+   comment.
+2. learn.adafruit.com/adafruit-rp2040-prop-maker-feather/overview —
+   confirms onboard LIS3DH accelerometer (I2C 0x18) shares the same
+   user-facing STEMMA QT bus, not an isolated internal bus.
+3. github.com/adafruit/circuitpython
+   ports/raspberrypi/boards/adafruit_feather_rp2040_prop_maker/pins.c —
+   confirms every alias-to-GPIO mapping pin-for-pin against this board's
+   own pins_arduino.h.
+4. docs.zephyrproject.org — adafruit_feather_propmaker_rp2040.dts
+   (official upstream Zephyr board port) — independently confirms LED
+   polarity (active-high), BOOT button polarity (active-low + internal
+   pull-up), onboard NeoPixel GPIO, external NeoPixel terminal GPIO, and
+   GPIO23 as the external-power-enable control line (gpio-hog, defaults
+   high at boot in Zephyr's own port).
+
+Per-pin findings:
+- GPIO4 (PIN_NEOPIXEL) — onboard single status NeoPixel, output-only.
+  Tagged ["digital_output","led_neopixel"].
+- GPIO7 (PIN_BUTTON/BOOT) — onboard bootloader-select pushbutton, also
+  usable as a general input at runtime. Active-low, internal pull-up.
+  Full capability retained: ["digital_input","digital_output","pwm_output","button"].
+- GPIO13 (PIN_LED) — onboard status LED, active-high.
+  Tagged ["digital_output","pwm_output","led_high"].
+- GPIO16/17/18 (I2S_DATA/BIT_CLOCK/WORD_SELECT) — dedicated onboard
+  MAX98357 I2S audio amplifier control lines. Excluded (capabilities: []).
+- GPIO19 (PIN_EXTERNAL_BUTTON, "Btn" terminal) — spare general-purpose
+  GPIO for the user's OWN external button/LED, not onboard hardware.
+  Confirmed explicitly bidirectional by Adafruit's own guide. Full
+  capability restored (no static-const alias existed for this GPIO in
+  the board's bespoke pins_arduino.h): ["digital_input","digital_output","pwm_output"].
+  No button/led tag (reserved for the board's own onboard hardware).
+- GPIO20 (PIN_EXTERNAL_SERVO, "Sig" terminal) — bare GPIO for an external
+  servo signal, no direction-restricting hardware confirmed on the signal
+  line itself (only the V+ power rail is switched, via GPIO23). Full
+  capability restored: ["digital_input","digital_output","pwm_output"].
+- GPIO21 (PIN_EXTERNAL_NEOPIXELS, "Neo" terminal) — external NeoPixel
+  strip data-output terminal, distinct from the onboard status NeoPixel
+  (GPIO4). No level-shifter confirmed on this specific integrated board
+  (unlike the separate standalone "Prop-Maker FeatherWing" product, whose
+  guide does describe one — that inference does not carry over without
+  direct confirmation for this board). Full capability restored, no
+  led_neopixel tag (reserved for onboard hardware, not a user-wired
+  external terminal): ["digital_input","digital_output","pwm_output"].
+- GPIO22 (PIN_ACCELEROMETER_INTERRUPT) — dedicated interrupt line from the
+  onboard LIS3DH accelerometer. Excluded (capabilities: []).
+- GPIO23 (PIN_EXTERNAL_POWER) — dedicated control line for the transistor
+  switching the 5V rail feeding the Neo/Sig terminals, servo header, and
+  I2S amp. Excluded (capabilities: []).
+- GPIO2/3 (Wire0 SDA/SCL) — NO CHANGE. Genuine user-facing STEMMA QT I2C
+  connector that also carries the onboard accelerometer as one bus
+  participant, not an isolated bus. Left at full default capability.
+
+Bug found and fixed: GPIO13 (confirmed LED) was also the vendor's default
+(unused) PIN_SPI0_SS alias — no onboard SPI device consumes it (the audio
+amp uses I2S, the accelerometer uses I2C). Fixed by removing the
+`#define PIN_SPI0_SS` line from pins_arduino.h, matching the
+adafruit_feather_scorpio precedent. Also removed the now-dangling
+`static const uint8_t SS = PIN_SPI0_SS;` alias that referenced the
+removed macro (would otherwise be a compile error) — this same
+dangling-reference issue was found and fixed on two other sibling boards
+during this session's checkpoint review (adafruit_feather_can,
+adafruit_feather_thinkink).
+
+Summary: Adafruit Feather RP2040 Prop-Maker — 3 confirmed onboard
+identity tags (LED, NeoPixel, BOOT button) + 5 dedicated-hardware pin
+exclusions (3 I2S amp lines, accelerometer interrupt, external-power
+enable) + 3 external-terminal pins correctly restored to general-purpose
+(not tagged as onboard button/LED since they're user-wired connection
+points, not the board's own hardware) + fixed a real SS-alias
+bus-contamination bug on the LED pin.

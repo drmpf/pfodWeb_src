@@ -63,20 +63,16 @@ static const uint8_t OUTPUT_IO3 = 3;
 static const uint8_t OUTPUT_IO17 = 17;
 static const uint8_t OUTPUT_IO18 = 18;
 
+// pfodWeb NOTE: A3-A6, D0-D3/D11, and T4-T7 deliberately NOT declared -
+// dedicated onboard display (WS_LCD_*, GPIO4-8) and IMU interrupt
+// (WS_QMI8658_INT1, GPIO38) pins (see board.json chipGpios override).
+
 // Analog capable pins on the header
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
-static const uint8_t A3 = 4;
-static const uint8_t A4 = 5;
-static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
 
 // GPIO capable pins on the header
-static const uint8_t D0 = 7;
-static const uint8_t D1 = 6;
-static const uint8_t D2 = 5;
-static const uint8_t D3 = 4;
 static const uint8_t D4 = 3;
 static const uint8_t D5 = 2;
 static const uint8_t D6 = 1;
@@ -84,7 +80,6 @@ static const uint8_t D7 = 44;
 static const uint8_t D8 = 43;
 static const uint8_t D9 = 40;
 static const uint8_t D10 = 39;
-static const uint8_t D11 = 38;
 static const uint8_t D12 = 37;
 static const uint8_t D13 = 36;
 static const uint8_t D14 = 35;
@@ -95,9 +90,5 @@ static const uint8_t D16 = 33;
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
 static const uint8_t T3 = 3;
-static const uint8_t T4 = 4;
-static const uint8_t T5 = 5;
-static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
 
 #endif /* Pins_Arduino_h */

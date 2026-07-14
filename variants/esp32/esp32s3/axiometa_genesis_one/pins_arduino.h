@@ -20,7 +20,21 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 47;
 static const uint8_t SCL = 48;
 
-static const uint8_t SS = 1;
+// pfodWeb NOTE: vendor file originally also declared a default SPI slave-
+// select alias pointing at the same GPIO as the confirmed, vendor-
+// documented P1_IO0 port pin below -- unlike TX/RX (explicitly commented
+// by the vendor as "Fixed communication pins, shared across all ports"),
+// that SPI alias had no such confirmation and no vendor schematic/doc
+// names this GPIO as a dedicated SPI slave-select. Deleted (not just
+// commented out) to stop build_boards.js's spi_ss auto-tagging rule from
+// silently adding a spurious capability to this otherwise-clean
+// general-purpose pin. See boardsDetails/esp32/esp32s3/
+// axiometa_genesis_one/notes.txt.
+// NOTE TO FUTURE EDITORS: do not write the literal deleted
+// "static const uint8_t NAME = <number>;" text in this comment - the
+// parser in build_boards.js is comment-blind (plain regex scan) and will
+// match ANY text of that exact shape, even inside a // comment, silently
+// reintroducing the exact bug this fix prevents.
 static const uint8_t MOSI = 11;
 static const uint8_t MISO = 12;
 static const uint8_t SCK = 13;

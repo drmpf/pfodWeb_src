@@ -1,0 +1,50 @@
+Walter (DPTechnics/QuickSpot ESP32-S3 cellular+GNSS board) - onboard button/LED research
+Researched: 2026-07-11
+
+Sources consulted:
+- https://www.quickspot.io/datasheet/walter_datasheet.pdf
+  Official vendor datasheet (rev 0.9). Pin Assignment table (4.1.1) and Internal Pins table (4.1.2)
+  list all 28 physical pins and all internally-connected GPIOs (USB D+/D-, LTE_WAKE0, LTE UART0
+  TX/RX/RTS/CTS, LTE_RESET). No LED is mentioned anywhere in the document. Only button-like item
+  mentioned is pin 1 "RESET" = ESP32 EN pin with 10k pullup (a hardware reset input, not a GPIO).
+- https://github.com/QuickSpot/walter-hardware/blob/main/walter/schematic/schematic-v1.5.pdf
+  (fetched raw PDF and read directly) Full KiCad schematic (v1.5, 2023-07-14). Component designators
+  present: U1 (GM02SP modem), U2 (ESP32-S3-WROOM-1-N16), U3/U4 (power ICs), Q1/Q2 (transistors),
+  R1-R23 (resistors), C1-C12 (caps), L1/L2 (inductors), F1 (filter), SW1 "SW_RST" (reset button),
+  J1-J6 (connectors), TP1-TP22 (testpoints), FID1-FID6 (fiducials). There is NO LED/D-designator
+  component anywhere in the schematic - confirms no onboard LED of any kind (single-color, RGB, or
+  NeoPixel). SW1 (SW_RST) is wired directly to the ESP32-S3 module's EN/RESETN pin (pin 3, "EN"),
+  i.e. a hardware chip-reset button, NOT a GPIO the firmware can poll as a digital input.
+  Sequans GM02SP pin 11 is factory-labeled "STATUS_LED/GPIO1" (a generic pin-mux name from the
+  Sequans modem's own datasheet) but on this schematic that net is wired only to net "PS_STATUS"
+  which goes out to test point TP1 - it is a modem-internal status signal on the *Sequans* chip,
+  not an onboard LED, and not an ESP32-S3 GPIO at all.
+- https://docs.zephyrproject.org/latest/boards/dptechnics/walter/doc/index.html
+  Zephyr board docs mention an "On-board reset button" among I/O but document no onboard LED and
+  give no GPIO/polarity detail for the reset button (consistent with it being the EN/RESETN line).
+- https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/dptechnics/walter/walter_esp32s3_procpu.dts
+  Zephyr board devicetree source for Walter. Contains no gpio-leds or gpio-keys nodes at all -
+  confirms Zephyr's own upstream board support defines no LED/button aliases for this board.
+  (Zephyr board dts files reliably declare gpio-leds/gpio-keys nodes when a board has a real
+  software-controllable LED/button, so their absence is corroborating evidence, not just silence.)
+- General web search results (QuickSpot/DPTechnics marketing/community text) explicitly stated
+  Walter "is designed with intentional minimalism - there are no unnecessary components like
+  sensors, RGB LEDs, or charging circuits that might increase cost and complexity without adding
+  value." Consistent with all of the above.
+
+Pins considered and NOT tagged:
+- GPIO0 (labelled DFU/3V3_EN on the datasheet, "P2/GPIO0/~{3V3_EN}" in the schematic): this is a
+  boot-strapping/DFU pin and a 3V3 output enable line, not a user LED or button. Not tagged.
+  No guess made - this is a documented non-LED/non-button function.
+- EN/RESETN (ESP32-S3 chip-enable pin driven by SW1 SW_RST): this is the closest thing Walter has
+  to a "button," but it is a hardware reset line wired to EN, not a GPIO exposed in chipGpios at
+  all (board.json correctly has no EN entry). It cannot be tagged with the "button" capability
+  (digital_input) because firmware cannot read it as a GPIO - pressing it resets the chip. No guess
+  made; this is a clear-cut exclusion, not a judgment call.
+- No other candidate GPIOs were found to be associated with any LED or button function in any
+  source consulted, vendor datasheet, schematic, or Zephyr upstream board files - all in full
+  agreement. No ambiguous/uncertain pins were left for human review; the evidence is consistent
+  across all four independent sources (datasheet, schematic, Zephyr docs, Zephyr dts).
+
+Summary: NO onboard user-controllable LED and NO onboard GPIO-readable button exist on Walter.
+board.json was NOT modified - no capability tags applied.

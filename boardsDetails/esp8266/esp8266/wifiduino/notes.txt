@@ -1,0 +1,196 @@
+WiFiduino (WiFiduino-8266) — ESP8266 Arduino-Uno-shield-form-factor board
+Research notes — 2026-07-11
+
+BOARD IDENTITY
+- variant dir: variants/esp8266/esp8266/wifiduino/ (pins_arduino.h only, no board.json existed before this pass)
+- boards.txt entries (variants/esp8266/boards.txt lines ~8202+): wifiduino.name=WiFiduino,
+  wifiduino.build.board=WIFIDUINO_ESP8266, wifiduino.build.variant=wifiduino
+- pins_arduino.h: LED_BUILTIN = BUILTIN_LED = GPIO2; D0-D13 standard Arduino-shield aliases;
+  RX=GPIO3, TX=GPIO1 (hardware UART0 — these are the reserved pfod serial pins, no tags placed on them)
+- Added to esp8266/Arduino core via PR #4590 "Want to add board WiFiduino" by github user
+  i3water (merged 2018-04-01). i3water is associated with the "Blinker" IoT platform
+  (blinker-iot / diandeng.tech), and the vendor is OpenJumper (openjumper.cn), a Chinese
+  maker-education hardware company; WiFiduino ships as part of Blinker IoT starter kits.
+
+URLS CONSULTED AND WHAT EACH TOLD ME
+
+1. https://github.com/esp8266/Arduino/pull/4590/files and the PR conversation
+   - Confirms the variant's pins_arduino.h content (LED_BUILTIN=2) and board.txt entries.
+   - No hardware/schematic detail in the PR itself; reviewer noted the vendor link
+     "http://wifiduino.com/esp8266" was already 404 back in 2018 (old vendor domain, dead).
+
+2. https://www.espboards.dev/esp8266/wifiduino/
+   - Aggregator/specs page. Confirms LED_BUILTIN=2 pin table but states no button/LED-polarity
+     info and no ADC-divider info. Links onward to an (unrelated) Adafruit datasheet — not useful.
+
+3. https://openjumper.cn/wifiduino/ and https://wifiduino.openjumper.cn/
+   - These look like the actual current vendor/reseller pages for this exact board (OpenJumper,
+     the same company behind the "智能盒子oj" tutorial series referencing wifiduino). Both URLs
+     returned persistent HTTP 500 "此站点正遇到技术问题" (site experiencing technical
+     difficulties) on every direct-fetch and jina.ai-proxied-fetch attempt made during this
+     session — the content could not be read directly, only via search-engine index snippets
+     and third-party reproductions (see below), which were internally consistent across
+     multiple independent sources, so were treated as reliable secondary confirmation of the
+     underlying (unreachable) vendor page/datasheet text.
+
+4. https://www.arduino.cn/thread-81936-1-1.html ("WiFiduino-8266数据手册" — the
+   WiFiduino-8266 datasheet thread, Arduino Chinese community forum)
+   - Domain would not resolve via direct WebFetch (DNS failure) or the jina.ai reader proxy
+     (422 error) from this environment, so its exact text could not be read first-hand. However
+     its content is reproduced verbatim (title-matched, "数据手册" = "datasheet") across the
+     search-engine index and in the CSDN post below, giving multiple independent citations of
+     the same underlying vendor datasheet text.
+
+5. https://blog.csdn.net/qq_40247570/article/details/119493640 ("WiFiduino初识" — "First look
+   at WiFiduino") — fetched successfully via the r.jina.ai reader proxy after CSDN's direct
+   response (HTTP 521) blocked WebFetch.
+   - Reproduces vendor datasheet text verbatim:
+     "L：该LED连接到D2引脚，可以使用宏LED_BUILTIN编程控制" (L: this LED connects to pin D2,
+     controllable via the LED_BUILTIN macro) — confirms GPIO2 carries a genuine onboard LED
+     (not just an alias), but states nothing about polarity (active-high vs active-low).
+     "PWR为电源指示灯，开发板通电后会亮" (PWR is a power indicator LED, lights when powered) —
+     not a GPIO-driven LED, not taggable.
+     "A0：只能做模拟输入使用，输入电压范围为0~3.3V" (A0: analog-input only, input voltage
+     range 0~3.3V) — used as the basis for the ADC defaultRefVolts change (see below).
+   - No mention of a button in this particular article.
+
+6. Search-engine index snippets (multiple independent WebSearch queries, e.g. "WiFiduino-8266
+   数据手册 KEY 按键 引脚定义") consistently surfaced and quoted the same datasheet passage:
+   "用户按键FLASH定义为GPIO0（对应引脚编程定义为 #define KEY_FLASH 0）...
+   既可以用于刷固件（固件烧写时），也可以在应用程序中用作用户输入控制设备的各种功能"
+   (the user button FLASH is defined as GPIO0 via `#define KEY_FLASH 0`; it can be used both
+   for firmware flashing AND, in application code, as user input to control the device's
+   functions). This is explicit vendor documentation of a genuine user-facing pushbutton on
+   GPIO0 — not inferred from any pin alias (this board's own pins_arduino.h has no KEY_FLASH
+   alias at all; the name and function only appear in the vendor datasheet).
+
+7. https://docs.platformio.org/en/latest/boards/espressif8266/wifiduino.html — PlatformIO
+   board page. Only lists CPU/flash/RAM specs, no LED/button/ADC detail.
+
+8. https://github.com/i3water?tab=repositories — checked for any WiFiduino hardware/schematic
+   repo from the board's Arduino-core contributor. None found; only firmware/library repos
+   (arduino-esp32, Blinker library forks).
+
+9. https://r.jina.ai/https://blog.csdn.net/chrnhao/article/details/106101065 (Blinker
+   Wifiduino beginner tutorial) — fetched successfully but contained only software/IDE setup
+   instructions, no hardware detail (no LED code example, no button, no ADC info).
+
+CHANGES MADE
+
+Part A (button/LED):
+- TAGGED GPIO0 ["digital_input","button"] — vendor datasheet ("WiFiduino-8266数据手册",
+  corroborated across 3 independent citations: openjumper.cn index snippets, the Arduino-CN
+  datasheet thread, and the CSDN "KEY_FLASH" search-result quote) documents a physical
+  KEY_FLASH pushbutton on GPIO0 usable as general user input, not merely a flash/boot pin.
+- NOT tagged: GPIO2 (LED_BUILTIN). Vendor datasheet confirms a real onboard LED exists on
+  GPIO2 ("L" LED), but no source found (vendor page unreachable, datasheet thread unreachable
+  first-hand, PR discussion, PlatformIO docs, multiple CSDN reproductions) states whether it
+  is active-high or active-low. Per this session's rule of never inferring polarity from a
+  pin alias name (LED_BUILTIN) alone, GPIO2 was left untagged rather than guessed. Noted in
+  board.json pinNotes/chipGpios for a future pass if a schematic surfaces.
+
+Part B (ADC reference voltage):
+- CHANGED defaultRefVolts from the chip-level default "1.0" to "3.3". Vendor datasheet
+  explicitly states the A0 pin's input voltage range as "0~3.3V" (not the bare ESP8266
+  chip's native 0-1.0V), which is only physically possible via an onboard resistor-divider
+  network — the same pattern already confirmed by schematic on ESPDuino/ESPino/D1 R1 in this
+  session. No schematic with exact resistor values could be located for WiFiduino (vendor
+  site down throughout this research), so the vendor's own stated round-number full-scale
+  figure (3.3V) was used directly rather than a resistor-computed exact ratio.
+
+FILES MODIFIED
+- variants/esp8266/esp8266/wifiduino/board.json — created (did not previously exist), as a
+  full copy of the esp8266 chip-level default board.json with only GPIO0's capabilities,
+  GPIO2's pinNote/chipGpios note (documentation only, no capability change), and
+  adc.defaultRefVolts changed, plus a NOTE comment block citing all sources above.
+
+SUMMARY
+TAGGED wifiduino GPIO0 as a vendor-datasheet-confirmed user button (KEY_FLASH); left GPIO2's
+onboard LED (LED_BUILTIN) untagged because no source documents its active-high/active-low
+polarity; changed ADC defaultRefVolts from 1.0V to 3.3V based on the vendor datasheet's
+explicit "A0 input voltage range 0~3.3V" statement, matching the divider pattern already
+confirmed on other shield-form-factor ESP8266 boards this session.
+
+---
+
+FULL DEDICATED-HARDWARE SWEEP (later pass) — 2026-07-12
+
+SCOPE: this is the more thorough dedicated-hardware pin-exclusion audit pass (distinct from
+the button/LED/ADC pass above). Re-read pins_arduino.h and ../generic/common.h in full,
+re-attempted GPIO2 polarity research with fresh sources, checked for any other dedicated
+shield-header peripheral, and ran the alias-collision check requested this session (GPIO0/
+GPIO2 vs SDA/SCL/SS/MOSI/MISO/SCK).
+
+1. GPIO2 (LED_BUILTIN) POLARITY — fresh research attempt
+
+New sources tried beyond the earlier pass's list:
+- https://openjumper.com/doc/wifiduino-v2 and its r.jina.ai proxy — page loads only site
+  chrome/title ("OpenJumper | 开源硬件与无限创想"), no technical content retrievable via
+  WebFetch (JS-rendered SPA shell).
+- https://openjumper.cn/kit04001/ ("智能家居基础教程1-初识wifiduino") direct WebFetch — HTTP
+  403 Forbidden. Via r.jina.ai proxy — same underlying openjumper.cn HTTP 500 "此站点正遇到
+  技术问题" already hit in the earlier pass.
+- https://doc.openjumper.com/ — loads only site title, no navigable content via WebFetch.
+- https://gitee.com/openjumper/ and the three repos it lists (wifiduinos_esp8266,
+  wifiduinos_esp32, wifiduinos) — Mixly (a Chinese Arduino graphical-programming tool)
+  third-party board-support packages. wifiduinos_esp8266 contains
+  hardware/esp8266/2.7.4/variants/wifiduino/pins_arduino.h (same file already in this repo,
+  no additional detail) and placeholder-only README ("1. xxxx 2. xxxx 3. xxxx") — no LED
+  polarity, no example sketch, no schematic.
+- https://www.arduino.cn/thread-81936-1-1.html via r.jina.ai — HTTP 422, still unreadable
+  first-hand (same as earlier pass).
+- General/generic-Mixly-LED-tutorial searches and generic "ESP8266 LED_BUILTIN GPIO2"
+  searches — returned only generic-ESP8266-family claims, and these were internally
+  CONTRADICTORY between two separate WebSearch calls in this same session: one AI-generated
+  summary asserted (with fabricated, unsourced example code) that HIGH turns the WiFiduino's
+  LED on, the other asserted the generic-ESP8266-family "GPIO2 built-in LED is active-low"
+  convention applies to it. Neither is WiFiduino-specific, board-documented evidence, and
+  their mutual contradiction is itself evidence that these are generic-pattern inference by
+  the search summarizer, not real sourced text — exactly the kind of guess this session's
+  "never infer polarity from alias name or family convention alone" rule exists to reject.
+
+RESULT: no new board-specific evidence found. GPIO2 polarity remains UNCONFIRMED.
+NO CHANGE — left untagged (no led_high/led_low capability added), matching the earlier
+pass's documented, deliberate outcome.
+
+2. OTHER DEDICATED SHIELD-HEADER PERIPHERALS
+
+Re-read pins_arduino.h and common.h in full: SDA(4)/SCL(5), LED_BUILTIN/BUILTIN_LED(2),
+D0-D13 aliases (RX=3, TX=1, plus common.h's SS=15/MOSI=13/MISO=12/SCK=14/A0=17). No other
+pin alias, macro, or comment suggesting a dedicated reset button, buzzer, relay, or second
+LED beyond what the earlier pass already found and documented (the "L" LED on GPIO2, the
+non-GPIO "PWR" power-indicator LED, and the KEY_FLASH button on GPIO0). Nothing new found in
+this pass's additional vendor/Gitee/Mixly sources either. NO CHANGE.
+
+3. ALIAS-COLLISION CHECK (GPIO0/GPIO2 vs SDA/SCL/SS/MOSI/MISO/SCK)
+
+Checked both by direct file inspection and by re-reading the actual parser logic in
+pfodWeb_src/build_boards.js (buildEsp32Board(), which esp8266-family boards route through):
+the parser reads PIN_WIRE_SDA/PIN_WIRE_SCL and the SDA/SCL/SS/MOSI/MISO/SCK `static const`
+aliases from the fully #include-resolved source (pins_arduino.h + common.h are concatenated
+before parsing — resolveIncludes() in build_boards.js), then unconditionally appends
+i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck capabilities onto whichever chipGpios entry
+matches those GPIO numbers, REGARDLESS of any chipGpios override already set (this is the
+exact mechanism that silently contaminated GPIO4/GPIO5 on the espino board this session,
+per boardsDetails/esp8266/esp8266/espino/notes.txt).
+
+For wifiduino: PIN_WIRE_SDA=4, PIN_WIRE_SCL=5 (this board's own pins_arduino.h); SS=15,
+MOSI=13, MISO=12, SCK=14 (inherited from ../generic/common.h). None of these six values is 0
+or 2. GPIO0 (button) and GPIO2 (LED) are NOT aliased as SDA/SCL/SS/MOSI/MISO/SCK anywhere in
+this board's resolved source. CONFIRMED CLEAN — no collision, no contamination, NO CHANGE
+needed to board.json.
+
+FILES MODIFIED THIS PASS
+- None. board.json and pins_arduino.h are unchanged — every check in this pass (GPIO2
+  polarity re-research, other-peripheral sweep, alias-collision check) came back either
+  "no new evidence" or "confirmed clean," so the existing board.json from the earlier pass
+  stands as-is.
+
+SUMMARY (this pass)
+Made a genuine fresh attempt to confirm GPIO2 LED_BUILTIN polarity via new vendor/Gitee/Mixly
+sources; found nothing board-specific and reliable (only unreachable pages and mutually
+contradictory generic-ESP8266-pattern search-summary guesses), so left it untagged as before.
+Found no other undocumented dedicated shield-header peripheral. Ran the GPIO0/GPIO2 vs
+SDA/SCL/SPI alias-collision check both manually and against the actual build_boards.js
+parser logic — confirmed clean (SDA=4, SCL=5, SPI pins=12/13/14/15, none overlapping GPIO0
+or GPIO2). No files modified.

@@ -1,0 +1,172 @@
+Board: TTGO/LILYGO T-Watch (ESP32, chip: esp32) — this repo's "twatch"
+variant matches the "T-Watch2020 V1" hardware revision (identified via
+its GPS/LoRa TX1=33/RX1=34 wiring, an accessory feature specific to the
+2020 bottom-plate family; see below)
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32\twatch\
+
+2026-07-14 POST-REVIEW CORRECTION / INDEPENDENT VERIFICATION PASS
+(batch B of 8) — supersedes/extends the prior dated entry below, which
+is preserved unmodified underneath per this repo's audit-trail policy.
+========================================================================
+Task: the prior pass's board.json comment cited ONLY this board's own
+pins_arduino.h/vendor comments — no external vendor documentation was
+ever independently checked. This pass researched the REAL physical
+board via the official LILYGO GitHub repo.
+
+Sources consulted this pass:
+- https://github.com/Xinyuan-LilyGO/TTGO_TWatch_Library — LilyGO's own
+  official hardware/firmware library repo for the T-Watch product line.
+- https://raw.githubusercontent.com/Xinyuan-LilyGO/TTGO_TWatch_Library/master/docs/pinmap.md
+  — fetched and read verbatim this session. Full pin table (4 columns:
+  2019/TOUCH, 2019/NO TOUCH, T BLOCK, T-Watch2020 V1):
+    FT6236 SDA=23, FT6236 SCL=32, FT6236 Interrupt=38 (all 4 variants
+      except 2019/NO-TOUCH and T-Block, which have no touch controller)
+    SENSOR SDA=21, SENSOR SCL=22 (shared bus, ALL variants)
+    BMA423 Interrupt=39 (all except T-Block)
+    PCF8563 Interrupt=37 (ALL variants)
+    AXP192 Interrupt=35 (ALL variants)
+    BUTTON=36 on 2019/TOUCH, 2019/NO-TOUCH, T-Block; N/A on T-Watch2020 V1
+    MOTOR: N/A on all except T-Watch2020 V1, where MOTOR=GPIO4
+    TFT MOSI=19, TFT SCLK=18, TFT DC=27, TFT CS=5, TFT BackLight=12
+      (identical across every variant that has a TFT at all)
+    TFT RST=N/A, TFT MISO=N/A (every variant — no TFT reset/MISO line)
+    SD MISO/MOSI/SCLK/CS = N/A on EVERY variant (no onboard SD card in
+      any official T-Watch product configuration)
+    IR Send=13 (T-Watch2020 V1 only; N/A elsewhere)
+    I2S BCK=26, I2S WS=25, I2S DOUT=33 (T-Watch2020 V1 only)
+- https://raw.githubusercontent.com/Xinyuan-LilyGO/TTGO_TWatch_Library/master/src/TTGO.h
+  — official firmware source. Confirms `//In the 2020 version, Button
+  IO36 is not used.` (matches the pinmap.md "N/A" for BUTTON on
+  T-Watch2020 V1) and `#define MOTOR_PIN 4 //SIM868 MOTOR PIN,JUST ONLY
+  SIM868` — i.e. the GPIO4 motor pin is explicitly tied to an optional
+  SIM868 bottom-plate accessory, not a fixed onboard actuator.
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/twatch/pins_arduino.h
+  — fetched fresh this session (independent re-fetch of the actual
+  upstream vendor-contributed file, not just this repo's local copy).
+  Confirms the ORIGINAL vendor comment reads exactly: "SPI has been
+  configured as an SD card slot and must be removed when downloading",
+  attached to `SS = 13; MOSI = 15; MISO = 2; SCK = 14;`.
+
+ANALYSIS / DISCREPANCY FOUND
+-----------------------------
+This board's pins_arduino.h claims GPIO2/13/14/15 (SS/MOSI/MISO/SCK) are
+an onboard "SD card slot" — but LilyGO's own official pinmap.md
+documentation shows SD MISO/MOSI/SCLK/CS as N/A on every single T-Watch
+variant (no official product has an onboard SD card at all), and
+separately documents GPIO13 specifically as "IR Send" (an IR LED
+transmitter) for the T-Watch2020 V1 revision this board most closely
+matches. This is a genuine conflict between two first-party sources: the
+board's own (Espressif-merged) pins_arduino.h vendor comment vs. LilyGO's
+separate official hardware library documentation.
+
+Per this repo's established policy for such conflicts ("When independent
+research conflicts with the board's own file, trust the file and apply
+only the corroborated parts" — see elecrow_crowpanel_7 precedent), the
+GPIO2/13/14/15 exclusion is KEPT UNCHANGED. Rationale: regardless of
+which first-party claim is literally correct (SD-SPI-SS vs. IR-transmit
+for GPIO13), BOTH describe genuinely dedicated, non-general-purpose
+onboard hardware — so the practical exclusion outcome is the same either
+way, and no guess is needed to decide between them. This is recorded
+honestly as UNCONFIRMED-BUT-KEPT, not claimed as independently verified.
+
+CORRECTION APPLIED: TFT display bus (GPIO5/12/18/19/27) was NEVER
+excluded by any prior pass, because this vendor's own pins_arduino.h
+never declares MOSI/SCLK/DC/CS/BackLight via any `static const` alias at
+all for this board (the T-Watch's TTGO.h library, not the Arduino-core
+pins_arduino.h, owns the TFT wiring) — so build_boards.js's regex parser
+had nothing to find, and no manual researcher had checked for it either
+in the prior "dedicated-hardware" audit pass. LilyGO's own official
+pinmap.md confirms GPIO5(CS)/12(BackLight)/18(SCLK)/19(MOSI)/27(DC) are
+the ST7789 TFT's dedicated SPI/control bus on every T-Watch variant that
+has a display at all (i.e. all except T-Block). These 5 GPIOs are now
+EXCLUDED from chipGpios (removed), and GPIO5/GPIO12's pinNotes entries
+(strapping-pin notes inherited from the chip-level default) were removed
+along with them, matching this repo's established precedent (an excluded
+GPIO should not carry an orphaned pinNote).
+
+CONFIRMED, NO CHANGE:
+- GPIO23/32/38 (FT6236 touch SDA/SCL/INT): exact match to pinmap.md.
+  Stays excluded.
+- GPIO35/37/39 (AXP192/PCF8563/BMA423 interrupts): exact match to
+  pinmap.md. Stays excluded.
+- GPIO33/34 (GPS/LoRa or SIM800L UART, bottom-plate dependent): matches
+  pinmap.md's "GPS/LoRa TX/RX" and "SIM800L TX/RX" rows (same GPIOs
+  regardless of which accessory is installed). Stays excluded.
+- GPIO21/22 (SENSOR SDA/SCL): pinmap.md confirms this is the SAME shared
+  bus used by BMA423 AND PCF8563 across every variant ("SENSOR SDA/SCL"
+  row, identical value on every column) — genuinely a shared/multi-drop
+  bus, not exclusively dedicated. Stays available, unchanged.
+- GPIO36 (BUTTON on 2019 variants, N/A on 2020 V1): CONFIRMED correct
+  as-is (kept, untagged) — official pinmap.md + TTGO.h both independently
+  state the button was removed/unused in the 2020 V1 revision that this
+  board's GPS/LoRa wiring identifies it as. If this were actually a 2019
+  board, GPIO36 would need a "button" tag — but the evidence points to
+  2020 V1, so no tag is applied. Documented so a future reviewer can
+  revisit if the variant identification above is ever found to be wrong.
+- GPIO4 (MOTOR on T-Watch2020 V1 per pinmap.md): NOT excluded. TTGO.h's
+  own source comment ties this pin specifically to an optional SIM868
+  bottom-plate accessory ("JUST ONLY SIM868"), not a fixed onboard
+  actuator on the core watch module — left unchanged per the "don't
+  guess when evidence is conditional/ambiguous" policy. If a future
+  reviewer confirms this specific board variant always ships with the
+  SIM868 plate, this should be revisited as a probable exclusion.
+
+RESULT: 5 GPIOs (5,12,18,19,27) newly excluded as the confirmed onboard
+TFT display bus — a genuine correction (omission fix), not previously
+flagged. All previously-existing exclusions (touch, PMU/RTC/accel
+interrupts, GPS/LoRa UART) independently re-confirmed via LilyGO's own
+official GitHub documentation. The GPIO2/13/14/15 "SD card" claim could
+NOT be independently corroborated (official docs say no T-Watch has an
+SD card) but is kept unchanged since the alternative documented function
+(IR Send) is equally non-general-purpose — recorded honestly rather than
+claimed as verified. GPIO36 (button) and GPIO4 (motor) both left
+unchanged, backed by real vendor-documented reasoning either way.
+
+------------------------------------------------------------------------
+[PRESERVED — ORIGINAL 2026-07-14 ENTRY FROM THE EARLIER PASS THIS SESSION]
+------------------------------------------------------------------------
+Board: TTGO T-Watch (ESP32, chip: esp32)
+Date: 2026-07-14 (documentation backfill — findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- This board's own board.json top-of-file comment (dedicated-hardware
+  exclusion pass). The comment cites this board's own vendor
+  pins_arduino.h directly, quoting the vendor's inline comments verbatim:
+  "SPI has been configured as an SD card slot" (microSD SPI bus) and
+  "Serial1 Already assigned to GPS LORA" (GPS/LoRa UART), plus "Already
+  assigned to BMA423 PCF8563 and external extensions" (shared I2C bus).
+  No external URLs are cited in this board's board.json — all reasoning
+  traces to the board's own pins_arduino.h vendor comments.
+
+Per-pin findings:
+- GPIO2, GPIO13, GPIO14, GPIO15: EXCLUDED (absent from chipGpios, i.e.
+  capabilities: [] relative to the chip-level default). Reasoning: onboard
+  microSD SPI bus, per the board's own pins_arduino.h vendor comment
+  "SPI has been configured as an SD card slot".
+- GPIO23, GPIO32, GPIO38: EXCLUDED. Reasoning: dedicated touch panel
+  controller lines (TP_SDA/TP_SCL/TP_INT).
+- GPIO35, GPIO37, GPIO39: EXCLUDED. Reasoning: dedicated interrupt lines
+  from the onboard AXP20x PMU, RTC, and BMA42x accelerometer.
+- GPIO33, GPIO34: EXCLUDED. Reasoning: dedicated GPS/LoRa module UART, per
+  the vendor comment "Serial1 Already assigned to GPS LORA".
+- GPIO21, GPIO22 (SDA/SCL): KEPT, standard chip-default capabilities
+  (["digital_input","digital_output","pwm_output"]). Reasoning: the
+  vendor comment confirms this is a SHARED bus ("Already assigned to
+  BMA423 PCF8563 and external extensions") rather than a fully
+  dedicated/unavailable line, so it was left available rather than
+  excluded.
+- GPIO0, GPIO1, GPIO3, GPIO4, GPIO5, GPIO12, GPIO18, GPIO19, GPIO25,
+  GPIO26, GPIO27, GPIO36: KEPT, standard chip-default capabilities
+  (analog_input_serial/digital_input/digital_output/pwm_output/dac_output
+  as applicable per pin, matching the chip-level default board.json —
+  see variants/esp32/esp32/board.json). No button/LED tagging was applied
+  in this pass — it was a dedicated-hardware-exclusion pass only.
+
+Summary: This board's board.json excludes 12 GPIOs (2, 13, 14, 15, 23, 32,
+38, 35, 37, 39, 33, 34) that are dedicated to the onboard microSD SPI bus,
+touch panel controller, AXP20x PMU/RTC/BMA42x accelerometer interrupts, and
+GPS/LoRa UART respectively — all reasoning sourced from this board's own
+pins_arduino.h vendor comments (quoted verbatim in the board.json header).
+GPIO21/22 (I2C) were kept since the vendor comment confirms this is a
+shared, not fully dedicated, bus. No button/LED capability tagging was
+done in this pass.

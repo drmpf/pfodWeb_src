@@ -1,0 +1,91 @@
+M5Stack CoreS3 (esp32/esp32s3/m5stack_cores3) - onboard button/LED research notes
+==================================================================================
+
+Sources consulted
+------------------
+https://docs.m5stack.com/en/core/CoreS3
+  Official M5Stack product page. Confirms two physical buttons: POWER (left
+  side) and RESET (bottom). Both explicitly documented as NOT GPIO-based:
+  POWER is read/controlled via the AXP2101 PMU chip; RESET has "a self-built
+  delay circuit" wired to the chip EN/reset line, not a general-purpose GPIO.
+  Only LED mentioned anywhere on the page is the "AXP Power Indicator Light"
+  - a red LED - also wired to/driven by the AXP2101 PMU, not an ESP32-S3
+  GPIO. No RGB/NeoPixel LED is mentioned. Touch panel uses FT6336U
+  capacitive-touch controller on I2C (SDA=G12/SCL=G11 - the same dedicated
+  internal I2C bus already excluded in this board's pins_arduino.h/board.json
+  NOTE comments), confirming the on-screen A/B/C virtual buttons are
+  capacitive touch via I2C, not GPIO digital buttons.
+
+https://docs.zephyrproject.org/latest/boards/m5stack/m5stack_cores3/doc/index.html
+  Zephyr board doc page. Contains a line "Addressable RGB LED, driven by
+  GPIO38" but on closer inspection (via WebFetch) this line lives in a
+  generic ESP32-S3-SoC-family feature list carried over from the reference
+  ESP32-S3-DevKitC-1 template, not confirmed as actually present on the
+  CoreS3 board itself. Treated as unreliable/boilerplate, not evidence.
+
+https://github.com/zephyrproject-rtos/zephyr/blob/main/boards/m5stack/m5stack_cores3/m5stack_cores3_procpu_common.dtsi?plain=1
+  Actual upstream devicetree source for this exact board. Searched for
+  gpio-leds / gpio-keys / ws2812 / led / button nodes. Result: only ONE led
+  node exists:
+      axp2101_led: led {
+          compatible = "x-powers,axp2101-led";
+          status = "okay";
+          x-powers,mode = "by-reg";
+      };
+  This LED is managed entirely inside the AXP2101 PMU over I2C (address
+  0x34) - it has no GPIO pin assignment at all. No gpio-leds or gpio-keys
+  node exists anywhere in the file. This directly contradicts/outweighs the
+  "GPIO38" mention found in the doc page above.
+
+https://github.com/zephyrproject-rtos/zephyr/pull/82518
+  "boards: m5stack: cores3: Add and Enable AXP192/AXP2101 LED driver" - the
+  PR that added AXP2101 LED controller support for CoreS3/CoreS3-SE.
+  Confirms in the PR description that the LED is controlled through the
+  AXP192/AXP2101 power-management IC, not via a discrete ESP32-S3 GPIO pin.
+  Corroborates the devicetree finding above.
+
+pins_arduino.h (this repo, esp32/esp32s3/m5stack_cores3/pins_arduino.h)
+  static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + 48; with comment
+  "Some boards have too low voltage on this pin (board design bug)...".
+  Cross-checked against many other esp32s3 boards in this repo
+  (Bee_Data_Logger, Bee_Motion_S3, Bee_S3, elecrow_crowpanel_7, etc.) - this
+  exact SOC_GPIO_PIN_COUNT+48 boilerplate with the identical "too low
+  voltage (board design bug)" comment is copy-pasted verbatim across many
+  unrelated Espressif board variant files, several of which are LCD panel
+  boards with no confirmed onboard RGB LED. This is generic Espressif
+  template boilerplate, not CoreS3-specific hardware fact - per task
+  instructions this alias name was NOT treated as evidence on its own, and
+  is directly contradicted by the official docs/devicetree findings above
+  (no RGB LED, only the PMU-driven red power indicator).
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO48 (aliased as LED_BUILTIN/RGB_BUILTIN in pins_arduino.h): NOT tagged.
+  This is Espressif generic-template boilerplate (see above), directly
+  contradicted by official M5Stack docs and the upstream Zephyr devicetree,
+  both of which show the only onboard LED is the AXP2101 PMU's internal red
+  power-indicator LED with no GPIO connection whatsoever. No guess made -
+  treated as confirmed NOT a real GPIO-driven LED on this board.
+- No GPIO candidate for POWER button: NOT tagged. Confirmed via official
+  docs to be read through the AXP2101 PMU (M5.BtnPWR API), not a
+  GPIO-connected digital input. No GPIO pin exists to tag.
+- No GPIO candidate for RESET button: NOT tagged. Confirmed via official
+  docs to use a dedicated hardware reset/delay circuit tied to chip
+  EN/reset, not a general-purpose digital-input GPIO exposed to firmware.
+- A/B/C on-screen buttons: NOT tagged. Confirmed capacitive-touch via
+  FT6336U touch IC over the internal I2C bus (G11/G12), already excluded
+  from chipGpios in this board's board.json for unrelated reasons (shared
+  internal I2C bus). No plain GPIO button exists for these.
+- No best-guess judgment calls were made anywhere above; every "not tagged"
+  decision above is based on positive confirming evidence (official docs
+  and/or upstream devicetree source) that the button/LED in question is
+  NOT a plain GPIO, rather than absence of evidence.
+
+Summary of what was tagged
+----------------------------
+NOTHING WAS TAGGED. board.json was left completely unmodified. This board
+has no confirmable GPIO-connected onboard button or LED (single-color,
+NeoPixel, or discrete RGB) - the power/reset buttons and the sole onboard
+LED are all controlled through the AXP2101 PMU chip via I2C, and the A/B/C
+buttons are capacitive touch via a separate touch IC, none of which are
+representable as a chipGpios GPIO capability tag.

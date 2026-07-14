@@ -1,0 +1,138 @@
+Board: sparkfun_esp32c5_thing_plus (chip: esp32c5)
+Directory: variants/esp32/esp32c5/sparkfun_esp32c5_thing_plus/
+Audit date: 2026-07-12
+Audit type: dedicated-hardware pin-exclusion audit (with button/LED capability
+tagging applied where confirmed)
+
+FLAGGED DECLARATIONS (from discovery sweep)
+  #define PIN_RGB_LED 27
+  #define RGB_BRIGHTNESS 64
+  static const uint8_t USB_DM = 13;
+  static const uint8_t USB_DP = 14;
+  static const uint8_t LP_SDA = 2;
+  static const uint8_t LP_SCL = 3;
+  #define WIRE1_PIN_DEFINED / #define SDA1 LP_SDA / #define SCL1 LP_SCL
+  static const uint8_t LP_RX = 4;
+  static const uint8_t LP_TX = 5;
+
+SOURCES CONSULTED
+ 1. https://www.sparkfun.com/sparkfun-thing-plus-esp32-c5.html
+    Official SparkFun product page. "WS2812 RGB LED" with "Data In
+    connected to IO27". Native "USB-C Connector" for power/programming,
+    no mention of a USB-UART bridge chip (CH340/CP2102/etc).
+ 2. https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32-C5/hardware/hardware_overview
+    Official SparkFun hardware overview. "The RGB jumper connects the
+    WS2812 RGB LED's Data In pin to IO27 on the C5" - jumper CLOSED by
+    default (independently corroborates source 1). USB-C connector
+    "connects directly to the ESP32-C5's native USB serial converter (not
+    a bridge chip)" - confirms USB_DM/USB_DP are the chip's native USB PHY
+    lines. Also documents other board-specific dedicated pins (out of this
+    audit's flagged scope, listed for completeness/future reference):
+      - microSD card: IO9=POCI, IO8=PICO, IO10=SCK, IO25=CS
+        (matches this board's own SS=25/MOSI=8/MISO=9/SCK=10 aliases in
+        pins_arduino.h - confirmed genuine onboard SD wiring, not
+        boilerplate; none of these collide with GPIO27)
+      - IO0 = battery fuel-gauge alert (via ALRT jumper)
+      - IO6 = voltage regulator status (via ST jumper)
+      - IO26 = low-power-mode control (via IO26/LP/3V3 jumper)
+      - IO23 = a SEPARATE onboard "WS2812 RGB Status (STAT) LED" data
+        line, distinct from the user NeoPixel on IO27. NOT investigated
+        further - IO23 was not one of the pins flagged for this audit,
+        and this board's own pins_arduino.h already aliases GPIO23 as
+        SDA. Flagged here for a possible future audit pass (potential
+        SDA-alias vs status-LED wiring conflict worth independent
+        confirmation, but out of scope for the four pins this audit was
+        asked to review).
+    None of IO0/IO6/IO26 coincide with GPIO2/3/4/5 (the LP_SDA/LP_SCL/
+    LP_RX/LP_TX pins under review).
+ 3. boardsDetails/esp32/esp32c5/esp32c5/notes.txt and
+    boardsDetails/esp32/esp32c5/pandabyte_xc5/notes.txt (this session,
+    sibling ESP32-C5 boards already audited) - established that
+    LP_SDA/LP_SCL/LP_RX/LP_TX are a chip-wide fixed LP-domain I2C/UART
+    pin-mux constraint (Espressif ESP32-C5-DevKitC-1 user guide +
+    datasheet), general-purpose GPIOs, not dedicated onboard hardware.
+    This board's pins_arduino.h carries the identical "LP I2C/UART Pins
+    are fixed on ESP32-C5" comments verbatim.
+
+REASONING PER PIN
+
+GPIO27 (PIN_RGB_LED / RGB_BUILTIN, RGB_BRIGHTNESS 64)
+  CONFIRMED onboard WS2812 addressable RGB LED (Data In on IO27, RGB
+  solder jumper closed by default) - independently corroborated by both
+  the SparkFun product page and hardware overview for this exact board.
+  KEEP + tag ["digital_output","led_neopixel","pwm_output"].
+  Alias-collision check (critical step): this board's pins_arduino.h
+  aliases SDA=23, SCL=24, SS=25, MOSI=8, MISO=9, SCK=10, TX=11, RX=12,
+  A0..A5=1..6. None equal 27 - verified programmatically by running
+  build_boards.js's own alias-parsing regex against the file and
+  confirming zero aliases resolve to GPIO27. No boilerplate bus
+  capability would have been silently appended to this pin.
+
+GPIO13/GPIO14 (USB_DM/USB_DP)
+  CONFIRMED native ESP32-C5 USB PHY D-/D+ lines feeding this board's
+  USB-C connector directly (no bridge chip) - SparkFun hardware overview.
+  The chip-level esp32c5/board.json already excludes GPIO13/14 from
+  chipGpios (they are simply absent from the map). However, this board's
+  pins_arduino.h had USB_DM=13 / USB_DP=14 declared as LIVE (uncommented)
+  `static const uint8_t` aliases, unlike the sibling boards where the
+  same declarations exist but were already commented out. build_boards.js
+  parses these aliases independent of chipGpios and adds every aliased
+  GPIO number to the routable pin set (allGpios = union of pins_arduino.h
+  aliases + chipGpios keys) - so the live aliases would have reintroduced
+  GPIO13/GPIO14 with generic digital_input/digital_output/pwm_output
+  capabilities despite the chip-level exclusion.
+  FIX APPLIED: deleted the USB_DM/USB_DP declaration lines from this
+  board's pins_arduino.h entirely (not commented out - see next finding
+  for why), replaced with a plain-English NOTE comment (no reconstruction
+  of the original `static const uint8_t ... = ...;` text, to avoid
+  re-triggering the same parser match from within the comment itself).
+  Verified programmatically (re-ran the alias-parsing regex against the
+  edited file) that USB_DM/USB_DP no longer appear in the parsed alias
+  set.
+
+  CRITICAL FOLLOW-ON FINDING (sibling boards were still broken):
+  While verifying the above fix, tested whether the sibling boards'
+  existing mitigation - commenting out the declarations
+  (`// static const uint8_t USB_DM = 13;`) in esp32c5/esp32c5/
+  pins_arduino.h and pandabyte_xc5/pins_arduino.h - actually prevents the
+  parser from matching. It does NOT: build_boards.js's ESP32 alias regex
+  (`parseEsp32Consts` in pfodWeb_src/build_boards.js) is applied directly
+  to the raw file text with no comment-stripping pass, and the regex has
+  no line-start anchor, so it matches "static const uint8_t USB_DM = 13;"
+  as a substring regardless of a leading "// ". Confirmed by running the
+  actual regex against both sibling files: both still produced
+  USB_DM=13/USB_DP=14 matches despite the "//" prefix, meaning GPIO13/14
+  were STILL leaking back into both sibling boards' pin lists the whole
+  time, contradicting their own board.json NOTE comments which claimed
+  the chip-level exclusion was sufficient/respected.
+  CORRECTED IN THE SAME PASS: both sibling pins_arduino.h files
+  (esp32c5/esp32c5 and pandabyte_xc5) were edited to delete the
+  USB_DM/USB_DP lines entirely instead of leaving them commented out, with
+  a plain-English NOTE explaining the change (again avoiding literal
+  reconstruction of the declaration text). Re-ran the parser regex against
+  both edited files afterward and confirmed neither leaks GPIO13/GPIO14
+  anymore. Their board.json files were not modified (chipGpios already
+  correctly omitted 13/14; only the .h-level leak needed fixing).
+
+GPIO2/GPIO3 (LP_SDA/LP_SCL, LP-domain I2C) and GPIO4/GPIO5 (LP_RX/LP_TX,
+LP-domain UART)
+  KEEP as general-purpose GPIOs - no onboard peripheral documented at any
+  of the four pins on this board. SparkFun's own dedicated-pin list (SD
+  card, fuel gauge, regulator status, low-power jumper) does not touch
+  GPIO2/3/4/5. The "LP I2C/UART Pins are fixed" comments describe a
+  chip-internal pin-mux constraint of the ESP32-C5's low-power core (only
+  these four GPIOs can drive the LP-domain I2C/UART hardware blocks), not
+  a dedicated onboard device wired to them - same conclusion reached
+  independently for both sibling ESP32-C5 boards. Left unchanged from
+  chip-level defaults (all four already carry
+  analog_input+digital_input+digital_output+pwm_output, matching their
+  A1/A2/A3/A4 analog aliases).
+
+SUMMARY (one line)
+GPIO27 confirmed + tagged led_neopixel (no alias collisions); GPIO13/14
+(native USB D-/D+) properly excluded by deleting the live aliases from
+this board's pins_arduino.h (a comment-out alone does not work, as proven
+by re-testing and then fixing the same latent bug in the two already-
+audited sibling boards esp32c5/esp32c5 and pandabyte_xc5); GPIO2/3/4/5
+(LP_SDA/LP_SCL/LP_RX/LP_TX) confirmed general-purpose LP-domain pin-mux
+capability, left unchanged from chip-level defaults.

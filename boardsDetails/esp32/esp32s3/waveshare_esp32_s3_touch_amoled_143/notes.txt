@@ -1,0 +1,54 @@
+Board: waveshare_esp32_s3_touch_amoled_143
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_143
+Product: Waveshare ESP32-S3-Touch-AMOLED-1.43 (plain, NOT the 1.43C variant)
+Researched: 2026-07-11
+
+SOURCES CONSULTED:
+- https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.43
+  (fetched directly via curl with a browser User-Agent because the WebFetch tool got HTTP 403 from this
+  domain). This is the vendor's official wiki page for the exact "1.43" (non-C) board matching this variant's
+  USB_PRODUCT string "ESP32-S3-Touch-AMOLED-1.43" in pins_arduino.h.
+  - "Onboard Resources" section lists 16 numbered items on the board photo. Item 13 = "BOOT button",
+    item 14 = "RESET button", item 9 = "Charge indicator", item 11 = "Power indicator". No item in this
+    list is an "LED" / "RGB LED" / "programmable LED" — only the two fixed status indicator LEDs (charge,
+    power), which are not described as GPIO-driven/user-controllable.
+  - "Interfaces" pinout table (GPIO0..GPIO48, EN) has an explicit "KEY_IO" column. Only one row has a
+    KEY_IO entry: GPIO0 -> "BOOT0". This confirms GPIO0 is the onboard BOOT button pin.
+  - The "RESET" function in the pinout table is listed against the "EN" pin (chip enable), not any GPIO —
+    i.e. RESET button is a hardware EN-pin reset, not a taggable GPIO.
+  - No GPIO row in the pinout table has any LED/RGB label (checked full table GPIO0-GPIO48 plus EN).
+- https://www.waveshare.com/esp32-s3-touch-amoled-1.43.htm — product page, WebFetch returned HTTP 403,
+  not consulted further (wiki page above was sufficient and authoritative).
+- https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-1.43 — WebFetch returned HTTP 404 (no such docs-platform
+  page exists for the plain 1.43; only the 1.43C variant has one). Not consulted.
+- https://api.github.com/orgs/waveshareteam/repos — checked for a vendor GitHub repo of example code for
+  this exact "1.43" (non-C) board. None exists; only "ESP32-S3-Touch-AMOLED-1.43C" (different product,
+  audio codec + PMU variant) and "ESP32-C6-Touch-AMOLED-1.43" (different chip, C6 not S3) repos exist.
+  Not used as a source since neither matches this exact board.
+- Initial WebSearch tool queries returned an AI-generated summary claiming "The programmable LED connects
+  to GPIO5" and citing a BOOT-button description. This claim could NOT be corroborated on the actual wiki
+  page content (GPIO5's pinout table row has no label at all, just "GPIO5" in the GPIO column — no LED/KEY_IO
+  entry). Treated as unreliable/likely conflated with a different Waveshare board (e.g. 1.43C) and NOT used
+  as a basis for tagging, per task instructions to require real vendor doc confirmation.
+
+PINS CONSIDERED AND NOT TAGGED:
+- GPIO5: WebSearch AI summary suggested this as a "programmable LED" pin, but the vendor wiki's own pinout
+  table shows GPIO5 with no special function (plain "GPIO5", no KEY_IO/LED annotation), and the Onboard
+  Resources photo-caption list (items 1-16) has no LED item at all. This is a clear case where I made NO
+  guess — the WebSearch summary is not trusted as a "real vendor documentation" source per task rules, and
+  the primary wiki page itself does not corroborate it. Left GPIO5 with its existing/default capabilities
+  in board.json, untouched.
+- GPIO9 (Charge indicator LED, item 9) and the pin behind "Power indicator" (item 11): both are fixed status
+  indicator LEDs shown in the Onboard Resources photo captions, but the pinout table does not associate
+  either with a GPIO row (no matching GPIO entry for "charge" or "power" indicator) — they appear to be
+  hardwired to the battery-charge IC / VBUS rather than driven by an ESP32 GPIO the firmware can control.
+  Not tagged; no GPIO candidate identified for them at all, so no judgment call was needed here.
+- EN pin: pinout table lists "RESET" against EN, i.e. the RESET button is wired to the chip's hardware EN
+  pin, not a GPIO. EN is not a GPIO in this codebase's chipGpios map, so nothing to tag.
+- No TX/RX conflict arose: GPIO0 (the confirmed BOOT button) is not this board's TX (43) or RX (44) pin, so
+  the tag was safe to apply.
+
+WHAT WAS TAGGED:
+- GPIO0 capabilities changed from ["digital_input","digital_output","pwm_output"] to
+  ["digital_input","button"] (onboard BOOT button, confirmed via vendor wiki KEY_IO=BOOT0 pinout entry).
+  No onboard LED was tagged — none could be confirmed via real vendor documentation.

@@ -1,0 +1,89 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: SparkFun Thing Plus - ESP32-C6 (ESP32-C6-WROOM-1-N16 based).
+  // No board.json override existed before this audit (used the chip-level
+  // esp32c6/board.json default). Flagged by a discovery sweep of this
+  // variant's pins_arduino.h for:
+  //   #define PIN_RGB_LED 23
+  //   #define RGB_BRIGHTNESS 64
+  //
+  // Sources consulted:
+  //  - https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32_C6/hardware_overview/
+  //    Official SparkFun hardware overview. States the board has an onboard
+  //    WS2812 "STAT" RGB LED whose Data In line is tied to IO23, and lists
+  //    the rest of the fixed-function pins actually used on this board:
+  //    IO18 uSD chip select, IO19 uSD SCK, IO20 uSD MOSI, IO21 uSD MISO,
+  //    IO22 uSD card-detect, IO11 MAX17048 fuel-gauge ALERT (battery
+  //    voltage is read over I2C via the MAX17048, not a dedicated ADC
+  //    pin), IO15 low-power control, IO6/IO7 Qwiic I2C (SDA/SCL). GPIO23
+  //    is not reused for anything else - the page explicitly warns that
+  //    reusing IO23 "can run into code conflicts" with the RGB LED.
+  //  - https://github.com/sparkfun/SparkFun_Thing_Plus_ESP32_C6/blob/main/README.md
+  //    Confirms "The WS2812's data-in pin is tied to IO23 on the
+  //    ESP32-C6" and that this board defines IO23 as RGB_BUILTIN so the
+  //    Arduino core's rgbLedWrite()/RGB_BUILTIN API works out of the box.
+  //  - Hardware Assembly / Introduction pages under docs.sparkfun.com
+  //    (same site): two onboard buttons, RESET (tied to EN, not a GPIO)
+  //    and BOOT (tied to the ESP32-C6's strapping GPIO9, already flagged
+  //    in this chip family's pinNotes as "Must be HIGH for normal boot") -
+  //    neither is a general-purpose user-input GPIO, so no opportunistic
+  //    "button" tag applies here. No separate battery-sense GPIO exists;
+  //    the MAX17048 fuel gauge is read over the Qwiic I2C bus (SDA=6/
+  //    SCL=7), not a dedicated analog pin, so no "battery_sense" tag
+  //    applies either.
+  //
+  // GPIO23 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+  // addressable RGB LED, vendor-documented on two independent SparkFun
+  // pages (hardware overview + GitHub README) with no other function
+  // sharing the pin. High confidence. Matches this repo's led_neopixel
+  // precedent already applied to other ESP32-C6 boards (e.g. sibling
+  // pandabyte_xc6 GPIO23, generic esp32c3/esp32c3 GPIO8).
+  // Alias-collision check: this variant's local pins_arduino.h defines
+  // TX=16, RX=17, SDA=6, SCL=7, SS=5, MOSI=20, MISO=21, SCK=19 - none of
+  // those equal 23, so build_boards.js will not unconditionally append
+  // any i2c_sda/i2c_scl/spi_*/uart alias capability onto this pin. No
+  // pins_arduino.h edit was needed for this board (unlike pandabyte_xc6,
+  // which did have a genuine SDA=23 collision requiring deletion).
+  // Tagged capabilities: ["digital_output","led_neopixel","pwm_output"].
+  //
+  // See boardsDetails/esp32/esp32c6/sparkfun_esp32c6_thing_plus/notes.txt
+  // for the full research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] }
+  }
+}

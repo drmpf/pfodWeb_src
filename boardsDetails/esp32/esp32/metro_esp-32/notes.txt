@@ -1,0 +1,133 @@
+Board: metro_esp-32 (chip: esp32, dir: variants/esp32/esp32/metro_esp-32/)
+Audit type: dedicated-hardware pin-exclusion audit (section 1-6 of the pin
+audit playbook), triggered by a fresh discovery sweep flagging this board's
+two non-boilerplate declarations:
+  static const uint8_t KEY_BUILTIN = 0;
+  static const uint8_t ADR = 12;
+
+IDENTIFYING THE REAL BOARD
+---------------------------
+Initial hypothesis in the task brief was an Adafruit "Metro ESP32"/"Metro
+ESP32-S2" product. That is WRONG for this specific variant. Checked:
+
+- github.com/espressif/arduino-esp32/commits/master/variants/metro_esp-32
+  -> earliest commit e7c9813, Jan 20 2020, PR #3542 "Added Piranha ESP-32
+  and Metro ESP-32 boards" by drondistortion. Confirms this variant is
+  UNRELATED to Adafruit's Metro ESP32-S2/S3 (different chip family,
+  different vendor, added to the core separately).
+- WebSearch on "Piranha ESP-32" "Metro ESP-32" drondistortion confirms
+  both boards are from iarduino.ru (a Russian electronics/education
+  hardware vendor), not Adafruit.
+- github.com/espressif/arduino-esp32/blob/master/boards.txt (fetched
+  directly) - searched for "metro_esp-32": NO MATCH in the current
+  master boards.txt. This variant directory is currently orphaned /
+  unreferenced by any board id in the upstream boards.txt we ship,
+  though the pins_arduino.h content is unchanged since the 2020 PR
+  (confirmed by re-fetching the file from GitHub master - byte-identical
+  to our local copy). Left as-is per task scope (pin audit only, not a
+  boards.txt reconciliation task).
+
+RESEARCHING GPIO0 (KEY_BUILTIN)
+---------------------------------
+- wiki.iarduino.ru/page/piranha-es32-wiki/ (iarduino's own wiki for the
+  sibling ESP32 product, Piranha ESP32 v2, added in the SAME PR as this
+  board): confirms an onboard BOOT pushbutton wired to GPIO0 ("Кнопка
+  BOOT служит для ручного перевода модуля в режим прошивки" - the BOOT
+  button is used to manually put the module into firmware mode).
+- General ESP32 convention: GPIO0 is the universal boot-mode strapping
+  pin, and iarduino's own ESP32-family products use a physical BOOT
+  button on it (per the sibling confirmation above).
+- Conclusion: KEEP. Tagged capabilities ["digital_input","button"] on
+  GPIO0 in board.json. Not a 100%-vendor-page-for-this-exact-SKU
+  confirmation (no dedicated Metro ESP-32 product page/schematic was
+  found - see dead ends below), but corroborated by (a) the sibling
+  board's explicit wiki documentation and (b) the alias name itself
+  (KEY_BUILTIN), which is consistent corroborating evidence even though
+  playbook policy says alias names alone are not sufficient without
+  independent confirmation.
+
+RESEARCHING GPIO12 (ADR)
+---------------------------
+Dead ends first (documented per playbook section 10 requirement):
+- wiki.iarduino.ru/page/ustanovka-nastroyka-programmnoy-obolochki-arduino-ide-i-esp32-dlya-windows/
+  (Arduino IDE setup guide specifically for "Metro ESP-32") - install/
+  setup instructions only, no pinout diagram or ADR/button description.
+- iarduino.ru/shop/boards/metro-esp.html - this is the ESP8266-based
+  "Metro ESP" product page, NOT the ESP32 version; no dedicated ESP32
+  Metro product page was found via search.
+- wiki.iarduino.ru/page/metro-info/ - covers "Metro Leonardo" (ATmega32u4)
+  and "Metro ESP" (ESP8266) product overview only, does not mention an
+  ESP32-based Metro board at all.
+
+Useful sources:
+- wiki.iarduino.ru/page/metro-esp/ (ESP8266 "Metro ESP" board): confirms
+  the Metro product line's design pattern - a 5-pin OUT connector for
+  chaining "Metro module" I2C accessories: SDA, SCL, ADR (address-select/
+  module-chain-detect line), 5V, GND. On the ESP8266 version, ADR = GPIO16.
+- WebSearch result quoting the iarduino_Metro Arduino library
+  documentation (surfaced via forum.arduino.ru/t/esp32-gpio12-input-mode/19470
+  discussion thread): the library's module-detection/address-assignment
+  function accepts an optional ADR pin argument that "by default uses pin
+  D12" on this board family - this is an exact match for this board's own
+  ADR = GPIO12 declaration, strongly confirming GPIO12 on the ESP32 Metro
+  board plays the identical dedicated role as GPIO16 does on the ESP8266
+  Metro board (same product line, same connector design, board-specific
+  default pin).
+- Conclusion: EXCLUDE. This is a dedicated onboard control line for the
+  board's proprietary module-chaining connector (same bucket as "reset/
+  enable lines for an onboard chip" in the playbook's exclude policy),
+  not general-purpose I/O. A user picking GPIO12 in the Designer while
+  Metro modules are physically attached to the OUT connector would
+  interfere with the vendor's own I2C module-addressing protocol.
+
+MECHANISM / PARSER GOTCHA FOUND THIS SESSION
+-----------------------------------------------
+Initially planned to exclude GPIO12 by only removing it from board.json's
+chipGpios map (matching the standard pattern used elsewhere in this repo).
+That alone is INSUFFICIENT here: build_boards.js's buildEsp32Board() computes
+the pin list as the union of chipGpios keys AND every GPIO with a
+pins_arduino.h alias (aliasesByGpio). Since ADR was still declared as a
+static const alias for GPIO12 in pins_arduino.h, removing chipGpios["12"]
+alone would leave GPIO12 still in the output pin list, falling through to
+the generic-capability fallback branch (digital_input/digital_output/
+pwm_output added unconditionally for any non-input-only GPIO with an alias
+but no chipGpios entry) - i.e. it would still be fully exposed, just
+without a friendly label. Fix applied: removed the ADR alias line from
+pins_arduino.h itself (with a plain-English explanatory comment - NOT
+quoting the original "static const uint8_t ADR = 12;" text, since
+build_boards.js's declaration parser is a comment-blind regex scan that
+would re-match that exact literal text pattern even inside a // comment)
+AND removed GPIO12 from board.json's chipGpios map. Both edits are
+independently necessary; verified no other alias in the file (SDA=21,
+SCL=22, SS=5, MOSI=23, MISO=19, SCK=18, LED_BUILTIN=2, KEY_BUILTIN=0)
+resolves to GPIO12 by any other name.
+
+ALIAS COLLISION CHECK (step 4 of task brief)
+-----------------------------------------------
+Checked whether GPIO0 or GPIO12 collide with any of this file's SDA/SCL/
+SS/MOSI/MISO/SCK/TX/RX declarations. SDA=21, SCL=22, SS=5, MOSI=23,
+MISO=19, SCK=18; TX/RX are not declared at all in this file. Neither
+GPIO0 nor GPIO12 matches any of these values - no alias-collision bug to
+fix on this board.
+
+FILES CHANGED
+---------------
+- variants/esp32/esp32/metro_esp-32/pins_arduino.h - removed the ADR
+  alias line for GPIO12, replaced with an explanatory comment (no literal
+  old declaration text quoted, per the comment-blind-regex gotcha above).
+- variants/esp32/esp32/metro_esp-32/board.json - NEW file, full copy of
+  the chip-level esp32/esp32/board.json default with: GPIO0 capabilities
+  restricted to ["digital_input","button"]; GPIO12 removed entirely from
+  chipGpios; GPIO12 removed from pinNotes (dead entry once the pin is
+  fully excluded from the list).
+
+SUMMARY
+---------
+GPIO0 (KEY_BUILTIN): KEEP, tagged as confirmed onboard BOOT/user button
+(corroborated via sibling iarduino Piranha ESP32 v2 board's own wiki
+documentation, since no dedicated Metro ESP-32 product page/schematic
+exists). GPIO12 (ADR): EXCLUDED - confirmed dedicated address-management
+line for the board's onboard "Metro module" I2C daisy-chain connector, via
+the iarduino_Metro Arduino library's documented default pin assignment
+matching this board's own header exactly. No build commands were run,
+per task instructions.

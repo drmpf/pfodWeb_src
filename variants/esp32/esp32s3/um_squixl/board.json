@@ -1,0 +1,107 @@
+// pfodWeb NOTE: um_squixl is Unexpected Maker's "SQUiXL" - a handheld
+// device with a 4" 480x480 RGB touchscreen (ST7701S panel driven via the
+// ESP32-S3's native RGB/DVP parallel LCD peripheral), GT911 capacitive
+// touch, MAX98357A I2S speaker amp + DRV2605L haptic motor driver, a
+// TMUX1574RSVR IO mux that time-shares 4 GPIOs between the microSD card
+// SPI bus and the I2S audio bus, a MAX1704X I2C fuel gauge, an RV-3028-C7
+// I2C RTC, and a TCA9555-class I2C IO expander that owns several more
+// "virtual" pins behind I2C (not real ESP32-S3 GPIOs, so not represented
+// here at all). Ground truth: the vendor's own open-source shipping
+// firmware, https://github.com/UnexpectedMaker/SQUiXL-DevOS (readme.md's
+// GPIO tables + platformio/src/squixl.h's EXP IO / IOMUX #defines +
+// platformio/lib/UM_GFX/UM_GFX.cpp's PANEL_UM_480x480 struct, which gives
+// the exact RGB data/sync GPIO numbers used below), cross-checked against
+// CNX Software's hands-on hardware writeup and the SQUiXL Unexpected
+// Maker Help/product page for the physical button and STEMMA/Qwiic
+// connector claims. Full research trail (every source + per-pin
+// reasoning) in boardsDetails/esp32/esp32s3/um_squixl/notes.txt.
+//
+// Removed entirely from the chip-level default chipGpios map:
+//  3                    GT911 touch controller interrupt (TP_INT)
+//  4,5,6,7,8            RGB LCD data lines R0-R4
+//  9,10,11,12,13,14     RGB LCD data lines G0-G5
+//  15,16,17,18          RGB LCD data lines B1-B4
+//  21                   RGB LCD data line B0
+//  38                   RGB LCD DE (data enable)
+//  39                   RGB LCD PCLK
+//  40                   LCD backlight PWM (BL_PWM)
+//  41,42,45,46          IO-mux'd microSD-card-SPI / I2S-audio bus
+//                       (TMUX1574RSVR MUX_D1-D4; also the GPIOs this
+//                       file's own pins_arduino.h used to alias as
+//                       SS/MOSI/MISO/SCK/SDO/SDI - those aliases were
+//                       deleted from pins_arduino.h, see that file)
+//  43                   MAX1704X battery fuel-gauge ALRT/interrupt line
+//                       (readme.md: "IO43 (FG Interrupt)")
+//  44                   RV-3028-C7 RTC interrupt line
+//                       (readme.md: "IO44 (RTC Interrupt)")
+// Kept:
+//  0   tagged "button" - the physical IO0/Boot button (confirmed both by
+//      CNX Software's hardware writeup listing "Power, IO0/Boot, Reset"
+//      as the three physical buttons, and directly by SQUiXL-DevOS's own
+//      main.cpp: `pinMode(0, INPUT_PULLUP);` reads it as a real runtime
+//      button, not just a boot-mode strap)
+//  1,2 SDA/SCL - kept as a general-purpose I2C bus. It does carry several
+//      onboard chips (GT911 touch, IO expander, MAX1704X gauge,
+//      RV-3028-C7 RTC) but I2C is inherently multi-drop and the board
+//      also exposes this same bus externally via a STEMMA/Qwiic
+//      connector for user expansion (CNX Software writeup) - matches the
+//      existing "general-purpose I2C without exclusive onboard consumer
+//      stays kept" policy used elsewhere in this audit (e.g. m5stack_dial).
+// Not modeled at all (not real ESP32-S3 GPIOs): the IO-expander's own
+// "virtual" pins (backlight enable, LCD reset, LCD CS/DC, touch reset,
+// SD-card-detect, mux select/enable, haptics enable, VBUS sense) - these
+// live behind the onboard IO expander chip over I2C, not on the SoC's
+// own pin list, so there is no chipGpios entry to remove for them.
+{
+  "boardName": "ESP32S3",
+  "displayName": "ESP32-S3 Dev Module",
+  "family": "esp32",
+  "pwm": {
+    "min": 0,
+    "max": 255,
+    "method": "analogWrite"
+  },
+  "dac": {},
+  "adc": {
+    "bits": 12,
+    "max": 4095,
+    "defaultRefVolts": "3.3"
+  },
+  "inputOnlyGpios": [],
+  "connections": [
+    "serial",
+    "ble",
+    "tcp",
+    "http"
+  ],
+  "pinNotes": {
+    "0": "Must be HIGH for normal boot",
+    "3": "Must be LOW or floating on reboot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0": {
+      "capabilities": [
+        "digital_input",
+        "button"
+      ]
+    },
+    "1": {
+      "capabilities": [
+        "analog_input",
+        "digital_input",
+        "digital_output",
+        "pwm_output"
+      ]
+    },
+    "2": {
+      "capabilities": [
+        "analog_input",
+        "digital_input",
+        "digital_output",
+        "pwm_output"
+      ]
+    }
+  }
+}

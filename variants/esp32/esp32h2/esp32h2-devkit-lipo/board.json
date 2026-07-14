@@ -1,0 +1,144 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Olimex ESP32-H2-DevKit-Lipo (ESP32-H2-MINI-1-N4 module,
+  // USB-C w/ CH340E USB-serial, LiPo battery charger (BL4054B) + connector,
+  // pUEXT connector, Qwiic/Stemma connector, Reset button, User button,
+  // User LED). pins_arduino.h declares PIN_RGB_LED/RGB_BUILTIN/RGB_BRIGHTNESS=8
+  // and KEY_BUILTIN=9, plus generic ESP32-H2 chip-template UART/I2C/SPI/analog
+  // boilerplate aliases. No board.json override existed before this audit
+  // (used the chip-level esp32h2/board.json default). Flagged by the
+  // discovery sweep for PIN_RGB_LED=8/RGB_BRIGHTNESS=64/KEY_BUILTIN=9,
+  // matching the sibling Olimex "-devkit-lipo" family (esp32-devkit-lipo,
+  // esp32c3-devkit-lipo, esp32s2-devkit-lipo) already audited this session.
+  //
+  // Sources consulted:
+  //  - https://github.com/OLIMEX/ESP32-H2-DevKit-Lipo
+  //    Official Olimex OSHW GitHub repo (confirms product identity, KiCad
+  //    hardware source under HARDWARE/ESP32-H2-DevKit-Lipo-Rev.A/).
+  //  - https://www.olimex.com/Products/IoT/ESP32-H2/ESP32-H2-DevKit-LiPo/open-source-hardware
+  //    Official product page. Feature bullets: "User LED", "User button",
+  //    LiPo charger + connector, "battery power measurement and power sense
+  //    circuitry" (enableable). Does NOT mention RGB/NeoPixel/WS2812 anywhere.
+  //  - https://raw.githubusercontent.com/OLIMEX/ESP32-H2-DevKit-Lipo/main/HARDWARE/ESP32-H2-DevKit-Lipo-Rev.A/ESP32-H2-DevKit-LiPo_Rev_A.kicad_sch
+  //    Official Olimex KiCad schematic source, Rev A (fetched directly from
+  //    the vendor's GitHub hardware repo - ground-truth net-level schematic,
+  //    not a marketing rendering). The "Main-Bus" bus_alias explicitly lists
+  //    (verbatim): "GPIO9\BUT1", "GPIO8\LED1", "GPIO2\BAT_SENS",
+  //    "GPIO25\PWR_SENS", "GPIO22\I2C0_SDA", "GPIO12\I2C0_SCL",
+  //    "GPIO24\U0TXD", "GPIO23\U0RXD", "GPIO11\U1RXD", "GPIO10\U1TXD", plus a
+  //    bare "BUT1" component-reference member. A pushbutton symbol (lib_id
+  //    "OLIMEX_Buttons:T1107A(6x3,8x2,5MM)") is present in the schematic,
+  //    consistent with the GPIO9\BUT1 net. The unique lib_id list for the
+  //    whole schematic contains only "OLIMEX_Diodes:LED" (a plain two-terminal
+  //    LED symbol) for any LED-type part - there is NO addressable-LED driver
+  //    IC (the only ICs present are BL4054B-42TPRN LiPo charger, CH340E
+  //    USB-serial, WL9005P3-33 regulator) and a full-text case-insensitive
+  //    search of the schematic for "WS2812", "NeoPixel", "SK6812", "2812" and
+  //    "RGB" returned NO MATCHES anywhere in the file.
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32h2/pins_arduino.h
+  //    Upstream generic (chip-level, non-board-specific) Espressif
+  //    Arduino-ESP32 core template for the bare esp32h2 chip. This file is
+  //    BYTE-IDENTICAL to our local esp32h2-devkit-lipo/pins_arduino.h for
+  //    every line except KEY_BUILTIN=9 (which the upstream chip template
+  //    does NOT define at all). This proves Olimex's pins_arduino.h for this
+  //    board is simply the stock Espressif chip-generic template with only
+  //    KEY_BUILTIN=9 added as a board-specific customization - the
+  //    PIN_RGB_LED/RGB_BUILTIN/RGB_BRIGHTNESS/rgbLedWrite() block was
+  //    inherited UNMODIFIED from Espressif's own template, which exists
+  //    because Espressif's reference ESP32-H2-DevKitM-1 board has a real
+  //    onboard WS2812. It was never verified/adapted against Olimex's own
+  //    (different, simpler) LED hardware.
+  //
+  // GPIO9 (KEY_BUILTIN): CONFIRMED onboard physical user button. The
+  // vendor's own Rev A KiCad schematic shows a real pushbutton component
+  // (lib_id "OLIMEX_Buttons:T1107A...") wired to a net explicitly bus-aliased
+  // "GPIO9\BUT1", with "BUT1" also present as a bare component-reference bus
+  // member - not a guess or reused boilerplate name (the generic upstream
+  // Espressif esp32h2 template has NO KEY_BUILTIN at all, so this is a
+  // deliberate Olimex-board-specific addition matching their real hardware).
+  // Also the ESP32-H2's standard strapping pin (chip-level pinNotes entry
+  // "Must be HIGH for normal boot" retained unchanged - expected/consistent
+  // for a button pin idle-pulled-up, pressed-to-low). Tagged capabilities
+  // ["digital_input","button"] only, per the playbook's exclusion rule for
+  // button pins (no analog/output/pwm mixed in).
+  //
+  // GPIO8 (PIN_RGB_LED/RGB_BUILTIN/RGB_BRIGHTNESS): CONFIRMED a real onboard
+  // LED exists (schematic net "GPIO8\LED1"), but NOT confirmed as an
+  // addressable WS2812/NeoPixel - the evidence actually points the other
+  // way: the schematic's only LED-type symbol anywhere is the generic
+  // 2-terminal "OLIMEX_Diodes:LED" part (not a 4-6-pin addressable IC
+  // footprint), no addressable-LED driver IC appears in the component list,
+  // and an exhaustive case-insensitive text search of the schematic for
+  // "WS2812"/"NeoPixel"/"SK6812"/"2812"/"RGB" found zero matches. The
+  // RGB_BUILTIN/RGB_BRIGHTNESS/rgbLedWrite() macros in pins_arduino.h are
+  // verbatim, unmodified boilerplate copied from Espressif's generic
+  // esp32h2 chip template (see source above) - i.e. they describe
+  // Espressif's own WS2812-equipped ESP32-H2-DevKitM-1 reference board, not
+  // necessarily Olimex's actual (simpler, single-color) LED wiring on this
+  // board. Per this session's playbook precedent for "LED confirmed present
+  // but type/polarity NOT independently confirmed" (see
+  // variants/esp8266/esp8266/wifiduino/board.json GPIO2), this pin is KEPT
+  // with its plain default capabilities and NOT tagged "led_neopixel" -
+  // tagging it as an addressable NeoPixel would overclaim beyond what the
+  // real vendor schematic supports. Documented via pinNotes below instead.
+  //
+  // Alias-conflict check (per this session's new playbook step, the
+  // build_boards.js bug where TX/RX/SDA/SCL/SS/MOSI/MISO/SCK boilerplate
+  // aliases get unconditionally appended regardless of chipGpios): checked
+  // this board's own pins_arduino.h - TX=24, RX=23, SDA=12, SCL=22, SS=0,
+  // MOSI=25, MISO=11, SCK=10, A0-A4=1-5 - NONE of these equals 8 or 9, so
+  // (unlike the esp32c3-devkit-lipo sibling, which had SCL=9 colliding with
+  // its confirmed button pin) there is NO alias collision on GPIO8 or GPIO9
+  // in this file, and no pins_arduino.h edit was needed/made.
+  //
+  // Findings noted but NOT acted on (out of scope for this GPIO8/9-focused
+  // audit): the real schematic's GPIO25\PWR_SENS (external-power-sense)
+  // collides with this file's boilerplate MOSI=25 alias, and the real
+  // I2C0_SDA/I2C0_SCL pins (GPIO22/GPIO12 per schematic) are the REVERSE of
+  // this file's boilerplate SDA=12/SCL=22 - both are generic-template
+  // artifacts unrelated to GPIO8/9, left untouched here. GPIO2\BAT_SENS
+  // (real battery-voltage-sense pin per schematic) already has analog_input
+  // capability via the chip-level default (it doubles as analog channel A1
+  // in pins_arduino.h) - no change needed. Solder-jumper symbols
+  // ("OLIMEX_Jumpers:SJ"/"SJ_Closed") are present in the schematic near the
+  // power circuitry, consistent with this board family's usual
+  // solder-jumper-gated BAT_SENS/PWR_SENS pattern (off by default) - exact
+  // jumper-to-pin mapping not independently verified for this specific
+  // board's Rev A.
+  //
+  // See boardsDetails/esp32/esp32h2/esp32h2-devkit-lipo/notes.txt for the
+  // full research trail.
+
+  "boardName": "ESP32H2",
+  "displayName": "ESP32-H2 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble"],
+  "pinNotes": {
+    "2": "Battery-voltage-sense net (GPIO2\\BAT_SENS per Olimex Rev A schematic, solder-jumper-gated on sibling boards in this family) — also this board's analog channel A1",
+    "8": "Must be HIGH or floating on reboot. Real Olimex Rev A schematic confirms an onboard LED (net GPIO8\\LED1, generic non-addressable \"OLIMEX_Diodes:LED\" symbol) but does NOT confirm it as WS2812/NeoPixel — this pins_arduino.h's RGB_BUILTIN/RGB_BRIGHTNESS/rgbLedWrite() macros are unmodified boilerplate inherited from Espressif's generic esp32h2 chip template (which targets Espressif's own WS2812-equipped DevKitM-1, not Olimex's hardware). No led_* capability tag applied — see pfodWeb NOTE above / boardsDetails notes.txt",
+    "9": "Must be HIGH for normal boot. Real Olimex Rev A schematic confirms an onboard user pushbutton (net GPIO9\\BUT1, OLIMEX_Buttons:T1107A tactile switch) — tagged button; digital_output/pwm_output capabilities removed since this is a dedicated input-only button pin, see pfodWeb NOTE above"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

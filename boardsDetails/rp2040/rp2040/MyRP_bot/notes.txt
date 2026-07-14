@@ -1,0 +1,123 @@
+Board: MyRP_bot ("MyMakers RP2040") — chip rp2040
+Audit date: 2026-07-13
+Result: NO CHANGE (board.json created, chipGpios left empty — no confirmed hardware to tag)
+
+SOURCES CONSULTED
+-----------------
+1. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\MyRP_bot\pins_arduino.h (this repo's copy).
+2. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level rp2040 defaults,
+   chipGpios: {} by design).
+3. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\generic\common.h (shared common.h this
+   board's pins_arduino.h includes via "../generic/common.h").
+4. Precedent files read: variants/rp2040/rp2040/rpipico/board.json (simple onboard-LED
+   tag) and variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (dedicated-hardware
+   exclusion example).
+5. C:\ai\aicode\pfodWeb\pfodWeb_src\build_boards.js — read buildEsp32Board() /
+   parseEsp32Consts() (the parser this rp2040 family routes through) to trace exactly
+   how SS/MOSI/MISO/SCK/SDA/SCL/TX/RX capability tags get attached to a GPIO.
+6. variants\rp2040\boards.txt lines ~22252+: MyRP_bot.name=MyMakers RP2040,
+   vid=0x2e8a, multiple pid entries (000a/010a/400a/410a/800a/810a/c00a/c10a).
+7. WebSearch: "MyMakers RP2040" board; MyMakers RP2040 pinout LED GPIO25; "MyMakers"
+   RP2040 board schematic robot pinout button LED; "MyMakers" RP2040 kickstarter OR
+   facebook OR store.
+8. WebFetch: github.com/earlephilhower/arduino-pico PRs #2680, #2687, #2692 (all by
+   contributor "nui4328", titled "Add(support for) MyMakers RP2040 board"), and the
+   merge commit github.com/earlephilhower/arduino-pico/commit/06e3ef9 (merged
+   2024-12-17) — this is the actual upstream source of the variant now vendored into
+   this repo as variants/rp2040/rp2040/MyRP_bot/.
+
+WHAT WAS FOUND
+--------------
+- The upstream merge commit 06e3ef9 adds variants/MyRP_bot/pins_arduino.h with content
+  byte-for-byte identical to this repo's copy (same PIN_LED=25, same SPI0/SPI1/WIRE0/
+  WIRE1/serial dummy values, same "#include ../generic/common.h" tail) — confirming
+  this repo's file is an accurate, unmodified vendoring of the real upstream
+  contribution, not a corrupted/edited copy.
+- The PR author's own description: the board "is developed for use in studying the
+  creation and programming of small robot controllers" for students, and boards "are
+  distributed in public places" for others to use — i.e. a non-commercial,
+  community/education-distributed board (reads as an educational program, likely
+  Thailand-origin given phrasing), not a product sold by a company with a datasheet.
+- The arduino-pico maintainer (earlephilhower) himself pushed back on merging this for
+  a while specifically because it is a "custom, non-commercial board not broadly
+  available," suggesting the contributor maintain their own fork instead — it was only
+  eventually merged after the contributor fixed unrelated boards.txt/makeboards.py
+  formatting problems.
+- No datasheet, schematic, product/store page, Kickstarter listing, or company
+  website could be found for "MyMakers" / "MyRP_bot" via multiple targeted WebSearch
+  queries. The only "documentation" that exists anywhere is the pins_arduino.h file
+  itself, whose sole hardware-descriptive comment is the bare label "// LEDs" above
+  `#define PIN_LED (25u)` — no LED polarity, no button, no motor-driver pin, and no
+  NeoPixel pin is documented anywhere, by anyone, for this board.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED) — NOT tagged led_high/led_low/pwm_output.
+  GPIO25 is the conventional onboard-LED GPIO on the official Raspberry Pi Pico
+  reference design, confirmed active-high there (see rpipico/board.json, already
+  audited 2026-07-12). However, THIS board's own SPI0 pin mapping (MISO=GPIO12,
+  MOSI=GPIO3, SCK=GPIO2, SS=GPIO13) already diverges substantially from the official
+  Pico's reference SPI0 pinout, proving MyRP_bot is a custom pinout, not a verbatim
+  clone of the reference design — so the LED circuit (and its polarity) cannot be
+  safely assumed to match the stock Pico's just because the same GPIO number was
+  reused for the LED comment. Per this audit's explicit rule ("confirm via real
+  vendor documentation — never guess polarity from the alias name alone... report NO
+  CHANGE rather than guess"), and given zero vendor documentation exists for this
+  board, GPIO25 is left untagged (falls through to the ordinary digital_input/
+  digital_output/pwm_output default via the empty chipGpios, same as any other
+  unremarkable GPIO on this family).
+
+GPIO30 / GPIO31 non-existent-pin observation — investigated, NO FIX NEEDED.
+  This board's pins_arduino.h sets: PIN_SERIAL1_TX=30, PIN_SERIAL2_TX=30,
+  PIN_SERIAL2_RX=30, PIN_SPI1_MOSI=30, PIN_SPI1_SCK=31 (all out-of-range — real
+  RP2040 silicon only has GPIO0-29), and PIN_SPI1_MISO=12 duplicates
+  PIN_SPI0_MISO=12. This strongly suggests SPI1/UART1/UART2 are simply
+  unused/not-wired on this particular board and the contributor left them pointing at
+  arduino-pico's conventional "unimplemented peripheral" sentinel pin numbers rather
+  than genuinely repurposing GPIO30/31 (which is physically impossible on RP2040).
+  Traced precisely through pfodWeb_src/build_boards.js's buildEsp32Board() /
+  parseEsp32Consts() (~lines 439-548, 630-724):
+    - parseEsp32Consts() ONLY captures `static const uint8_t NAME = <value>;` /
+      `static constexpr uint8_t NAME = <value>;` declarations (plus one level of
+      #define-fallback resolution for a static-const alias chain) as pin aliases —
+      raw #define macros are never harvested wholesale (this is explicitly documented
+      in the parser's own comment, to avoid false hits like NEOPIXEL_NUM).
+    - The bus-role capability tags (spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl)
+      are driven by `consts.SS/MOSI/MISO/SCK/SDA/SCL`, which this rp2040 family's
+      shared generic/common.h (lines 155-161) assigns ONLY from
+      PIN_SPI0_SS/MOSI/MISO/SCK and PIN_WIRE0_SDA/SCL — i.e. bus 0 only.
+    - PIN_SPI1_*, PIN_WIRE1_*, PIN_SERIAL1_*, PIN_SERIAL2_* raw #defines are never
+      the target of any static-const alias anywhere in common.h, so they never enter
+      `consts`, never enter `aliasesByGpio`, and never enter `allGpios`.
+  Consequence: no phantom GPIO30/GPIO31 pin is ever generated in the Designer's board
+  data (they simply never appear), and GPIO4/GPIO5 (which only carry WIRE1/SPI1
+  aliases in the raw .h source) fall back to being ordinary general-purpose D4/D5
+  digital pins with no spurious spi_ss/i2c_sda/i2c_scl capability attached. This is a
+  cosmetic-only quirk in the vendored pins_arduino.h with zero effect on the actual
+  generated board.json/pins output — confirmed via source-reading, not guessed, and
+  intentionally NOT run through build_boards.js per the task's build-command
+  restriction. No chipGpios entry is needed to correct it.
+
+GPIO12 shared between PIN_SPI0_MISO and PIN_SPI1_MISO — no conflict.
+  Since PIN_SPI1_MISO is never referenced by any static-const alias (see above), only
+  the SPI0 MISO role (GPIO12) is ever surfaced; no double-tagging or conflict occurs.
+
+All other pins (D0-D22 via common.h, A0-A2 = GPIO26-28) — no board-specific evidence
+found; left at the chip-level default (ordinary digital_input/digital_output/
+pwm_output, plus analog_input for A0-A2), matching every other undocumented rp2040
+pin in this family.
+
+SUMMARY
+-------
+MyRP_bot ("MyMakers RP2040") is a non-commercial, community/education-distributed
+RP2040 board (upstream arduino-pico PR by contributor nui4328, merged as commit
+06e3ef9) with no findable datasheet, schematic, or vendor documentation anywhere;
+this repo's pins_arduino.h is confirmed byte-identical to the real upstream file.
+GPIO25 (PIN_LED) is very likely a real onboard LED but its active-high/active-low
+polarity cannot be confirmed from any source, so per this audit's guidance it is
+left untagged (NO CHANGE) rather than guessed. The apparent GPIO30/31
+non-existent-pin usage (PIN_SPI1_MOSI/SCK, PIN_SERIAL1/2_TX/RX) was investigated in
+detail and traced, via build_boards.js's parser, to have zero effect on the
+generated board — SPI1/UART1/UART2 are effectively inert placeholders on this
+board and require no fix. board.json was created as a full verbatim copy of the
+rp2040 chip-level defaults with chipGpios: {} (no confirmed overrides).

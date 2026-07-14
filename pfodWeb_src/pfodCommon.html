@@ -324,12 +324,17 @@
                          _updateProxyViaVisibility()) -- there's nothing to close
                          otherwise, and this is hidden outright in the data build
                          (PFODWEB_DATA_BUILD), which has no pfodProxy at all. -->
-                    <button id="close-proxy-button" onclick="closePfodProxy()" style="display:none; background-color:#cc0000; color:#ffffff; border:1px solid #000000; font-size:10.6px;">Close pfodProxy</button>
+                    <button id="close-proxy-button" onclick="closePfodProxy()" style="visibility:hidden; background-color:#cc0000; color:#ffffff; border:1px solid #000000; font-size:10.6px;">Close pfodProxy</button>
                     <!-- Shown instead of the button above when there's a pw
                          mismatch (either direction) -- /shutdown is gated by
                          pw_filter same as /pfodWeb, so the button would just
-                         hang silently and do nothing in that case. -->
-                    <span id="close-proxy-label" style="display:none; font-size:15.9px; font-weight:bold; color:#666;">Close pfodProxy manually</span>
+                         hang silently and do nothing in that case.
+                         Both this and the button above toggle `visibility`,
+                         not `display` -- each keeps reserving its own layout
+                         space even while hidden, so the connect-prompt box
+                         never resizes/jumps as pfodProxy is detected, lost,
+                         or a pw mismatch appears/clears. -->
+                    <span id="close-proxy-label" style="visibility:hidden; font-size:15.9px; font-weight:bold; color:#666;">Close pfodProxy manually</span>
                 </div>
             </div>
         </div>
@@ -1386,8 +1391,11 @@
             const showClose = _proxyAvailable && !PFODWEB_DATA_BUILD;
             const closeProxyBtn = document.getElementById('close-proxy-button');
             const closeProxyLabel = document.getElementById('close-proxy-label');
-            if (closeProxyBtn) closeProxyBtn.style.display = (showClose && !_pwMismatchActive) ? '' : 'none';
-            if (closeProxyLabel) closeProxyLabel.style.display = (showClose && _pwMismatchActive) ? '' : 'none';
+            // visibility (not display): each keeps reserving its own layout
+            // space even while hidden, so this box never resizes/jumps as
+            // pfodProxy is detected, lost, or a pw mismatch appears/clears.
+            if (closeProxyBtn) closeProxyBtn.style.visibility = (showClose && !_pwMismatchActive) ? 'visible' : 'hidden';
+            if (closeProxyLabel) closeProxyLabel.style.visibility = (showClose && _pwMismatchActive) ? 'visible' : 'hidden';
         }
 
         // Pings pfodProxy on the configured port and applies the result.
@@ -1748,11 +1756,25 @@
                     '2341:024D': 'Arduino Nano 33 IoT',
                     // Arduino SRL (0x2A03) — older "Arduino.org" boards
                     '2A03:0043': 'Arduino Uno (SRL)',
-                    // Espressif native USB (0x303A)
-                    '303A:1001': 'ESP32-S2',
-                    '303A:0002': 'ESP32-S3',
-                    // Silicon Labs CP210x — common on ESP32 dev kits
-                    '10C4:EA60': 'ESP32 dev kit (CP210x)',
+                    // Espressif native USB (0x303A) — this is Espressif's own
+                    // vendor id, so it's a reliable "genuine ESP32-family
+                    // native USB" signal, but individual PIDs are NOT 1:1
+                    // with one specific chip model: 0x1001 (built-in
+                    // USB_SERIAL_JTAG peripheral) is shared by ESP32-C3 AND
+                    // ESP32-S3, and 0x0002 (native USB CDC) isn't reliably
+                    // tied to just one chip either — so these stay generic
+                    // "ESP32 native USB" labels rather than guessing S2 vs
+                    // S3 vs C3.
+                    '303A:1001': 'ESP32 USB-JTAG/Serial (native USB)',
+                    '303A:0002': 'ESP32 native USB (CDC)',
+                    // Silicon Labs CP210x — this is Silicon Labs' default PID
+                    // for the whole CP210x USB-to-UART bridge family (CP2102/
+                    // 2103/2104/2105...), used across many unrelated boards
+                    // (ESP32 dev kits, ESP8266 boards like the Adafruit
+                    // Feather HUZZAH, etc.) — the VID:PID pair alone cannot
+                    // identify which microcontroller is attached, so this
+                    // stays a generic chip-name label, not a board guess.
+                    '10C4:EA60': 'USB-Serial (CP210x)',
                     // QinHeng CH340 / CH341 — common in clone boards
                     '1A86:7523': 'USB-Serial (CH340)',
                     '1A86:5523': 'USB-Serial (CH341)',
@@ -2242,6 +2264,15 @@
                 // doesn't fire commands into an unready device.
                 // Any failure surfaces here instead of being deferred
                 // to the first send() that might never come.
+                //
+                // pfodProxy's BLE cached-connect backoff ("recent connection
+                // failure, retry in <n>s") is retried internally by
+                // connectionManager.js's connect() -- see its "not found" /
+                // backoffMatch handling -- so it keeps the SAME connecting
+                // dialog open across retries instead of closing and
+                // reopening one here. It never rejects out to this catch
+                // for that specific error; only a genuinely fatal failure
+                // does.
                 try {
                     await tempConnectionManager.connect();
                 } finally {
@@ -2376,25 +2407,31 @@
             fileInput.click();
         }
 
-        // Clear cached drawings function — preserves designer-saved menus.
-        // Removes every localStorage entry EXCEPT those keyed under the
-        // 'pfodDesigner.' prefix (per-design payloads, name index list,
-        // current-pointer).  Matching by prefix is forward-compatible:
-        // a future STORAGE_PREFIX bump (e.g. 'pfodDesigner.v2.') still
-        // qualifies as designer state and is preserved.
+        // Clear cached drawings function — preserves designer-saved menus
+        // AND the connection-prompt's remembered settings (IP/baud/proxy
+        // port/Designer target id, etc. — PFOD_SETTINGS_KEY). Removes
+        // every OTHER localStorage entry (the actual menu/drawing display
+        // cache this button is meant to clear). Matching the designer
+        // prefix is forward-compatible: a future STORAGE_PREFIX bump
+        // (e.g. 'pfodDesigner.v2.') still qualifies as designer state and
+        // is preserved. PFOD_SETTINGS_KEY must be excluded explicitly (it
+        // doesn't start with the designer prefix) — previously this
+        // button silently wiped it too, which reset the Designer's
+        // remembered target board back to the hardcoded default on the
+        // next reload/protocol-switch.
         function clearCachedDrawings() {
             const DESIGNER_KEY_PREFIX = 'pfodDesigner.';
             try {
                 const toRemove = [];
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
-                    if (key && !key.startsWith(DESIGNER_KEY_PREFIX)) {
+                    if (key && key !== PFOD_SETTINGS_KEY && !key.startsWith(DESIGNER_KEY_PREFIX)) {
                         toRemove.push(key);
                     }
                 }
                 toRemove.forEach((key) => localStorage.removeItem(key));
                 console.log('Local storage cleared (kept ' + DESIGNER_KEY_PREFIX +
-                            '* keys), removed ' + toRemove.length + ' entries');
+                            '* keys and ' + PFOD_SETTINGS_KEY + '), removed ' + toRemove.length + ' entries');
             } catch (error) {
                 console.error('Error clearing cache:', error);
             }

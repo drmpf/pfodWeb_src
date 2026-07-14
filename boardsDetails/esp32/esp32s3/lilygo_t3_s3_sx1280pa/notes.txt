@@ -1,0 +1,66 @@
+Board: lilygo_t3_s3_sx1280pa (variants/esp32/esp32s3/lilygo_t3_s3_sx1280pa)
+Researched: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/master/docs/en/t3_s3_sx1280pa/t3_s3_sx1280pa.md
+  Vendor's own hardware doc for THIS EXACT SX1280PA variant. Pin map table lists:
+  "Button1 (BOOT) | 0" and "On Board LED | 37". LED section states "The LED is
+  connected to ESP32 GPIO37, and the LED is turned on or off by writing a high
+  or low level" (does not itself state polarity). Button section lists BOOT
+  channel as "Boot mode button, customizable" and RST as separate reset button.
+  Also lists a separate "CHG LED" (charge indicator, not GPIO-controlled, not
+  a candidate).
+
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/ArduinoLoRa/LoRaReceiver/utilities.h
+  Vendor's own example code utilities.h. For the T3-S3 series contains:
+    #define BOARD_LED 37
+    #define LED_ON HIGH
+  This confirms GPIO37 onboard LED is active-HIGH (HIGH = on). (Contrasts with
+  T-Beam board in the same file, which uses LED_ON LOW - i.e. polarity is
+  genuinely board-specific, so this per-board macro is good confirming
+  evidence rather than a generic assumption.)
+
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/docs/en/t3_s3_sx1262/t3_s3_sx1262_hw.md
+  Sibling SX1262 variant hw doc, used only as cross-check - same GPIO0 BOOT
+  button / GPIO37 LED assignments as the SX1280PA doc, supporting that these
+  pins are shared across the whole T3-S3 family PCB and not radio-specific.
+
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series (repo root, search results)
+  Used to locate the docs/en/t3_s3_sx1280pa/ folder and confirm no
+  LED_BUILTIN-based digitalWrite examples exist for this repo (searched,
+  0 results) - relied on utilities.h macro instead (see above).
+
+Local file: variants/esp32/esp32s3/board.json (chip-level ESP32-S3 default)
+  Confirms chipGpios intentionally excludes GPIO 33-37 ("octal flash/PSRAM")
+  at the chip level - GPIO37 has no chipGpios entry in the board-specific
+  lilygo_t3_s3_sx1280pa/board.json as a direct consequence of that exclusion,
+  not an omission by the earlier pin-audit pass.
+
+Local file: variants/esp32/esp32s3/lilygo_t3_s3_sx1280pa/pins_arduino.h
+  TX=43, RX=44 - confirmed GPIO0 and GPIO37 do not conflict with the
+  hard-reserved serial TX/RX pins.
+
+PINS CONSIDERED BUT NOT TAGGED
+--------------------------------
+GPIO37 (onboard LED, confirmed active-high via vendor utilities.h LED_ON HIGH
+macro, and vendor hw.md "On Board LED | 37"): NOT tagged. This is a confirmed
+LED with solid vendor evidence, but it has NO existing chipGpios entry in
+board.json because it falls inside the chip-level 33-37 octal
+flash/PSRAM exclusion range inherited from variants/esp32/esp32s3/board.json.
+Per task rules, re-adding an excluded GPIO is out of scope for this task
+(would reverse a pre-existing chip-level exclusion). This is NOT a guess -
+it is a confirmed LED that is simply left untagged/undeclared due to the
+exclusion. Flagging for human review: a reviewer may want to confirm whether
+the chip-level 33-37 exclusion is actually valid for this specific board
+variant (e.g. does this board actually use octal PSRAM/flash, or could
+GPIO37 be safely re-added here) - that determination is out of scope for
+this pass.
+
+WHAT WAS TAGGED
+-----------------
+GPIO0 tagged "button" (capabilities set to exactly ["digital_input","button"]).
+Confirmed via vendor's own hw.md pin map for this exact SX1280PA variant:
+"Button1 (BOOT) | 0". Board.json edited in place; NOTE comment added after
+existing NOTE comments, before existing pin-exclusion notes were disturbed
+(none touched).

@@ -1,0 +1,112 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Waveshare ESP32-C6-Zero. No board.json override existed
+  // before this audit (used the chip-level esp32c6/board.json default).
+  // Flagged by the discovery sweep for having PIN_RGB_LED 8 /
+  // WIRE1_PIN_DEFINED with SDA1=6, SCL1=7 declared in pins_arduino.h
+  // but never individually reviewed. This variant's own pins_arduino.h
+  // silkscreen table also labels GPIO9 as "BOOT", so that pin was
+  // opportunistically checked for a button tag too.
+  //
+  // Sources consulted:
+  //  - docs.waveshare.com/ESP32-C6-Zero (Waveshare's own documentation
+  //    platform for this exact product). Confirms the board carries a
+  //    "WS2812 Colorful RGB LED" plus a "BOOT Button" and "RESET
+  //    Button", stating "Hold this button and press the RESET button
+  //    to enter download mode" for the BOOT button. The page's text
+  //    content did not spell out individual GPIO numbers (the pinout
+  //    table is an image), so it was used to confirm the RGB LED and
+  //    BOOT button genuinely exist as onboard hardware on this product,
+  //    not to source the pin numbers themselves.
+  //  - This variant's own pins_arduino.h: the file is Espressif's
+  //    official Arduino-core pin definition file, explicitly titled
+  //    "Arduino Pin Definitions for Waveshare ESP32-C6-Zero" and
+  //    containing a silkscreen-accurate pinout diagram in its header
+  //    comment. That diagram labels physical pin 23 (GPIO8) as
+  //    "RGB_LED" and physical pin 22 (GPIO9) as "BOOT", matching the
+  //    code below it (PIN_RGB_LED = 8) and the chip-level pinNotes
+  //    strapping-pin entry for GPIO9 ("Must be HIGH for normal boot").
+  //  - General web corroboration (WebSearch summary; GitHub example
+  //    code for this exact product using "constexpr uint8_t LED_PIN =
+  //    8" with Adafruit_NeoPixel) independently confirms GPIO8 drives
+  //    the onboard NeoPixel on the Waveshare ESP32-C6-Zero.
+  //  - Sibling chip-level entry esp32c6/esp32c6 (audited earlier this
+  //    session, see its own board.json/notes.txt): Espressif's
+  //    ESP32-C6-DevKitC-1 user guide shows GPIO6 = LP_GPIO6/LP_I2C_SDA
+  //    and GPIO7 = LP_GPIO7/LP_I2C_SCL are the chip's fixed low-power
+  //    I2C pin mux, not evidence of a dedicated onboard peripheral. This
+  //    variant's own pins_arduino.h carries the identical boilerplate
+  //    comment "LP I2C Pins are fixed on ESP32-C6" above its SDA1=6/
+  //    SCL1=7 declaration, and docs.waveshare.com's hardware-feature
+  //    list for this board names only the RGB LED, BOOT/RESET buttons,
+  //    USB-C, and broken-out GPIO headers - no onboard I2C peripheral -
+  //    so the same "pin-mux, not dedicated hardware" conclusion applies
+  //    here too.
+  //
+  // GPIO8 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+  // addressable RGB LED for this exact product. Tagged capabilities
+  // ["digital_output","led_neopixel","pwm_output"], matching this
+  // repo's led_neopixel precedent (waveshare_esp32_s3_zero GPIO21,
+  // esp32c6/esp32c6 GPIO8, adafruit_qtpy_esp32c3 GPIO2).
+  // Alias-collision check: this variant's pins_arduino.h aliases are
+  // TX=16, RX=17, SDA=14, SCL=15, SS=18, MOSI=19, MISO=20, SCK=21 -
+  // none of those values is 8, so GPIO8 is not double-aliased as a bus
+  // pin and build_boards.js will not silently append a conflicting
+  // i2c/spi/uart capability here. No pins_arduino.h edit was needed.
+  //
+  // GPIO9 (silkscreen "BOOT"): CONFIRMED onboard physical BOOT button
+  // for this exact product (docs.waveshare.com), consistent with this
+  // pin's own silkscreen label in pins_arduino.h and the chip-level
+  // strapping note "Must be HIGH for normal boot". Tagged capabilities
+  // ["digital_input","button"] only, per this session's button-pin
+  // convention (waveshare_esp32_s3_zero GPIO0, adafruit_qtpy_esp32c3
+  // GPIO9). Same alias-collision check: GPIO9 is not TX/RX/SDA/SCL/SS/
+  // MOSI/MISO/SCK on this variant either - no conflict, no edit needed.
+  //
+  // GPIO6/GPIO7 (SDA1/SCL1, second/LP I2C bus): KEEP as general-purpose
+  // I2C - fixed chip-level pin mux only, no onboard peripheral
+  // documented for this board. Left unchanged from chip-level defaults
+  // (GPIO6: analog_input+digital_input+digital_output+pwm_output;
+  // GPIO7: digital_input+digital_output+pwm_output).
+  //
+  // See boardsDetails/esp32/esp32c6/waveshare_esp32_c6_zero/notes.txt
+  // for the full research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

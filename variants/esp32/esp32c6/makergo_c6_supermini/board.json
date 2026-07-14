@@ -1,0 +1,127 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: MakerGO ESP32-C6 SuperMini. No board.json override existed
+  // before this audit (used the chip-level esp32c6/board.json default).
+  // Flagged by the discovery sweep for having PIN_RGB_LED 8 /
+  // WIRE1_PIN_DEFINED with SDA1=6, SCL1=7 declared in pins_arduino.h
+  // but never individually reviewed. This variant's own pins_arduino.h
+  // silkscreen table also labels GPIO9 as "BOOT", so that pin was
+  // opportunistically checked for a button tag too (matching the
+  // sibling makergo_c3_supermini precedent).
+  //
+  // Sources consulted:
+  //  - This variant's own pins_arduino.h: Espressif-style Arduino-core
+  //    pin definition file, titled "Arduino Pin Definitions for MakerGO
+  //    ESP32 C6 SuperMini", with a silkscreen-accurate pinout diagram in
+  //    its header comment. That diagram labels physical pin 11 (GPIO8)
+  //    as "RGB_LED" and physical pin 12 (GPIO9) as "BOOT", matching the
+  //    code below it (PIN_RGB_LED = 8) and the chip-level pinNotes
+  //    strapping entries for GPIO8/GPIO9.
+  //  - WebSearch summary of multiple independent reviews of this exact
+  //    product ("MakerGo ESP32-C6 SuperMini") consistently describing:
+  //    "The board features an onboard addressable WS2812 RGB LED tied
+  //    to GPIO 8" and "BOOT (Right/GPIO9): Used to enter download mode"
+  //    / "GP9 is the BOOT button".
+  //  - espboards.dev/esp32/esp32-c6-super-mini/ (independent board
+  //    review site): confirms "a WS2812 RGB LED... connected to GPIO8,
+  //    programmable using libraries like FastLED or ESPHome's RMT LED
+  //    Strip component", and separately documents a "Status LED - User
+  //    Controllable" on GPIO15 (this repo's existing LED_BUILTIN=15,
+  //    left untouched — see note below).
+  //  - Sibling chip-level entry esp32c6/esp32c6 (audited earlier this
+  //    session, see its own board.json/notes.txt) and sibling variant
+  //    waveshare_esp32_c6_zero (audited earlier this session, near-
+  //    identical PIN_RGB_LED=8 / SDA1=6 / SCL1=7 layout): both concluded
+  //    GPIO6/GPIO7 are the ESP32-C6's fixed low-power-domain I2C pin mux
+  //    (LP_GPIO2/LP_I2C_SDA, LP_GPIO3/LP_I2C_SCL per Espressif's
+  //    ESP32-C6-DevKitC-1 user guide), not evidence of a dedicated
+  //    onboard peripheral. This variant's own pins_arduino.h carries the
+  //    identical boilerplate comment "LP I2C Pins are fixed on
+  //    ESP32-C6" above its SDA1=6/SCL1=7 declaration, and no source
+  //    found for this product documents an onboard I2C peripheral on
+  //    those pins — the same "pin-mux, not dedicated hardware"
+  //    conclusion applies here too.
+  //
+  // GPIO8 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+  // addressable RGB LED for this exact product. Tagged capabilities
+  // ["digital_output","led_neopixel","pwm_output"], matching this
+  // repo's led_neopixel precedent (waveshare_esp32_c6_zero GPIO8,
+  // esp32c6/esp32c6 GPIO8, adafruit_qtpy_esp32c3 GPIO2).
+  // Alias-collision check: this variant's pins_arduino.h aliases are
+  // TX=16, RX=17, SDA=20, SCL=19, SS=4, MOSI=5, MISO=6, SCK=7 - none of
+  // those values is 8, so GPIO8 is not double-aliased as a bus pin and
+  // build_boards.js will not silently append a conflicting i2c/spi/uart
+  // capability here. No pins_arduino.h edit was needed.
+  //
+  // GPIO9 (silkscreen "BOOT"): CONFIRMED onboard physical BOOT button
+  // for this exact product (multiple independent WebSearch sources),
+  // consistent with this pin's own silkscreen label in pins_arduino.h
+  // and the chip-level strapping note "Must be HIGH for normal boot".
+  // Tagged capabilities ["digital_input","button"] only, per this
+  // session's button-pin convention (waveshare_esp32_c6_zero GPIO9,
+  // Geekble_ESP32C3 GPIO9). Same alias-collision check: GPIO9 is not
+  // TX/RX/SDA/SCL/SS/MOSI/MISO/SCK on this variant either - no
+  // conflict, no edit needed.
+  //
+  // GPIO6/GPIO7 (SDA1/SCL1, second/LP I2C bus): KEEP as general-purpose
+  // I2C - fixed chip-level pin mux only, no onboard peripheral
+  // documented for this board. Left unchanged from chip-level defaults
+  // (GPIO6: analog_input+digital_input+digital_output+pwm_output;
+  // GPIO7: digital_input+digital_output+pwm_output). Note GPIO6 is also
+  // this board's own MISO alias and GPIO7 its own SCK alias — both are
+  // normal Arduino API pin-role aliases (not a dedicated-hardware
+  // conflict), so build_boards.js's automatic spi_miso/spi_sck append
+  // for those pins is expected and correct, not contamination.
+  //
+  // GPIO15 (LED_BUILTIN, "blue LED" per this file's own comment): a
+  // second, separate status LED exists on this product per espboards.dev
+  // ("Status LED - User Controllable" on GPIO15), distinct from the
+  // GPIO8 NeoPixel. Left untagged (unchanged from chip-level default
+  // digital_input+digital_output+pwm_output) — out of scope for this
+  // pass, which was scoped to the PIN_RGB_LED/SDA1/SCL1 discovery-sweep
+  // flag plus the opportunistic BOOT-button check; no source found here
+  // confirms its drive polarity (active-high vs active-low), so a
+  // led_high/led_low tag would be a guess. Flagged for a future
+  // dedicated LED-retrofit pass rather than guessed here.
+  //
+  // See boardsDetails/esp32/esp32c6/makergo_c6_supermini/notes.txt for
+  // the full research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

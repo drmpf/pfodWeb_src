@@ -1,0 +1,162 @@
+Board variant: variants/esp8266/esp8285/esp8285 (pins_arduino.h + common.h)
+Shared as generic fallback by TWO boards.txt entries:
+  - esp8285.name = "Generic ESP8285 Module"
+  - espmxdevkit.name = "DOIT ESP-Mx DevKit (ESP8285)"
+
+=== FIRST, THE DECISIVE FILE-LEVEL EVIDENCE ===
+
+variants/esp8266/esp8285/esp8285/pins_arduino.h line 36 sets a *default*:
+    #ifndef LED_BUILTIN
+    #define LED_BUILTIN 1
+    #endif
+GPIO1 is UART0 TX (build_boards.js hard-reserves TX/RX regardless of any tag),
+so this default is not a taggable "LED" in any case.
+
+boards.txt (this repo, variants/esp8266/boards.txt) shows the two boards.txt
+entries do NOT actually agree on LED_BUILTIN:
+  - esp8285.menu.led.* (lines ~665-694): a full user-selectable LED menu,
+    values 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 (Arduino IDE "Builtin Led" menu).
+    I.e. the mainline esp8266/Arduino core treats "Generic ESP8285 Module" as
+    having NO fixed onboard LED at all -- the user must pick whichever GPIO
+    their particular unbranded board happens to use.
+  - espmxdevkit.build.led=-DLED_BUILTIN=16 (line 1850): DOIT's entry
+    *overrides* pins_arduino.h's default via a hardcoded -D flag, forcing
+    GPIO16 unconditionally.
+
+So even before consulting vendor docs, the two boards.txt entries sharing
+this pins_arduino.h/common.h pair disagree on the LED pin (one is a free-form
+user menu covering 10 different GPIOs, the other is hardcoded to GPIO16).
+That alone rules out tagging a shared LED capability in the common
+chipGpios/board.json for this variant directory.
+
+=== URLS CONSULTED ===
+
+1. https://github.com/esp8266/Arduino/issues/5817
+   "Generic ESP8285 Module please add GPIO16 to LED menu"
+   User: "I have an ESP8285 board which has its onboard LED connected to
+   GPIO16, but the 'Generic ESP8285 Module' menu allows only 0-15 setting for
+   Builtin Led." Confirms "Generic ESP8285 Module" covers many different
+   unbranded/vendor boards with LEDs on different GPIOs -- exactly the same
+   situation as the earlier "generic" ESP8266 directory this session (no
+   confirmable single shared onboard LED/button).
+
+2. https://docs.platformio.org/en/latest/boards/espressif8266/esp8285.html
+   and https://www.espboards.dev/esp8266/esp8285/
+   (surfaced via search) -- both describe "Generic ESP8285 Module" as a
+   catch-all board profile; search results list wildly different concrete
+   products that use it (Adafruit ESP-M2 SMT module, Pesky Products ESP8285
+   dev board on Tindie, bare ESP-M2/ESP-M3 modules, IOTAppStory generic
+   entry, etc.) -- confirming it is not one product with fixed hardware.
+
+3. https://www.espboards.dev/esp8266/espmxdevkit/ (DOIT ESP-Mx DevKit)
+   WebFetch of the page text itself did not surface pin-level detail (page is
+   mostly a pinout diagram image), but the accompanying search-result summary
+   (Google-indexed page text) states: "a red power LED and a blue LED
+   connected to GPIO16 and is active low to turn on" and "a 220k/100k Ohm
+   voltage divider on the ADC input pin." This matches this repo's
+   boards.txt espmxdevkit.build.led=-DLED_BUILTIN=16 override, so GPIO16
+   active-low LED is plausible specifically for the DOIT board -- but see
+   below, it is NOT shared by "Generic ESP8285 Module".
+
+4. https://docs.platformio.org/en/latest/boards/espressif8266/espmxdevkit.html
+   PlatformIO board-definition page for DOIT ESP-Mx DevKit. Confirms vendor
+   = Doit, 1MB flash, 80MHz default -- but page gives no GPIO/button/ADC
+   pinout detail (platform-integration page only, no schematic).
+
+5. http://esp8266.com/viewtopic.php?f=5&t=19016 ("ESP-Mx DevKit - Pinout")
+   Community forum thread from an owner trying to find pinout docs for this
+   exact board, confirming official documentation is scarce/hard to find.
+   Thread gives generic I2C/SPI pin advice only; no LED/button/ADC divider
+   info corroborated from a primary/vendor source in this thread.
+
+No onboard pushbutton (other than the universal GPIO0 FLASH/BOOT strap
+pin, which is a boot-mode pin, not a general-purpose "user button", and is
+already documented as such in board.json's pinNotes) was found documented
+for either product.
+
+=== PART A REASONING: NO CHANGE (button/LED) ===
+
+- "Generic ESP8285 Module" has no fixed onboard LED or button by design --
+  confirmed by the Arduino core's own user-selectable LED menu (10 GPIO
+  choices) and by search results showing it is used as the board profile
+  for many unrelated physical products.
+- "DOIT ESP-Mx DevKit" plausibly has a fixed GPIO16 active-low LED (matches
+  this repo's boards.txt override), but this is NOT corroborated for
+  "Generic ESP8285 Module", so the "both products must share the exact same
+  onboard button/LED at the exact same GPIO" bar is not met.
+- The pins_arduino.h-level default (GPIO1) is not even a candidate: it is
+  the hardware UART0 TX pin, hard-reserved by build_boards.js, and not
+  actually used by the DOIT board (which overrides it to GPIO16 via boards.txt).
+- No onboard button confirmed for either product.
+=> NO CHANGE to chipGpios / capability tags in this shared variant.
+
+=== PART B REASONING: NO CHANGE (ADC reference voltage) ===
+
+- board.json (variants/esp8266/esp8285/board.json) currently inherits/sets
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "1.0" } -- the native
+  ESP8285 A0 full-scale voltage with no external divider.
+- "Generic ESP8285 Module" is a bare/unbranded module family with no
+  standard onboard divider -- native 1.0V is correct and is the safe
+  assumption for this catch-all entry.
+- "DOIT ESP-Mx DevKit" may have a 220k/100k onboard divider per one
+  (non-primary, search-summarized) source, which would shift its effective
+  full-scale to roughly 3.2x higher (~3.2V) -- but this is NOT corroborated
+  for "Generic ESP8285 Module", and even the DOIT claim itself is not from a
+  primary vendor schematic I could access.
+- Since a divider (if it exists at all) would apply to at most one of the
+  two products sharing this file, defaultRefVolts must stay at the safe,
+  no-divider default of 1.0V for the shared file.
+=> NO CHANGE to defaultRefVolts.
+
+=== SUMMARY ===
+Both boards.txt entries sharing esp8285/esp8285/{pins_arduino.h,common.h}
+disagree on hardware specifics (LED GPIO/menu vs. hardcoded GPIO16; possible
+ADC divider on one board only) and neither has a confirmed onboard button --
+so per the "overwhelming evidence required for BOTH products" bar, no
+button/LED tags were added and defaultRefVolts was left at 1.0V.
+
+=== 2026-07-12: FULL DEDICATED-HARDWARE SWEEP (final board in ESP8266/ESP8285 audit queue) ===
+
+Scope: this is the broader dedicated-hardware pin-exclusion pass (not just the
+earlier button/LED/ADC-divider check above). Re-read both source files in full:
+  - variants/esp8266/esp8285/esp8285/pins_arduino.h (42 lines, in full)
+  - variants/esp8266/esp8285/esp8285/common.h (84 lines, in full)
+Also re-checked for a board.json override at this exact variant directory
+level (esp8285/esp8285/) -- none exists; only the shared family-level
+variants/esp8266/esp8285/board.json (one level up) was found and was already
+re-read for context.
+
+Duplicate-declaration check (the itead/espectro/espresso_lite_v1 bug pattern:
+a #if/#else structure defining the same macro to two conflicting values):
+  - pins_arduino.h has exactly one conditional block: #ifndef LED_BUILTIN /
+    #define LED_BUILTIN 1 / #endif -- a single define guarded against a
+    pre-existing definition, not a duplicate/conflicting pair.
+  - common.h has exactly one conditional define: #ifndef PIN_A0 / #define
+    PIN_A0 (17) / #endif -- same safe single-define guard idiom.
+  - common.h's other conditional (#ifdef LED_BUILTIN ... BUILTIN_LED =
+    LED_BUILTIN ... #endif) is a conditional *use* of an already-defined
+    macro, not a second conflicting definition.
+  - No #else branch appears anywhere in either file.
+  => No duplicate-declaration ambiguity found. This file does not have the
+     itead-style bug; nothing to neutralize to -1.
+
+Other declarations reviewed for dedicated-hardware candidacy:
+  - PIN_WIRE_SDA(4)/PIN_WIRE_SCL(5): standard I2C default pins, already
+    plain GPIOs in chipGpios, not dedicated hardware.
+  - PIN_SPI_SS(15)/MOSI(13)/MISO(12)/SCK(14): standard SPI default pins,
+    already plain GPIOs in chipGpios, not dedicated hardware.
+  - isFlashInterfacePin(p) covers GPIO 6,7,8,11 -- these are correctly
+    already absent from chipGpios (embedded/external flash SPI, chip-level
+    reservation applying to both products), no change needed.
+  - LED_BUILTIN default (GPIO1) and PIN_A0 (GPIO17): both already addressed
+    in the Part A/B reasoning above (GPIO1 is hard-reserved UART0 TX
+    regardless of tag; A0 already analog_input-only in chipGpios).
+  - No new dedicated-hardware GPIO (button, LED, sensor, radio CS/reset,
+    etc.) found beyond what the earlier pass already considered and
+    rejected for multi-vendor-conservatism reasons.
+
+RESULT: NO CHANGE. No files edited (pins_arduino.h, common.h, and the
+family-level board.json are all unchanged). No duplicate-declaration bug
+present in this file. This confirms/closes out esp8285/esp8285 as the final
+board in the 28-directory ESP8266/ESP8285 full dedicated-hardware audit
+queue -- audit complete for this variant with no outstanding action.

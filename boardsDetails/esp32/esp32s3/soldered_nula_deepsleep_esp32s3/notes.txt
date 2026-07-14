@@ -1,0 +1,79 @@
+Board: soldered_nula_deepsleep_esp32s3 (Soldered Electronics "NULA DeepSleep ESP32-S3" dev board, chip esp32s3)
+Audit type: dedicated-hardware pin-exclusion audit (GPIO2 / PIN_RGB_LED)
+Date: 2026-07-12
+
+FLAGGED PATTERN
+  pins_arduino.h:
+    #define PIN_RGB_LED 2
+    #define RGB_BRIGHTNESS 64
+  GPIO2 is routed through LED_BUILTIN (= SOC_GPIO_PIN_COUNT + PIN_RGB_LED) and
+  RGB_BUILTIN, the standard Arduino-ESP32 core pattern used to expose a single
+  onboard WS2812/NeoPixel-style RGB LED to rgbLedWrite()/neopixelWrite().
+
+SOURCES CONSULTED
+  1. https://soldered.com/products/nula-deepsleep-esp32-s3-board (product page)
+     - Confirms board built around ESP32-S3-WROOM-1-N8R8 (8MB flash/8MB PSRAM),
+       7uA deep-sleep current, onboard PCF85063A RTC, onboard TP4056M Li-Ion/
+       LiPo charger. Battery-power/deep-sleep focus, as the board name implies.
+  2. https://docs.soldered.com/nula-deepsleep-esp32-s3/hardware-details/
+     (redirected from soldered.com/documentation/nula-deepsleep-esp32-s3/...)
+     - Explicit statement: "RGB LED (WS2812B): Present on the board but
+       disconnected via JP1 jumper to minimize deep-sleep current."
+     - Also lists a VBAT input for Li-Ion/Li-Poly battery sensing, and a
+       Qwiic/easyC/STEMMA QT I2C connector.
+     - This is the authoritative vendor confirmation that GPIO2 drives a real,
+       populated onboard WS2812B RGB LED (shipped with a jumper open by
+       default to save power in deep sleep, but wired to GPIO2 when JP1 is
+       closed/populated).
+  3. https://docs.soldered.com/deepsleep-esp32-s3/overview/ and
+     https://soldered.com/documentation/nula-deepsleep-esp32-s3/arduino/
+     - General overview / Arduino getting-started pages; did not contain
+       GPIO-level detail themselves but confirmed board identity and pointed
+       to the hardware-details page used above.
+  4. https://github.com/SolderedElectronics/NULA-Universal-Test-Code
+     - Soldered's production test-code repo for the NULA board family; page
+       fetch did not surface board-specific pin tables for this exact board
+       (only referenced NULA Mini ESP32-C6 in visible content). Not used as a
+       primary source; vendor docs page (#2) was sufficient and authoritative.
+
+REASONING
+  - GPIO2 = PIN_RGB_LED is a genuine, vendor-confirmed onboard WS2812B
+    NeoPixel-type LED, not a placeholder/boilerplate macro carried over from
+    a generic Espressif reference design. Confidence: HIGH (direct vendor
+    hardware-details page, independent of the firmware source file).
+  - Alias-collision check (required step): grepped pins_arduino.h for every
+    occurrence of "2" as a pin value among the bus aliases SDA(8), SCL(9),
+    SS(10), MOSI(11), MISO(13), SCK(12), TX(43), RX(44). None of these alias
+    to GPIO2. No collision, so no alias line needed to be deleted from
+    pins_arduino.h.
+  - Battery-sense / button opportunistic check (section 7a): vendor docs
+    confirm a VBAT battery-sense input and a TP4056M charger exist on the
+    physical board, consistent with the "DeepSleep" branding, but neither a
+    VBAT pin nor a user button is declared as a named macro/alias anywhere in
+    this variant's pins_arduino.h (only PIN_RGB_LED, LED_BUILTIN/RGB_BUILTIN,
+    TX/RX, SDA/SCL, SS/MOSI/MISO/SCK, and the A3-A13/A18/A19 + T4-T14
+    analog/touch aliases are declared). Since the pin-capability system here
+    is driven off declared pins_arduino.h macros, there is nothing to tag for
+    a battery-sense pin on this board — no action taken.
+
+APPLIED CHANGE
+  Created variants/esp32/esp32s3/soldered_nula_deepsleep_esp32s3/board.json as
+  a full copy of the chip-level default (variants/esp32/esp32s3/board.json),
+  changing only GPIO2's capabilities from
+    ["analog_input", "digital_input", "digital_output", "pwm_output"]
+  to
+    ["digital_output", "pwm_output", "led_neopixel"]
+  matching the precedent set in variants/esp32/esp32s3/esp32s3/board.json
+  (generic ESP32-S3-DevKitC-1 variant, GPIO48 RGB LED) and the KEEP + tag
+  policy requested (digital_output + led_neopixel, plus pwm_output since it
+  was already present; analog_input/digital_input dropped to match the same
+  precedent). Added a `// pfodWeb NOTE:` block citing source #2 and the
+  confidence level, without reproducing any original pins_arduino.h
+  declaration text inside the comment.
+
+SUMMARY
+  GPIO2 on soldered_nula_deepsleep_esp32s3 is a vendor-confirmed onboard
+  WS2812B RGB LED (normally jumper-disconnected for deep-sleep current
+  savings) — tagged digital_output/pwm_output/led_neopixel in a new
+  board.json; no bus-alias collision found; no battery-sense/button pin is
+  declared in pins_arduino.h so no further action was warranted.

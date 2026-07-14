@@ -1,0 +1,196 @@
+Digistump Oak (variants/esp8266/esp8266/oak) - button/LED/ADC research notes
+Date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+
+1. https://s3.amazonaws.com/digistump-resources/files/391244df_oak-prod-v1.pdf
+   (official Digistump Oak production schematic, CC-BY-SA 3.0, Copyright
+   Digistump LLC - linked from an espboards.dev search hit and independently
+   downloadable). AUTHORITATIVE - this is the real hardware schematic.
+   Findings:
+     - ESP12 module pins: ADC, CH_PD, GPIO16, GPIO14, GPIO12, GPIO13, VCC,
+       GND, GPIO15, GPIO2, GPIO0, GPIO5, GPIO4, RXD, TXD, RESET - matches
+       the GPIO set already in this board's pins_arduino.h.
+     - JP1 header breaks out GND/VCC plus GPIO5/TX/RX. Component LED1 sits
+       on the GPIO5 net: GPIO5 -> solder-jumper SJ1 -> resistor R7 (1.5K)
+       -> LED1 -> GND. GPIO sources current through the LED to GND, so
+       LED1 is active-HIGH. This matches pins_arduino.h's
+       `#define LED_BUILTIN 5` (P1 alias = GPIO5) exactly.
+     - Component LED2 is wired VCC -> solder-jumper SJ5 -> LED2 -> resistor
+       R8 (1.5K) -> GND, with NO connection to any GPIO at all. This is a
+       permanently-on power/status indicator LED (default state; can only
+       be disabled by physically cutting the SJ5 solder-jumper trace on
+       the PCB) - not GPIO-controllable, so no capability tag applies to
+       it, and it isn't associated with any single GPIO pin anyway.
+     - No pushbutton (SW) component appears anywhere in the schematic's
+       component list (U1 regulator, C3/C4 caps, R1-R4/R7/R8 resistors,
+       LED1/LED2, JP1/JP2/JP3/JP5 headers, SJ1/SJ4/SJ5 solder jumpers,
+       CN1 USB connector, ESP12 module) - the Oak has no onboard user or
+       reset pushbutton.
+     - ADC divider: R1 (220k) in series from the ESP12's native ADC pin
+       out to the header's ADC net, and R2 (100k, via solder-jumper SJ1
+       [a second, separately-labelled SJ1 net near JP2 - not to be
+       confused with the LED1 jumper of the same reference designator
+       reused near JP1; schematic text extraction could not fully
+       disambiguate reference-designator reuse across the two header
+       areas, but the 220k/100k resistor VALUES and topology are
+       unambiguous]) from that ADC node to GND. This is the exact same
+       220k/100k divider topology already confirmed (via independent,
+       higher-quality vendor sources) on this repo's D1 Mini and NodeMCU
+       board.json files, computing to a 3.2V full-scale range
+       (1.0V native * (220k+100k)/100k = 3.2V).
+
+2. http://digistump.com/wiki/oak/tutorials/blink (fetched via Wayback
+   Machine archive, since the live digistump.com wiki path now 404s -
+   http://web.archive.org/web/2018id_/http://digistump.com/wiki/_export/raw/oak/tutorials/blink,
+   raw DokuWiki markup export).
+   States: "pin 1 is connected to a small surface mounted LED on the
+   board" and gives sample code `pinMode(1, OUTPUT); //LED on Oak`.
+   CAVEAT: this tutorial is written against the ORIGINAL Digistump Oak
+   firmware (Particle-cloud based OakCore - the tutorial references
+   particle.io, flashing "to cloud", "Oak Ready" messages), which used
+   its OWN pin-numbering scheme, not necessarily raw GPIO numbers. This
+   repo's pins_arduino.h targets the mainline esp8266/Arduino core
+   instead (`#include "../generic/common.h"`), where pin numbers ARE raw
+   GPIO numbers. The schematic (source 1, hardware ground truth,
+   independent of any firmware's pin-numbering convention) was used to
+   confirm GPIO5 as the LED pin, not this tutorial's "pin 1" label -
+   the two numbering schemes are not assumed to be equivalent.
+
+3. http://digistump.com/wiki/oak/tutorials/leds (same Wayback raw-export
+   method). Companion tutorial about wiring an EXTERNAL LED to pin 9 (old
+   OakCore numbering) with a breadboard/resistor - confirms only ONE
+   onboard LED is referenced across the whole Oak tutorial series (this
+   external-LED tutorial explicitly builds on "the on-board blink
+   sketch" as a single prior example), no mention of a second onboard LED
+   or of any RGB/multi-color onboard LED.
+
+4. https://github.com/digistump/OakCore/blob/master/doc/reference.md
+   Confirms Oak's Arduino-core GPIO functions (digitalWrite/analogWrite/
+   pinMode) operate on raw GPIO numbers 0-16, PWM available on GPIO0-16.
+   Contains no mention of any onboard LED or button.
+
+5. https://www.espboards.dev/esp8266/oak/ (third-party auto-generated
+   pinout aggregator site). Its narrative text mentioned "a button
+   (GPIO0) and a relay (GPIO5)" in one search snippet - this reads as
+   unreliable/likely-hallucinated auto-generated summary text (Oak has no
+   "relay"; GPIO0 button claim not corroborated by the real schematic,
+   which shows no SW component at all) and was NOT used as evidence for
+   or against any tag. Not an authoritative vendor source - disregarded
+   in favor of the real schematic (source 1).
+
+6. Web search for "Digistump Oak RGB LED WS2812 onboard" and separately
+   for OakDocs/GitHub RGB references - found no evidence of an RGB LED,
+   NeoPixel, or WS2812 device on the Oak board itself. Only unrelated
+   hits about Digispark (a different Digistump product) + WS2812 hobby
+   projects using EXTERNAL LED strips. The task brief's premise that
+   "Digistump Oak is known to have an onboard RGB LED" was investigated
+   and could NOT be confirmed by any real source - the schematic (source
+   1) shows only two ordinary single-color LEDs (LED1 on GPIO5, LED2 a
+   fixed power indicator), no RGB/multi-channel LED component.
+
+CONSIDERED BUT NOT TAGGED / NOT CHANGED
+----------------------------------------
+- RGB/NeoPixel LED capability (led_neopixel or led_r/g/b_*): NOT applied.
+  No RGB or addressable-LED component found on the real production
+  schematic or in any official Digistump documentation for the Oak. The
+  task brief's premise of "known to have an onboard RGB LED" appears to
+  be incorrect for this board (possibly confused with a different
+  product, or a hobbyist project layered on top rather than a stock
+  onboard component).
+- Button capability (digital_input + button): NOT applied to any GPIO.
+  No physical pushbutton component (SW) appears anywhere on the official
+  production schematic. GPIO0's usual boot-strap circuitry (present on
+  most ESP8266 boards) is documented in pinNotes as inherited chip-level
+  boot behavior, but is explicitly NOT tagged "button" since no button
+  hardware exists to actuate it on this board.
+- LED2 (the power/status indicator LED wired straight across VCC/GND via
+  resistor + solder jumper SJ5): NOT tagged. It has no GPIO connection at
+  all, so it cannot map to any single GPIO's capability list, and it is
+  not user-controllable software (permanently on unless the SJ5 trace is
+  physically cut).
+- GPIO1/GPIO3 (Oak's Serial TX/RX per pins_arduino.h P4=1/P3=3): checked
+  before tagging anything - GPIO5 (the LED pin) is NOT the reserved
+  TX/RX pin, so the led_high tag was safe to apply there.
+
+SUMMARY
+-------
+Tagged GPIO5 ["digital_input","digital_output","pwm_output","led_high"]
+(onboard single-color user LED, active-high, confirmed via official
+production schematic). No button hardware exists on the Oak, so no
+button tag was applied anywhere. No RGB/NeoPixel LED was found despite
+the task brief's premise, so none was tagged. ADC defaultRefVolts
+updated from the inherited chip-level "1.0" to "3.2", based on a
+confirmed 220k/100k onboard resistor divider on the A0 line shown in the
+official schematic (same topology already verified on this repo's D1
+Mini/NodeMCU boards).
+
+===================================================================
+Date: 2026-07-12 - dedicated-hardware pin-exclusion audit (full sweep)
+===================================================================
+
+TRIGGER
+-------
+A fresh discovery sweep flagged this board for a full P0-P11 pin-
+numbering alias set found in pins_arduino.h (P0=2, P1=5, P2=0, P3=3,
+P4=1, P5=4, P6=15, P7=13, P8=12, P9=14, P10=16, P11=17), asking for
+confirmation that this is ordinary board-level numbering convenience
+and not evidence of some new dedicated onboard peripheral missed by the
+earlier (narrower) button/LED/ADC pass above.
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h (re-read in full) - confirms the
+   P0-P11 aliases are a simple static-const uint8_t numbering table
+   mapping Digistump's own P-number silkscreen/pin-header labels to raw
+   GPIO numbers (2, 5, 0, 3, 1, 4, 15, 13, 12, 14, 16, 17). Every one of
+   these GPIO numbers already has a corresponding entry in this board's
+   board.json chipGpios map (0,1,2,3,4,5,12,13,14,15,16,17) - no new pin
+   number is introduced by the alias set, so there is nothing extra to
+   tag or exclude.
+2. variants/esp8266/esp8266/generic/common.h (re-read in full, included
+   via `#include "../generic/common.h"` at the bottom of this board's
+   pins_arduino.h) - checked for SPI/I2C default pin macros that could
+   silently collide with GPIO5 (the already-tagged LED pin):
+     PIN_SPI_SS   = 15 (MOSI/MISO/SCK/SS = 13/12/14/15)
+     PIN_WIRE_SDA = 2, PIN_WIRE_SCL = 0 (defined in this board's own
+       pins_arduino.h, not common.h)
+   None of SDA(2)/SCL(0)/SS(15)/MOSI(13)/MISO(12)/SCK(14) equal 5, so
+   GPIO5's capability list (digital_input/digital_output/pwm_output/
+   led_high) is NOT being silently contaminated by any inherited SPI or
+   I2C default-pin alias. Confirmed clean.
+3. Re-reviewed the existing research above (source 1 in the earlier
+   section: the official Digistump Oak production schematic PDF) for
+   any dedicated onboard peripheral beyond the already-tagged LED. The
+   full component list already recorded above (U1 linear regulator,
+   C3/C4 capacitors, R1-R4/R7/R8 resistors, LED1/LED2, JP1/JP2/JP3/JP5
+   headers, SJ1/SJ4/SJ5 solder jumpers, CN1 USB connector, ESP12
+   module) is exhaustive - there is no SD card slot/controller, no
+   display/OLED, no relay, and no onboard sensor (temperature,
+   accelerometer, etc.) anywhere in the schematic. No re-fetch of the
+   PDF was needed since the prior pass's component-by-component
+   transcription already covers every reference designator on the
+   board.
+
+REASONING
+---------
+- The P0-P11 alias table is confirmed to be pure Digistump-header
+  numbering convenience (mirrors how "D0..D8"/"NodeMCU Dx" aliases work
+  on other ESP8266 boards in this repo) - it introduces no new GPIO and
+  no new hardware, so KEEP-as-is applies to every pin; no EXCLUDE is
+  warranted.
+- The critical alias-collision check (GPIO5 vs SDA/SCL/SS/MOSI/MISO/
+  SCK) came back clean - no fix needed.
+- No additional dedicated onboard peripheral (SD card, display, relay,
+  sensor) was found beyond the single already-tagged user LED on GPIO5
+  and the non-GPIO-connected power-indicator LED2, both already fully
+  documented above.
+
+SUMMARY (this pass)
+--------------------
+NO CHANGE to board.json. The P0-P11 alias set is ordinary pin-numbering
+convenience only, mapping onto GPIO numbers already present in
+chipGpios. The GPIO5 LED alias-collision check (against SDA/SCL/SS/
+MOSI/MISO/SCK) found no contamination. No new dedicated onboard
+hardware was found on re-review of the official production schematic.

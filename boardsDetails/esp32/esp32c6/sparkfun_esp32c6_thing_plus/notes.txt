@@ -1,0 +1,67 @@
+Board: sparkfun_esp32c6_thing_plus (chip: esp32c6)
+Audit date: 2026-07-12
+Flagged by: discovery sweep, `#define PIN_RGB_LED 23` / `#define RGB_BRIGHTNESS 64` in
+  variants/esp32/esp32c6/sparkfun_esp32c6_thing_plus/pins_arduino.h
+
+pins_arduino.h contents reviewed in full (35 lines): declares PIN_RGB_LED=23 (aliased to
+LED_BUILTIN/BUILTIN_LED/RGB_BUILTIN via SOC_GPIO_PIN_COUNT offset), RGB_BRIGHTNESS=64,
+TX=16, RX=17, SDA=6, SCL=7, SS=5, MOSI=20, MISO=21, SCK=19, A0..A6=0..4,5,6. This is the
+same generic pins_arduino.h boilerplate used by several Espressif reference/third-party
+ESP32-C6 boards in this repo, not a SparkFun-authored file, so the RGB LED claim needed
+independent vendor verification rather than being trusted at face value.
+
+Sources consulted:
+1. https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32_C6/hardware_overview/
+   Official SparkFun hardware overview page. Confirms an onboard WS2812 "STAT" RGB LED
+   with its Data In line tied to IO23. Also lists the board's other fixed-function pins:
+   IO18 microSD chip select, IO19 microSD SCK, IO20 microSD MOSI, IO21 microSD MISO,
+   IO22 microSD card-detect, IO11 MAX17048 fuel-gauge ALERT, IO15 low-power control,
+   IO6/IO7 Qwiic I2C (SDA/SCL). No pin other than IO23 is associated with the RGB LED,
+   and the page explicitly warns that reusing IO23 for another purpose "can run into
+   code conflicts" with the LED - i.e. it is a dedicated, single-purpose pin.
+2. https://github.com/sparkfun/SparkFun_Thing_Plus_ESP32_C6/blob/main/README.md
+   Confirms "The WS2812's data-in pin is tied to IO23 on the ESP32-C6" and that the
+   board's Arduino support defines IO23 as RGB_BUILTIN so rgbLedWrite()/RGB_BUILTIN
+   works out of the box - consistent with what's already in pins_arduino.h.
+3. https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32_C6/hardware_assembly/ and
+   introduction/print_view pages (same docs.sparkfun.com site, reached via search):
+   two onboard buttons - RESET (tied to EN, not a GPIO) and BOOT (a strapping pin,
+   ESP32-C6 GPIO9, already covered by the chip-level pinNotes entry "Must be HIGH for
+   normal boot") - neither is a general-purpose user-input GPIO, so no opportunistic
+   "button" capability tag was added. Battery: a 2-pin JST LiPo connector, an MCP73831
+   charger, and a MAX17048 fuel gauge read over the Qwiic I2C bus (SDA=6/SCL=7) - no
+   dedicated battery-sense ADC GPIO exists on this board, so no "battery_sense" tag
+   applies either.
+4. pfodWeb_src/build_boards.js (local repo file, not a web source) - read the alias
+   -> capability logic (lines ~341-381, ~540-703) to confirm exactly how it appends
+   i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck capabilities: it matches a GPIO
+   number against consts.SDA/SCL/SS/MOSI/MISO/SCK/TX/RX parsed straight out of
+   pins_arduino.h, regardless of anything set in chipGpios. This is the "silent
+   contamination" mechanism the audit was asked to check for.
+
+Alias-collision check (critical step): compared GPIO23 against every bus alias in this
+board's pins_arduino.h - TX=16, RX=17, SDA=6, SCL=7, SS=5, MOSI=20, MISO=21, SCK=19.
+None of these equal 23, so build_boards.js will NOT unconditionally append any
+i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck/uart capability onto GPIO23. Unlike the
+sibling pandabyte_xc6 board (which had a genuine SDA=23 collision requiring a
+pins_arduino.h edit), this board's pins_arduino.h needed NO changes - the RGB LED pin is
+already clean of colliding aliases.
+
+Reasoning / capability decision:
+GPIO23 confirmed as a genuine, vendor-documented, single-purpose onboard WS2812
+addressable RGB LED data line. High confidence (two independent official SparkFun
+sources, no other function ever assigned to this pin, matches this repo's existing
+led_neopixel precedent on other ESP32-C6/C3 boards, e.g. pandabyte_xc6 GPIO23 and
+esp32c3/esp32c3 GPIO8). Applied KEEP + tag policy: created
+variants/esp32/esp32c6/sparkfun_esp32c6_thing_plus/board.json as a full copy of the
+chip-level esp32c6/board.json default, with GPIO23's capabilities changed from the
+generic default ["digital_input","digital_output","pwm_output"] to
+["digital_output","led_neopixel","pwm_output"] (digital_input dropped - the pin is
+committed to driving the LED, not general-purpose input; pwm_output and digital_output
+kept, matching this repo's existing led_neopixel convention on sibling boards). All
+other GPIOs left at chip-level defaults; no opportunistic button/battery-sense tag
+applied (no dedicated GPIO found for either on this board).
+
+Summary: GPIO23 on sparkfun_esp32c6_thing_plus is a vendor-confirmed, alias-clean
+onboard WS2812 RGB LED - tagged led_neopixel via a new board.json override; no
+pins_arduino.h changes needed (no bus-alias collision found).

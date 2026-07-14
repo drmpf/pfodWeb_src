@@ -1,0 +1,83 @@
+Heltec Wireless Paper - button/LED research notes
+==================================================
+
+Sources consulted
+------------------
+1. https://heltec.org/project/wireless-paper/
+   - Product landing page. Confirms MCU (ESP32-S3FN8) + SX1262 LoRa, 2.13"
+     E-Ink display. No GPIO-level button/LED detail on this page itself, but
+     links to the datasheet and schematic used below.
+
+2. https://docs.heltec.org/en/node/esp32/wireless_paper/index.html
+   - Official docs index page. No explicit button/LED GPIO numbers found on
+     the page text itself; provided the direct links to the datasheet PDF and
+     schematic PDF (used below) via WebFetch.
+
+3. https://docs.heltec.org/en/node/esp32/wireless_paper/frequently_asked_questions.html
+   - Turned up in search results (Heltec Wireless Paper FAQ); not fetched in
+     detail beyond the search snippet - no GPIO specifics appeared in the
+     snippet, so not relied upon for tagging decisions.
+
+4. https://github.com/todd-herbert/heltec-eink-modules/blob/main/docs/WirelessPaper/wireless_paper.md
+   - Community documentation for this board. Mentions "an orange LED" stays
+     on when USB power is connected, but gives no GPIO number and no mention
+     of a user button. Consistent with the schematic finding that LED2
+     (charge indicator) is wired directly to the TP4054 charger IC's CHRG
+     pin, not to a GPIO.
+
+5. https://resource.heltec.cn/download/Wireless_Paper/Wireless-Paper.pdf
+   (official datasheet, Rev 1.0, May 2023 - fetched and read as PDF)
+   - General specs (ESP32-S3FN8 + SX1262, 2.13" E-Ink, USB-UART bridge).
+     Does NOT itemize GPIO pin assignments for button/LED - no button/LED
+     GPIO info found in this document.
+
+6. https://resource.heltec.cn/download/Wireless_Paper/Wireless_Paper_V0.4_Schematic_Diagram.pdf
+   (official schematic, Rev V0.4, 2023-8-25 - fetched and read as PDF,
+   text/net-label extraction from the Altium-exported PDF)
+   - THE key confirming source. Findings:
+     * Switch "S1" is labelled "RESET" and wired to CHIP_PU (EN) - this is
+       the hardware EN/reset button, not a GPIO-readable user button.
+     * Switch "S2" is labelled "BTN-0" (silkscreen designator) and wired to
+       net "IO0", i.e. GPIO0 - this is the genuine onboard user/boot button.
+     * "LED1" (orange) + series resistor "R1" (330R) are wired between net
+       "LED" and GND. Net "LED" is the same net that pins_arduino.h names
+       as the "LED" alias, i.e. GPIO18 (LED = 18 in pins_arduino.h; pin 24
+       of U2 ESP32-S3FN8 = GPIO18 per the schematic's MCU pin list).
+       Topology (GPIO -> resistor -> LED -> GND, no transistor) means the
+       GPIO sources current through the LED to ground: GPIO HIGH turns the
+       LED on (active-high).
+     * "LED2" (orange) + series resistor "R15" (330R) are wired to net
+       "CHRG", which comes directly from the TP4054 ("U4") lithium battery
+       charge-management IC's CHRG (open-drain) output pin - this is a
+       hardware battery-charging indicator, NOT connected to any ESP32
+       GPIO, so it cannot be tagged as a pfodWeb-controllable LED.
+     * GPIO35 (the board's "LED_BUILTIN" alias in pins_arduino.h) does not
+       appear connected to any LED, resistor, or indicator anywhere in the
+       schematic. It appears to be an unused/leftover vendor-template
+       alias rather than a real onboard LED on this board.
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO35 (LED_BUILTIN alias): NOT tagged. No schematic evidence of any LED
+  wired to this pin - looked deliberately and found nothing (not a guess,
+  a confirmed absence in the schematic). Also moot: GPIO35 is already
+  absent from this board's chipGpios (falls in the GPIO33-37 octal-PSRAM
+  exclusion range carried over from the chip-level esp32s3/board.json
+  default), which is an existing pin-exclusion from an earlier audit pass
+  that this task must not touch. Left fully alone.
+- S1 "RESET" button (wired to CHIP_PU/EN): NOT tagged. This is a hardware
+  reset/EN button, not connected to any GPIO the firmware can read as a
+  digital input, so it does not qualify for the "button" capability tag.
+  No judgment call needed - it structurally cannot be a GPIO button.
+- No TX/RX conflicts encountered: this board's TX=43, RX=44 (per
+  pins_arduino.h), and neither the GPIO0 button nor the GPIO18 LED
+  coincide with those pins, so no tag needed to be withheld for that
+  reason.
+
+Summary of what was tagged
+----------------------------
+- GPIO0 -> ["digital_input", "button"] (onboard user/boot button "BTN-0",
+  confirmed via schematic).
+- GPIO18 -> ["digital_output", "led_high", "pwm_output"] (onboard orange
+  LED1, active-high, confirmed via schematic; pwm_output retained because
+  it was already present on this pin's existing capability set).

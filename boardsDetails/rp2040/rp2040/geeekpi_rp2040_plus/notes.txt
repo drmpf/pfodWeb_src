@@ -1,0 +1,90 @@
+Board: geeekpi_rp2040_plus (GeeekPi RP2040 Plus), chip family rp2040
+Audit date: 2026-07-13
+
+SOURCES CONSULTED
+------------------
+1. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\geeekpi_rp2040_plus\pins_arduino.h (full file) and its
+   include, ../generic/common.h (blanket D0-D22/A0-A2 fallback, GPIO23/24/25/29 deliberately excluded from
+   alias declarations - see pfodWeb NOTE in that file).
+2. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level defaults, chipGpios: {} by design).
+3. C:\ai\aicode\pfodWeb\variants\rp2040\boards.txt lines ~15731-15981 (geeekpi_rp2040_plus.* entries) -
+   confirms build.board=GEEEKPI_RP2040_PLUS, build.usb_manufacturer="GeeekPi", build.usb_product="RP2040
+   Plus", USB VID 0x2e8a (multiple PIDs for different boot-mode/flash-size SKUs), build.boot2=
+   boot2_w25q080_2_padded_checksum, no build.led default set.
+4. Precedent files read before writing: ../rpipico/board.json (GPIO25 led_high pattern, official Pico) and
+   ../waveshare_rp2040_plus/board.json + its notes.txt (near-identically-named/positioned sibling clone
+   board, also GPIO25 LED, Zephyr-dts-confirmed active-high).
+5. Existing built designer JSON at pfodWeb_src/designer/boards/rp2040_geeekpi_rp2040_plus/
+   rp2040_geeekpi_rp2040_plus.json - confirmed current output has NO entry at all for GPIO25 (D0-D22 +
+   A0-A2 only), i.e. the onboard LED is currently completely absent/uncontrollable from the Designer -
+   this audit's chipGpios addition is what surfaces it (matching how rp2040_rpipico.json's built output
+   shows a distinct "GPIO25 (Led active high)" entry, codeName "25", generated purely from the chipGpios
+   override with no pins_arduino.h alias required).
+6. WebSearch: "GeeekPi RP2040-Plus board LED GPIO25 button pinout", "GeeekPi RP2040 Plus product page
+   onboard LED user button", "GeeekPi RP2040 Plus schematic pdf github", ""GeeekPi RP2040" Plus
+   microcontroller review LED indicator", "zephyr geeekpi rp2040 plus dts board". No GeeekPi-specific
+   schematic PDF or Zephyr board definition exists (Zephyr only has Waveshare's rp2040_plus/rp2040_geek/
+   rp2040_zero - GeeekPi has not upstreamed a board there). GeeekPi's own GitHub org (github.com/geeekpi)
+   only has demo-code repos (e.g. picokit) with no schematics.
+7. Retailer product-description text (GeeekPi's own manufacturer copy, reproduced verbatim across Amazon
+   US/UK/DE/JP listings for this exact product - "GeeekPi RP2040 Plus with Headers... Type C Connector...
+   4MB/8MB Flash"):
+   - "The on-board LED is connected to GP25 to provide a visual indicator for testing and debugging
+     purposes. You can control the LED directly through software..."
+   - "GeeekPi has opted for quality of life additions which include a USB-C port, replacing the micro USB
+     of the original, an extra LED, and a reset button so you can reboot the board without unplugging it."
+   - "An additional reset button is included on the board to provide a convenient way to reset the RP2040
+     chip without physically disconnecting and reconnecting, and this board has a boot selection button to
+     easily switch between different boot modes, such as USB High Capacity Storage, USB CDC Serial and
+     Custom Boot Modes."
+   These independently confirm (a) GP25 hosts the onboard LED and (b) the only buttons are RESET and
+   BOOT(SEL) - no third/general-purpose GPIO button.
+8. Distinguished from the unrelated Waveshare-branded "RP2040-Plus" product (thepihut.com/products/
+   rp2040-plus, docs.waveshare.com/RP2040-Plus) - confirmed via WebFetch that page's own text names
+   "Waveshare" as manufacturer, a different vendor from GeeekPi, albeit a very similar product concept/
+   name/pinout. Already separately audited in this repo as ../waveshare_rp2040_plus/board.json - used here
+   only as corroborating convention evidence, not as a direct source for this board.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED):
+  - Board's only onboard visual indicator per GeeekPi's own product description ("on-board LED is
+    connected to GP25"), matching this board's pins_arduino.h PIN_LED (25u) definition.
+  - Polarity: no GeeekPi-specific schematic or independently maintained device-tree (Zephyr does not carry
+    a GeeekPi board) could be located to directly confirm active-high vs active-low. Tagged ACTIVE HIGH
+    (led_high) on the strength of the unanimous convention observed across every other GPIO25-onboard-LED
+    board already audited in this repo's RP2040 family: official Raspberry Pi Pico (../rpipico/board.json,
+    datasheet-confirmed) and Waveshare's "RP2040 Plus" (../waveshare_rp2040_plus/board.json,
+    Zephyr-dts-confirmed GPIO_ACTIVE_HIGH) - both physically near-identical Pico-pinout-compatible clones
+    using the same GPIO25 pin for the same purpose. No led_low precedent exists anywhere in this repo for
+    a Pico-clone's dedicated GPIO25 LED. Flagged as inferred-not-schematic-confirmed in the board.json note
+    for transparency.
+  - Applied capabilities: ["digital_output", "pwm_output", "led_high"] - digital_input dropped (matches
+    established led_high precedent for dedicated onboard LED pins, e.g. ../rpipico/board.json GPIO25,
+    ../waveshare_rp2040_plus/board.json GPIO25). pwm_output retained since arduino-pico's analogWrite()
+    works on any RP2040 GPIO (all 8 PWM slices cover GPIO0-29), enabling LED brightness dimming.
+
+BOOT / RESET buttons:
+  - Both out of scope for capability tagging: confirmed present via GeeekPi's product description ("reset
+    button", "boot selection button") but neither is represented by any alias in pins_arduino.h and neither
+    is readable via a normal GPIO digitalRead() - RESET pulls the RUN net low in hardware, BOOTSEL is
+    sampled via the RP2040 ROM's special QSPI-CS-line trick (same rationale already established in
+    ../rpipico/board.json and ../waveshare_rp2040_plus/board.json). No chipGpios entry needed/possible for
+    either.
+
+NeoPixel: none mentioned in any GeeekPi product listing or in this board's pins_arduino.h/common.h - no
+tag applied.
+
+Bus-collision check (per the audit's known bug class): GPIO25 carries no SDA/SCL/SS/MOSI/MISO/SCK alias in
+this board's pins_arduino.h (SPI0 = GPIO16-19, SPI1 = GPIO12-15, Wire0 = GPIO4/5, Wire1 = GPIO26/27) - no
+collision, no pins_arduino.h edit needed.
+
+SUMMARY
+--------
+Created variants/rp2040/rp2040/geeekpi_rp2040_plus/board.json (full file, chip defaults copied verbatim)
+with a chipGpios override tagging GPIO25 as the onboard LED: ["digital_output","pwm_output","led_high"].
+Polarity (active-high) is inferred from unanimous repo/family precedent for GPIO25-onboard-LED Pico clones
+rather than a directly located GeeekPi schematic/dts (none exists) - flagged transparently in the board.json
+note. No NeoPixel present. BOOT/RESET buttons confirmed present but out of scope (no GPIO alias). No
+bus-collision issue found on GPIO25. JSON validity checked via manual `//`-comment strip + JSON.parse (no
+build scripts run).

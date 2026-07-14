@@ -1,0 +1,73 @@
+MagicBit (esp32/esp32/magicbit) — button/LED research notes
+=============================================================
+
+Sources consulted
+------------------
+https://magicbit-arduino.readthedocs.io/en/stable/
+  - "What is Magicbit" overview: confirms two push-buttons on the front,
+    four onboard LEDs (red, yellow, green, blue) on the backside, plus
+    buzzer, potentiometer, LDR, OLED, motor driver (all out of scope).
+
+https://magicbit-arduino.readthedocs.io/en/latest/
+  - Confirms same board layout/description as stable docs; example code
+    fetched shows `pinMode(18,OUTPUT); digitalWrite(18,HIGH); // turns on
+    LED` for the yellow LED, and a button-reading example:
+    `pinMode(34, INPUT); digitalRead(34);` with text stating "Buttons on
+    the board are pulled up internally ... pressed = LOW (0), not pressed
+    = HIGH (1)". Confirms buttons are simple momentary pushbuttons, not
+    something else.
+
+https://www.espboards.dev/esp32/magicbit/
+  - Pinout table: RED LED=GPIO27, YELLOW LED=GPIO18, GREEN LED=GPIO16,
+    BLUE LED=GPIO17, LEFT BUTTON=GPIO35, RIGHT BUTTON=GPIO34,
+    LED_BUILTIN=GPIO16 (same pin as GREEN LED). Matches this variant's
+    pins_arduino.h exactly (RED_LED=27, YELLOW_LED=18, GREEN_LED=16,
+    BLUE_LED=17, RIGHT_PUTTON=34, LEFT_BUTTON=35, LED_BUILTIN=16).
+
+WebSearch results (magicbitlk/Magicbit-Arduino library, Hackster.io
+"Magicbit: An Easy IOT Platform for Everyone" project writeup)
+  - Reiterated: "There are two buttons on the front of the Magicbit" and
+    "There are four leds on backside of the Magicbit with color red,
+    yellow, green & blue." Example digitalWrite(27,HIGH) turns on
+    RED_LED confirming active-high polarity for the discrete LEDs.
+
+Conclusion: these are four INDIVIDUAL discrete LEDs (red/yellow/green/
+blue), NOT a single-data-pin NeoPixel/addressable RGB strip and NOT a
+3-wire discrete RGB LED (R/G/B on one package) — they are four separate,
+independently-colored single LEDs on four separate GPIOs. The task brief
+mentioned "onboard NeoPixel/RGB LED" as a possibility, but real vendor
+documentation does not support a NeoPixel/addressable LED on this board;
+tagged them as ordinary active-high LEDs (led_high) instead, per the
+actual confirmed hardware.
+
+Pins considered but NOT tagged
+-------------------------------
+GPIO16 (GREEN_LED, also aliased as LED_BUILTIN) - confirmed real onboard
+  active-high discrete LED via both magicbit-arduino docs and espboards.dev.
+  NOT TAGGED because GPIO16 falls inside the chip-level PSRAM pin-exclusion
+  range (16-17) and has no chipGpios entry at all in the base esp32 board.json
+  (see variants/esp32/esp32/board.json chipGpios list, which jumps from 15
+  straight to 18). Re-adding GPIO16 to chipGpios would reverse a pre-existing
+  chip-level exclusion from an earlier audit pass, which is explicitly out of
+  scope for this task. This is a confirmed LED, not a guess — flagging for
+  human review in case the exclusion should be reconsidered for this specific
+  module variant (some MagicBit revisions may not have onboard PSRAM, but no
+  vendor documentation was found confirming PSRAM is or isn't present on this
+  module, so I made no guess either way and left it untagged).
+
+GPIO17 (BLUE_LED) - same situation as GPIO16: confirmed real onboard
+  active-high discrete LED, but excluded from chipGpios for the same PSRAM
+  pin-exclusion reason. Not tagged, for human review.
+
+No TX/RX conflicts were found: this board's TX=1, RX=3 (pins_arduino.h),
+neither of which coincide with any candidate button/LED pin (16, 17, 18,
+27, 34, 35).
+
+What was tagged
+-----------------
+GPIO27 -> ["digital_output","led_high","pwm_output"] (RED_LED, active-high,
+  pwm_output retained because it was already present on this pin).
+GPIO18 -> ["digital_output","led_high","pwm_output"] (YELLOW_LED, active-high,
+  pwm_output retained because it was already present on this pin).
+GPIO34 -> ["digital_input","button"] (RIGHT_PUTTON, i.e. right push button).
+GPIO35 -> ["digital_input","button"] (LEFT_BUTTON, i.e. left push button).

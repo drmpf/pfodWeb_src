@@ -1,0 +1,114 @@
+Arduino Ethernet (variants/arduino/avr/ethernet) — pin-audit research trail
+Date: 2026-07-14
+
+BOARD
+-----
+Arduino Ethernet Rev3 — a standalone board (NOT a shield) with an onboard
+WIZnet W5100 Ethernet controller and a microSD card slot, both on the SPI
+bus. ATmega328P, same classic pin layout as the Uno/standard family
+(D0-D13, A0-A5(+A6/A7 on some), SPI SS=D10/MOSI=D11/MISO=D12/SCK=D13).
+This board's onboard W5100 is used as pfodWeb's own TCP transport
+(board.json already has "connections": ["serial", "tcp"]), so keeping the
+W5100's SPI bus free of GPIO conflicts is functionally important, not
+just a labeling hygiene nicety.
+
+SOURCES CONSULTED
+------------------
+1. https://docs.arduino.cc/retired/boards/arduino-ethernet-rev3-without-poe/
+   — official Arduino retired-product documentation page for this exact
+   board. WebFetch of the rendered page returned empty (client-side
+   rendered SPA, tool couldn't extract text), but WebSearch snippet
+   indexing of this page (and a Google-cached quote match) surfaced the
+   exact text, later independently confirmed via source #2 below.
+
+2. https://raw.githubusercontent.com/arduino/docs-content/main/content/retired/01.boards/arduino-ethernet-rev3-without-poe/content.md
+   — PRIMARY SOURCE: the actual markdown source (arduino/docs-content
+   GitHub repo) that renders into the docs.arduino.cc page in source #1.
+   Fetched directly and successfully. Confirmed verbatim:
+     "There is a built-in LED connected to digital pin 9. When the pin
+     is HIGH value, the LED is on, when the pin is LOW, it's off."
+     "On most other arduino boards, this LED is found on pin 13. It is
+     on pin 9 on the Ethernet board because pin 13 is used as part of
+     the SPI connection."
+     "Pin 10 is reserved for the Wiznet interface, SS for the SD card
+     is on Pin 4."
+     "SPI: 10 (SS), 11 (MOSI), 12 (MISO), 13 (SCK). These pins support
+     SPI communication."
+     "Pins 10, 11, 12 and 13 are reserved for interfacing with the
+     Ethernet module and should not be used otherwise. This reduces the
+     number of available pins to 9, with 4 available as PWM outputs."
+   This is the authoritative confirmation used for the board.json edit.
+
+3. WebSearch cross-checks (Adafruit "Arduino Ethernet + SD Card" learning
+   guide, startingelectronics.org "Arduino Ethernet Board" article,
+   forum.arduino.cc "Arduino Ethernet LED 9" thread, various Ethernet
+   Shield product pages) — all consistent with source #2: D9 = built-in
+   LED (moved off D13 due to SPI conflict), D4 = SD-card SS, D10 =
+   W5100 SS, D11/D12/D13 = shared MOSI/MISO/SCK. No source contradicted
+   source #2. The forum thread did not add new polarity information
+   (a poster's anecdote about pin 13 flickering from SPI timing pulses,
+   irrelevant to D9's own polarity).
+
+4. This board's own variants/arduino/avr/ethernet/pins_arduino.h —
+   confirms LED_BUILTIN=9, PIN_SPI_SS=10/MOSI=11/MISO=12/SCK=13, and
+   digitalPinHasPWM(p) == (p==3||p==5||p==6||p==9||p==10||p==11) — i.e.
+   D9 is confirmed PWM-capable on this exact board/chip, so pwm_output
+   is kept alongside the led_high tag.
+
+FINDINGS / PER-PIN REASONING
+-----------------------------
+- D9 (LED_BUILTIN): CONFIRMED onboard status LED, active-high ("HIGH =
+  on, LOW = off", source #2, direct quote). Moved from the conventional
+  D13 specifically to avoid the SPI SCK conflict (D13 is SCK on this
+  board). Tagged capabilities: ["digital_output", "pwm_output",
+  "led_high"] (pwm_output kept because digitalPinHasPWM(9) is true per
+  this board's own header). This overrides the "standard" family's D13
+  LED convention, which does NOT apply here — this board.json already
+  had its own non-empty structure (connections override) so it does not
+  inherit the "standard" chip-level board.json's D13 chipGpios entry;
+  confirmed D13 gets no LED tag on this board (correct, since D13 is
+  SCK here and the real LED is on D9).
+
+- D10 (SPI SS / W5100 chip-select): CONFIRMED dedicated to the onboard
+  W5100 Ethernet controller ("Pin 10 is reserved for the Wiznet
+  interface", source #2). Excluded outright: capabilities: [] with a
+  note. This is functionally important since the W5100 is pfodWeb's own
+  TCP transport on this board (board.json "connections": ["serial",
+  "tcp"]) — a user picking D10 for their own use would break pfodWeb's
+  own network connection, not just an optional peripheral.
+
+- D4 (SD card chip-select): CONFIRMED dedicated to the onboard microSD
+  card slot ("SS for the SD card is on Pin 4", source #2). This is a
+  fixed, always-present part of the standalone Arduino Ethernet board
+  (not an optional shield add-on — this board IS the standalone
+  Ethernet board, the microSD slot is populated on every unit). Excluded
+  outright: capabilities: [] with a note. D4 is not otherwise mentioned
+  in the "pins 10-13 reserved" sentence (source #2), since that sentence
+  is specifically about the shared SPI-bus-adjacent pins that lose
+  general-purpose use; D4 is a separate, dedicated CS line documented
+  in a different sentence of the same source — same "EXCLUDE: SD-card
+  SPI" bucket per the pin-audit playbook's section 3 policy regardless.
+
+- D11 (MOSI), D12 (MISO), D13 (SCK): NOT excluded — left with their
+  normal auto-derived capabilities. Per pin-audit playbook policy
+  (section 3): a shared SPI bus is not excluded just because one
+  dedicated device (the W5100) also uses it; MOSI/MISO/SCK remain
+  usable for other user-attached SPI peripherals on the same bus, since
+  they are not single-purpose CS lines. Source #2's blanket "reserved...
+  should not be used otherwise" wording for pins 10-13 was NOT applied
+  literally to 11/12/13 — only D10 (the actual W5100-specific CS line)
+  was excluded, consistent with the explicit task instruction and the
+  playbook's established policy distinguishing dedicated CS lines from
+  the shared bus itself. This is a deliberate, documented departure from
+  the vendor doc's literal wording, not an oversight.
+
+SUMMARY OF CHANGE
+------------------
+Edited variants/arduino/avr/ethernet/board.json: added chipGpios entries
+for D9 (tagged led_high + pwm_output, confirmed active-high onboard
+LED_BUILTIN, relocated from D13 due to SPI conflict), D10 (excluded,
+dedicated W5100 chip-select), and D4 (excluded, dedicated onboard
+microSD card-slot chip-select). D11/D12/D13 (shared MOSI/MISO/SCK bus)
+deliberately left unchanged/available per playbook policy. All findings
+confirmed via the primary-source arduino/docs-content GitHub markdown
+file (source #2 above); no guesses were made.

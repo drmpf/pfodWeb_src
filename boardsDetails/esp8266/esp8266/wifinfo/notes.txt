@@ -1,0 +1,221 @@
+WifInfo (ESP8266) - button/LED tag and ADC refVolts research notes
+====================================================================
+Board: variants/esp8266/esp8266/wifinfo/ ("WifInfo" in boards.txt, id "wifinfo")
+Author/vendor: Charles-Henri Hallard (France) - French Teleinfo/Linky
+electricity-meter Wifi web server, built on a bare ESP-07/ESP-12 module.
+This variant's own pins_arduino.h header comment already cites the two
+primary sources used below (added 20 Nov 2015 by the author himself).
+
+URLs consulted and what each told us
+-------------------------------------
+1. https://hallard.me/wifinfo/
+   Author's own project blog post (French). Describes the board hardware
+   in prose: "une led RGB pour un visuel" (an RGB LED for visual feedback)
+   and "une 2eme LED classique rouge" (a second, plain/classic red LED).
+   No GPIO numbers given here. No onboard user pushbutton is mentioned
+   anywhere in the article - the text focuses on design rationale,
+   software, and the web interface. No ADC/voltage-divider circuitry is
+   mentioned.
+
+2. https://github.com/hallard/LibTeleinfo/blob/master/examples/Wifinfo/Wifinfo.h
+   (also fetched raw via raw.githubusercontent.com for verbatim text)
+   Current firmware header from the same author/repo linked in this
+   board's own pins_arduino.h. Gives exact pin numbers and polarity:
+     #define RGB_LED_PIN    14
+     #define RED_LED_PIN    12
+     #define LedRedON()  {digitalWrite(RED_LED_PIN, 1);}   -> active-high
+     #define LedRedOFF() {digitalWrite(RED_LED_PIN, 0);}
+   Also defines a conditionally-compiled BLU_LED_PIN aliased to GPIO1
+   ("GPIO 1 TX on board blue led"), active-low
+   (LedBluON(){digitalWrite(BLU_LED_PIN,0);}). GPIO1 is this board's
+   hardware UART0 TX0 pin, hard-reserved for the Serial pfod connection
+   by build_boards.js/chip-level board.json - any capability tag placed
+   on it would be silently discarded, so it was NOT tagged even though
+   the vendor firmware does drive an LED there.
+   No BUTTON/GPIO0 #define, and no digitalRead() of any pin, appears in
+   this header at all.
+
+3. https://raw.githubusercontent.com/hallard/LibTeleinfo/master/examples/Wifinfo/Wifinfo.ino
+   Main sketch, same repo. Confirms RGB_LED_PIN (GPIO14) is driven as a
+   single-pixel WS2812-style addressable RGB LED, not a 3-wire discrete
+   RGB LED:
+     NeoPixelBus<NeoRgbFeature, NeoEsp8266BitBang800KbpsMethod> rgb_led(1, RGB_LED_PIN);
+   -> tagged "led_neopixel" (one data pin, bit-banged WS2812 protocol,
+   NOT led_r/g/b_high discrete pins).
+   The sketch contains no digitalRead()/button-handling code anywhere,
+   corroborating the blog's silence on a user button. The only ADC
+   reference found is `int32_t adc;` in UpdateSysinfo() - declared but
+   never assigned, read, or calibrated - i.e. no evidence of any
+   resistor-divider compensation logic that would imply extended A0
+   range.
+
+4. https://github.com/hallard/WifInfo/blob/master/README.md
+   Software feature list and roadmap only. Links to Eagle schematic/board
+   image files (Wifinfo-sch.png, Wifinfo-brd.png) hosted in the repo but
+   does not itself describe GPIO assignments, button presence, or ADC
+   circuitry in text. The two firmware-source files above (items 2 and 3)
+   already independently agree with each other and with the blog post on
+   pin numbers/polarity, so the schematic PNGs were not separately
+   image-fetched for this pass.
+
+5. https://github.com/hallard/WifInfo (repo root) and
+   https://community.ch2i.eu/topic/61/... (French user forum thread)
+   Surfaced in search results as general project context (confirms the
+   board includes an optocoupler for Teleinfo, 3.3V regulator, RGB LED,
+   FTDI connector, second red LED, OLED I2C connector) but added no new
+   GPIO-level detail beyond items 1-3 above.
+
+Considered but not tagged, and why
+-----------------------------------
+- GPIO1 "blue LED" (BLU_LED_PIN, active-low per vendor firmware): NOT
+  tagged. GPIO1 is the hardware UART0 TX0 pin, hard-reserved by
+  build_boards.js for the Serial pfod connection on every ESP8266 board -
+  any other capability tag on it is silently discarded, so tagging it
+  would have no effect and could mislead a future reader of the JSON.
+  Documented in the board.json NOTE comment instead.
+- Onboard user button: NOT tagged. No source consulted (author's blog,
+  firmware header, firmware sketch, README) mentions or implements a
+  user pushbutton on this board. Only the RED_LED_PIN and RGB_LED_PIN
+  (and the TX-pin blue LED) are documented. GPIO0's generic
+  FLASH/BOOT-mode-entry behavior is a chip-level property already noted
+  in the inherited pinNotes, not board-specific evidence of a wired
+  pushbutton, so it was left untagged (matches the "never infer purely
+  from pin aliases/behavior" instruction).
+- ADC divider: NOT found. No schematic, datasheet, or forum post
+  describing a resistor divider on this board's A0 pin was located, and
+  the firmware's own single ADC variable is unused/uncalibrated -
+  contrast with e.g. NodeMCU/D1 Mini where an explicit 220k/100k divider
+  is documented and used. defaultRefVolts left at the chip-level default
+  of 1.0V.
+
+Summary
+-------
+Tagged GPIO12 as onboard active-high red LED (["digital_output",
+"pwm_output","led_high"]) and GPIO14 as onboard single-pixel NeoPixel-style
+RGB LED (["digital_output","led_neopixel","pwm_output"]) per hallard.me
+and hallard/LibTeleinfo firmware sources; no button found so none tagged;
+GPIO1's vendor "blue LED" left untagged as a hard-reserved TX pin; ADC
+defaultRefVolts left at chip-level default 1.0V (no divider evidence).
+
+
+====================================================================
+[2026-07-12] Dedicated-hardware pin-exclusion audit (GPIO12/14 common.h
+fix re-verification + GPIO13 teleinfo-RX discovery)
+====================================================================
+
+Part A - re-verification of the earlier same-session common.h fix
+-------------------------------------------------------------------
+Before this pass began, a network-wide contamination sweep (earlier in
+this same session) had found that this board's pins_arduino.h previously
+included "../generic/common.h", whose default SPI aliases assign
+MISO=12 and SCK=14 - colliding exactly with this board's confirmed
+LEDs (GPIO12 led_high, GPIO14 led_neopixel). build_boards.js
+unconditionally appends spi_miso/spi_sck capabilities to whatever GPIO
+each alias points at (see pfodWeb_src/build_boards.js lines ~697-703),
+so those two LEDs' capability lists were being silently contaminated
+with spi_miso/spi_sck tags they should not have.
+
+Re-read pins_arduino.h in full this pass and confirmed the fix is
+correctly in place: the file no longer includes ../generic/common.h,
+and only reproduces SS=15 and A0=17 directly (both non-colliding).
+MISO and SCK are not declared anywhere in the file. Cross-checked
+against build_boards.js's actual parser logic (consts.MISO/consts.SCK
+are read via a plain "static const uint8_t NAME = value;" regex scan;
+since neither name is declared, both resolve to undefined, so the
+g===miso / g===sck checks can never match any real GPIO number) -
+confirmed structurally, not just by trusting the file's own comment.
+FIX CONFIRMED CORRECT AND STILL IN PLACE. No further change needed for
+this part.
+
+Part B - new finding: GPIO13 is a dedicated teleinfo receive pin
+-------------------------------------------------------------------
+This pass's brief also asked to re-review hallard's firmware
+specifically for any OTHER onboard peripheral not yet covered -
+in particular a dedicated UART/opto-isolator input for the utility
+meter "teleinfo" data stream, beyond the standard TX/RX pins.
+
+Sources fetched this pass:
+1. https://raw.githubusercontent.com/hallard/LibTeleinfo/master/examples/Wifinfo/Wifinfo.ino
+   Fetched again with a pointed prompt asking specifically about
+   SoftwareSerial usage and teleinfo/TIC serial reception. Found the
+   board reads teleinfo via the CHIP'S OWN hardware UART0, swapped to
+   its alternate pin position via Serial.swap(). Verbatim comments
+   quoted directly from the file:
+     "Teleinfo is connected to RXD2 (GPIO13) to avoid conflict when
+     flashing, this is why we swap RXD1/RXD1 to RXD2/TXD2"
+     "Note that TXD2 is not used teleinfo is receive only"
+   Also confirmed: Serial.begin(1200, SERIAL_7E1); then Serial.swap();
+   -> ESP8266's UART0 swap moves TX0/RX0 from GPIO1/GPIO3 to
+   GPIO15/GPIO13 respectively. GPIO13 is therefore the physical pin the
+   opto-isolated teleinfo signal is wired into on this board's PCB (the
+   swap exists specifically so flashing over the primary GPIO1/3 UART
+   position isn't disturbed by the teleinfo hardware) - GPIO15 (TXD2)
+   is explicitly confirmed unused since teleinfo is receive-only.
+2. https://raw.githubusercontent.com/hallard/LibTeleinfo/master/examples/Wifinfo/Wifinfo.h
+   Re-fetched, re-confirmed only RGB_LED_PIN/RED_LED_PIN/BLU_LED_PIN
+   are defined here - no teleinfo pin macro in this file (it's declared
+   only via the Serial.swap() mechanism in the .ino, not a #define).
+3. https://raw.githubusercontent.com/hallard/LibTeleinfo/master/examples/Wifinfo/config.h
+   Checked for a possible separate teleinfo-pin config macro - contains
+   only WiFi/OTA/emoncms/Jeedom config structures, no GPIO definitions.
+   Dead end, but worth recording so it isn't re-checked next time.
+4. https://hallard.me/wifinfo/ (author's blog, French)
+   Re-fetched looking specifically for a GPIO number for the
+   optocoupler/teleinfo input or for GPIO15 usage. Confirms the board
+   has "L'optocoupleur pour la téléinfo" (the optocoupler for teleinfo)
+   but gives no GPIO number in the prose - refers the reader to the
+   linked Eagle schematic/PCB files instead. No new information beyond
+   the firmware source's own explicit RXD2/GPIO13 comment.
+
+Decision: GPIO13 EXCLUDED per the "communication bus wired exclusively
+to a specific onboard/always-attached chip" policy bucket (this project's
+board-variant pin-audit playbook, section 3) - directly analogous to the
+already-established precedent on the "wifi_slot" ESP8266 board, where
+GPIO15 (its onboard 74HC4052 mux's channel-select/counter-clock line)
+was fully excluded from chipGpios and from pins_arduino.h aliases for
+the identical reason (a shared common.h's default SPI alias pointed at
+a genuinely-dedicated pin). Applied the same mechanism here:
+  - pins_arduino.h: removed "static const uint8_t D7 = 13;" (the
+    board-level D-numbering alias) and removed "static const uint8_t
+    MOSI = 13;" (the shared common.h boilerplate alias) - GPIO13 now
+    has zero aliases in this file.
+  - board.json: removed the "13" entry from chipGpios entirely (so it
+    is not re-added as a generic chip-default GPIO), and added a "13"
+    pinNotes entry documenting the exclusion reason for a human reader
+    (matches the wifi_slot board's convention of keeping a pinNotes
+    entry for an excluded GPIO even though it no longer appears in the
+    generated pin list).
+  - Added a dated pfodWeb NOTE comment block at the top of board.json
+    (and a shorter one directly in pins_arduino.h) explaining the
+    finding, quoting the verbatim vendor firmware comment as the
+    evidence, and cross-referencing this exclusion as separate from,
+    and in addition to, the earlier same-session GPIO12/14 common.h
+    collision fix (both fixes now coexist correctly in the same file).
+  - GPIO15 (D8, SS) was NOT touched - the firmware explicitly states
+    TXD2/GPIO15 is not used by teleinfo, so no exclusion evidence
+    exists for it, unlike wifi_slot's GPIO15 which had positive
+    evidence of dedicated use.
+Per instruction, no literal old declaration text was left inside any
+comment and no line was commented out - both removed lines were
+deleted outright, with the reasoning described in plain English only.
+
+Considered but not further changed
+-----------------------------------
+- GPIO1 "blue LED" / hard-reserved TX0: unchanged, already correctly
+  left untagged and hard-reserved from the earlier pass (re-confirmed
+  this pass, no new evidence found).
+- Onboard user button, ADC divider: unchanged, still NOT FOUND per the
+  original 2026-07-11 research (re-confirmed, no new sources surfaced
+  either this pass).
+
+Summary of this pass
+---------------------
+Part A: the earlier same-session GPIO12/GPIO14 common.h MISO/SCK
+collision fix was re-verified and confirmed still correct and in place
+- no further change needed there.
+Part B: found and fixed a previously-undiscovered dedicated-hardware
+pin, GPIO13 (teleinfo opto-isolated serial receive input, swapped
+hardware UART0 RXD2) - excluded it from both pins_arduino.h (dropped
+its D7 and MOSI aliases) and board.json's chipGpios map, per the
+vendor firmware's own explicit comment. GPIO15 (the paired, but
+confirmed-unused, TXD2 position) was left unchanged.

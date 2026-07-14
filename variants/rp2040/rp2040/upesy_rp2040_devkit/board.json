@@ -1,0 +1,65 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases. uPesy's own product documentation describes only a
+  // "button to restart the card" (a hardware RESET button wired to the
+  // RP2040's RUN pin, like the official Pico's un-populated RUN header
+  // pad) — that is not a GPIO-readable button, so there is no pin to
+  // attach a "button" capability to. No BOOTSEL-equivalent user button
+  // beyond the standard RP2040 BOOTSEL/flash-CS trick is documented
+  // (and, as on every other RP2040 board in this repo, BOOTSEL isn't a
+  // numbered GPIO anyway — see rpipico/board.json's note for the full
+  // rationale). Out of scope, not a missed tag.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED / LED_BUILTIN) is this board's onboard LED — this
+  // variant's pins_arduino.h is a verbatim copy of the official Pico's
+  // (confirmed identical against earlephilhower/arduino-pico's own
+  // variants/upesy_rp2040_devkit/pins_arduino.h, including the unedited
+  // "taken from the Pico datasheet" header comment), and uPesy's own
+  // product documentation confirms the board ships with "a program ...
+  // that blinks the built-in blue LED" and that their quickstart guide's
+  // Blink sketch for this exact board uses the standard Arduino idiom
+  // `digitalWrite(LED_BUILTIN, HIGH); // turn the LED on` — i.e.
+  // active-high, matching the rpipico precedent. digital_input dropped
+  // to match this repo's established led_high/led_low precedent for
+  // dedicated onboard LED pins (see rpipico/board.json GPIO25,
+  // esp32/esp32c5/XIAO_ESP32C5 GPIO27, esp8266/esp8266/wiolink GPIO2) —
+  // pwm_output kept since arduino-pico's analogWrite() works on any
+  // RP2040 GPIO, enabling LED brightness dimming. No collision with any
+  // SPI/Wire alias on this board (SPI0/SPI1 use GPIO12-19, Wire0/Wire1
+  // use GPIO4/5/22/23) so no build_boards.js bus-capability collision to
+  // fix.
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard user LED, active-high, confirmed via uPesy's own product documentation and quickstart Blink example (see pfodWeb NOTE above)" }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

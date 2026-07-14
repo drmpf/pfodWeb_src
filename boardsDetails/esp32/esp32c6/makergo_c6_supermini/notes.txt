@@ -1,0 +1,90 @@
+Board: MakerGO ESP32-C6 SuperMini (variants/esp32/esp32c6/makergo_c6_supermini)
+Audit: dedicated-hardware pin-exclusion audit, 2026-07-12
+
+Flagged by discovery sweep for:
+  static const uint8_t PIN_RGB_LED = 8;
+  static const uint8_t RGB_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
+  #define WIRE1_PIN_DEFINED
+  static const uint8_t SDA1 = 6;
+  static const uint8_t SCL1 = 7;
+
+Sources consulted:
+- pins_arduino.h itself (this variant): header comment "Arduino Pin
+  Definitions for MakerGO ESP32 C6 SuperMini" with a silkscreen-accurate
+  pinout diagram labelling physical pin 11 / GPIO8 as "RGB_LED" and
+  physical pin 12 / GPIO9 as "BOOT".
+- WebSearch "MakerGo ESP32-C6 SuperMini pinout RGB LED boot button" and
+  "MakerGo C6 SuperMini NeoPixel GPIO8 boot button GPIO9" — multiple
+  independent sources (Mischianti, espboards.dev, Cirkit Designer docs,
+  CircuitPython board page) consistently describe: an onboard
+  addressable WS2812 RGB LED on GPIO8, and a physical BOOT button on
+  GPIO9 used to enter download mode.
+- WebFetch https://www.espboards.dev/esp32/esp32-c6-super-mini/ —
+  confirms "a WS2812 RGB LED... connected to GPIO8", and additionally
+  documents a separate "Status LED - User Controllable" on GPIO15
+  (matches this file's own LED_BUILTIN=15 "blue LED" comment). Initially
+  reported GPIO6/GPIO7 as "JTAG-related" pins, which is consistent with
+  the ESP32-C6's shared low-power-domain pin mux (MTMS/MTDI/MTCK/MTDO
+  and LP_I2C both live on GPIO4-7 depending on config) rather than
+  indicating a separate onboard peripheral.
+- Sibling entries audited earlier this session:
+  - esp32c6/esp32c6 (chip-level generic entry): established that
+    GPIO6/GPIO7 (SDA1/SCL1) are the ESP32-C6's fixed LP_I2C pin mux
+    (LP_GPIO2/LP_I2C_SDA, LP_GPIO3/LP_I2C_SCL per Espressif's
+    ESP32-C6-DevKitC-1 user guide), not dedicated onboard hardware.
+  - waveshare_esp32_c6_zero: near-identical pins_arduino.h layout
+    (PIN_RGB_LED=8, SDA1=6/SCL1=7, GPIO9 silkscreened "BOOT"); same
+    conclusions reached there for GPIO8 (led_neopixel), GPIO9 (button),
+    and GPIO6/7 (pin-mux, not dedicated hardware) — used as the direct
+    template for this board's board.json.
+  - makergo_c3_supermini: sibling "MakerGo SuperMini" family board with
+    a pins_arduino.h that declares BOOT_BUILTIN=9 directly, supporting
+    the "MakerGo SuperMini boards have a BOOT button on GPIO9" pattern
+    applied here.
+
+Reasoning / findings:
+- GPIO8 (PIN_RGB_LED/RGB_BUILTIN): CONFIRMED genuine onboard WS2812
+  addressable RGB LED for this exact product (multiple independent
+  sources). Tagged capabilities ["digital_output","led_neopixel",
+  "pwm_output"] in the new board.json override.
+- GPIO9 (silkscreen "BOOT" in this file's own pinout diagram):
+  CONFIRMED genuine onboard physical BOOT button. Tagged capabilities
+  ["digital_input","button"].
+- GPIO6/GPIO7 (SDA1/SCL1): same "LP-domain pin-mux, not dedicated
+  onboard hardware" conclusion as the sibling esp32c6/esp32c6 and
+  waveshare_esp32_c6_zero entries — no onboard I2C peripheral found for
+  this board. Left as general-purpose GPIO, unchanged from chip-level
+  defaults.
+- Alias-collision check (build_boards.js unconditionally appends
+  i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck to any GPIO matching
+  this variant's SDA/SCL/SS/MOSI/MISO/SCK aliases, regardless of
+  chipGpios): this variant's aliases are TX=16, RX=17, SDA=20, SCL=19,
+  SS=4, MOSI=5, MISO=6, SCK=7. Neither GPIO8 nor GPIO9 collides with any
+  of those — no contamination found, no pins_arduino.h edit needed.
+  (GPIO6 is this board's own MISO alias and GPIO7 its own SCK alias —
+  expected, ordinary Arduino pin-role aliases, not a conflict.)
+- GPIO15 (LED_BUILTIN, "blue LED" per this file's own comment):
+  espboards.dev independently confirms a second, separate
+  user-controllable status LED on GPIO15. Left untagged/unchanged in
+  this pass — out of scope (not part of the discovery-sweep flag or the
+  opportunistic BOOT-button check), and no source found here documents
+  its drive polarity (active-high vs active-low), so a led_high/led_low
+  tag would be a guess rather than a confirmed fact. Flagged here for a
+  future dedicated LED-retrofit pass.
+
+Files written:
+- variants/esp32/esp32c6/makergo_c6_supermini/board.json (new override,
+  full copy of the chip-level esp32c6/board.json default with GPIO8 and
+  GPIO9 chipGpios entries updated per the findings above).
+- boardsDetails/esp32/esp32c6/makergo_c6_supermini/notes.txt (this file).
+
+pins_arduino.h was NOT modified — no alias collision was found requiring
+a deletion.
+
+One-line summary: GPIO8 is a confirmed onboard WS2812 NeoPixel (tagged
+led_neopixel) and GPIO9 is a confirmed onboard BOOT button (tagged
+button); GPIO6/GPIO7 (SDA1/SCL1) remain general-purpose, confirmed as
+ESP32-C6 LP-domain pin-mux rather than dedicated onboard hardware, same
+as the sibling esp32c6/esp32c6 and waveshare_esp32_c6_zero audits; no
+alias collisions found on GPIO8/GPIO9 so no pins_arduino.h edit was
+needed.

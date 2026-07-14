@@ -1,0 +1,136 @@
+Board: newsan_archi (chip: rp2040)
+Audit date: 2026-07-12
+Task: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion audit.
+
+SUMMARY: board.json created. Tagged 4 pushbuttons (GPIO23/10/25/19,
+PIN_BUTTON_A/B/C/D) with full digital_input/digital_output/pwm_output/button
+capabilities, and the onboard 64-pixel NeoPixel array (GPIO24, PIN_NEOPIXEL)
+with digital_output/led_neopixel. PIN_BUZZER (GPIO22) left untouched — no
+"buzzer" PinType exists in this repo's tagging vocabulary (out of scope per
+task instructions).
+
+--- Sources consulted ---
+
+1. This board's own pins_arduino.h
+   (variants/rp2040/rp2040/newsan_archi/pins_arduino.h). Declares:
+     PIN_BUTTON_A (23u), PIN_BUTTON_B (10u), PIN_BUTTON_C (25u),
+     PIN_BUTTON_D (19u), PIN_NEOPIXEL (24u), NUM_NEOPIXEL 64,
+     PIN_RGB = PIN_NEOPIXEL, PIN_BUZZER (22u).
+   File header comment cites: "Pin definitions taken from:
+   https://archikids.com.ar/documentacion" — i.e. the vendor's own
+   product-documentation portal.
+
+2. raw.githubusercontent.com/earlephilhower/arduino-pico/master/variants/
+   newsan_archi/pins_arduino.h — fetched via WebFetch. Confirmed
+   byte-for-byte identical to the local copy in this repo (same four
+   buttons, same NeoPixel/buzzer pins, same "archikids.com.ar" source
+   citation). This establishes that the local pins_arduino.h is the
+   genuine upstream arduino-pico core file, not a local guess or a stale
+   fork — i.e. it is the actual board-support source real sketches for
+   this board would compile against, contributed upstream (presumably by
+   Newsan/Archi-Kids or a close collaborator, given the direct citation of
+   their own documentation URL).
+
+3. https://archikids.com.ar/documentacion — attempted directly via
+   WebFetch. The site is a JavaScript SPA; WebFetch could only retrieve
+   the page title "Archi-Kids" with no rendered body content. Could not
+   independently confirm button polarity (active-high/low), pull-up
+   configuration, or get a hardware schematic from this source despite
+   multiple attempts (root page and /documentacion path both attempted).
+
+4. WebSearch: "Newsan Archi consola educativa botones RGB pixel
+   Argentina" and related queries. Found multiple independent Argentine
+   press/government sources confirming ARCHI is a REAL, currently
+   manufactured physical device (not vaporware, not a hypothetical dev
+   board):
+     - El Cronista (cronista.com/infotechnology/actualidad/...):
+       "Newsan inició la producción de la primeras placas ARCHI, 100%
+       desarrolladas en Tierra del Fuego" — describes ARCHI as "un
+       dispositivo portátil y programable" (a portable, programmable
+       device), letting kids "experimentar, aprender y jugar" (experiment,
+       learn, and PLAY) and fostering learning in "electrónica,
+       programación, computación, VIDEOJUEGOS, robótica" (electronics,
+       programming, computing, VIDEO GAMES, robotics). First 5,000 boards
+       produced at Newsan's own design/development lab in Ushuaia, Tierra
+       del Fuego.
+     - Infobae (infobae.com/economia/networking/...): matching coverage
+       of the same production-start announcement.
+     - Gobierno de Tierra del Fuego (tierradelfuego.gob.ar/blog/...):
+       "La Agencia de Innovación recibió las primeras placas ARCHI
+       producidas por Newsan" — independent government confirmation of
+       the same production run.
+   None of these press sources give GPIO-level technical detail, but they
+   independently corroborate that ARCHI is a real handheld
+   "play video games" educational device — a physical form consistent
+   with four game-style buttons (A/B/C/D) plus a 64-pixel NeoPixel array
+   functioning as a simple display (e.g. an 8x8 matrix), plus a buzzer for
+   sound.
+
+5. Searched for an independent schematic, KiCad source, or third-party
+   pinout writeup (GitHub, hobbyist forums, Mercado Libre, etc.) — none
+   found. This appears to be a low-volume, Argentina-market-only
+   educational product with no international hobbyist community coverage.
+
+--- Per-pin reasoning ---
+
+GPIO23 (PIN_BUTTON_A): confirmed onboard pushbutton via upstream
+pins_arduino.h + press corroboration above. Ordinary GPIO (not
+capacitive-only). Tagged: digital_input, digital_output, pwm_output,
+button — matches this repo's established ordinary-pushbutton precedent
+(vccgnd_yd_rp2040 GPIO24 PIN_USRKEY).
+
+GPIO10 (PIN_BUTTON_B): same reasoning as GPIO23. NOTE: this board's own
+pins_arduino.h ALSO declares `PIN_SPI1_SCK (10u)` — the same GPIO number.
+This is a vendor-side dual-aliasing quirk in the upstream file itself
+(SPI1 is presumably unused/not broken out on this board, and GPIO10 was
+repurposed for Button B). build_boards.js's unconditional SPI-alias
+auto-append (documented precedent in wiznet_5500_evb_pico/board.json,
+fires regardless of any chipGpios override) will still attach a
+"spi_sck" bus-role tag to GPIO10 on top of the button capability set
+declared here. This is expected/inherent to the vendor's own pinout, not
+a bug introduced by this board.json — left as-is, flagged here for
+visibility. Not "fixed" (out of scope: task only covers button/LED/
+NeoPixel tagging + dedicated-hardware exclusion, not resolving vendor
+pin-reuse quirks).
+
+GPIO25 (PIN_BUTTON_C): same reasoning as GPIO23.
+
+GPIO19 (PIN_BUTTON_D): same reasoning as GPIO23.
+
+GPIO24 (PIN_NEOPIXEL, NUM_NEOPIXEL=64): confirmed onboard 64-pixel
+addressable NeoPixel array via upstream pins_arduino.h. Output-only data
+line. Tagged: digital_output, led_neopixel. pwm_output deliberately
+OMITTED — a NeoPixel data line carries a bit-banged/PIO timing-critical
+protocol, not a real PWM duty-cycle signal, so analogWrite() on this pin
+would not do anything meaningful; matches the vccgnd_yd_rp2040 GPIO23
+precedent (which also omits pwm_output for its NeoPixel pin), rather
+than the alternate sparkfun_promicrorp2040/sparkfun_thingplusrp2350
+precedent which keeps pwm_output on the reasoning that analogWrite()
+"works on any GPIO" — judged the vccgnd precedent more appropriate here
+given the much larger 64-pixel array (clearly PIO/library-driven, not a
+simple dimmable LED).
+
+GPIO22 (PIN_BUZZER): OUT OF SCOPE. No "buzzer" PinType exists in this
+repo's tagging vocabulary (per task instructions). Left untouched at
+chip-level defaults (digital_input/digital_output/pwm_output apply
+unchanged via the empty chip-level chipGpios fallback) — this is
+harmless and actually usable, since a buzzer can be driven via
+digitalWrite() or analogWrite()-based tone-style code without any special
+capability tag.
+
+--- Gaps / unconfirmed items ---
+
+- Button electrical polarity (active-high vs active-low) and pull-up/
+  pull-down configuration: NOT confirmed. archikids.com.ar/documentacion
+  (the vendor's own cited source) is a JS SPA that could not be scraped.
+  No schematic found. This does not block the "button" capability tag
+  itself (this repo's vocabulary has no separate button_high/button_low
+  tag — only led_high/led_low distinguishes LED polarity), so tagging
+  proceeded despite this gap. Flagged for any future firmware/example
+  work targeting this board.
+- No independent (non-upstream-pins_arduino.h) confirmation of the exact
+  physical layout/labeling of the four buttons, or of the NeoPixel
+  array's physical shape (e.g. whether it is genuinely an 8x8 grid vs.
+  some other 64-pixel arrangement) — inferred only from NUM_NEOPIXEL=64
+  and the "video games" press description, not directly confirmed.

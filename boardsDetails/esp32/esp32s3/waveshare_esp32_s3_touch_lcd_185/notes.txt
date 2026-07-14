@@ -1,0 +1,82 @@
+Board: waveshare_esp32_s3_touch_lcd_185 (Waveshare "ESP32-S3-Touch-LCD-1.85", standard non-"box" variant)
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\waveshare_esp32_s3_touch_lcd_185
+Date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+1. https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.85
+   Attempted WebFetch - returned HTTP 403 Forbidden (blocked). Not used as a source.
+
+2. https://www.waveshare.com/esp32-s3-touch-lcd-1.85.htm
+   Attempted WebFetch - returned HTTP 403 Forbidden (blocked). Not used as a source.
+
+3. https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85
+   Fetched successfully. Onboard Buttons and LEDs section lists exactly four
+   control elements: "RESET button (#22)", "BOOT button (#23)", "Power
+   indicator (#17)", "Charging indicator (#20) - active during charging,
+   off when fully charged". No onboard user-programmable LED mentioned.
+   Also confirms UART on GPIO43/GPIO44, I2C on GPIO10/GPIO11, USB on
+   GPIO19/GPIO20, and a TCA9554PWR GPIO expander for extra I/O - matching
+   the schematic (source 5 below).
+
+4. https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85/Resources-And-Documents
+   Fetched successfully. Provided the direct link to the schematic PDF
+   (source 5) and confirmed no other GPIO-mapping document exists for
+   this board beyond the schematic itself.
+
+5. https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.85/ESP32-S3-Touch-LCD-1.85.pdf
+   Fetched and read directly as a PDF (text+diagram extraction). This is
+   the primary evidence source. Key findings from the extracted netlist:
+     - Net "IO0"/"GPIO0" (ESP32-S3R8, U5, pin 5) is directly tied to
+       pushbutton "Key2" pin 2, with 10K pull-up R28 and debounce cap C27
+       to 3V3/GND - a standard active-low BOOT/download pushbutton
+       circuit. Key2 pin 1 is GND (confirmed in the GND net list).
+     - Net "RESET" is tied to U5 pin 4 (CHIP_PU / EN, not a GPIO) and to
+       pushbutton "Key3" pin 2 (with pull-up R29 / cap C28). Key3 is the
+       physical RESET button; not a GPIO so no capability tag applies.
+     - LED1 ("Red LED0602") is wired through R6 to pin 9 ("STAT") of the
+       battery-charger IC U1 (ETA6098) - a hardwired charge-status
+       indicator, not GPIO-driven.
+     - LED2 ("Red LED0602") has its cathode tied to GND (confirmed in the
+       GND net list) and anode via R3 toward the power rail - a hardwired
+       power-on indicator, not GPIO-driven.
+     - A third pushbutton "Key1" exists (pin 1 also GND, confirmed in the
+       GND net list) but its pin-2 net could not be cleanly isolated from
+       the flattened/OCR'd PDF text extraction - the surrounding text
+       block was too large and ambiguous to assign a single confident net
+       name. Nearby labelled nets on the same schematic sheet include
+       "Key_BAT" (-> GPIO6), "BAT_Control" (-> GPIO7) and "BAT_ADC" (->
+       GPIO8), which together look like a battery power-latch circuit
+       (long-press power button + MCU-held power latch), not a general-
+       purpose pushbutton. This is consistent with Key1 NOT being listed
+       as one of the two documented "Onboard buttons" in source 3 (only
+       RESET and BOOT are listed there).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- Key3 / RESET button: wired to CHIP_PU/EN (not a GPIO at all) - cannot
+  be tagged under this scheme. No judgment call needed; this is simply
+  not a GPIO pin.
+- Key1 (third pushbutton, likely a battery power-on/latch button):
+  candidate net possibly GPIO6 ("Key_BAT"), but this could NOT be
+  confirmed with confidence from the extracted schematic text (the
+  relevant net-list block was ambiguous/unparseable). Per task
+  instructions this is treated as "cannot find solid confirming
+  evidence" - NO GUESS was made; GPIO6 was deliberately left untagged.
+  A human reviewer with the original (non-flattened) schematic PDF could
+  confirm this quickly by looking at the top-left "Type-C Interface" /
+  battery-management block of sheet 1, near component references R1, R2,
+  R7, R10, D1, D4, Key1.
+- LED1 (charge indicator) and LED2 (power indicator): both confirmed
+  hardwired to non-GPIO nets (charger IC STAT pin, and GND/power rail
+  respectively) - not GPIO-driven, correctly left untagged, not a
+  judgment call.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input", "button"] (BOOT pushbutton "Key2", confirmed
+active-low, GND-referenced, standard ESP32 BOOT/download button that
+also functions as a normal digital input post-boot). No LED tag applied
+anywhere on this board. board.json created fresh (none existed before)
+as a full copy of variants/esp32/esp32s3/board.json with only GPIO0's
+capabilities changed, plus a NOTE comment.

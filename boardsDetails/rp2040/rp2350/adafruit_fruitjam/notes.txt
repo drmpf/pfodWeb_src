@@ -1,0 +1,125 @@
+Adafruit Fruit Jam (RP2350B) — dedicated-hardware pin-exclusion / button-LED-NeoPixel audit
+============================================================================================
+Date: 2026-07-13
+Board dir: variants/rp2040/rp2350/adafruit_fruitjam/
+Chip: rp2350 (RP2350B, 48-GPIO variant, PICO_RP2350A 0 per this board's own pins_arduino.h)
+boards.txt id: adafruit_fruitjam  ->  "Adafruit Fruit Jam RP2350"  (variants/rp2040/boards.txt:7130)
+Product: Adafruit product #6200, adafruit.com/product/6200 / adafruit.com/fruitjam
+
+SOURCES CONSULTED
+-----------------
+1. variants/rp2040/rp2350/adafruit_fruitjam/pins_arduino.h (this board's own header — fully
+   self-contained, no #include; bespoke #define set for LEDs, buttons, USB host, SDIO, I2S,
+   DVI/HSTX, ESP32-C6 co-processor link, PSRAM; only D0/D4/D5/D6/D7/D10/D20/D21/D29/D32/A0-A5/
+   SDA/SCL are declared as `static const uint8_t` aliases — everything else is a plain #define
+   only, so build_boards.js's parseEsp32Consts() never harvested it before this board.json).
+2. variants/rp2040/rp2350/board.json (chip-level RP2350 defaults — chipGpios: {} deliberately
+   empty, full rationale in that file's comments).
+3. variants/rp2040/rp2350/pimoroni_explorer/board.json (this session's precedent for a complex
+   multi-purpose RP2350B board with onboard LCD/audio/buttons — read before writing this file;
+   followed its pattern of adding chipGpios entries for #define-only dedicated pins so the
+   Designer's pin picker documents *why* each one is present/absent rather than silently
+   omitting it).
+4. variants/rp2040/rp2350/wiznet_5500_evb_pico2/board.json (secondary precedent for the
+   capabilities:[] + descriptive-note style used for dedicated-hardware GPIOs).
+5. https://learn.adafruit.com/adafruit-fruit-jam/pinout — authoritative per-GPIO vendor pinout
+   reference. Confirmed: GPIO0/BUTTON1 ("UF2 BOOT button, also board.BUTTON1"), GPIO4/BUTTON2,
+   GPIO5/BUTTON3; GPIO29 onboard LED ("anode connected to 3.3V, cathode to GPIO29... setting
+   the pin to LOW results in the LED turning on... This is unusual and is the reverse from most
+   other boards") ALSO shared with an onboard IR receiver ("IR In" silkscreen, CircuitPython
+   board.IR, same GPIO29); GPIO32 NeoPixels (5x, 3.3V powered); GPIO20/21 = main I2C0 SDA/SCL,
+   also the STEMMA QT connector; USB host D+/D-/5V-enable = GPIO1/2/11; DVI/HSTX 8 diff-pair
+   lines = GPIO12-19; I2S audio (TLV320DAC3100) = GPIO23 (IRQ, dual-purpose with ESP32_GPIO0),
+   24 (DIN), 25 (MCLK), 26 (BCLK), 27 (WS); GPIO22 = shared reset for ESP32-C6 AND the audio
+   codec; microSD = GPIO33 (card detect), 34 (CLK/SCK), 35 (CMD/MOSI), 36 (DAT0/MISO), 37
+   (DAT1), 38 (DAT2), 39 (DAT3/CS); A0-A5 = GPIO40-45, "Accessible only on JST-PH connector".
+6. https://learn.adafruit.com/adafruit-fruit-jam/overview (feature list: DVI/HSTX video, 2-port
+   USB-A host hub, "I2S stereo headphone + mono speaker via the TLV320DAC3100", "Micro SD card
+   with SPI or SDIO", "5x NeoPixels", "3x tactile switches", "RP2350B dual 150MHz Cortex M33",
+   "ESP32-C6 for WiFi / Internet connectivity", "16 MB Flash + 8 MB PSRAM").
+7. https://learn.adafruit.com/adafruit-fruit-jam/i2c-3 — confirms the onboard I2C0 bus (GPIO20/
+   21, the same STEMMA QT bus) also reaches the onboard TLV320DAC3100 codec (I2C address 0x18)
+   and, when a display is connected, EDID readout over the DVI port (0x50/0x3a/0x54) — all
+   appear together in a single i2c.scan() on the default Wire bus.
+8. Targeted web search for Fruit Jam button pull direction — found CircuitPython example code
+   using `button.switch_to_input(pull=digitalio.Pull.UP)` for BUTTON1/2/3, confirming active-low
+   with internal pull-up (matches the silicon default for a simple ground-referenced tactile
+   switch, no external pull resistor implied).
+9. adafruit.com/product/6200 + github.com/adafruit/Adafruit-Fruit-Jam-PCB (product page /
+   schematic repo — confirmed to exist via web search, used to corroborate the feature list;
+   full schematic PDF/KiCad files not individually fetched since the learn-guide pinout page
+   already gives per-GPIO ground truth and is the more authoritative day-to-day reference).
+
+PER-PIN REASONING (chipGpios entries added)
+--------------------------------------------
+Buttons (input-only, active-low, internal pull-up):
+  GPIO0  -> digital_input + button   (PIN_BUTTON1 / board.BUTTON1, also doubles as UF2 BOOT button)
+  GPIO4  -> digital_input + button   (PIN_BUTTON2 / board.BUTTON2)
+  GPIO5  -> digital_input + button   (PIN_BUTTON3 / board.BUTTON3)
+
+LED (dual-purpose, reversed polarity):
+  GPIO29 -> digital_input + digital_output + led_low
+    Confirmed reversed wiring (anode->3.3V, cathode->GPIO29): LOW = on, HIGH = off ("This is
+    unusual and is the reverse from most other boards" — vendor's own words). ALSO wired to an
+    onboard IR receiver (board.IR) on the exact same physical pin. No "IR receiver" capability
+    exists in this codebase's vocabulary, so digital_input was kept alongside led_low (rather
+    than dropped, as would be done for a plain single-purpose LED) to reflect the real, sourced,
+    second function of this pin.
+
+NeoPixel:
+  GPIO32 -> digital_output + led_neopixel   (PIN_NEOPIXEL, NUM_NEOPIXEL=5, 3.3V powered)
+
+Dedicated/excluded hardware (capabilities: [] — #define-only in pins_arduino.h, no
+static-const alias, so none of these reached the Designer's pin picker before this board.json
+existed; added explicitly with notes per the pimoroni_explorer/wiznet precedent):
+  GPIO1, GPIO2   -> onboard USB host hub D+/D-
+  GPIO3          -> ESP32-C6 co-processor SPI-hosted-link busy/ready (SPIWIFI_ACK)
+  GPIO8, GPIO9   -> ESP32-C6 co-processor UART1 TX/RX (SerialESP32 = Serial1)
+  GPIO11         -> onboard USB host hub 5V-enable
+  GPIO12-19      -> DVI/HSTX video output (4 differential pairs: CK, D0, D1, D2)
+  GPIO22         -> shared reset: ESP32-C6 co-processor AND TLV320DAC3100 audio codec
+  GPIO23         -> I2S codec IRQ, dual-purpose with ESP32-C6 GPIO0 bootstrap pin
+  GPIO24-27      -> I2S audio data/mclk/bitclk/wordsel to the TLV320DAC3100 codec
+  GPIO28, 30, 31 -> ESP32-C6 co-processor SPI1 MISO/SCK/MOSI
+  GPIO33-39      -> onboard microSD card slot (detect, SPI0/SDIO clock, cmd/mosi, dat0/miso,
+                    dat1, dat2, dat3/cs)
+  GPIO46         -> ESP32-C6 co-processor SPI1 chip-select (SPIWIFI_SS)
+  GPIO47         -> onboard 8MB PSRAM chip-select
+
+KEPT general-purpose (no chipGpios override — reached via existing static-const aliases,
+default full digital_input/digital_output/pwm_output capability from the empty chip-level
+board.json applies as-is):
+  GPIO6, GPIO7, GPIO10 (D6/D7/D10) — plain breakout GPIOs on the 16-pin expansion header, no
+    dedicated function found in any source consulted.
+  GPIO40-45 (A0-A5) — the expansion header's 6 analog-friendly JST-PH inputs, a genuine
+    user-facing expansion feature (matches this repo's established onboard-analog-expansion
+    KEEP policy, e.g. pimoroni_explorer ADC0-5).
+  GPIO20/21 (SDA/SCL) — the STEMMA QT connector's I2C0 bus. Documented via top-level pinNotes
+    (informational only, capabilities unchanged) that this same bus also reaches the onboard
+    TLV320DAC3100 codec's control interface and DVI EDID readout — kept general-purpose because
+    it is still the board's standard user-facing Wire/STEMMA QT expansion bus, matching this
+    repo's precedent of keeping a shared expansion I2C bus general-purpose even when onboard
+    devices also sit on it.
+
+BUS-COLLISION BUG CHECK (per this session's known bug class)
+--------------------------------------------------------------
+Checked whether any confirmed button/LED/NeoPixel pin (GPIO0, 4, 5, 29, 32) is ALSO aliased as
+SDA/SCL/SS/MOSI/MISO/SCK by build_boards.js's parseEsp32Consts() (which would cause an
+unconditional bus-capability auto-append regardless of chipGpios). This board's pins_arduino.h
+declares only two such named aliases at all — `SDA` and `SCL`, both pointing to GPIO20/21 (the
+STEMMA QT bus) — neither of which collides with any button/LED/NeoPixel pin. No `static const
+uint8_t SS/MOSI/MISO/SCK/TX/RX` aliases exist anywhere in this file (the SPI/UART pins used by
+the microSD, DVI, and ESP32-C6 co-processor links are all plain #defines, e.g. PIN_SPI0_MOSI,
+PIN_SERIAL1_TX — not named SDA/SCL/SS/MOSI/MISO/SCK/TX/RX literally), so none of them are
+picked up by the alias-based auto-append logic in the first place. No bug found; no #define
+removal was necessary.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2350/adafruit_fruitjam/board.json (full file, chip-level RP2350
+defaults + 37 chipGpios entries: 3 buttons, 1 dual-purpose reversed-polarity LED/IR-receiver
+pin, 1 NeoPixel, and 32 dedicated-hardware exclusions covering USB host, ESP32-C6 co-processor
+UART+SPI+reset+ready lines, I2S audio codec, DVI/HSTX video, microSD SPI/SDIO, and PSRAM CS).
+Two pinNotes entries (GPIO20/21) document the STEMMA QT I2C bus's onboard-device sharing without
+changing capabilities. No bus-collision bug found (no #define removal needed). JSON validated
+via manual comment-stripping + JSON.parse (no build script run, per task instructions).

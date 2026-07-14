@@ -1,0 +1,123 @@
+Board: waveshare_esp32_s3_touch_lcd_28 (Waveshare ESP32-S3-Touch-LCD-2.8, the 2.8 inch model)
+Path: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\waveshare_esp32_s3_touch_lcd_28
+Date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8
+  - Returned HTTP 403 Forbidden to WebFetch directly. Not usable.
+
+https://www.waveshare.com/esp32-s3-touch-lcd-2.8.htm
+  - Returned HTTP 403 Forbidden to WebFetch directly. Not usable.
+
+https://r.jina.ai/https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8 (proxy fetch of the wiki page)
+  - Confirmed onboard "BOOT button", "RESET button", "Battery Power
+    Control Button", "Power indicator", "Charging indicator" exist as
+    physical/onboard components, but the collapsible pin-mapping
+    tables on the page did not render through the proxy, so no GPIO
+    numbers were obtained from this source.
+
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-2.8 (WaveShare Documentation Platform - fetched successfully, multiple targeted queries)
+  - "Onboard Resources" numbered list (24 items) enumerated: confirmed
+    items 13/14/15 = "Battery Power Control Button" / "RESET button" /
+    "BOOT button", items 23/24 = "Power indicator" / "Charging
+    indicator". Did NOT state explicit GPIO numbers for these buttons
+    in the prose text (only the 12PIN/I2C/UART header pinout tables
+    give explicit GPIO numbers: GPIO19/20 (USB D-/D+), GPIO10 (SCL),
+    GPIO11 (SDA), GPIO43 (TXD), GPIO44 (RXD), GPIO18, GPIO15 - matches
+    this board's own pins_arduino.h SCL/SDA/TX/RX values exactly, which
+    gave confidence the doc page is genuinely for this exact board).
+  - Charging indicator text: "When a system battery is connected, it
+    stays on while charging and turns off when fully charged" - implies
+    it's driven by charge-IC logic, not a simple GPIO toggle - later
+    confirmed directly via the schematic (see below).
+
+https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.8/ESP32-S3-Touch-LCD-2.8.pdf (official vendor schematic, linked from the docs.waveshare.com "Resources-And-Documents" page)
+  - THE decisive source. Full schematic text was extracted (component
+    pin lists + flat netlist dump). Key findings:
+    * Three physical switches: Key1, Key2, Key3.
+    * Key2's signal pin ties directly to net "IO0"/"GPIO0", alongside
+      pull-up resistor R20 (10K) and debounce cap C28, and directly to
+      U5 (ESP32-S3R8) physical pin 5, which the same schematic's own
+      U5 pin table labels "GPIO0 5". Key2's other pin ties to GND
+      (confirmed in the GND net's member list). This is the BOOT
+      button, wired to GPIO0 - standard ESP32-S3 BOOT-strap topology.
+    * Key3's signal pin ties directly to net "RESET", which traces to
+      U5 pin "CHIP_PU 4" (the chip's EN/reset pin, not a GPIO). This is
+      the RESET button - not software-readable, not taggable.
+    * Key1's signal path runs through diodes D2/D4 and P-MOSFET Q1 into
+      nets explicitly labelled "Key_BAT" and "BAT_Control" in the
+      schematic's own GPIO/LCD/SD Card/IMU/RTC/UART/I2C/Speak/"Other"
+      pin table: IO6 -> "Key_BAT" (Other column), IO7 -> "BAT_Control"
+      (Other column, net "NLIO7 NLBAT0Control" in the netlist dump).
+      This is the "Battery Power Control Button" - Key1 is the physical
+      pushbutton, GPIO6 is how firmware reads its press state
+      (Key_BAT), GPIO7 is the associated power-hold/enable output
+      (BAT_Control).
+    * LED1 ("Charging indicator", silkscreen "Red"): netlist shows its
+      cathode tied to U1 pin 9, and U1's own pin table (component
+      "ETA6098" battery-charger IC) labels pin 9 "STAT". So LED1 is
+      hardwired to the charger IC's status output pin, not a
+      general-purpose ESP32 GPIO - cannot be tagged (not even a chip
+      GPIO net).
+    * LED2 ("Power indicator", silkscreen "Red"): wired directly across
+      the 3V3/USB_5V supply rail through resistor R28 (2.2K) - always
+      on when powered, not GPIO-controlled, not taggable.
+    * No WS2812/NeoPixel/APA2068-style addressable-RGB LED component
+      appears anywhere in the schematic text (APA2068KAI-TRG present
+      is an audio power amplifier, unrelated to LEDs, despite the
+      superficially similar part-number pattern to "APA102"-style LED
+      driver chips - verified it is wired to the speaker/audio-out
+      nets, not any LED).
+    * Confirmed pins_arduino.h's TX=43/RX=44/SCL=10/SDA=11 all match
+      the schematic's own "Other"/I2C table exactly, and GPIO8 in the
+      schematic's Other column is explicitly "BAT_ADC" (battery voltage
+      ADC sense), not any LED or button - this directly contradicts a
+      third-party claim (see below) and was treated as authoritative.
+
+Community/third-party repos found via WebSearch (used only as leads, NOT as the basis for any tag - cross-checked against the schematic above):
+https://github.com/jeffvan302/WS_ESP32_Touch28 (README "Hardware Pinout")
+  - Claimed "Power Key | Input=6, Control=7" - this one data point
+    turned out to MATCH the official schematic exactly (Key_BAT=IO6,
+    BAT_Control=IO7), so it was corroborating, not the sole basis for
+    the tag.
+https://github.com/zonfacter/ESP32-S3-Touch-LCD-2.8 (personal/community project README, explicitly NOT an official Waveshare mirror)
+  - Claimed "RGB LED (addressable): GPIO 8" and "User Button: GPIO 9"
+    and "UART TX=17/RX=18". The TX/RX claim is flatly wrong (real board
+    is TX=43/RX=44 per pins_arduino.h and the vendor schematic/docs),
+    which discredited this repo's other claims. The GPIO8 "RGB LED"
+    claim directly contradicts the vendor schematic (GPIO8 = BAT_ADC,
+    confirmed above) and appears to be exactly the kind of hallucinated
+    WS2812/LED claim flagged as a recurring problem with this vendor's
+    sibling boards this session. REJECTED - not used for any tag.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO7 (BAT_Control): confirmed real signal (power-hold/enable output
+  paired with the GPIO6 Key1 button), but it is an output line the
+  firmware drives, not a button or LED itself. Left untagged. This is
+  a confident judgment call based on direct schematic evidence, not a
+  guess.
+- RESET button (Key3): ties to the chip's CHIP_PU/EN pin, which has no
+  chipGpios entry at all (not a GPIO). Cannot be tagged - out of scope,
+  not a guess, simply not a taggable pin.
+- LED1 "Charging indicator": hardwired to the ETA6098 charger IC's
+  STAT pin, not any ESP32 GPIO. Cannot be tagged - confirmed via
+  schematic, not a guess.
+- LED2 "Power indicator": hardwired directly across the power rail,
+  always on, not GPIO-controlled. Cannot be tagged - confirmed via
+  schematic, not a guess.
+- GPIO8: considered because of the (rejected) third-party "RGB LED on
+  GPIO8" claim. The official schematic shows GPIO8 = BAT_ADC (an
+  analog battery-voltage sense input), not an LED. NOT tagged - this
+  was a deliberate rejection of an unreliable source, not a guess left
+  for human review; confidence is high that GPIO8 is not an LED.
+- No NeoPixel/WS2812/discrete RGB LED found anywhere on this board;
+  none tagged.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input","button"]  (BOOT button, schematic "Key2", confirmed wired directly to the chip's GPIO0 pin)
+GPIO6 -> ["digital_input","button"]  (Battery Power Control Button, schematic "Key1"/"Key_BAT", confirmed via schematic net table)
+No LED capability tags were applied - no confirmable GPIO-controlled LED exists on this board.
+board.json created new (none existed previously) as a full copy of the esp32s3 chip-level default with only GPIO0 and GPIO6 modified, plus NOTE comments.

@@ -21,10 +21,10 @@ static const uint8_t MOSI = 11;
 static const uint8_t MISO = 13;
 static const uint8_t SCK = 12;
 
-// Definitions for onboard WIZnet W5500 ethernet controller chip
-static const uint8_t W5500_SS = 14;   // W5500 chip select
-static const uint8_t W5500_INT = 18;  // available only if solder bridge "INT" is closed (default open)
-static const uint8_t W5500_RST = 21;  // set GPIO21 to INPUT (high impedance) if RST signal is unused
+// pfodWeb NOTE: W5500_SS/INT/RST deliberately NOT declared - dedicated
+// onboard WIZnet W5500 Ethernet controller pins, not general-purpose.
+// SS/MOSI/MISO/SCK stay kept - shared SPI bus, W5500 uses its own CS
+// (GPIO14) leaving room for other SPI devices on the same bus.
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
@@ -39,11 +39,11 @@ static const uint8_t A9 = 10;
 static const uint8_t A10 = 11;
 static const uint8_t A11 = 12;
 static const uint8_t A12 = 13;
-static const uint8_t A13 = 14;
+// pfodWeb NOTE: A13/A17 (GPIO14/18) deliberately NOT declared - same
+// dedicated W5500_SS/INT pins as above.
 static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
 static const uint8_t A16 = 17;
-static const uint8_t A17 = 18;
 
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
@@ -58,6 +58,6 @@ static const uint8_t T10 = 10;
 static const uint8_t T11 = 11;
 static const uint8_t T12 = 12;
 static const uint8_t T13 = 13;
-static const uint8_t T14 = 14;
+// pfodWeb NOTE: T14 (GPIO14) deliberately NOT declared - same as A13 above.
 
 #endif /* Pins_Arduino_h */

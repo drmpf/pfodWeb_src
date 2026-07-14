@@ -1,0 +1,66 @@
+Board: waveshare_rp2040_plus (Waveshare RP2040-Plus), chip family rp2040
+Audit date: 2026-07-13
+
+SOURCES CONSULTED
+------------------
+1. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\waveshare_rp2040_plus\pins_arduino.h (full file + ASCII pinout
+   diagram comment) and its include, ../generic_full/common.h (blanket D0-D31 fallback).
+2. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level defaults, chipGpios: {} by design).
+3. Precedent files read before writing: ../rpipico/board.json (GPIO25 led_high pattern) and
+   ../waveshare_rp2040_zero/board.json (sibling Waveshare board, BOOT/RESET-out-of-scope rationale,
+   NeoPixel-tagging convention).
+4. Waveshare RP2040-Plus wiki: https://www.waveshare.com/wiki/RP2040-Plus
+5. Waveshare docs platform: https://docs.waveshare.com/RP2040-Plus
+   - "LED Indicator: User status indicator (not a power LED), used for operational status signaling"
+   - Buttons: "BOOT Button" (enter download/bootloader mode) and "RESET Button" only - no other buttons
+     documented.
+6. Official schematic PDF: https://files.waveshare.com/wiki/RP2040-Plus/RP2040_Plus.pdf (fetched and read
+   directly). "Key & LED" block shows Led1 in series with resistor R19 (470R) wired between GPIO25 and
+   GND; buttons Key1/Key2 are separate from the LED - netlist confirms Key1 sits on the RUN net (reset
+   button, pulls RUN low) and Key2 sits on the QSPI_SS_N net via R20 (1K) (BOOTSEL button, pulls flash
+   chip-select low during boot to enter the RP2040 ROM bootloader, the standard arduino-pico/RP2040
+   BOOTSEL implementation for boards without a dedicated GPIO-connected BOOTSEL pin). Neither button has a
+   pins_arduino.h alias (confirmed - no button #define exists in this board's pins_arduino.h) and neither
+   is a normal GPIO digitalRead() pin.
+7. Zephyr Project official board definition (independently maintained, hardware-verified device tree),
+   fetched raw from GitHub:
+   https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/waveshare/rp2040_plus/rp2040_plus.dts
+   Contains: `leds { compatible = "gpio-leds"; led0: led_0 { gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>; label =
+   "LED"; }; };` - explicit, unambiguous active-high polarity for GPIO25, and NO gpio-keys node defined
+   anywhere in the file (corroborating that BOOT/RESET are not GPIO-mapped buttons).
+   Also confirms via docs.zephyrproject.org/latest/boards/waveshare/rp2040_plus/doc/index.html that no
+   programmable GPIO buttons are listed among supported features.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED):
+  - Board's only onboard visual indicator. No NeoPixel/WS2812 exists on this board (unlike the "Zero"
+    form-factor sibling waveshare_rp2040_zero, which has a NeoPixel instead of a plain LED) - confirmed by
+    absence of any WS2812/NeoPixel component in the schematic and absence of any such mention in Waveshare's
+    docs/wiki for this specific board.
+  - Polarity: ACTIVE HIGH. Primary confirmation is Zephyr's rp2040_plus.dts GPIO_ACTIVE_HIGH flag (hardware-
+    verified independent source). This also matches the standard Raspberry Pi Pico GPIO25 LED convention
+    (this board is explicitly Pico-header/pinout compatible per Waveshare's own description), and is
+    consistent with the schematic's Led1/R19 series arrangement between GPIO25 and GND.
+  - Applied capabilities: ["digital_output", "pwm_output", "led_high"] - digital_input dropped (matches
+    established led_high precedent for dedicated onboard LED pins, e.g. ../rpipico/board.json GPIO25,
+    esp32/esp32c5/XIAO_ESP32C5 GPIO27). pwm_output retained since arduino-pico's analogWrite() works on any
+    RP2040 GPIO (all 8 PWM slices cover GPIO0-29), enabling LED brightness dimming.
+
+BOOT / RESET buttons (Key1/Key2 in schematic):
+  - Both out of scope for capability tagging: Key1 (reset, RUN net) and Key2 (BOOTSEL, QSPI_SS_N net) are
+    not represented by any alias in pins_arduino.h and are not readable via a normal GPIO digitalRead() -
+    same rationale already established in ../rpipico/board.json and ../waveshare_rp2040_zero/board.json.
+    No chipGpios entry needed/possible for either.
+
+Bus-collision check (per the audit's known bug class): GPIO25 carries no SDA/SCL/SS/MOSI/MISO/SCK alias in
+this board's pins_arduino.h (SPI0/SPI1 use GPIO12-19, Wire0/Wire1 use GPIO6-9) - no collision, no
+pins_arduino.h edit needed.
+
+SUMMARY
+--------
+Created variants/rp2040/rp2040/waveshare_rp2040_plus/board.json (full file, chip defaults copied verbatim)
+with a chipGpios override tagging GPIO25 as the onboard LED: ["digital_output","pwm_output","led_high"].
+No NeoPixel present on this board. BOOT/RESET buttons confirmed present but out of scope (no GPIO alias).
+No bus-collision issue found on GPIO25. JSON validity checked via manual `//`-comment strip + JSON.parse
+(no build scripts run).

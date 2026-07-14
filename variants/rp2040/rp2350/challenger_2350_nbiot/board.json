@@ -1,0 +1,263 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "iLabs Challenger 2350 NB-IoT" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This board's onboard cellular
+  // modem (STMicroelectronics ST87M01-1301, LTE Cat NB2/NB-IoT + GNSS) is
+  // reached over a plain UART (Serial2 / GPIO4-5) plus INT/RSTN/WAKEUP
+  // GPIO control lines — not an IP-capable native WiFi/BLE radio — so it
+  // doesn't qualify for the "rp2040w" bucket's tcp/http/ble .ino templates
+  // (those target the native cyw43 WiFi.h stack). A separate Arduino
+  // library exists upstream (github.com/PontusO/ST87M01) implementing a
+  // standard Arduino Client-style network API over the modem's AT-command
+  // interface, but this board would need its own dedicated AT-command/PPP
+  // modem .ino templates written for pfodWeb specifically before it could
+  // genuinely offer tcp/http/ble connections here — same reasoning already
+  // established for the challenger_2040_lte and challenger_2040_lora/
+  // subghz siblings.
+  "connections": ["serial"],
+
+  // RP2040/RP2350 boot from an internal ROM/BOOTSEL, not GPIO-driven
+  // flash-mode strapping pins like ESP32/ESP8266 — no boot-time
+  // restrictions to flag at the chip level.
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family dedicated-hardware pin-exclusion +
+  // LED/NeoPixel/button tagging audit, first pass for this family,
+  // 2026-07-13):
+  //
+  // Board: iLabs "Challenger+ RP2350 NB-IoT" (elongated Challenger+/Feather
+  // form factor), combining an RP2350 with an onboard STMicroelectronics
+  // ST87M01-1301 certified LTE Cat NB2 (NB-IoT) module that also integrates
+  // GNSS (GPS L1 + Galileo) and Wi-Fi (802.11b scan-only) positioning.
+  // Genuinely NB-IoT (not to be confused with this session's earlier
+  // challenger_nb_2040_wifi finding, where "NB" turned out to mean
+  // "No Battery" with zero cellular hardware — independently verified
+  // here via the official datasheet's own "LTE Cat NB2 (NB-IoT)" banner,
+  // 3GPP Release 15 compliance, GCF/RED/RED-DA cellular certifications,
+  // and a dedicated NB-IoT U.FL antenna connector).
+  //
+  // Sources consulted:
+  // 1. https://ilabs.se/product/challenger-rp2350-nb-iot/ (official iLabs
+  //    product page, fetched directly) — confirms the ST87M01-1301 module,
+  //    documentation links, and a "Challenger 2350 NB-IoT" board name;
+  //    links to source #2 below and to the upstream Arduino library
+  //    (github.com/PontusO/ST87M01).
+  // 2. https://usercontent.one/wp/ilabs.se/wp-content/uploads/2026/05/
+  //    Challenger_RP2350_NB-IoT_Datasheet_v1.2.pdf (official iLabs
+  //    datasheet, Rev 1.2 May 2026, fetched and read directly as a PDF) —
+  //    Section 3.1 "External Header Pins" gives the full external pinout
+  //    table (TXD=GPIO12, RXD=GPIO13, D5=GPIO23, D6=GPIO24, D9=GPIO25,
+  //    D10=GPIO2, D11=GPIO3, D12=GPIO6, D13=GPIO7, SS/A5=GPIO17,
+  //    SCK=GPIO18, MOSI=GPIO19, MISO=GPIO16, SDA=GPIO20, SCL=GPIO21,
+  //    A0=GPIO26, A1=GPIO27, A2=GPIO28, A3=GPIO29, A4=GPIO1) — matches this
+  //    board's own pins_arduino.h aliases exactly, byte for byte, and
+  //    notably contains NO entry for GPIO15 (PIN_LED) or GPIO0/GPIO22 —
+  //    confirming PIN_LED is an onboard-only LED not broken out to any
+  //    external header pin (see per-pin reasoning below). Section 3.2
+  //    "Internal NB-IoT Module Connections" gives the full modem wiring
+  //    table verbatim: "NB-IoT TX | GPIO4 | UART0_RX (pin 15) | RP2350
+  //    transmit to module", "NB-IoT RX | GPIO5 | UART0_TX (pin 16) |
+  //    Module transmit to RP2350", "NB-IoT INT | GPIO8 | UART0_RTS
+  //    (Pin 19) | Ring output to RP2350", "Module RESET | GPIO9 | RESETn
+  //    (pin 38) | Active-low hardware reset", "Module WAKEUP | GPIO10 |
+  //    WAKE_UP (pin 39) | Wake module from sleep", "GNSS Bias Enable |
+  //    GPIO11 | Connected to LDO enable | Enabled the GNSS bias voltage" —
+  //    matching this board's own PIN_ST87M01_INT=(8u), PIN_ST87M01_RSTN=
+  //    (9u), PIN_ST87M01_WAKEUP=(10u), PIN_GNSS_BIAS_EN=(11u) exactly.
+  //    Section 4.3 "GNSS Positioning" adds detail: "The LDO is controlled
+  //    by pin GPIO11 on the RP2350 (GNSS_BIAS_EN) and is disabled by
+  //    default by a pull down resistor." Section 5.3 "Debugging" states
+  //    verbatim: "A BConnect SWD debug connector is located easily
+  //    accessable on the top side of the board and is compatible with the
+  //    iProbe from iLabs. The debug TXD signal on the BSWD connector is
+  //    connected to pin GPIO14 of the RP2350 and can be configured as a
+  //    Software UART pin." — confirming PIN_IPROBE_TX=(14u) is a dedicated
+  //    SWD-debug-connector UART pin, not general-purpose. The datasheet
+  //    does NOT state the onboard LED's active-high/active-low polarity
+  //    anywhere, and does not mention a NeoPixel or a discrete user
+  //    pushbutton (only the standard RST reset line, out of scope per the
+  //    rpipico2/board.json BOOTSEL precedent).
+  // 3. https://github.com/earlephilhower/arduino-pico
+  //    variants/challenger_2350_nbiot/pins_arduino.h (upstream arduino-pico
+  //    source this repo's local copy is derived from, fetched directly) —
+  //    confirmed byte-identical to the local copy (PIN_LED=15,
+  //    PIN_SERIAL2_TX/RX=4/5, PIN_ST87M01_INT/RSTN/WAKEUP=8/9/10,
+  //    PIN_GNSS_BIAS_EN=11, PIN_IPROBE_TX=14). Upstream boards.txt entry
+  //    confirms `challenger_2350_nbiot.build.led=` is empty (no
+  //    LED_BUILTIN override) and `.build.board=CHALLENGER_2350_NBIOT_RP2350`.
+  // 4. https://github.com/PontusO/ST87M01 src/ST87M01Boards.h (the
+  //    iLabs-authored Arduino modem-driver library referenced by the
+  //    datasheet and product page, fetched directly) — its
+  //    `ARDUINO_CHALLENGER_2350_NBIOT_RP2350` preset block wires
+  //    `reset=PIN_ST87M01_RSTN`, `wakeup=PIN_ST87M01_WAKEUP`,
+  //    `ring=PIN_ST87M01_INT` — independently corroborating the datasheet's
+  //    GPIO8/9/10 assignments straight from iLabs' own source code.
+  // 5. Local codebase: this board's own pins_arduino.h (already present,
+  //    unmodified this session) — verified directly: the only
+  //    `static const uint8_t` aliases are D0/D1/D5/D6/D9-D13, A0-A5,
+  //    SS/MOSI/MISO/SCK, SDA/SCL, RX/TX, resolving to GPIOs {13,12,23,24,
+  //    25,2,3,6,7,29,28,27,26,1,17,19,16,18,20,21} — none of the modem
+  //    pins (4,5,8,9,10,11), the debug pin (14), or the LED pin (15)
+  //    carry any alias, so all seven are already fully excluded from the
+  //    Designer's pin list with zero board.json involvement (same
+  //    mechanism traced and documented on the challenger_2040_lte sibling
+  //    this session — see build_boards.js buildEsp32Board(), allGpios is
+  //    the union of pins_arduino.h aliases and chipGpios keys only).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/challenger_2350_nbiot/notes.txt
+  //
+  // WHY NO chipGpios ENTRIES FOR THE MODEM/DEBUG PINS (GPIO4,5,8,9,10,11,14):
+  // These seven GPIOs carry no pins_arduino.h alias, so they are already
+  // 100% absent from the Designer's pin list (allGpios = aliasesByGpio
+  // keys UNION chipGpios keys — build_boards.js ~line 535-539). Adding
+  // chipGpios entries for them here would be COUNTERPRODUCTIVE: the
+  // "Check if available on board" note is appended to any rp2040-family
+  // GPIO absent from pins_arduino.h regardless of whether a chipGpios
+  // entry also exists for it (`if (!inPinsH && cfg.family !== 'esp32' &&
+  // cfg.family !== 'esp8266') noteParts.push('Check if available on
+  // board');` — build_boards.js ~line 718), and a chipGpios entry would
+  // additionally force the GPIO into allGpios, making it VISIBLE as a
+  // bare row again — undoing the full concealment the pins_arduino.h
+  // omission already achieves. Same reasoning already independently
+  // traced and documented this session on the challenger_2040_lte sibling.
+  //
+  // Per-pin reasoning:
+  //   GPIO4  - PIN_SERIAL2_TX - ST87M01 modem's dedicated UART TX line
+  //            ("NB-IoT TX | GPIO4 | UART0_RX (pin 15) | RP2350 transmit
+  //            to module"). Not general-purpose. Already absent from
+  //            pins_arduino.h aliases; no chipGpios entry added.
+  //   GPIO5  - PIN_SERIAL2_RX - ST87M01 modem's dedicated UART RX line
+  //            ("NB-IoT RX | GPIO5 | UART0_TX (pin 16) | Module transmit
+  //            to RP2350"). Same reasoning as GPIO4.
+  //   GPIO8  - PIN_ST87M01_INT - modem's ring/interrupt output line
+  //            ("NB-IoT INT | GPIO8 | UART0_RTS (Pin 19) | Ring output to
+  //            RP2350"). Same reasoning as GPIO4.
+  //   GPIO9  - PIN_ST87M01_RSTN - modem's active-low hardware reset line,
+  //            driven by the RP2350 ("Module RESET | GPIO9 | RESETn
+  //            (pin 38) | Active-low hardware reset"). Same reasoning as
+  //            GPIO4.
+  //   GPIO10 - PIN_ST87M01_WAKEUP - modem's wake-from-sleep control line
+  //            ("Module WAKEUP | GPIO10 | WAKE_UP (pin 39) | Wake module
+  //            from sleep"). Same reasoning as GPIO4.
+  //   GPIO11 - PIN_GNSS_BIAS_EN - GNSS antenna-bias LDO enable line
+  //            ("GNSS Bias Enable | GPIO11 | Connected to LDO enable |
+  //            Enabled the GNSS bias voltage"). Not general-purpose. Same
+  //            reasoning as GPIO4.
+  //   GPIO14 - PIN_IPROBE_TX - dedicated BConnect/SWD debug-connector
+  //            software-UART TX pin ("The debug TXD signal on the BSWD
+  //            connector is connected to pin GPIO14 ... can be configured
+  //            as a Software UART pin"). Not general-purpose. Same
+  //            reasoning as GPIO4.
+  //   GPIO15 - PIN_LED / LED_BUILTIN - onboard general-purpose user LED.
+  //            Presence confirmed via this board's own pins_arduino.h
+  //            (#define PIN_LED (15u); #define LED_BUILTIN PIN_LED),
+  //            upstream arduino-pico source (byte-identical), and
+  //            corroborated by absence from the datasheet's own external
+  //            header pin table (Section 3.1) — i.e. GPIO15 is confirmed
+  //            NOT broken out to any header pin, consistent with it being
+  //            a fixed onboard LED rather than a general breakout pin.
+  //            UNLIKE the challenger_2040_lte/nb_2040_wifi siblings, this
+  //            board's PIN_LED carries NO static-const D-number alias in
+  //            pins_arduino.h at all (only the #define, which
+  //            build_boards.js's parser intentionally does not read — see
+  //            parseEsp32Consts() doc-comment), so without this chipGpios
+  //            entry GPIO15 would be completely ABSENT from the Designer's
+  //            pin list, not merely mistagged. This entry is required to
+  //            surface it at all. Active-high polarity: this board's own
+  //            datasheet does not state the active level, so led_high here
+  //            is a cross-referenced inference from (a) every other
+  //            RP2040/RP2350 board audited in this family to date being
+  //            confirmed or inferred active-high, none active-low
+  //            (challenger_2040_lte, challenger_nb_2040_wifi, rpipico2,
+  //            etc.), and (b) this board reusing the same iLabs Challenger
+  //            product-line onboard-LED reference circuit whose sibling
+  //            boards' own datasheets (e.g. challenger_rp2040_wifi) state
+  //            "Active level: High" explicitly. digital_input dropped to
+  //            match this repo's established led_high precedent for
+  //            dedicated onboard LED pins; pwm_output kept since
+  //            arduino-pico's analogWrite() works on any RP2040/RP2350
+  //            GPIO, enabling brightness dimming.
+  //
+  // GPIO15 carries no SPI/I2C/other bus alias on this board (SPI0 lives on
+  // GPIO16-19, Wire0 on GPIO20-21), so the build_boards.js unconditional
+  // bus-capability auto-append (the "confirmed button/LED pin also aliased
+  // as SDA/SCL/SS/MOSI/MISO/SCK" bug class flagged for this audit) does
+  // not apply here — no pins_arduino.h edit was needed. Likewise none of
+  // GPIO4/5/8/9/10/11/14 collide with any SPI/I2C/UART alias.
+  //
+  // Also confirmed: no onboard NeoPixel (no NEOPIXEL define anywhere in
+  // this board's pins_arduino.h, nor in the upstream arduino-pico source,
+  // nor mentioned in the datasheet — unlike the challenger_2350_bconnect/
+  // challenger_2350_wifi6_ble5 siblings in this same rp2350 chip bucket,
+  // which do carry a NEOPIXEL define; those boards are unaudited and out
+  // of scope for this task). No discrete user pushbutton beyond the
+  // standard RST reset line (out of scope per the rpipico2/board.json
+  // BOOTSEL/reset-button precedent already established in this chip
+  // bucket) — confirmed via both the datasheet's external header table
+  // (only lists RST, not a separate button GPIO) and the absence of any
+  // BUTTON-style define in pins_arduino.h.
+  //
+  // NOT CHANGED / left with default (chip-level) treatment: GPIO0 and
+  // GPIO22 carry no pins_arduino.h alias and do not appear anywhere in the
+  // datasheet's external header table (Section 3.1), internal module
+  // connections table (Section 3.2), or debug section (Section 5.3) —
+  // despite the datasheet's own claim that "Pin assignments follow the
+  // standard Challenger / Feather layout ... All other pins remain fully
+  // available." No source consulted confirms a dedicated function for
+  // either GPIO, so per this audit's "report NO CHANGE rather than guess"
+  // guidance, no chipGpios entry was added for them; they remain fully
+  // absent from the Designer's pin list exactly as pins_arduino.h already
+  // leaves them (same as the modem/debug pins above), which is a safe
+  // default (no risk of exposing a hidden dedicated pin as a plain
+  // "GPIO<n>" the user might wire into) even though it is unconfirmed
+  // whether they are genuinely spare/unbroken-out pins or simply omitted
+  // from the datasheet by oversight.
+  //
+  // Also noted (out of scope for this audit, flagged only for awareness):
+  // this board's own pins_arduino.h aliases GPIO1 as "A4", and
+  // build_boards.js's default capability derivation tags any GPIO with an
+  // "A<n>"-pattern alias as analog_input — yet the datasheet's own header
+  // table explicitly annotates "A4 | GPIO1 | GPIO / PWM | Generic GPIO
+  // (Not analog input)", i.e. GPIO1 is NOT a real ADC-capable pin on this
+  // board (RP2350's 4 ADC channels are physically fixed to GPIO26-29; A4
+  // is just the Feather-form-factor header-slot label reused for a plain
+  // digital pin). This is a pre-existing upstream pins_arduino.h/
+  // arduino-pico naming quirk shared by every iLabs Challenger board in
+  // this repo (identical A4=(1u) alias already present on the
+  // challenger_2040_lte, challenger_nb_2040_wifi, challenger_2350_wifi6_
+  // ble5 and challenger_2350_bconnect siblings), not something introduced
+  // or fixable by this board's own pin-exclusion audit; flagged here only
+  // for awareness of a possible future non-audit fix, matching the
+  // analogous GPIO20/CircuitPython gap already flagged on the
+  // challenger_2040_lte sibling's own notes.txt.
+  "chipGpios": {
+    "15": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN - onboard general-purpose user LED. Confirmed via this board's own pins_arduino.h and upstream arduino-pico source; corroborated by absence from the official iLabs datasheet's external header pin table (Section 3.1), confirming it is a fixed onboard LED, not a header breakout pin. Active-high polarity is a cross-referenced inference: this board's own datasheet does not state the active level, but every other RP2040/RP2350 board audited in this family to date has been active-high (none active-low), and this board reuses the same iLabs Challenger product-line onboard-LED reference circuit whose sibling boards' own datasheets (e.g. challenger_rp2040_wifi) explicitly state \"Active level: High\"." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's 12-bit ADC (0-4095), ~3.3V reference — same as every other
+  // RP2040/RP2350 board. Matches this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12u).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

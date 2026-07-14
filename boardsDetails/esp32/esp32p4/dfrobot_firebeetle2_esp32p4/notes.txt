@@ -1,0 +1,49 @@
+Board: DFRobot FireBeetle 2 ESP32-P4 (dfrobot_firebeetle2_esp32p4), chip esp32p4
+Date: 2026-07-14 (documentation backfill - findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- https://wiki.dfrobot.com/dfr1237/docs/22667 - DFRobot blink-example guide,
+  cited for confirming GPIO3 LED_BUILTIN turns on with digitalWrite(led,HIGH)
+  (active-high polarity).
+- SKU_DFR1172 pinout page (https://wiki.dfrobot.com/SKU_DFR1172_FireBeetle_2_Board_ESP32_P4)
+  - cited twice: once alongside the docs/22667 blink example for GPIO3's
+    LED_BUILTIN identity, and again as the specific source confirming GPIO35
+    is the onboard BOOT pushbutton (IO35/BOOT).
+- Vendor pins_arduino.h (referenced generically, "see vendor pins_arduino.h")
+  - cited as the source for the dedicated-hardware exclusion list (I2S mic,
+    ESP32-C6 WiFi companion SDIO, SDMMC power).
+
+Per-pin findings:
+- GPIO9, GPIO12: excluded (not present in chipGpios). Note: dedicated I2S
+  microphone pins.
+- GPIO14-19, GPIO54: excluded (not present in chipGpios). Note: dedicated
+  ESP32-C6 WiFi-companion-chip SDIO bus pins.
+- GPIO45: excluded (not present in chipGpios). Note: dedicated SDMMC power
+  line.
+- GPIO3: capabilities ["digital_output","led_high","pwm_output"] (analog/
+  digital_input dropped from the chip default). Note: confirmed onboard
+  LED_BUILTIN, DFRobot wiki blink example shows digitalWrite(led,HIGH) turns
+  the LED on - tagged "led_high" with high confidence (two-source
+  corroboration: docs/22667 blink guide + SKU_DFR1172 pinout page).
+- GPIO35: capabilities ["digital_input","button"] (digital_output/pwm_output
+  dropped from the chip default). Note: confirmed onboard BOOT pushbutton per
+  DFRobot's own SKU_DFR1172 FireBeetle 2 ESP32-P4 pinout page, labeled
+  "IO35/BOOT".
+- GPIO30, GPIO31: kept at chip-level default capabilities
+  ["digital_input","digital_output","pwm_output"]; pinNotes carries the
+  chip-level strapping warning "Must be HIGH for normal boot" for both,
+  unchanged by this board's audit.
+- All remaining present pins (0,1,2,4,5,6,7,8,10,11,13,20,21,22,23,26,27,28,
+  29,32,33,34,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53): kept at
+  the plain chip-level default capability sets (analog_input variants for
+  20-23/50-53, plain digital_input/digital_output/pwm_output for the rest) -
+  no board-specific tag or exclusion beyond the items listed above.
+- GPIO24, GPIO25: excluded already at the chip level (USB pins, not
+  board-specific to this pass).
+
+Summary: this board's audit tagged GPIO3 as led_high (confirmed active-high
+onboard LED_BUILTIN via two DFRobot wiki sources) and GPIO35 as button
+(confirmed onboard BOOT pushbutton via the DFRobot SKU_DFR1172 pinout page),
+and excluded GPIO9/12 (I2S mic), GPIO14-19/54 (ESP32-C6 WiFi companion SDIO),
+and GPIO45 (SDMMC power) as dedicated onboard hardware not exposed as
+general-purpose GPIO.

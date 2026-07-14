@@ -17,8 +17,12 @@
 #define ETH_PHY_TYPE  ETH_PHY_LAN8720
 #define ETH_CLK_MODE  ETH_CLOCK_GPIO0_IN
 
+// pfodWeb NOTE: IO0 (GPIO0) deliberately NOT declared - this board's
+// ETH_CLK_MODE (ETH_CLOCK_GPIO0_IN) wires the LAN8720A PHY's 50MHz
+// REF_CLK output into GPIO0 as an input, so it's not safely
+// repurposable, unlike a typical "boot button" GPIO0.
+
 // general purpose IO pins
-static const uint8_t IO0 = 0;
 static const uint8_t IO1 = 1;  // TXD0 / TX0 pin
 static const uint8_t IO2 = 2;
 static const uint8_t IO3 = 3;  // RXD0 / RX0 pin
@@ -45,7 +49,9 @@ static const uint8_t TX = 1;
 static const uint8_t RX = 3;
 
 //SPI VSPI default pins
-static const uint8_t SS = -1;
+// pfodWeb NOTE: SS deliberately NOT declared - upstream declares it as
+// -1 ("no default CS"), which wraps to 255 as a uint8_t and would
+// otherwise leak a phantom "GPIO255" pin.
 static const uint8_t MOSI = 14;
 static const uint8_t MISO = 15;
 static const uint8_t SCK = 12;

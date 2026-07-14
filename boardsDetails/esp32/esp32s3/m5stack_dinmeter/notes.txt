@@ -1,0 +1,130 @@
+m5stack_dinmeter research notes
+================================
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\m5stack_dinmeter
+board.json: pre-existing (already pin-exclusion audited); edited in place.
+
+Sources consulted
+------------------
+https://docs.m5stack.com/en/core/M5DinMeter
+  - Main product page. Pinout table (fetched summary) listed:
+    G12/G11 -> RTC8563 SCL/SDA; G40/G41 -> ENCODER B/A; G3 -> BEEP;
+    G42 -> BUTTON (ENCODER) BTN(WAKE). Display ST7789V2 on G4-G9.
+    PORT.A = G13/G15, PORT.B = G2/G1. No RGB/NeoPixel LED mentioned on
+    this consumer-facing docs page.
+
+https://docs.m5stack.com/en/core/DinMeter_v1.1
+  - v1.1 variant page. Similar pinout description, wording was more
+    ambiguous about which of G3/G42 is button vs beep (listed as a
+    group "G40,G41,G3,G42" -> encoder B/A/beep/BTN without fully
+    clear column alignment in the fetched summary). No LED mentioned.
+
+https://github.com/m5stack/M5DinMeter (repo root)
+  - Only repo file listing visible via fetch (examples/, src/,
+    library.json/.properties); no raw header contents retrievable
+    this way.
+
+https://raw.githubusercontent.com/m5stack/M5DinMeter/master/src/M5DinMeter.h
+  - Confirms ENCODER pin defines: DIAL_ENCODER_PIN_A=41,
+    DIAL_ENCODER_PIN_B=40. Button/buzzer/RTC/display/power pins are
+    not defined in this particular header (delegated to M5Unified).
+
+https://raw.githubusercontent.com/m5stack/M5Unified/master/src/M5Unified.cpp
+  - THE authoritative source used for the final decision (M5Stack's
+    own official board-abstraction library, not just docs prose or
+    a header alias name).
+  - _begin() case block: "case board_t::board_M5Capsule: case
+    board_t::board_M5Dial: case board_t::board_M5DinMeter:
+    m5gfx::pinMode(GPIO_NUM_42, m5gfx::pin_mode_t::input); break;"
+    => GPIO42 is configured as the button/BtnA input for DinMeter.
+  - _pin_table_other0 array, header comment "//RGBLED":
+    "{ board_t::board_M5DinMeter , GPIO_NUM_21 }" among other ESP32S3
+    boards (M5StampS3, M5Dial, M5AirQ, M5Capsule, etc all share
+    GPIO21 for their addressable RGB LED). Retrieved via
+    M5.getPin(m5::pin_name_t::rgb_led) and fed into
+    m5::LedBus_RMT (RMT-driven addressable LED bus) - i.e. this is a
+    real NeoPixel/WS2812-style driver, not just a label.
+  - _pin_table_other1 array, header comment "//POWER_HOLD":
+    "{ board_t::board_M5DinMeter , GPIO_NUM_46 }" - confirms GPIO46
+    power-hold pin already excluded in this board's chipGpios; no
+    change made there.
+  - Confirms buzzer/speaker uses GPIO_NUM_3 (magnification 48,
+    buzzer mode) for board_M5DinMeter - matches "buzzer(42)... (3)"
+    already-excluded-pin note wording, see discrepancy note below.
+
+https://devices.esphome.io/devices/m5stack-dial/
+  - Independent third-party device page for the closely related
+    M5Stack Dial (same M5StampS3-based core family, same
+    M5Unified-driven pin layout). Corroborates: front/BtnA button =
+    GPIO42, buzzer = GPIO3, hold = GPIO46, backlight = GPIO9. Used
+    as cross-check corroboration, not as the primary source for
+    DinMeter itself.
+
+https://github.com/m5stack/M5-Schematic
+  - Checked for an official DinMeter schematic PDF; repo top-level
+    listing (Applications/Bases/Core/Hat/Modules/Tools/Units/
+    datasheet) did not show any file/folder obviously named
+    "DinMeter" via the fetch; did not pursue deeper folder-by-folder
+    browsing since M5Unified.cpp already gave a solid vendor-code
+    level confirmation for both the button and the RGB LED pin.
+
+https://github.com/m5stack/M5DinMeter-UserDemo
+  - Vendor demo repo; only top-level folder listing was retrievable
+    via fetch (src/include/lib/test dirs), no raw file contents on
+    GPIO21/RGB usage found this way. Not used as primary evidence;
+    M5Unified.cpp was sufficient.
+
+Discrepancy noted (NOT changed, left for human review)
+--------------------------------------------------------
+The PRE-EXISTING board.json/pins_arduino.h top-of-file NOTE comments
+(written in an earlier audit pass, not touched by this task) say:
+  "Encoder push-button(3), buzzer(42), and general Grove SDA/SCL
+  (13/15) are kept."
+i.e. that comment claims GPIO3 = button and GPIO42 = buzzer.
+All sources found in this pass (M5Stack docs pinout table AND the
+vendor M5Unified.cpp library source, cross-checked against the
+sibling M5Stack Dial/ESPHome page) say the OPPOSITE: GPIO42 = button
+(BtnA/WAKE), GPIO3 = buzzer/beep. This looks like the earlier note
+had the two pins swapped. Per task rules, existing NOTE comments are
+never deleted/replaced, so that older comment was left untouched;
+new NOTE comments were added explaining the tag and flagging this
+apparent swap for a human to double check independently (e.g. against
+an actual schematic PDF) before relying on the old comment's wording.
+
+GPIO3 (buzzer) was NOT tagged as anything - it's an audio buzzer
+output, not a button or LED, so it is out of scope for this task
+regardless of which pin is "really" the buzzer.
+
+Pins considered and not tagged
+-------------------------------
+- GPIO3: buzzer/beep only per all sources - not a button or LED,
+  correctly out of scope. No tag applied, no guess made.
+- GPIO40/GPIO41: rotary encoder quadrature A/B lines, already
+  excluded from chipGpios in the earlier pin-exclusion audit pass -
+  left untouched (out of scope for this task; these are quadrature
+  motion inputs, not a push-button or LED anyway).
+- GPIO46: power-hold pin, already excluded from chipGpios in the
+  earlier pin-exclusion audit pass, and confirmed again here via
+  M5Unified.cpp's POWER_HOLD table - left untouched, no tag applied
+  (not a button/LED and it's an internal-only control pin).
+- GPIO9: display backlight (part of the ST7789P3 SPI display bus,
+  GPIO4-9), already excluded from chipGpios in the earlier
+  pin-exclusion audit pass. Backlight is a display sub-function, not
+  a general status LED - deliberately NOT tagged as an LED capability
+  (matches the task's "LED" tags being for standalone status/RGB
+  indicators, not display backlights), and it falls in a pre-existing
+  chip-level exclusion range anyway so it could not be re-added
+  without reversing that exclusion (out of scope).
+
+TX/RX conflict check
+----------------------
+Board TX=43, RX=44 (pins_arduino.h). Neither the button (GPIO42) nor
+the RGB LED (GPIO21) collides with TX/RX, so no silent-discard risk
+from build_boards.js's TX/RX hard-reservation.
+
+Summary of what was tagged
+-----------------------------
+- GPIO42 -> ["digital_input","button"] (was
+  ["digital_input","digital_output","pwm_output"]).
+- GPIO21 -> ["digital_output","led_neopixel","pwm_output"] (was
+  ["digital_input","digital_output","pwm_output"]; pwm_output kept
+  because it was already present on this pin).

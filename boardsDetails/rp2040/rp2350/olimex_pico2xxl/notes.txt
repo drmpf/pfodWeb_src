@@ -1,0 +1,106 @@
+Board: olimex_pico2xxl (chip bucket: rp2040/rp2350)
+Vendor: Olimex "RP2350-PICO2-XXL" — RP2350B-based, all 48 GPIO broken out,
+16MB QSPI flash, 8MB QSPI PSRAM, USB-C, BOOT+RESET buttons, Qwiic/Stemma QT,
+pUEXT connector, microSD slot. Larger/XXL sibling of olimex_pico2xl (2MB
+flash, no PSRAM/SD) and olimex_pico2bb48 (breadboard-friendly variant).
+
+Sources consulted
+------------------
+1. Local: variants/rp2040/rp2350/olimex_pico2xxl/pins_arduino.h (this repo's
+   copy, matches arduino-pico upstream verbatim — cross-checked via raw.
+   githubusercontent.com/earlephilhower/arduino-pico/master/variants/
+   olimex_pico2xxl/pins_arduino.h).
+2. variants/rp2040/rp2350/board.json (chip-level defaults, chipGpios: {}).
+3. Precedent files read: variants/rp2040/rp2350/rpipico2/board.json (real
+   worked example of the chipGpios mechanism/reasoning style for an
+   RP2350 GPIO25 LED), variants/rp2040/rp2040/olimex_rp2040pico30/
+   pins_arduino.h (exists but has no board.json yet — not a usable
+   precedent this session).
+4. github.com/OLIMEX/RP2350-PICO2-XXL (main repo) — README, product
+   description.
+5. github.com/OLIMEX/RP2350-PICO2-XXL/DOCUMENTS/Extensions-pinout.png
+   (downloaded and visually inspected) — full GPIO/EXT1/EXT2 header
+   pinout diagram, hardware revision B. Confirms bus_alias label
+   "GPIO25\User_Led" and that BOOTSEL#/RESET are on the EXT2 header
+   labelled as button lines, not general GPIO.
+6. github.com/OLIMEX/RP2350-PICO2-XXL/HARDWARE/Hardware-revision-changes.txt
+   — confirms Rev.B moved the SD card DAT0 line from GPIO12 to GPIO24 to
+   avoid a conflict; Rev.C is a mechanical-only respin (no electrical
+   changes). Not relevant to button/LED/NeoPixel tagging.
+7. github.com/OLIMEX/RP2350-PICO2-XXL/HARDWARE/RP2350-PICO2-XXL-Rev.C/
+   RP2350-PICO2-XXL_Rev_C.kicad_sch (downloaded raw, inspected as plain
+   text S-expression source) — authoritative circuit-level confirmation:
+     - bus_alias "Main-BUS" entry includes "GPIO25\\User_Led".
+     - Component LED1 (lib_id OLIMEX_Diodes:LED, Value "LED/GREEN/0603")
+       at schematic coords (180.34, 233.68).
+     - Component R15 (lib_id OLIMEX_RCL:R, Value "2.2k/R0402") at
+       (180.34, 222.25), directly in the wire path between the
+       "GPIO25\User_Led" net and LED1's pin 1.
+     - Wire chain traced: GPIO25 label/net -> R15 -> LED1 -> wire ->
+       GND power symbol (#PWR020, lib_id OLIMEX_Power:GND) at
+       (180.34, 241.3).
+     - "BOOTSEL#" schematic label found on the same net as "QSPI_CSn"
+       (both appear together near the RP2350 QSPI pins, e.g. labels at
+       (99.06,33.02) and (55.88,55.88)) — confirms the BOOT button pulls
+       the QSPI/flash chip-select line low at boot (the standard RP2040/
+       RP2350 BOOTSEL-via-flash-CS mechanism), not a numbered GPIO.
+     - RESET button (RST1) wired to the chip's RUN pin (hardware reset),
+       also not a GPIO.
+   PDF version of the same schematic (RP2350-PICO2-XXL_Rev_C.pdf, and the
+   TME-hosted user manual PDF) could not be rendered in this environment
+   (no pdftoppm/poppler-utils installed) — the .kicad_sch plain-text
+   source was used instead and is authoritative (it IS the schematic,
+   not a rendering of it).
+
+Per-pin reasoning
+------------------
+GPIO25 (PIN_LED)
+  - Tagged: ["digital_output", "pwm_output", "led_high"] (digital_input
+    dropped, per established led_high/led_low precedent for dedicated
+    onboard LED pins — see rp2040/rp2350/rpipico2 GPIO25).
+  - Active-HIGH: schematic shows GPIO25 -> R15 (2.2k series resistor) ->
+    LED1 -> GND, i.e. GPIO25 sources current into the LED to ground when
+    driven HIGH.
+  - No alias collision: this board's own pins_arduino.h defines
+    PIN_SERIAL1_TX/RX=0/1, PIN_SERIAL2_TX/RX=8/9, PIN_SPI0=16/19/18/17,
+    PIN_SPI1=12/15/14/13, PIN_WIRE0=4/5, PIN_WIRE1=26/27 — GPIO25 does
+    not appear in any of these, so build_boards.js's automatic bus-
+    capability append cannot contaminate this pin. No fix needed for
+    that bug class on this board.
+
+No button found on any numbered GPIO
+  - BOOT and RESET are both dedicated hardware lines (QSPI flash CS and
+    chip RUN/reset respectively), not GPIO — confirmed via schematic (see
+    above) and consistent with every other plain (non-W) RP2040/RP2350
+    Pico-family board already audited in this repo (e.g. rpipico2).
+    inputOnlyGpios left empty; no "button" capability tag applied
+    anywhere — out of scope for GPIO-keyed capability tagging, not a
+    missed tag.
+
+No onboard NeoPixel/WS2812
+  - Not mentioned in any vendor source (Olimex product page, GitHub
+    README, schematic). Board has exactly one green status LED (LED1,
+    GPIO25) plus the two non-GPIO buttons. No NeoPixel tag applied.
+
+GPIO8 / PSRAM_CS observation (informational only, no action taken)
+  - This board's pins_arduino.h defines both `#define RP2350_PSRAM_CS 8`
+    and `#define PIN_SERIAL2_TX (8u)` — i.e. GPIO8 is nominally both the
+    PSRAM chip-select and a Serial2 TX alias. The schematic's bus_alias
+    confirms GPIO8 is physically "QMI_CS1n" (QSPI memory-interface CS),
+    consistent with PSRAM use. This is a vendor arduino-pico header
+    quirk (Serial2 on GPIO8/9 is likely unusable while PSRAM is active),
+    not a button/LED/SDA/SCL/SS/MOSI/MISO/SCK collision, so it falls
+    outside this audit's defined bug class. Left unmodified; flagged here
+    for visibility only.
+
+Summary
+-------
+Created variants/rp2040/rp2350/olimex_pico2xxl/board.json (full file,
+chip-level defaults copied verbatim from variants/rp2040/rp2350/
+board.json, plus one chipGpios entry): GPIO25 tagged
+digital_output+pwm_output+led_high (onboard green status LED,
+active-high, schematically confirmed via 2.2k series resistor to GND).
+No button or NeoPixel capability applied — BOOT/RESET are non-GPIO
+hardware lines and no NeoPixel exists on this board. No bus-alias
+collision found on GPIO25, so no #define removal was needed in
+pins_arduino.h.

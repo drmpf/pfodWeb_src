@@ -563,6 +563,16 @@ fn progress(tx: &ProgressTx, step: &'static str) {
     }
 }
 
+/// Minimum time to wait after a failed open before allowing another
+/// scan/connect attempt for the same target. A client retrying rapidly
+/// (observed: ~40 attempts in under 4s while a different central held
+/// the device) gains nothing from retrying sooner — the obstruction is
+/// external (device connected elsewhere, not yet re-advertising, or the
+/// OS/radio still settling) and doesn't clear any faster for it, while
+/// hammering the adapter that fast is exactly what risked destabilising
+/// the whole proxy (see project memory / ble.rs history).
+const BLE_RETRY_BACKOFF: Duration = Duration::from_secs(2);
+
 async fn ensure_open(
     app: &Arc<AppState>,
     session: &Arc<BleSession>,
@@ -580,61 +590,118 @@ async fn ensure_open(
         return Ok(());
     }
 
+    if let Some(last_fail) = session.state.lock().await.last_failure {
+        let elapsed = last_fail.elapsed();
+        if elapsed < BLE_RETRY_BACKOFF {
+            let wait = BLE_RETRY_BACKOFF - elapsed;
+            log::log(&format!(
+                "[pfodProxy] BLE: {addr} backing off, {} ms since last failure",
+                elapsed.as_millis()
+            ));
+            return Err(format!("recent connection failure, retry in {}s", wait.as_secs_f32().ceil() as u64));
+        }
+    }
+
     session.state.lock().await.addr = Some(addr.to_string());
 
-    open_ble(app, session, addr, progress_tx).await
+    let result = open_ble(app, session, addr, progress_tx).await;
+    if result.is_err() {
+        session.state.lock().await.last_failure = Some(Instant::now());
+    }
+    result
+}
+
+/// Actively scan for `addr` (NUS-filtered), returning as soon as it's
+/// seen live, or an error once the 5-second window elapses with no
+/// match.  A live `DeviceDiscovered`/`DeviceUpdated` match is itself
+/// proof the device is currently advertising the Nordic UART Service —
+/// i.e. genuinely reachable right now, not just an address btleplug
+/// happens to remember (see `find_peripheral`'s cache, which proves
+/// neither liveness nor NUS support).  Deliberately does NOT fall back
+/// to `find_peripheral`'s cache on a timeout tick — every caller of this
+/// function specifically needs a fresh, live-event-sourced `Peripheral`.
+async fn scan_for_peripheral(
+    central: &btleplug::platform::Adapter,
+    addr: &str,
+    progress_tx: &ProgressTx,
+) -> Result<btleplug::platform::Peripheral, String> {
+    progress(progress_tx, "scanning");
+    log::log(&format!("[pfodProxy] BLE: scanning for {addr} ..."));
+    central.start_scan(ScanFilter { services: vec![NUS_SERVICE] })
+        .await.map_err(|e| e.to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut events = central.events().await.map_err(|e| e.to_string())?;
+    let mut target: Option<btleplug::platform::Peripheral> = None;
+    while Instant::now() < deadline {
+        if let Ok(Some(CentralEvent::DeviceDiscovered(id))) | Ok(Some(CentralEvent::DeviceUpdated(id))) =
+            tokio::time::timeout(Duration::from_millis(250), events.next()).await
+        {
+            if let Ok(p) = central.peripheral(&id).await {
+                if p.id().to_string().eq_ignore_ascii_case(addr) {
+                    target = Some(p);
+                    break;
+                }
+            }
+        }
+    }
+    let _ = central.stop_scan().await;
+    target.ok_or_else(|| format!("device {addr} not found"))
 }
 
 async fn open_ble(app: &Arc<AppState>, session: &Arc<BleSession>, addr: &str, progress_tx: ProgressTx) -> Result<(), String> {
     let central = get_central(app).await?;
 
-    // Resolve peripheral: cached lookup first, then fresh scan.
-    let peripheral = match find_peripheral(&central, addr).await {
+    // Resolve peripheral: cached lookup first, then fresh scan.  A cache
+    // hit skips the round-trip but risks handing back a stale Peripheral
+    // — see the connect() failure handling below.
+    let (mut peripheral, was_cached) = match find_peripheral(&central, addr).await {
         Some(p) => {
             log::log(&format!("[pfodProxy] BLE: {addr} already known, skipping scan"));
-            p
+            (p, true)
         }
-        None => {
-            progress(&progress_tx, "scanning");
-            log::log(&format!("[pfodProxy] BLE: scanning for {addr} ..."));
-            central.start_scan(ScanFilter { services: vec![NUS_SERVICE] })
-                .await.map_err(|e| e.to_string())?;
-            let deadline = Instant::now() + Duration::from_secs(5);
-            let mut events = central.events().await.map_err(|e| e.to_string())?;
-            let mut target: Option<btleplug::platform::Peripheral> = None;
-            while Instant::now() < deadline {
-                match tokio::time::timeout(Duration::from_millis(250), events.next()).await {
-                    Ok(Some(CentralEvent::DeviceDiscovered(id))) |
-                    Ok(Some(CentralEvent::DeviceUpdated(id))) => {
-                        if let Ok(p) = central.peripheral(&id).await {
-                            if p.id().to_string().eq_ignore_ascii_case(addr) {
-                                target = Some(p);
-                                break;
-                            }
-                        }
-                    }
-                    _ => {
-                        if let Some(p) = find_peripheral(&central, addr).await {
-                            target = Some(p);
-                            break;
-                        }
-                    }
-                }
-            }
-            let _ = central.stop_scan().await;
-            target.ok_or_else(|| format!("device {addr} not found"))?
-        }
+        None => (scan_for_peripheral(&central, addr, &progress_tx).await?, false),
     };
 
     progress(&progress_tx, "connecting");
     let t_connect = Instant::now();
-    peripheral.connect().await.map_err(|e| e.to_string())?;
+    if let Err(e) = peripheral.connect().await {
+        if !was_cached {
+            // Already came from a genuine live scan — propagate as-is.
+            return Err(e.to_string());
+        }
+        // Cached peripheral failed — rescan once, requiring a genuine
+        // live advertisement (see scan_for_peripheral) rather than
+        // trusting the same cached handle again. Deliberately does NOT
+        // reset/recreate the shared btleplug Adapter/Manager here — that
+        // was tried and found capable of hanging the whole proxy process
+        // when a client retries rapidly (repeated Manager::new() calls
+        // in a tight loop). ensure_open's BLE_RETRY_BACKOFF is what
+        // actually protects against the retry storm; this rescan is just
+        // a one-shot "maybe it's back" check within that same request.
+        log::log(&format!(
+            "[pfodProxy] BLE: cached peripheral for {addr} failed to connect ({e}), rescanning"
+        ));
+        peripheral = scan_for_peripheral(&central, addr, &progress_tx).await?;
+        peripheral.connect().await.map_err(|e| e.to_string())?;
+    }
     log::log(&format!(
         "[pfodProxy] BLE {addr}: connect() took {} ms",
         t_connect.elapsed().as_millis()
     ));
 
-    progress(&progress_tx, "discovering");
+    finish_ble_connect(session, addr, peripheral, &progress_tx).await
+}
+
+/// Complete a BLE connection after `.connect()` has already succeeded:
+/// discover services, find the NUS TX characteristic, subscribe, and
+/// spawn the notify-pump task.
+async fn finish_ble_connect(
+    session: &Arc<BleSession>,
+    addr: &str,
+    peripheral: btleplug::platform::Peripheral,
+    progress_tx: &ProgressTx,
+) -> Result<(), String> {
+    progress(progress_tx, "discovering");
     let t_discover = Instant::now();
     peripheral.discover_services().await.map_err(|e| e.to_string())?;
     log::log(&format!(
@@ -649,7 +716,7 @@ async fn open_ble(app: &Arc<AppState>, session: &Arc<BleSession>, addr: &str, pr
         .ok_or_else(|| "NUS TX characteristic not found".to_string())?
         .clone();
 
-    progress(&progress_tx, "subscribing");
+    progress(progress_tx, "subscribing");
     let t_subscribe = Instant::now();
     peripheral.subscribe(&tx).await.map_err(|e| e.to_string())?;
     log::log(&format!(
@@ -668,11 +735,12 @@ async fn open_ble(app: &Arc<AppState>, session: &Arc<BleSession>, addr: &str, pr
 
     {
         let mut b = session.state.lock().await;
-        b.peripheral = Some(peripheral.clone());
-        b.bytes_tx   = Some(bytes_tx.clone());
-        b.connected  = true;
-        b.cancel_tx  = Some(cancel_tx);
-        b.initial_rx = Some(initial_rx);
+        b.peripheral    = Some(peripheral.clone());
+        b.bytes_tx      = Some(bytes_tx.clone());
+        b.connected     = true;
+        b.cancel_tx     = Some(cancel_tx);
+        b.initial_rx    = Some(initial_rx);
+        b.last_failure  = None;
     }
 
     log::log(&format!("[pfodProxy] Connected to BLE {addr}"));

@@ -1,0 +1,136 @@
+Board: pimoroni_tiny2350 (chip: rp2350) — Pimoroni Tiny 2350
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel audit)
+
+pins_arduino.h identity pins:
+  #define PICO_RP2350A 1
+  #define PIN_LED        (19u)   // comment: "RGB LED on pins 18-20. Use the Green
+                                  //   LED element on pin 19 as LED_BUILTIN"
+  (no PIN_BUTTON / PIN_NEOPIXEL alias declared anywhere in this file)
+  PIN_SPI0_MISO=4, PIN_SPI0_MOSI=7, PIN_SPI0_SCK=6, PIN_SPI0_SS=5
+  PIN_SPI1_MISO=28, PIN_SPI1_MOSI=27, PIN_SPI1_SCK=26, PIN_SPI1_SS=29
+  PIN_WIRE0_SDA=12/SCL=13, PIN_WIRE1_SDA=6/SCL=7
+  Includes ../generic/common.h for the blanket fallback.
+
+SOURCES CONSULTED
+- pfodWeb source: variants/rp2040/rp2350/pimoroni_tiny2350/pins_arduino.h (full file).
+- pfodWeb source: variants/rp2040/rp2350/board.json (chip-level defaults, chipGpios: {} by design;
+  confirms this "rp2350" bucket is Serial-only/non-WiFi, and that every named board in it uses the
+  30-pin RP2350A-compatible pinout — matches this board's own `#define PICO_RP2350A 1`).
+- Precedent read (task-specified, directly relevant): variants/rp2040/rp2040/pimoroni_tiny2040/
+  board.json + boardsDetails/rp2040/rp2040/pimoroni_tiny2040/notes.txt — the RP2040 sibling of
+  this board, already confirmed this session: discrete/RGB LED at GP18(R)/GP19(G)/GP20(B),
+  active-low/common-anode, PWM-dimmable, tagged led_r_low/led_g_low/led_b_low; and a real,
+  diode-protected BOOTSEL-as-button case at GP23, tagged digital_input+button only (no output
+  capabilities, conservative precedent borrowed from u-blox EVK-NORA-W10 GPIO0/SW2 in
+  variants/esp32/esp32s3/nora_w10/board.json).
+- Also read: variants/rp2040/rp2350/rpipico2/board.json — RP2350 sibling of the plain Pico,
+  confirms the RP2350 family's LED-tagging vocabulary (led_high, GPIO25) and the
+  "BOOTSEL is not a numbered GPIO on the plain Pico 2" out-of-scope rationale (does not apply
+  to this board, since Tiny 2350's BOOT button IS wired to a normal user-readable GPIO, GP23 —
+  same as its Tiny 2040 sibling, unlike the plain Pico/Pico 2 QSPI-chip-select-line trick).
+- variants/rp2040/rp2350/generic/common.h — confirms LED_BUILTIN maps to PIN_LED and D0-D22/
+  A0-A2 fallback pin declarations; no GPIO18/19/20/23-specific overrides here that would
+  conflict with the per-board chipGpios entries.
+- shop.pimoroni.com/en-us/products/tiny-2350 — attempted directly, returned HTTP 503 at fetch
+  time (2026-07-13); the pishop.us reseller mirror (which republishes Pimoroni's own product
+  copy verbatim) was used instead, and other reseller listings (PiShop.ca, Kiwi Electronics,
+  The Pi Hut, core-electronics.com.au) via WebSearch aggregation independently repeat the same
+  wording, corroborating the mirror is accurate.
+- www.pishop.us/product/tiny-2350/ (WebFetch, current product page):
+    RGB LED: "GPIO Pins: GP18-GP20"; "Logic: active low (so the on/off state will work in the
+    opposite way to the LED on a Raspberry Pi Pico)"; "PWM Dimming: You can PWM the pins to
+    dim the LED."
+    BOOT/User Button: "GPIO Pin: GP23"; "Logic: active low"; "you can 'use the BOOT button as a
+    user switch'" (diode protection not spelled out verbatim in this particular mirror's text,
+    see WebSearch corroboration below).
+    Other onboard features: Qw/ST (I2C) connector, separate reset button, USB-C for power/
+    programming/data, 3V3 regulator (300mA max).
+- forums.pimoroni.com/t/tiny-2350-rgb-led-pwm-pico-sdk/25465 (WebFetch): sample code
+  `TINY2350_LED_R_PIN = 18`, `TINY2350_LED_G_PIN = 19`, `TINY2350_LED_B_PIN = 20` — independently
+  confirms the exact channel-to-GPIO mapping from a real user's working PWM code, and restates
+  "The RGB LED is connected to GP18-GP20 and active low ... the on/off state will work in the
+  opposite way to the LED on a Raspberry Pi Pico" (i.e. same active-low/common-anode polarity
+  as the Tiny 2040).
+- WebSearch aggregating shop.pimoroni.com / PiShop.us / PiShop.ca / The Pi Hut / Kiwi
+  Electronics / Zaitronics / Little Bird / wholesale.pimoroni.com listings (2026-07-13):
+  consistently repeats "the board includes a reset button and some clever circuitry that lets
+  you use the boot button as a user controllable switch... wired to GP23 and active low" — the
+  identical "clever circuitry" marketing phrase already confirmed to describe the Tiny 2040's
+  diode-isolated BOOT/DFU-select circuit (see pimoroni_tiny2040's notes.txt, item 1's exact
+  quote: "clever circuitry that lets you use the boot button as a user controllable switch...
+  mapping to GPIO 23"). No source found in this session that spells out the literal word
+  "diode" for the Tiny 2350 model specifically (unlike the Tiny 2040, where the official
+  datasheet PDF's pinout diagram explicitly labelled "BOOT/DFU mode protected by diode").
+- WebFetch attempted on www.adafruit.com/product/6248 (Tiny 2350 listing) — page text confirmed
+  "programmable RGB LED" and "the BOOT button can also be used as a user-controllable switch"
+  plus "clever circuitry", but did not itself disclose GPIO numbers or diode wording (defers to
+  a linked schematic PDF not retrieved in this session).
+- WebFetch attempted on the Core Electronics pinout-diagram PDF
+  (core-electronics.com.au/attachments/localcontent/tiny2350_pinout_diagram_15923c380bd.pdf) —
+  returned only binary/FlateDecode-compressed PDF stream data, not extractable text; not used
+  as a source (saved locally but not readable by the fetch tool).
+
+PER-PIN REASONING
+- GPIO18/19/20: Confirmed by TWO independent, corroborating sources (pishop.us current product
+  page text, and forums.pimoroni.com's own working sample code) to be a single onboard RGB LED
+  (active-low), NOT three separate single-color LEDs and NOT the plain single-color LED the
+  PIN_LED alias name might suggest — identical GPIO numbering, polarity, and marketing wording
+  to the confirmed RP2040 sibling (pimoroni_tiny2040). GPIO19 is the specific channel this
+  board's pins_arduino.h aliases as PIN_LED/LED_BUILTIN (its own header comment: "Use the Green
+  LED element on pin 19 as LED_BUILTIN"). Tagged using this repo's per-channel RGB vocabulary:
+    GPIO18: ["digital_output", "pwm_output", "led_r_low"]
+    GPIO19: ["digital_output", "pwm_output", "led_g_low"]  (PIN_LED / LED_BUILTIN)
+    GPIO20: ["digital_output", "pwm_output", "led_b_low"]
+  pwm_output kept on all three — vendor docs explicitly describe PWM-dimming these pins.
+  digital_input dropped, matching this repo's led_high/led_low/led_r_*/led_g_*/led_b_*
+  precedent for dedicated onboard LED pins (including the Tiny 2040 sibling).
+
+- GPIO23: NOT declared anywhere in this board's pins_arduino.h (no PIN_BUTTON alias), but
+  confirmed via current vendor/reseller product pages ("GPIO Pin: GP23", "Logic: active low",
+  "use the BOOT button as a user switch") to be a real, user-readable GPIO wired to the board's
+  physical BOOT switch — distinct from the separate reset button, which the same product pages
+  describe as a separate feature (drives RUN/hardware-reset directly, not a GPIO, matching the
+  out-of-scope RESET rationale already used elsewhere in this repo, e.g. rpipico2/board.json,
+  pimoroni_tiny2040/board.json). Added purely via a chipGpios entry (the general "GPIO absent
+  from pins_arduino.h but present in chipGpios" mechanism already exercised for the Tiny 2040's
+  GPIO23). Tagged ["digital_input", "button"] — digital_output/pwm_output deliberately OMITTED:
+  no source retrieved in this session spells out that it is electrically safe to drive this
+  BOOT/DFU-select line as an output (the Tiny 2040's own datasheet PDF explicitly called this
+  circuit "diode"-protected, and the Tiny 2350's marketing copy reuses the identical "clever
+  circuitry that lets you use the boot button as a user controllable switch" phrase, strongly
+  implying the same protection mechanism, but no Tiny-2350-specific source spelled out the word
+  "diode" itself). The conservative choice — input+button only — matches the Tiny 2040
+  precedent and this repo's established pattern for BOOT-select-multiplexed pins (u-blox
+  EVK-NORA-W10 GPIO0/SW2 in variants/esp32/esp32s3/nora_w10/board.json).
+
+BUS-COLLISION CHECK (per task's specific hint re: SDA/SCL/SS/MOSI/MISO/SCK auto-append bug)
+This board's own pins_arduino.h declares:
+  PIN_SPI0_MISO=4, PIN_SPI0_MOSI=7, PIN_SPI0_SCK=6, PIN_SPI0_SS=5
+  PIN_SPI1_MISO=28, PIN_SPI1_MOSI=27, PIN_SPI1_SCK=26, PIN_SPI1_SS=29
+  PIN_WIRE0_SDA=12, PIN_WIRE0_SCL=13, PIN_WIRE1_SDA=6, PIN_WIRE1_SCL=7
+None of these values (4, 5, 6, 7, 12, 13, 26, 27, 28, 29) coincide with the confirmed RGB
+LED/button pins 18, 19, 20, or 23. So build_boards.js's unconditional SS/SDA/SCL/MOSI/MISO/SCK
+alias auto-append never fires on any tagged pin here — no pins_arduino.h edit needed on this
+board (unlike the adafruit_feather_scorpio precedent, where a vendor-default SPI0_SS value did
+collide with that board's confirmed onboard LED pin).
+
+Result: Created variants/rp2040/rp2350/pimoroni_tiny2350/board.json (full per-board override
+file, chip-level defaults from variants/rp2040/rp2350/board.json copied verbatim + chipGpios
+overrides) tagging:
+  GPIO18 -> led_r_low, GPIO19 -> led_g_low (PIN_LED/LED_BUILTIN), GPIO20 -> led_b_low
+    (one onboard active-low RGB LED, all three channels PWM-dimmable — same pin numbering and
+    polarity as the RP2040 sibling pimoroni_tiny2040)
+  GPIO23 -> button (BOOT/user switch, digital_input + button only, no output capabilities,
+    matching the Tiny 2040's conservative precedent)
+No SPI/Wire bus-collision fix was needed (no confirmed tagged pin coincides with any
+SPI0/SPI1/Wire0/Wire1 alias in this board's pins_arduino.h). JSON validity verified via manual
+`//`-comment stripping + JSON.parse (no build script executed, per task instructions).
+
+SUMMARY: Confirmed via current Pimoroni/reseller product documentation and independent
+forum sample code that GPIO18/19/20 form a single active-low RGB LED (not a plain single-color
+LED_BUILTIN despite the alias name) and that GPIO23 is a genuine, user-readable BOOT button
+reusing the Tiny 2040's "clever circuitry" protection mechanism (diode-based on the confirmed
+Tiny 2040 sibling; not independently re-confirmed as diode-specific for the 2350 in this
+session, hence the same conservative input+button-only tagging) — both now tagged in a new
+per-board board.json, mirroring the Tiny 2040 sibling's confirmed findings; no SPI/Wire
+pin-exclusion changes were required.

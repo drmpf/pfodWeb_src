@@ -1,0 +1,48 @@
+{
+  // boardName / displayName are overridden by boards.txt entry:
+  //   pro5v.name=Arduino Pro or Pro Mini (5V, 16 MHz)
+  "boardName": "pro5v",
+  "displayName": "Arduino Pro or Pro Mini (5V, 16 MHz)",
+
+  // Same 8-analog-input ATmega328P pin map as Nano/Mini/BT — see
+  // pins_arduino.h, which just includes ../eightanaloginputs/pins_arduino.h.
+  //
+  // Split off (2026-07-14) from the real Arduino IDE's single ambiguous
+  // "pro" boards.txt entry (pro.build.variant=eightanaloginputs), which
+  // offers a genuine 3.3V/8MHz-vs-5V/16MHz menu choice
+  // (pro.menu.cpu.16MHzatmega328 / pro.menu.cpu.8MHzatmega328 in the real
+  // boards.txt) that build_boards.js cannot see — it only reads
+  // top-level `<id>.build.variant=` lines, never `.menu.` sub-keys (same
+  // limitation already documented in standard/board.json before this
+  // split existed). `pro5v`/`pro3v3` are pfodWeb Designer-only
+  // convenience ids (not present in the real upstream Arduino boards.txt)
+  // so the Designer can show a correct ADC reference voltage for each
+  // real physical SKU instead of one guessed value for both.
+  "family": "avr",
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  // ADC: ATmega328P 10-bit ADC (0-1023). This SKU runs at 5 V, so AVCC
+  // (the default reference) is 5.0 V.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "5.0" },
+  "inputOnlyGpios": [],
+
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // D13 — onboard status LED, active-high. Independently verified
+  // (2026-07-14) against Arduino's own official documentation:
+  // https://www.arduino.cc/en/Main/ArduinoBoardProMini ("There is a
+  // built-in LED connected to digital pin 13. When the pin is HIGH
+  // value, the LED is on") and corroborated by SparkFun's own Pro Mini
+  // tutorial (https://learn.sparkfun.com/tutorials/using-the-arduino-pro-mini-33v/all).
+  // Same confirmed convention as every other classic-Arduino-pinout
+  // board in this family (see standard/board.json's own D13 finding,
+  // which this SKU's pin map inherits unchanged via the
+  // eightanaloginputs include chain). Also this board's PIN_SPI_SCK —
+  // the classic Arduino pin-13 LED+SCK sharing convention, not a bug.
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED, active-high. Also PIN_SPI_SCK (classic Arduino pin-13 LED+SCK sharing, not a conflict for typical use)." }
+  }
+}

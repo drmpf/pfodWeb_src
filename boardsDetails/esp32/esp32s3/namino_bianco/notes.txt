@@ -1,0 +1,114 @@
+namino_bianco - onboard button/LED research notes
+Board: variants/esp32/esp32s3/namino_bianco (ESP32-S3-WROOM-1U-N4R8)
+Researched: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+1. https://namino.cc/products/boards/namino-bianco/
+   Vendor product page. Confirms board is real, Italian "Namino" family
+   (Mect Srl), lists feature bullets and links to two PDFs (user manual
+   + hardware/schematic doc). No explicit GPIO numbers on this page
+   itself.
+
+2. https://namino.cc/documents/3/NAMINO-BIANCO-user-manual-M7102_02.pdf
+   ("BIANCO User manual", M7102_02, 12/23)
+   Section 3.2 "Inputs / outputs" explicitly lists: "1 pushbutton for
+   programming", "1 pushbutton for reset", "1 led white programmable",
+   "1 led white as power indicator".
+   Section 4.1.1 "Programmable led" states verbatim: "TEST LED is
+   connected to ESP32 pin IO47." This is the explicit, unambiguous
+   confirmation used for the LED GPIO tag.
+   Section 5.1 states: "press the BT button to enter in programming
+   mode" - confirms the programming pushbutton's function but does not
+   itself give a GPIO number.
+   No polarity (HIGH/LOW = on) information given for the TEST LED here.
+
+3. https://namino.cc/documents/7/Namino-BIANCO-HW_OdrprAn.pdf
+   Vendor open-hardware KiCad schematic export (CC BY-SA licensed),
+   "scheda-bianco.kicad_sch", Rev 1, dated 2023-10-31. This is the real
+   schematic, not just a photo/pinout diagram.
+   - Sheet "PSU" (sheet 2): shows LED1 (POWER LED) wired
+     +3.3V -> R36 (2.4k, 0603) -> LED1 (LW_Q38G-Q1OO-3K6L-1-5-R18) -> GND.
+     Always-on power indicator, NOT GPIO-connected. Confirms POWER LED
+     is correctly left untagged (no GPIO to tag).
+   - Sheet "WiFi" (sheet 5): shows LED2 (TEST/programmable LED) wired
+     PD2_IO47 -> R35 (2.4k, 0603, same part/value as R36) -> LED2 (same
+     LED part as LED1) -> GND. Same topology as LED1 but fed from GPIO47
+     instead of a permanent 3.3V rail. Since LED1 lights when its top
+     node sees +3.3V (a HIGH-like potential), by direct schematic
+     symmetry LED2 lights when GPIO47 is driven HIGH. Used as the basis
+     for tagging GPIO47 "led_high" (active-high).
+   - Sheet "WiFi" (sheet 5) also shows a "Program-button" (switch S2)
+     driving a "BOOT_PIN" net through a CP2102N-based auto-reset
+     level-shifter (Q1/Q2/Q3 BSS138 + diode D9 + 74LVC1G126 buffer) -
+     the standard ESP32 auto-download circuit. BOOT_PIN corresponds to
+     the WROOM-1U-N4R8 module's IO0 pin (module pin 27, listed as "IO0"
+     in the same net group). This board's own pinNotes already document
+     "0: Must be HIGH for normal boot" (standard ESP32-S3 IO0 strap
+     requirement), consistent with this. The separate physical RESET
+     pushbutton drives a different net (GRESET, tied to the module's
+     EN/RESET pin) - not a GPIO, not taggable.
+
+4. https://github.com/namino-cc/examples (Arduino/namino_bianco_blinkLed/
+   namino_bianco_blinkLed.ino, raw fetched via
+   raw.githubusercontent.com)
+   Confirms in a code comment: "Turn ON and OFF repeatedly on board TEST
+   LED, connected to pin GPIO47" - corroborates the manual's GPIO47
+   identification. Uses LED_BUILTIN with a read/invert toggle pattern;
+   does not itself establish polarity (toggle-from-unknown-state code,
+   no explicit digitalWrite(...,HIGH) "on" comment).
+
+5. https://github.com/namino-cc/examples (Arduino/namino_bianco_pin_io/
+   namino_bianco_pins.h, raw fetched)
+   Confirms `#define LED_BUILTIN GPIO47` in the vendor's own pins header
+   for this board - consistent with, but not itself independent proof
+   beyond, the manual/schematic already cited. (Per task rules this
+   alias name alone was NOT used as the basis for tagging - the manual
+   text and schematic were the deciding sources.)
+
+6. https://github.com/namino-cc/Namino_Library (src/ directory listing +
+   namino_arancio.cpp/.h contents)
+   Checked for any LED helper/register code that might reveal polarity
+   convention. Repo only contains namino_arancio.* and namino_rosso.*
+   (register-map drivers for those boards' second I/O chip) - no
+   namino_bianco.* files, and no LED-related code in what is present.
+   Not useful for polarity; superseded by the schematic evidence in
+   source 3.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO0 (RESET/EN line): The separate physical "pushbutton for reset"
+  (distinct from the programming pushbutton) drives the chip's GRESET/
+  EN pin per the schematic, which is a hardware reset line, not a GPIO.
+  Correctly not tagged - no judgement call, this is not a GPIO at all.
+
+- "POWER LED" (LED1, silkscreen box "POWER LED" in the manual's board
+  photo): confirmed via schematic to be wired directly across
+  +3.3V/GND through a fixed resistor - it is not connected to any GPIO,
+  so there is nothing to tag. No judgement call needed; this is a firm
+  negative confirmed by the schematic.
+
+- GPIO46/47/48: unlike the sibling namino_arancio/namino_rosso boards,
+  this board's own pins_arduino.h declares all of GPIO46/47/48 as normal
+  available pins (no board-specific chip-level pin exclusion needed
+  here), and none of them coincide with this board's TX/RX (TX=GPIO17,
+  RX=GPIO18). No conflict, no exclusion required.
+
+WHAT WAS TAGGED
+----------------
+- GPIO47: capabilities changed to ["digital_output", "led_high",
+  "pwm_output"] (pwm_output kept because it was already present on this
+  GPIO in the chip-level default). Confirmed onboard white "TEST LED",
+  active-high, via vendor manual (explicit GPIO47 statement) + vendor
+  KiCad schematic (topology/polarity).
+- GPIO0: capabilities changed to ["digital_input", "button"]. Confirmed
+  onboard "pushbutton for programming" via vendor manual + vendor KiCad
+  schematic (Program-button S2 -> BOOT_PIN net -> WROOM module IO0),
+  consistent with this board's existing pinNotes entry for GPIO0 and
+  with the established precedent in this codebase of tagging ESP32
+  BOOT/program buttons on GPIO0 (many sibling esp32s3 boards already do
+  this the same way).
+- No other GPIOs were tagged. board.json for namino_bianco did not
+  previously exist; it was created as a full copy of the chip-level
+  default variants/esp32/esp32s3/board.json with only GPIO0 and GPIO47
+  modified, plus the pfodWeb NOTE comments documenting the above.

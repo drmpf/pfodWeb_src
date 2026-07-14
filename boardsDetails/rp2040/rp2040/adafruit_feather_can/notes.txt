@@ -1,0 +1,191 @@
+Board: Adafruit Feather RP2040 CAN Bus (product 5724)
+Directory: variants/rp2040/rp2040/adafruit_feather_can/
+Audit date: 2026-07-13
+Result: board.json CREATED (chipGpios overrides for CAN transceiver pins,
+NeoPixel + power gate, button, LED). pins_arduino.h EDITED (removed
+colliding default PIN_SPI0_SS(13u) alias — see "Bug found" below).
+
+SUMMARY
+-------
+This is a Feather RP2040 with an onboard MCP25625 CAN transceiver/
+controller (SPI-attached, six dedicated GPIO control lines), a status
+LED (GPIO13, active-high), a single status NeoPixel (GPIO21, active-high,
+gated by a power-enable pin on GPIO20 that must be driven HIGH), and a
+BOOT pushbutton (GPIO7, active-low with internal pull-up) — the same
+identity-pin pattern as the already-audited adafruit_feather_scorpio
+sibling board. Chip-level rp2040/rp2040/board.json has chipGpios: {}
+(deliberately empty), so every GPIO with any alias in this board's
+pins_arduino.h gets full digital_input/digital_output/pwm_output
+capability by default unless corrected here.
+
+SOURCES CONSULTED
+------------------
+1. https://learn.adafruit.com/adafruit-rp2040-can-bus-feather/pinouts
+   (official Adafruit guide, primary authority). Fetched directly.
+   Key quotes:
+     "The MCP25625 uses the exposed SPI port (SCK/GPIO14, MOSI/GPIO15
+     and MISO/GPIO8)..."
+     "GPIO16 - CAN Standby pin. Can be accessed in CircuitPython with
+     CAN_STANDBY"
+     "GPIO17 - CAN Transmit pin. Can be accessed in CircuitPython with
+     CAN_TX0_RTS"
+     "GPIO18 - CAN Reset pin. Can be accessed in CircuitPython with
+     CAN_RESET"
+     "GPIO19 - CAN Chip Select pin. Can be accessed in CircuitPython
+     with CAN_CS"
+     "GPIO22 - CAN Interrupt pin. Can be accessed in CircuitPython with
+     CAN_INTERRUPT"
+     "GPIO23 - CAN Receive pin. Can be accessed in CircuitPython with
+     CAN_RX0_BF"
+     "GPIO21 (NeoPixel) - Status NeoPixel LED. It is connected to
+     GPIO21"
+     "GPIO20 (NeoPixel Power) - NeoPixel power pin on GPIO20. It needs
+     to be set High for the NeoPixel to be powered"
+     "Boot button is the button on the right, located on GPIO7"
+     "Little red LED is controllable in CircuitPython code using
+     board.LED" (Arduino digital pin 13, matching pins_arduino.h's
+     PIN_LED(13u))
+   Also confirmed (separate WebFetch, targeted at GPIO14/15/8 SPI role):
+     "SCK/GPIO14 - The main SPI1 SCK. It is also I2C1 SDA, and PWM7 A."
+     "MO/GPIO15 - The main SPI1 MOSI. It is also I2C1 SCL, and PWM7 B."
+     "MI/GPIO8 - The main SPI1 MISO. It is also UART1 TX, I2C0 SDA, and
+     PWM4 A."
+   -> Conclusion: GPIO8/14/15 are the general-purpose exposed SPI header
+      pins, merely SHARED with (not dedicated to) the onboard CAN
+      transceiver — remain available for other SPI devices, so left
+      untagged/unexcluded.
+
+2. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/
+   boards/adafruit/feather_canbus_rp2040/
+   adafruit_feather_canbus_rp2040.dts
+   Official upstream Zephyr board port, independent cross-reference.
+   Quoted nodes:
+     leds { red_led: red_led { gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>; }; }
+     gpio_keys { user_button: button {
+       gpios = <&gpio0 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; }; }
+     ws2812: ws2812 { gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>; chain-length
+       = <1>; ... }
+   -> Independently confirms D13 LED active-high, GPIO7 button
+      active-low w/ internal pull-up, GPIO21 NeoPixel active-high —
+      exact match to Adafruit's own guide and to this board's
+      pins_arduino.h.
+
+3. WebSearch cross-check ("MCP25625" transceiver identity) — confirmed
+   via search snippet from the Adafruit guide itself: "The board uses
+   the MCP25625 (an MCP2515 with built-in transceiver)".
+
+4. variants/rp2040/rp2040/adafruit_feather_scorpio/board.json and
+   pins_arduino.h (sibling Adafruit Feather RP2040 board, already
+   audited 2026-07-12) — read as the structural/style precedent for
+   this board.json, and as the precedent for the PIN_SPI0_SS
+   bus-alias-contamination bug fix (see below).
+
+5. variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json — read as the
+   precedent for how to represent dedicated-hardware GPIOs with no
+   general-purpose role via `"capabilities": []` + explanatory note
+   (used here for the six CAN control lines and the NeoPixel power gate).
+
+6. variants/esp32/esp32s3/adafruit_feather_esp32s3/board.json — read as
+   the precedent for excluding a NEOPIXEL_POWER power-gate pin from
+   general use (ESP32 family achieves this by omitting the #define
+   entirely from pins_arduino.h; RP2040 family achieves the equivalent
+   effect via an empty chipGpios capabilities array, since the RP2040
+   chip-level default is empty and every declared alias otherwise gets
+   full capability).
+
+PER-PIN FINDINGS
+-----------------
+GPIO7  (PIN_BUTTON / BOOT) — tagged button. Ordinary GPIO wired to a
+  switch to GND, active-low, RP2040 internal pull-up enabled (no
+  external pull-up). Full digital_input/digital_output/pwm_output
+  capability retained (source 1, source 2).
+
+GPIO13 (PIN_LED) — tagged led_high. Onboard status LED, active-high
+  (source 2, corroborated by source 1). digital_input dropped per this
+  repo's established led_high precedent for dedicated onboard LED pins;
+  pwm_output kept (analogWrite() works on any RP2040 GPIO).
+
+GPIO16 (PIN_CAN_STANDBY) — capabilities emptied. Onboard MCP25625's
+  dedicated standby-control output (source 1).
+
+GPIO17 (PIN_CAN_TX0_RTS) — capabilities emptied. Onboard MCP25625's
+  dedicated transmit-request line (source 1).
+
+GPIO18 (PIN_CAN_RESET) — capabilities emptied. Onboard MCP25625's
+  dedicated active-reset line (source 1).
+
+GPIO19 (PIN_CAN_CS) — capabilities emptied. Onboard MCP25625's dedicated
+  SPI chip-select (source 1). Note: this is NOT the same pin as this
+  board's default PIN_SPI0_SS (which was GPIO13 before the bug fix
+  below) — the CAN library uses its own manually-specified CS pin, so
+  build_boards.js's SS-alias auto-append never touches GPIO19 regardless.
+
+GPIO20 (NEOPIXEL_POWER) — capabilities emptied. NeoPixel power-enable
+  gate; must be driven HIGH for the status NeoPixel to light (source 1,
+  verbatim: "It needs to be set High for the NeoPixel to be powered").
+  Matches the ESP32 Feather/QT Py NEOPIXEL_POWER exclusion precedent
+  (source 6).
+
+GPIO21 (PIN_NEOPIXEL) — tagged led_neopixel. Onboard single status
+  WS2812, active-high, output-only data line (source 1, source 2).
+  Depends on GPIO20 being driven HIGH to actually receive power.
+
+GPIO22 (PIN_CAN_INTERRUPT) — capabilities emptied. Onboard MCP25625's
+  dedicated interrupt output, read internally by the CAN library
+  (source 1).
+
+GPIO23 (PIN_CAN_RX0_BF) — capabilities emptied. Onboard MCP25625's
+  dedicated receive-buffer-full/interrupt line (source 1).
+
+GPIO8, GPIO14, GPIO15 (SPI0 MISO/SCK/MOSI) — NO CHANGE. Confirmed via
+  source 1 to be the board's general-purpose "main exposed SPI" header
+  pins, merely shared with (not dedicated to) the onboard CAN
+  transceiver — left at full default capability, matching the
+  scorpio precedent's treatment of its own shared SPI0 MISO/MOSI/SCK.
+
+GPIO0-6, 9-12, 24-29 (D0-D6/D9-D12/D24-D29, A0-A3, Serial1 TX/RX, Wire0
+  SDA/SCL) — NO CHANGE. Ordinary broken-out Feather header pins with no
+  onboard-dedicated-hardware conflict found.
+
+BUG FOUND AND FIXED
+--------------------
+GPIO13 (confirmed onboard status LED) was ALSO declared as this board's
+vendor-default PIN_SPI0_SS (13u) in pins_arduino.h. build_boards.js
+unconditionally auto-appends the matching bus-role capability (spi_ss
+here) for whatever GPIO the SS/MOSI/MISO/SCK aliases resolve to,
+regardless of any chipGpios override — so without a fix, the confirmed
+LED pin would have been contaminated with a spurious spi_ss capability
+in the Designer's pin picker.
+
+Investigation confirmed the onboard CAN transceiver does NOT use this
+default SS pin — it uses its own dedicated PIN_CAN_CS (GPIO19, source 1)
+— so GPIO13's PIN_SPI0_SS alias was vendor boilerplate left over from
+the generic RP2040 pin-map template, not a real hardware role.
+
+Fix (matching the identical bug/fix already applied to
+adafruit_feather_scorpio/pins_arduino.h on 2026-07-12): removed the
+`#define PIN_SPI0_SS (13u)` line from
+variants/rp2040/rp2040/adafruit_feather_can/pins_arduino.h, with an
+explanatory pfodWeb NOTE comment left in its place. MISO/MOSI/SCK
+aliases (GPIO8/15/14) were left untouched, since source 1 independently
+confirms those three ARE genuine general-purpose header pins.
+
+Note: this file's bottom section still contains a bespoke (non-
+common.h) `static const uint8_t SS = PIN_SPI0_SS;` line, matching the
+same file's own pre-existing D0-D29/A0-A3/SDA/SCL block. With the
+PIN_SPI0_SS macro removed, this line's build_boards.js parser
+resolution simply fails to resolve (SS ends up unresolved/undefined in
+the parser's alias table), which safely prevents any GPIO from being
+mismatched against it — verified by reading build_boards.js's
+parseEsp32Consts()/buildEsp32Board() two-pass alias resolution directly
+(pfodWeb_src/build_boards.js lines ~439-492 and ~541-548, ~697-703).
+This line was deliberately left as-is (not further edited) to match the
+adafruit_feather_scorpio precedent's minimal-footprint fix and this
+project's "don't refactor beyond the specific requested change"
+guideline; it has no effect on the generated board.json.
+
+VALIDATION
+----------
+board.json validated as syntactically correct JSON-with-comments via a
+manual `//`-comment-stripping script + JSON.parse() (no build commands
+run, per task instructions).

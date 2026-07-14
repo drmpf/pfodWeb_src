@@ -21,15 +21,9 @@ static const uint8_t MOSI = 11;
 static const uint8_t MISO = 13;
 static const uint8_t SCK = 12;
 
-// 2 connectors (X, Y) with 4 driver channels each
-static const uint8_t X1 = 35;
-static const uint8_t X2 = 36;
-static const uint8_t X3 = 37;
-static const uint8_t X4 = 38;
-static const uint8_t Y1 = 4;
-static const uint8_t Y2 = 5;
-static const uint8_t Y3 = 6;
-static const uint8_t Y4 = 7;
+// pfodWeb NOTE: X1-4/Y1-4 (2 motor-driver connectors, 4 channels each)
+// deliberately NOT declared - dedicated fixed motor-driver outputs, not
+// general-purpose (see board.json).
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;

@@ -15,7 +15,8 @@ static const uint8_t PIN_NEOPIXEL = 0;
 #define RGB_BUILTIN    (PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT)
 #define RGB_BRIGHTNESS 64
 
-static const uint8_t NEOPIXEL_POWER = 2;
+// pfodWeb NOTE: NEOPIXEL_POWER (GPIO2) deliberately NOT declared -
+// internal power-gate for the onboard NeoPixel, not general-purpose.
 
 static const uint8_t TX = 20;
 static const uint8_t RX = 8;

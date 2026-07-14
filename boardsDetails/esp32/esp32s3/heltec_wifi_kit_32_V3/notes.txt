@@ -1,0 +1,41 @@
+Board: heltec_wifi_kit_32_V3 (Heltec WiFi Kit 32 V3), chip esp32s3
+Date: 2026-07-14 (documentation backfill - findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- Vendor pins_arduino.h for this board - basis for excluding GPIO8-11
+  (radio SPI bus), GPIO14 (radio DIO0), GPIO17/18/21 (OLED I2C), GPIO36
+  (Vext power-gate); also source of LED_BUILTIN/LED alias on GPIO35.
+- Heltec HTIT-WB32_V3 schematic doc, pin table - "GPIO0, connect to PRG
+  switch" confirms GPIO0 as the onboard PRG/BOOT switch; "GPIO35 ... LED
+  Write Ctrl" confirms GPIO35 as the onboard LED write-control line.
+
+Per-pin findings:
+- GPIO0: tagged ["digital_input", "button"]. Confirmed onboard PRG/BOOT
+  switch (Heltec HTIT-WB32_V3 schematic doc, pin table: "GPIO0, connect to
+  PRG switch").
+- GPIO1, 2, 3, 4, 5, 6, 7, 12, 13, 15, 16, 38, 39, 40, 41, 42, 43, 44, 45,
+  46, 47, 48: left at the plain chip-level default capability set (no
+  board-specific note).
+- GPIO8, 9, 10, 11: excluded (removed from chipGpios entirely) - dedicated
+  onboard radio SPI bus, per vendor pins_arduino.h.
+- GPIO14: excluded (removed from chipGpios entirely) - dedicated onboard
+  radio DIO0 line, per vendor pins_arduino.h.
+- GPIO17, 18, 21: excluded (removed from chipGpios entirely) - dedicated
+  onboard OLED I2C bus, per vendor pins_arduino.h.
+- GPIO35: vendor-confirmed as the onboard LED write-control line (Heltec
+  HTIT-WB32_V3 schematic doc pin table: "GPIO35 ... LED Write Ctrl") but
+  deliberately left untagged/unexcluded - it already has no chipGpios entry
+  (excluded via the chip-level GPIO33-37 octal-flash/PSRAM policy inherited
+  from variants/esp32/esp32s3/board.json). Re-adding it would mean touching
+  a pre-existing pin exclusion, which was outside the original audit's
+  scope.
+- GPIO36: excluded (removed from chipGpios entirely) - dedicated onboard
+  Vext power-gate pin, per vendor pins_arduino.h.
+
+Summary: GPIO0 tagged button (onboard PRG/BOOT switch, confirmed via
+Heltec HTIT-WB32_V3 schematic pin table); radio SPI bus (GPIO8-11), radio
+DIO0 (GPIO14), OLED I2C bus (GPIO17/18/21), and Vext power-gate (GPIO36)
+excluded as dedicated hardware; GPIO35 (vendor-confirmed onboard LED
+write-control line) intentionally left untouched since it was already
+excluded by the inherited chip-level octal-flash/PSRAM policy and
+re-adding it was out of scope.

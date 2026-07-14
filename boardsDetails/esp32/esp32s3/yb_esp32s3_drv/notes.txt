@@ -1,0 +1,79 @@
+Board: yb_esp32s3_drv (YelloByte YB-ESP32-S3-DRV, ESP32-S3 8-channel motor/solenoid driver dev board)
+Researched: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+- https://github.com/yellobyte/YB-ESP32-S3-DRV
+  Board's dedicated GitHub repo. README confirms two onboard pushbuttons
+  ('R' = reset, shorts EN to GND; 'B' = shorts GPIO0 to GND for boot mode)
+  and two onboard LEDs ('P' = power indicator on 3.3V rail, not GPIO-driven;
+  'IO47' = status LED on GPIO47). No mention of a NeoPixel/addressable RGB
+  LED anywhere in the README.
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-DRV/main/Readme.md
+  Raw README text confirmed via WebFetch quote: "One LED labeled 'P' is
+  connected to the 3.3V rail... the other LED labeled 'IO47' is connected
+  to GPIO47 which can be used as status LED" and "One is labeled 'R' and
+  resets the ESP32-S3 (shorts EN pin to ground) and the other one is
+  labeled 'B' and shorts GPIO0 to ground when pressed." Text alone did not
+  state LED polarity explicitly, so schematic was consulted (below).
+
+- https://api.github.com/repos/yellobyte/YB-ESP32-S3-DRV/contents/doc
+  Directory listing used to locate schematic image filenames.
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-DRV/main/doc/YB-ESP32-S3-DRV_schematic_1_2.jpg
+  Actual vendor schematic (sheet 1/2, rev 1.1, dated 28.05.2025), viewed
+  directly as an image. Confirms three separate labeled sub-circuits:
+    * "Reset Button": EN pin, resistor R4/10k, switch RST_S1 to GND, C5 220n.
+    * "GPIO0 Button": GPIO0 -> resistor R5/330 -> switch BOOT_S1 -> GND.
+      Standard active-low pushbutton to ground on GPIO0 (the strapping/boot
+      pin) - matches this project's existing convention of tagging
+      confirmed BOOT/GPIO0 buttons as "button" (seen on multiple other
+      esp32s3 boards, e.g. adafruit_metro_esp32s3, Bee_Data_Logger,
+      cytron_maker_feather_aiot_s3).
+    * "Status LED (GPIO47)": GPIO47 -> LED (IO47 LED, anode toward GPIO47)
+      -> resistor R6/1k5 -> GND. Anode-to-GPIO/cathode-to-GND topology means
+      the LED lights when GPIO47 is driven HIGH => active-high (led_high).
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-DRV/main/doc/YB-ESP32-S3-DRV_schematic_2_2.jpg
+  Sheet 2/2: 8-channel DMOS driver (TBD62083AFNG, ULN2803-equivalent with
+  MOSFETs) driving GPIO4-7/35-38 (X1-4/Y1-4 channels), each with its own
+  channel-activity LED (LED1-LED8, disableable via LEDX/LEDY solder
+  bridges). Confirms these 8 pins are dedicated motor-driver outputs (as
+  already excluded from chipGpios in this board's board.json from the
+  earlier pin-audit pass) - not general-purpose GPIO, not candidates for
+  button/LED tagging.
+
+- https://github.com/espressif/arduino-esp32/pull/11388
+  Upstream PR adding this board to arduino-esp32. Confirms pins_arduino.h
+  for yb_esp32s3_drv sets LED_BUILTIN=47 and contains no BUTTON pin
+  definitions (matches the copy already present in this repo's variant
+  pins_arduino.h).
+
+- Local file: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\yb_esp32s3_drv\pins_arduino.h
+  Confirms TX=43, RX=44 (no conflict with GPIO0 or GPIO47).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO35-38 (X1-4 driver LEDs) and GPIO4-7 (Y1-4 driver LEDs): each of
+  these 8 pins drives a dedicated channel-activity indicator LED (visible
+  in schematic sheet 2/2) in addition to being the actual motor-driver
+  output. These were NOT considered for led_high/led_low tagging because
+  they are already excluded from chipGpios entirely (pre-existing
+  exclusion from the earlier pin-audit pass, documented in the existing
+  top-of-file NOTE) - re-adding them as LED-tagged general-purpose pins
+  would reverse that exclusion, which is out of scope for this task. No
+  guess made; left for human review if channel-activity LEDs are ever
+  wanted as a separate capability.
+- Power LED 'P' (3.3V rail, not GPIO-connected): not a candidate at all -
+  no GPIO drives it, so no capability tag applies.
+- Reset button 'R' (shorts EN to ground): not a candidate - EN is not a
+  GPIO exposed in chipGpios/pins_arduino.h, so no capability tag applies.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input","button"] (onboard "GPIO0 Button", confirmed via
+vendor schematic). GPIO47 -> ["digital_output","pwm_output","led_high"]
+(onboard "Status LED (GPIO47)", active-high, confirmed via vendor
+schematic; pwm_output retained because it was already present on this pin
+before tagging).

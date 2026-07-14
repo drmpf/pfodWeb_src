@@ -1,0 +1,126 @@
+// Output filename and BoardLoader data-variable name:
+//   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+//
+// pfodWeb NOTE (button/LED/NeoPixel tagging audit, 2026-07-13):
+//
+// Board: "Sea-Picro" by Josh Johnson (github.com/joshajohnson/sea-picro) —
+// an RP2040 board in the Arduino Pro Micro form factor, designed as a
+// drop-in replacement for ATmega32u4-based Pro Micros in keyboards (also
+// sold assembled by beekeeb, shop.beekeeb.com/products/sea-picro). This
+// repo's variants/rp2040/boards.txt lists it as "Generic Sea-Picro"
+// (build.variant=sea_picro, build.led= — empty, confirming no plain LED
+// pin is registered for this board at the Arduino core level either).
+//
+// This board's own pins_arduino.h (comment header, verbatim):
+//   "Pin definitions taken from:
+//    https://github.com/joshajohnson/sea-picro/blob/master/documentation/
+//    pinout/sea-picro-top-pinout-rory-render.png"
+// and declares:
+//   #define PIN_LED (31u)         // comment directly above: "LEDs not pinned out"
+//   #define PIN_NEOPIXEL (25u)
+//
+// GPIO31 / PIN_LED - CONFIRMED NOT A REAL PIN, no chipGpios entry added
+// (deliberately):
+// RP2040 silicon only implements GPIO0-29 — GPIO31 does not exist on the
+// real chip. This board's own pins_arduino.h source comment states
+// verbatim "LEDs not pinned out" directly above the PIN_LED (31u)
+// #define, i.e. the vendor's own header already documents this as a
+// placeholder/sentinel, not a real onboard LED. The same 31 sentinel is
+// reused for PIN_SERIAL2_TX/PIN_SERIAL2_RX ("Not pinned out") and
+// PIN_WIRE1_SDA/SCL — consistent with the "31 = not pinned out" idiom used
+// throughout the arduino-pico RP2040 board family (e.g.
+// sparkfun_promicrorp2040/pins_arduino.h uses the identical 31 sentinel
+// for its unrouted PIN_SPI1_*/PIN_WIRE1_* pins). This board's own
+// generic_full/common.h D-alias fallback only covers D0-D29 (no D30/D31),
+// and no other static const uint8_t alias anywhere in this board's headers
+// resolves to 31, so build_boards.js's parser never adds a "GPIO31" pin to
+// the Designer's pin list for this board in the first place — matching
+// the identical situation already confirmed for the sibling board
+// sparkfun_micromodrp2040 (its PIN_NEOPIXEL=31 sentinel, see that board's
+// board.json for the full parser-behaviour rationale). Adding a chipGpios
+// entry here would be the one thing that could wrongly introduce a
+// nonexistent GPIO31 pin, so none is added.
+// Cross-checked against the vendor's own pinout render referenced in the
+// pins_arduino.h header comment (joshajohnson/sea-picro repo) and the
+// project's public README/product pages (github.com/joshajohnson/sea-picro,
+// joshajohnson.com/sea-picro, shop.beekeeb.com/products/sea-picro): the
+// "RST" variant is described as having "a WS2812 LED for use with
+// CircuitPython or as a status indicator" plus a separate passive "onboard
+// power LED" (not GPIO-controlled — a hardware power-presence indicator,
+// same out-of-scope category as the power LEDs on other boards already
+// audited in this family, e.g. sparkfun_promicrorp2040). No separate
+// GPIO-driven plain/simple LED distinct from the WS2812 is documented
+// anywhere — consistent with pins_arduino.h's own "LEDs not pinned out"
+// comment.
+//
+// GPIO25 / PIN_NEOPIXEL - CONFIRMED, tagged below:
+// The Sea-Picro's onboard addressable WS2812 LED is documented in the
+// project's own README/product pages as being driven via GPIO25 (the
+// "EXT" variant's dedicated 5V-level-shifted RGB output pin for driving
+// external WS2812 strings is explicitly identified as GPIO25 in the
+// project documentation; the "RST" variant's onboard WS2812 status LED
+// uses the same PIN_NEOPIXEL=25 definition in this shared pins_arduino.h).
+// This matches the PIN_NEOPIXEL (25u) value declared directly in this
+// board's own pins_arduino.h. Tagged "led_neopixel" (not led_high/led_low,
+// since it is one addressable WS2812 pixel, not a simple on/off LED) —
+// matches this repo's existing led_neopixel precedent, e.g.
+// sparkfun_promicrorp2040/board.json GPIO25 and
+// rp2040w/sparkfun_thingplusrp2350/board.json GPIO14. pwm_output is kept
+// (not omitted) because arduino-pico's analogWrite() works on any RP2040
+// GPIO regardless of NeoPixel usage, matching that precedent exactly.
+// digital_input is dropped, matching the same precedent's rationale (a
+// WS2812 data pin is not meaningfully readable as a plain digital input).
+// No collision with any SPI/Wire bus alias on this board — this board's
+// pins_arduino.h SPI0 (MISO 20/MOSI 23/SCK 22/SS 21), SPI1 (MISO 12/MOSI
+// 13/SCK 14/SS 15), and Wire0 (SDA 4/SCL 5) / Wire1 (SDA 2/SCL 3, "not
+// pinned out") aliases are all distinct from GPIO25, so no bus-capability
+// contamination bug applies here.
+//
+// No onboard general-purpose button beyond the dedicated single-button
+// reset/bootloader circuit described in the project's own
+// README/documentation ("a single button reset / bootloader circuit which
+// changes behavior based on how long it's held... tap for <500ms to
+// reset, hold >1s to enter bootloader mode"). This is explicitly a
+// dedicated hardware reset/BOOTSEL circuit, not a normal user-readable
+// GPIO — out of scope for GPIO capability tagging, same precedent as every
+// other RP2040 board's BOOTSEL/reset button in this repo (e.g.
+// rpipico/board.json, sparkfun_promicrorp2040/board.json).
+//
+// Full findings/sources trail:
+// boardsDetails/rp2040/rp2040/sea_picro/notes.txt
+{
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Generic Sea-Picro" (variants/rp2040/boards.txt).
+  "boardName": "RP2040",
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // "rp2040" chip bucket; the Sea-Picro has no onboard WiFi radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "PIN_NEOPIXEL — onboard WS2812 addressable RGB LED / status indicator. Confirmed via the Sea-Picro project's own README/product documentation (see pfodWeb NOTE above). PIN_LED (31u) is a vendor-documented \"LEDs not pinned out\" placeholder — GPIO31 does not exist on real RP2040 silicon (GPIO0-29 only) and is left untagged." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

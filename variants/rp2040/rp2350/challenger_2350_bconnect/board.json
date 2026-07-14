@@ -1,0 +1,186 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI. Overridden by
+  // the matching `<id>.name=` entry in a sibling-or-ancestor boards.txt
+  // when one is present (matched via `<id>.build.variant=` against this
+  // variant's directory name) — for this board that's
+  // "iLabs Challenger 2350 BConnect" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Unlike several other Challenger
+  // 2350 siblings (challenger_2350_wifi6_ble5, the NB-IoT variant), this
+  // board has NO onboard WiFi/BLE/cellular co-processor at all — "BConnect"
+  // is iLabs' name for a physical peripheral-connector standard (two
+  // on-board connectors carrying a shared I2C bus, "Bi2C", plus a shared
+  // UART, "BSerial", for plug-in accessory modules), not a wireless radio.
+  // Confirmed via the vendor datasheet (see notes.txt) — this board's own
+  // pins_arduino.h also carries no PIN_ESP*/PIN_WIFI*/UART-co-processor
+  // defines of any kind, unlike every genuinely WiFi/BLE-equipped sibling
+  // audited this session. Correctly bucketed in the plain "rp2350" chip
+  // bucket (not "rp2040w").
+  "connections": ["serial"],
+
+  // RP2040/RP2350 boot from an internal ROM/BOOTSEL, not GPIO-driven
+  // flash-mode strapping pins like ESP32/ESP8266 — no boot-time
+  // restrictions to flag at the chip level.
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/NeoPixel tagging
+  // audit, 2026-07-13):
+  //
+  // Board: iLabs "Challenger+ RP2350 BConnect" (Adafruit Feather form
+  // factor, boards.txt name "iLabs Challenger 2350 BConnect", build.variant
+  // challenger_2350_bconnect). Shares the same base RP2350A pinout template
+  // as the sibling challenger_2350_wifi6_ble5 (identical D0-D13/A0-A5/SPI0/
+  // Wire0 layout, PIN_LED=GPIO7=D13), but with NO onboard wireless
+  // co-processor — "BConnect" refers to two on-board peripheral connectors
+  // (shared I2C "Bi2C" + shared UART "BSerial" channels) for plug-in
+  // accessory modules, confirmed via the vendor datasheet.
+  //
+  // Sources consulted:
+  //   - https://ilabs.se/challenger-rp2350-bconnect-datasheet/ (official
+  //     vendor datasheet, fetched directly this session):
+  //       * "The board is equipped with two BConnect connectors that allow
+  //         you to connect an array of different peripherals based on the
+  //         BConnect standard. Having dual channels means that you can
+  //         operate both a Bi2C peripheral as well as a BSerial peripheral
+  //         at the same time." — confirms BConnect is a connector standard,
+  //         not a co-processor. "One UART channel have been routed to the
+  //         header pins (RX, TX). SPI – One SPI channel have been routed to
+  //         the header pins (SCK, SDO, SDI). I2C – One I2C channel have
+  //         been routed to the header pins (SCL, SDA)." — matches this
+  //         board's single Serial1/SPI0/Wire0 header-routed buses; no
+  //         separate dedicated GPIOs for the BConnect connectors beyond
+  //         these same header-routed buses were documented or found in
+  //         this board's pins_arduino.h.
+  //       * "On the other side of the USB connector there is a user
+  //         programmable green LED. This LED is connected to pin D13 and
+  //         can easily be controlled by the user program." — D13 = (7u) in
+  //         this board's pins_arduino.h, matching PIN_LED=(7u) exactly.
+  //         Identical wording to every other Challenger-family sibling's
+  //         LED description (same product line boilerplate); no explicit
+  //         "Active level" polarity sentence given for this exact model
+  //         (confirmed absent via a targeted re-fetch quoting every LED/
+  //         active-level sentence on the page verbatim).
+  //       * "Finally there is a neopixel LED on the board. This is an RGB
+  //         LED with intensity control, run by a single GPIO (D14/GPIO11)
+  //         pin on the board." — this exact sentence ("D14/GPIO11") is
+  //         VERBATIM IDENTICAL boilerplate to the wording already found on
+  //         the RP2040-generation challenger_2040_wifi6_ble datasheet page
+  //         (see that sibling's own board.json note), where it happened to
+  //         be numerically correct for that specific model. On THIS board,
+  //         it is contradicted by this board's own shipped pins_arduino.h,
+  //         which declares no D14 alias at all and defines
+  //         `#define NEOPIXEL (22u)` — a different, specific GPIO. Treated
+  //         as stale/reused vendor boilerplate text, not authoritative for
+  //         this model: the actual shipped Arduino-core header (the file
+  //         that determines real firmware behaviour) is trusted over a
+  //         copy-pasted datasheet sentence. Cross-check: the sibling
+  //         challenger_2350_wifi6_ble5 board reuses this exact same base
+  //         pinout template and has GPIO22 wired instead to
+  //         PIN_ESP32_HS (its ESP32-C6 handshake line) — i.e. GPIO22 is the
+  //         same physical PCB pin position on this product family,
+  //         genuinely repurposed per-variant (NeoPixel here, co-processor
+  //         handshake there), which is exactly what this board's own
+  //         pins_arduino.h independently and consistently declares.
+  //       * No mention of any onboard user pushbutton beyond reset/boot
+  //         anywhere on the datasheet page (confirmed via the same targeted
+  //         verbatim re-fetch, which returned "not mentioned" for
+  //         "button"). No PIN_BUTTON-style alias or button-related comment
+  //         appears anywhere in this board's own pins_arduino.h either.
+  //         Consistent with every other Challenger-family sibling audited
+  //         this session (RESET+BOOTSEL only).
+  //   - This board's own pins_arduino.h (PIN_LED=(7u), NEOPIXEL=(22u),
+  //     D0-D13/A0-A5/SPI0/Wire0 aliases, PIN_WIRE1_SDA/SCL=(10u)/(11u)
+  //     marked "// Not pinned out").
+  //   - variants/rp2040/rp2350/challenger_2350_wifi6_ble5/board.json +
+  //     notes.txt (directly relevant same-generation, same-base-pinout
+  //     sibling audited earlier this session — used for the GPIO22
+  //     repurposing cross-check and the same LED-polarity-inference
+  //     precedent, not copied verbatim; every GPIO re-verified
+  //     independently against this board's own header and datasheet).
+  //   - variants/rp2040/rp2350/board.json (chip-level defaults, empty
+  //     chipGpios).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/challenger_2350_bconnect/notes.txt
+  //
+  // Per-pin reasoning:
+  //   GPIO7  - PIN_LED / LED_BUILTIN / D13 - onboard user LED. Tagged
+  //            led_high, matching the confirmed-active-high sibling
+  //            precedent (challenger_2040_wifi/board.json,
+  //            challenger_2040_wifi6_ble/board.json GPIO10, same vendor,
+  //            same recurring datasheet phrasing describing this LED as
+  //            "user programmable ... can easily be controlled by the user
+  //            program"); this board's own datasheet does not state an
+  //            explicit "Active level" polarity sentence for this exact
+  //            pin, so this tag carries slightly lower confidence than a
+  //            directly-quoted one — see notes.txt. digital_input dropped,
+  //            pwm_output kept for brightness dimming. No bus-alias
+  //            collision (GPIO7 is not SDA/SCL/SS/MOSI/MISO/SCK on this
+  //            board), so the "confirmed button/LED pin also aliased as a
+  //            bus signal" bug class flagged for this audit does not apply
+  //            — no pins_arduino.h edit needed.
+  //   GPIO22 - NEOPIXEL - onboard WS2812-style addressable RGB status LED,
+  //            per this board's own pins_arduino.h. Not referenced by any
+  //            `static const uint8_t` alias in the header (no Dn/An name),
+  //            so build_boards.js's parser would not surface it as a pin
+  //            at all without this chipGpios entry — added here (chipGpios
+  //            entries add GPIOs the .h file's alias parser missed, same
+  //            mechanism already used for this board's own co-processor-tag
+  //            precedents elsewhere in this family). Tagged "led_neopixel"
+  //            (not led_high/led_low, since it is one addressable pixel,
+  //            not a simple on/off LED) — matches this repo's established
+  //            led_neopixel precedent (challenger_2040_wifi/board.json
+  //            GPIO11, challenger_2040_wifi6_ble/board.json GPIO11).
+  //            pwm_output kept per the same precedent; digital_input
+  //            dropped. No bus-alias collision (GPIO22 is not SDA/SCL/SS/
+  //            MOSI/MISO/SCK on this board).
+  //
+  // No onboard user pushbutton beyond RESET/BOOTSEL found in the vendor
+  // datasheet or this board's own pins_arduino.h — consistent with every
+  // other Challenger-family sibling audited this session.
+  //
+  // GPIO10/GPIO11 (PIN_WIRE1_SDA/PIN_WIRE1_SCL, marked "// Not pinned out"
+  // in this board's pins_arduino.h) deliberately receive NO chipGpios
+  // entry: these are real, valid GPIO numbers (not the family's usual 31u/
+  // 99u out-of-range sentinel), but neither is referenced by any `static
+  // const uint8_t` alias anywhere in this file (this board's own D10/D11
+  // aliases point at GPIO2/GPIO3 instead, a different physical pin pair),
+  // so build_boards.js's parser already does not surface GPIO10/11 as
+  // pins in the Designer, matching this repo's established precedent for
+  // genuinely-unrouted, unaliased chip pins (e.g.
+  // sparkfun_micromodrp2040/board.json GPIO9) — adding an entry here would
+  // be the one thing that could wrongly introduce inaccessible pins into
+  // the Designer, so left untouched.
+  //
+  // No SPI0/Wire0/Serial1 bus-alias collision affects GPIO7 or GPIO22, so
+  // the build_boards.js unconditional bus-capability auto-append (the
+  // "confirmed button/LED pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK"
+  // bug class flagged for this audit) does not apply here — no
+  // pins_arduino.h edit was needed.
+  "chipGpios": {
+    "7": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN / D13 - onboard user LED, confirmed via iLabs' own datasheet as a user-programmable green LED. Active-high polarity inferred from the confirmed-active-high sibling precedent (challenger_2040_wifi/board.json, challenger_2040_wifi6_ble/board.json GPIO10, same vendor, same recurring datasheet phrasing) - this board's own \"Active level\" wording could not be confirmed this session (see notes.txt)." },
+    "22": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "NEOPIXEL - onboard WS2812-style addressable RGB status LED, per this board's own pins_arduino.h. Not aliased by any Dn/An name in the header, so added here to surface it as a pin at all. The vendor datasheet's own NeoPixel sentence (\"D14/GPIO11\") is stale boilerplate reused verbatim from a different sibling's page and is contradicted by this board's own shipped pins_arduino.h (no D14 alias exists; NEOPIXEL is explicitly GPIO22) - the shipped header is trusted as ground truth over the copy-pasted datasheet sentence (see notes.txt)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040/RP2350 board. Matches this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12u).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

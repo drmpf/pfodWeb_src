@@ -1,0 +1,211 @@
+ESPino (ESP-12 Module) - research notes
+Board directory: variants/esp8266/esp8266/espino/
+Board identity: "ESPino" by makerlab.mx (Merida, Mexico) - a breadboard-form-factor
+(2.7cm x 4.5cm), ESP-12-based dev board. This is a DIFFERENT product from the
+unrelated ThaiEasyElec "ESPino" (WROOM-02 module, RGB WS2812 NeoPixel, blue LED
+on GPIO16, 220k/100k divider) which came up in early searches under the same
+name, and is also unrelated to the ESP32 "ESPino32"/"espea32" boards researched
+earlier this session. Confirmed via the vendor's own board pin aliases
+(pins_arduino.h: LED_BUILTIN=2, LED_BUILTIN_R=2, LED_BUILTIN_G=4,
+LED_BUILTIN_B=5, BUTTON_BUILTIN=0) matching makerlab.mx's own docs exactly.
+
+URLs consulted:
+
+1. https://github.com/makerlabmx/ESPino-tools (vendor's official tools/docs repo)
+   - README confirmed this is the correct/official repo for makerlab.mx's ESPino,
+     pointed to the Docs/ folder for datasheet, schematic, pinout PDFs.
+
+2. https://raw.githubusercontent.com/makerlabmx/ESPino-tools/master/Docs/ESPino-Datasheet-EN.pdf
+   (downloaded and read directly, v0.1.1)
+   - "Integrated Devices" section: "The board includes an RGB LED (red, green
+     and blue), and two buttons. One is RESET and the other, USER/PROG, is
+     connected to pin 0 of the ESP8266 and puts it in Bootloader mode... Red
+     LED: Pin 2, Green LED: Pin 5, Blue LED: Pin 4, USER/PROG Button: Pin 0,
+     RESET Button: Pin RST."
+   - NOTE: this text has Green/Blue on pins 5/4 - the OPPOSITE of
+     pins_arduino.h (G=4, B=5). See schematic finding below for the resolution.
+   - "ADC" section: "The ESP8266 board includes a 10-bit ADC that can sense an
+     input from 0V to 1V. For convenience, the board integrates a voltage
+     divider in that Pin, that allows the input to be between 0V and 3.3V,"
+     with an accompanying resistor diagram: R11=100k (ADC pin to GND), R10=220k
+     (ADC_IN/external to ADC pin) - the classic top/bottom divider.
+
+3. https://raw.githubusercontent.com/makerlabmx/ESPino-tools/master/Docs/ESPino-A-Schematic.pdf
+   (downloaded and read directly, KiCad schematic, Rev A, dated 2015-05-03,
+   author Rodrigo Mendez Gamboa)
+   - Confirms D1 "RGB_LED" is wired common-ANODE to VCC (3.3V), with each of
+     the three cathodes going through its own 470-ohm resistor to nets
+     LED_R / LED_G / LED_B, which connect directly to ESP8266 GPIO2 / GPIO4 /
+     GPIO5 respectively (per the chip pin table on the same page). Common-anode
+     with GPIO-driven cathode means the GPIO must go LOW to light that color -
+     i.e. ACTIVE-LOW on all three channels. This also matches the well-known
+     ESP8266 dev-board convention that GPIO2's LED is "inverted logic".
+   - The schematic carries its own handwritten annotation: "GPIO4 y GPIO5
+     estan invertidos" (GPIO4 and GPIO5 are inverted) - flagging a known Rev-A
+     labelling mistake in the pin table for those two specific pins. Read
+     together with the vendor's newer v0.2.0 pinout-diagram PDF (below), and
+     with this board's own shipped pins_arduino.h (LED_BUILTIN_G=4,
+     LED_BUILTIN_B=5), the corrected/actual assignment is GPIO4=Green,
+     GPIO5=Blue - so that is what got tagged, NOT the v0.1.1 datasheet text's
+     Green=5/Blue=4 (which is the exact mislabeling the schematic note warns
+     about).
+   - USER/PROG button (U2) sits between GPIO0 and GND, with a 10k pull-up
+     (R9) to VCC on the GPIO0 net - standard active-low push button, no
+     special polarity capability tag needed (per project's allowed tag list,
+     "button" has no separate high/low variant).
+   - RESET button (U1) ties to the chip's physical RST pin, not a GPIO -
+     correctly NOT tagged (nothing to tag - it isn't a GPIO-addressable pin).
+   - Confirms GPIO1/GPIO3 are wired to the CP2104 USB-serial bridge as
+     TXD0/RXD0 - this board's actual Serial pfod pins. None of the tagged
+     GPIOs (0, 2, 4, 5) collide with these, so nothing needed to be
+     discarded/adjusted for the TX/RX hard-reservation in build_boards.js.
+
+4. https://raw.githubusercontent.com/makerlabmx/ESPino-tools/master/Docs/ESPino-Pinout-EN.pdf
+   (downloaded and read directly, v0.2.0, newer than the v0.1.1 datasheet)
+   - Pinout diagram: pin 13/GPIO4 labelled "LED G" (and SDA), pin 14/GPIO5
+     labelled "LED B" (and SCL) - matches pins_arduino.h and the corrected
+     schematic reading above, confirming G=4/B=5 is the right assignment to
+     use, not the older v0.1.1 text.
+   - Also repeats the same "GPIO4 and GPIO5 labels inverted by mistake in Rev
+     A" caveat.
+
+5. https://www.espboards.dev/esp8266/espino/ - aggregator page, listed "1
+   Analog In", GPIO2/4/5 LED pins and GPIO0 button matching pins_arduino.h,
+   but appeared to be derived from the same pins_arduino.h source rather than
+   independent vendor documentation, so not relied on for confirmation (used
+   only as a pointer while searching, real evidence came from items 2-4 above).
+
+6. Earlier searches also surfaced an unrelated "ESPino" by ThaiEasyElec
+   (WROOM-02 module, RGB WS2812 NeoPixel, blue LED on GPIO16, two buttons,
+   220k/100k divider) via a mis-attributed esp8266/Arduino GitHub PR summary.
+   Ruled out as a different product once the makerlab.mx repo/docs were found
+   and cross-checked directly against this board directory's own
+   pins_arduino.h (which uses LED_BUILTIN_R/G/B, not a NeoPixel driver, and
+   BUTTON_BUILTIN=0, not GPIO16) - confirms this board is the makerlab.mx
+   ESPino, matching the task's own hint.
+
+Considered but not tagged:
+- GPIO16 ("WAKE" pin per pinout diagram) - no LED or button documented there
+  for this board; left untouched with its existing chip-level capabilities.
+- RESET button - ties to the physical chip RST pin, not a GPIO, so cannot be
+  expressed as a GPIO capability tag; not tagged.
+- GPIO1/GPIO3 (TX0/RX0) - confirmed hardware UART0 pins for this board's own
+  USB-serial bridge; already chip-reserved as serial_tx/serial_rx and not
+  touched.
+
+PART A SUMMARY: Discrete common-anode RGB LED confirmed via vendor schematic +
+datasheet + pinout diagram: GPIO2=led_r_low, GPIO4=led_g_low, GPIO5=led_b_low
+(all active-low). USER/PROG button confirmed on GPIO0: button (["digital_input",
+"button"]). board.json created (none existed before) as a full copy of the
+esp8266 chip-level default with these four GPIOs modified plus matching
+pinNotes updates and a NOTE comment block citing sources.
+
+PART B SUMMARY: Onboard 220k(series)/100k(to GND) resistor divider on the ADC
+pin confirmed via vendor datasheet + schematic. Exact math: 1.0V native
+full-scale * (220k+100k)/100k = 3.2V. defaultRefVolts changed from the
+inherited chip-level "1.0" to "3.2" (same divider/value convention already
+used for NodeMCU, D1 Mini and D1 R1 elsewhere in this repo).
+
+===========================================
+[2026-07-12] Full dedicated-hardware pin-exclusion audit (this session's
+FULL sweep, distinct from Parts A/B above which only retrofitted the RGB
+LED / button / ADC tags).
+===========================================
+
+Purpose: confirm nothing beyond the RGB LED + USER/PROG button + ADC
+divider (already handled in Parts A/B) needs excluding, and run the
+critical GPIO-alias-collision check that this session's audit playbook
+added after finding real bugs of this shape on several ESP32 boards.
+
+1. Re-read variants/esp8266/esp8266/espino/pins_arduino.h in full (44
+   lines at the time). Confirmed the only content beyond boilerplate is:
+   PIN_WIRE_SDA/PIN_WIRE_SCL (4/5) + SDA/SCL aliases, LED_BUILTIN(2) +
+   LED_BUILTIN_R/G/B (2/4/5), BUTTON_BUILTIN (0). No other board-specific
+   declaration exists in the file.
+
+2. Re-checked this file's own sources (items 1-4 in the URL list above,
+   the makerlab.mx ESPino-tools repo: datasheet, Rev-A schematic, v0.2.0
+   pinout diagram) for any OTHER onboard peripheral beyond the RGB LED and
+   the two buttons already documented in Part A - specifically looking for
+   a voltage-regulator/battery-charge circuit or any other dedicated IC,
+   since the task flagged this as a possibility for an ESPmania/makerlab.mx
+   board. None of the three vendor PDFs document a battery connector,
+   LiPo charge IC, or any other onboard peripheral - the "Integrated
+   Devices" section of the datasheet (already quoted in Part A above)
+   lists only the RGB LED and the two buttons; the schematic shows a
+   single fixed 3.3V regulator (AMS1117-style, feeding the whole board
+   from USB/VIN, not GPIO-controlled, so nothing to tag) and no battery
+   management circuitry at all. Confirmed: RGB LED + USER/PROG button +
+   RESET button + ADC divider is the complete list of onboard hardware for
+   this board.
+
+3. KEEP vs EXCLUDE: nothing new to change here - GPIO0/2/4/5 already
+   correctly tagged in Part A, GPIO1/3 already correctly reserved as
+   serial_tx/serial_rx, all remaining GPIOs (12,13,14,15,16,17) are
+   general-purpose/ADC with no onboard consumer - KEEP, matching chip
+   default.
+
+4. CRITICAL ALIAS-COLLISION CHECK (this session's playbook step - the bug
+   class found repeatedly on the ESP32 side): checked whether GPIO0
+   (button) or GPIO2/4/5 (discrete RGB LED channels) are aliased anywhere
+   in this file as SDA/SCL/SS/MOSI/MISO/SCK/TX/RX:
+     - This file: PIN_WIRE_SDA=4 -> SDA=4, PIN_WIRE_SCL=5 -> SCL=5.
+     - ../generic/common.h (shared #include): PIN_SPI_SS=15 -> SS=15,
+       PIN_SPI_MOSI=13 -> MOSI=13, PIN_SPI_MISO=12 -> MISO=12,
+       PIN_SPI_SCK=14 -> SCK=14.
+     - No TX/RX static-const aliases declared anywhere in this file or
+       common.h for the esp8266 family (GPIO1/3 are forced to
+       serial_tx/serial_rx directly via board.json's chipGpios entries,
+       independent of any pins_arduino.h alias).
+   RESULT: GPIO0 and GPIO2 have NO collision (0 and 2 don't match SDA=4,
+   SCL=5, SS=15, MOSI=13, MISO=12 or SCK=14). But GPIO4 and GPIO5 DO
+   collide: GPIO4 == SDA, GPIO5 == SCL - the exact same two GPIOs Part A
+   already tagged led_g_low/led_b_low for the onboard RGB LED's Green and
+   Blue channels. Confirmed via build_boards.js (buildEsp32Board(), which
+   this "family":"esp8266" board.json routes through same as ESP32):
+   lines ~697-703 unconditionally push "i2c_sda"/"i2c_scl" onto whatever
+   GPIO equals the file's parsed SDA/SCL constants, regardless of whether
+   a chipGpios override already restricted that pin's capabilities to the
+   LED tags - this would have silently produced
+   ["digital_input","digital_output","pwm_output","led_g_low","i2c_sda"]
+   on GPIO4 (and the SCL equivalent on GPIO5), offering a bus capability
+   on a pin that's electrically committed (common-anode LED cathode
+   through a 470-ohm resistor, confirmed via the Rev-A schematic in Part
+   A) to driving the onboard LED.
+
+5. FIX APPLIED: changed variants/esp8266/esp8266/espino/pins_arduino.h's
+   "static const uint8_t SDA = PIN_WIRE_SDA;" / "... SCL = PIN_WIRE_SCL;"
+   to "= -1;" for both (the PIN_WIRE_SDA/PIN_WIRE_SCL #defines themselves
+   were left in place, harmless/unused once nothing resolves through
+   them). "-1" is the same sentinel convention already used for this
+   exact bug class on variants/esp32/esp32c3/esp32c3/pins_arduino.h
+   (GPIO8 SDA/NeoPixel collision) - build_boards.js's numeric-literal
+   regex only matches `\d+` (no minus sign), so "-1" makes the parser
+   treat SDA/SCL as absent rather than resolving to a real GPIO, without
+   deleting the identifiers outright (so any code compiled against this
+   header that references SDA/SCL by name still compiles, just against a
+   sentinel/invalid pin number - matches the "no default Wire pin"
+   convention). Added an explanatory comment directly above the two lines
+   in pins_arduino.h, and a matching paragraph in board.json's top NOTE
+   comment block - both follow the project's established rule of never
+   writing the literal original declaration text inside an explanatory
+   comment (the build_boards.js parser is comment-blind and would
+   re-match it).
+
+6. No other pins_arduino.h or board.json edits were needed - GPIO0/2's
+   capability lists were already clean (Part A's tagging stands
+   unchanged), and this is the only alias-collision bug found on this
+   board.
+
+SUMMARY: Full dedicated-hardware sweep found no additional onboard
+peripheral beyond the RGB LED/button/ADC-divider already tagged in Parts
+A/B (vendor docs confirm no battery/regulator circuit or other IC on this
+board). Found and fixed one real alias-collision bug: GPIO4/GPIO5's
+default Wire SDA/SCL aliases pointed at the same two GPIOs already
+tagged as the onboard RGB LED's Green/Blue channels, which would have
+caused build_boards.js to silently append i2c_sda/i2c_scl capabilities
+onto those LED-dedicated pins. Fixed by setting SDA/SCL to -1 in
+pins_arduino.h (matching the established esp32c3 precedent for this exact
+bug class). board.json's chipGpios/pinNotes content is unchanged (Part A's
+tags were already correct) - only pins_arduino.h and board.json's
+top-of-file NOTE comment were edited this pass.

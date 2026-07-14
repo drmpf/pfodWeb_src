@@ -11,10 +11,13 @@ static const uint8_t LED_BUILTIN = 2;
 #define BUILTIN_LED LED_BUILTIN  // backward compatibility
 #define LED_BUILTIN LED_BUILTIN
 
-static const uint8_t CAN1_RX = 6;
-static const uint8_t CAN1_TX = 7;
+// pfodWeb NOTE: CAN1_RX/TX (GPIO6/7) deliberately NOT declared -
+// dedicated onboard CAN transceiver, not general-purpose.
 
-static const uint8_t SS = -1;
+// pfodWeb NOTE: SS deliberately NOT declared - upstream declares it as
+// -1 ("no default CS"), which wraps to 255 as a uint8_t and would
+// otherwise leak a phantom "GPIO255" pin. CS (GPIO10) is the real,
+// general-purpose CS pin.
 static const uint8_t CS = 10;
 static const uint8_t MOSI = 11;
 static const uint8_t MISO = 13;
@@ -31,8 +34,8 @@ static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
 static const uint8_t A3 = 4;
 static const uint8_t A4 = 5;
-static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
+// pfodWeb NOTE: A5/A6 (GPIO6/7) deliberately NOT declared - same as
+// CAN1_RX/TX above.
 static const uint8_t A7 = 8;
 static const uint8_t A8 = 9;
 static const uint8_t A9 = 10;
@@ -52,8 +55,8 @@ static const uint8_t T2 = 2;
 static const uint8_t T3 = 3;
 static const uint8_t T4 = 4;
 static const uint8_t T5 = 5;
-static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
+// pfodWeb NOTE: T6/T7 (GPIO6/7) deliberately NOT declared - same as
+// CAN1_RX/TX above.
 static const uint8_t T8 = 8;
 static const uint8_t T9 = 9;
 static const uint8_t T10 = 10;

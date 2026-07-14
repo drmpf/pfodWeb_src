@@ -13,10 +13,11 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 16;
-static const uint8_t MOSI = 13;
-static const uint8_t MISO = 12;
-static const uint8_t SCK = 14;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - this board's
+// entire purpose is a single-channel LoRa gateway, and there's no other
+// plausible SPI consumer, so this bus is treated as dedicated to the
+// onboard LoRa concentrator chip (no explicit "LORA_CS"-style naming in
+// this file, but no alternative explanation for having SPI at all here).
 
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
@@ -28,9 +29,8 @@ static const uint8_t A10 = 4;
 static const uint8_t A11 = 0;
 static const uint8_t A12 = 2;
 static const uint8_t A13 = 15;
-static const uint8_t A14 = 13;
-static const uint8_t A15 = 12;
-static const uint8_t A16 = 14;
+// pfodWeb NOTE: A14-A16 deliberately NOT declared - same dedicated LoRa
+// concentrator SPI bus as above.
 static const uint8_t A17 = 27;
 static const uint8_t A18 = 25;
 static const uint8_t A19 = 26;
@@ -39,9 +39,7 @@ static const uint8_t T0 = 4;
 static const uint8_t T1 = 0;
 static const uint8_t T2 = 2;
 static const uint8_t T3 = 15;
-static const uint8_t T4 = 13;
-static const uint8_t T5 = 12;
-static const uint8_t T6 = 14;
+// pfodWeb NOTE: T4-T6 deliberately NOT declared - same as A14-A16 above.
 static const uint8_t T7 = 27;
 static const uint8_t T8 = 33;
 static const uint8_t T9 = 32;

@@ -1,0 +1,105 @@
+Board: dfrobot_lorawan_esp32s3 (chip: esp32s3)
+Directory: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\dfrobot_lorawan_esp32s3\
+Audit pass: button/LED capability tagging (playbook section 7a), 2026-07-12.
+Prior pass: dedicated-hardware exclusion (LoRa SPI bus, LoRa control lines, TFT
+control lines) already applied to board.json - not revisited here except to
+confirm no button/LED overlaps with the previously-excluded pins.
+
+IDENTIFICATION
+Matched this pins_arduino.h (LED_BUILTIN=21, TX=43/RX=44, SDA=8/SCL=9,
+SS=17/MOSI=11/MISO=13/SCK=12, LORA_ANTPWR=42/LORA_RST=41/LORA_BUSY=40/
+LORA_DIO1=4, TFT_DC=14/TFT_CS=17/TFT_RST=15/TFT_BL=16) to DFRobot SKU DFR1195,
+"LoRaWAN ESP32-S3 Dev Board" - SX1262 LoRa radio, 0.96" LCD, physical buttons,
+LiPo charging. Exact match on GPIO numbers confirmed via the vendor wiki's own
+pin-mapping tables (LoRa pins / LCD pins / Other pins).
+
+SOURCES CONSULTED
+- https://wiki.dfrobot.com/dfr1195/ (primary product wiki page - pinout
+  diagram/table, onboard resources)
+- https://wiki.dfrobot.com/SKU_DFR1195_LoRaWAN_ESP32_S3 (mirror/alternate
+  wiki URL for the same product, cross-checked, consistent)
+- https://wiki.dfrobot.com/dfr1195/docs/22839 (Getting Started guide - LED
+  Blink example code)
+- https://wiki.dfrobot.com/dfr1195/docs/22856 (Meshtastic example - checked
+  for GPIO18/0/21 references, none found)
+- https://wiki.dfrobot.com/dfr1195/docs/22858 (ESPHome integration example -
+  checked for GPIO18/0/21 references, none found; only SPI/LoRa radio pins
+  present)
+- https://github.com/DFRobot/DFRobot_LoRaWAN_ESP32S3 (library repo - checked
+  for LED/button example code, page did not expose full example source via
+  WebFetch, only summary confirming pin 21 = LED blink demo)
+- https://www.androidpimp.com/embedded/dfr1195-lorawan-esp32-s3/ (third-party
+  review - checked for LED polarity description, none found)
+- https://www.dfrobot.com/product-2933.html (product page, general feature
+  confirmation: "0.96-inch LCD screen and physical buttons")
+
+PER-PIN REASONING
+
+GPIO21 (LED_BUILTIN) -> tagged "led_high"
+  Vendor wiki pin table: "LED light, connected to GPIO21." Confirmed a plain
+  LED, not a NeoPixel/WS2812 (no NEOPIXEL/RGB_BUILTIN/WS2812 define anywhere
+  in pins_arduino.h, and vendor wiki does not describe it as addressable).
+  Polarity: NOT explicitly stated by the vendor anywhere found (no "active
+  high"/"active low" wording on the wiki page or product page). The official
+  Getting Started Blink example (docs/22839) is:
+    int led = 21;
+    void setup() { pinMode(led,OUTPUT); }
+    void loop() {
+      digitalWrite(led,HIGH); delay(1000);
+      digitalWrite(led,LOW);  delay(1000);
+    }
+  No inline comment states which state is "on". Tagged led_high based on (a)
+  the vendor's own tutorial ordering HIGH first as the demonstrated "on"
+  action for this exact pin on this exact board, and (b) the strong general
+  convention that ESP32/ESP32-S3 dev-board onboard status LEDs are wired
+  active-high (unlike the ESP8266 NodeMCU family, which is the well-known
+  active-low outlier). No contradicting evidence was found in any source
+  checked. Confidence: moderate, not as strong as a case with an explicit
+  "// turn the LED on" comment - flag for re-check if a schematic PDF is
+  ever sourced (DFRobot wiki mentions a schematic PDF download exists but
+  WebFetch/WebSearch tooling could not retrieve/parse the actual PDF).
+  Charge indicator LED: vendor wiki separately documents a "charging status
+  indicator" (off = no power/full charge, steady on = charging) with no
+  GPIO assigned - almost certainly hardwired to the battery-charger IC's
+  STAT pin directly, not MCU-controlled. Not taggable, left alone.
+
+GPIO18 ("Key1") -> tagged "button"
+  Vendor wiki: "Key1: Button 1, connected to GPIO18." Independently
+  corroborated by a second wiki-page summary describing wake functionality:
+  "the main controller can be proactively woken up via a button connected to
+  IO18 to collect and send data." Two independent mentions on the vendor's
+  own site, consistent with each other - high confidence this is a genuine
+  user-accessible pushbutton. Checked against this board's own
+  pins_arduino.h aliases (SDA=8, SCL=9, SS=17, MOSI=11, MISO=13, SCK=12,
+  TX=43, RX=44) and the LoRa/TFT dedicated pins (4,14,15,16,40,41,42) - no
+  collision, GPIO18 has no other role in this file.
+
+GPIO0 ("Key2") -> tagged "button"
+  Vendor wiki: "Key2: Button 2, connected to GPIO0. Press this button and
+  reset the device to enter boot mode; it can be used as a normal button
+  after the system starts." Standard BOOT-strap-button topology (matches
+  many other ESP32/S2/S3 boards already tagged this way in this repo, e.g.
+  waveshare_esp32_s3_touch_lcd_28, waveshare_esp32_s3_zero). Consistent with
+  this chip's existing pinNotes entry "0": "Must be HIGH for normal boot"
+  (left unchanged - still accurate, this is the same physical pin/
+  constraint). No collision with any bus alias or LoRa/TFT pin.
+
+RST button
+  Vendor wiki lists a separate "RST: Reset button" with no GPIO assignment -
+  this is presumably wired to the chip's own EN/CHIP_PU reset line, not a
+  GPIO, so not taggable in this schema. Left untouched.
+
+BUS-ALIAS COLLISION CHECK (playbook step 4)
+Full alias list from this board's pins_arduino.h: TX=43, RX=44, SDA=8,
+SCL=9, SS=17, MOSI=11, MISO=13, SCK=12. None of GPIO0, GPIO18, or GPIO21
+appear in this list, and none are among the already-excluded LoRa (4, 5, 6,
+7, 10, 40, 41, 42) or TFT (14, 15, 16) dedicated pins. No bus-alias
+contamination found; no boilerplate lines needed deletion for this pass.
+
+SUMMARY
+Applied 3 capability tags to board.json chipGpios: GPIO21 -> led_high
+(plain LED, polarity inferred from vendor tutorial + ESP32-S3 convention,
+moderate confidence), GPIO18 -> button (Key1, user/wake button, high
+confidence), GPIO0 -> button (Key2, boot/user dual-role button, high
+confidence). No dedicated-hardware exclusions changed. No bus-alias
+collisions found requiring line deletion.

@@ -1,0 +1,87 @@
+Board: waveshare_esp32_s3_relay_6ch
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_relay_6ch
+pins_arduino.h: USB_PRODUCT "ESP32-S3-Relay-6CH", USB_MANUFACTURER
+"Waveshare", TX=43, RX=44, SDA=8, SCL=9, SS=10, MOSI=11, MISO=13,
+SCK=12, and `#define PIN_RGB_LED 38`. No board.json existed for this
+variant prior to this task, and the generated designer JSON (pfodWeb_src/
+designer/boards/esp32_waveshare_esp32_s3_relay_6ch/esp32_waveshare_esp32_s3_relay_6ch.json)
+confirms no prior pin-exclusion board.json was ever built for it either
+- every chip-level GPIO (0-18, 21, 38-48) is present, including the
+relay-drive pins, so this task's new board.json (a full copy of the
+esp32s3 chip-level default) does not reverse any earlier exclusion work.
+
+Sources consulted:
+- https://www.waveshare.com/wiki/ESP32-S3-Relay-6CH (attempted via
+  WebFetch) - returned HTTP 403 Forbidden, could not be fetched
+  directly. Relied on WebSearch snippet + mirrors instead (see below).
+- WebSearch "Waveshare ESP32-S3-Relay-6CH wiki GPIO RGB LED button" -
+  search-engine summary (not a primary fetch) stated: "The RGB LED is
+  controlled via GPIO38, the buzzer is controlled via GPIO21, and the
+  BOOT button is connected to GPIO0", and relay channels are on GP1
+  (CH1), GP2 (CH2), GP41 (CH3), GP42 (CH4), GP45 (CH5), GP46 (CH6).
+  Treated as corroborating context only, not sole evidence.
+- https://spotpear.com/wiki/ESP32-S3-WROOM-1U-N8-WIFI-RS485-Bluetooth-Industrial-6-Channel-Relay-IOT.html
+  (via WebFetch, successfully fetched) - reseller mirror of the Waveshare
+  product guide for this exact board. States: "WS2812 RGB colorful LED -
+  Controllable via GPIO38 pin" and, from a GPIO control table, "GP0 -
+  BOOT button - BOOT button control pin".
+- https://www.cnx-software.com/2024/04/02/6-channel-esp32-s3-wifi-relay-module-rs485-raspberry-pi-pico-hat/
+  (via WebFetch) - independent hardware teardown/review article.
+  Confirms an "RGB LED" exists in the Misc specs but does not give its
+  GPIO number. Does not mention any onboard BOOT/user button.
+- https://devices.esphome.io/devices/waveshare-6ch-relay/ (via WebFetch)
+  - official-style ESPHome device page with real YAML config for this
+  exact board. Confirms `light: platform: esp32_rmt_led_strip, chipset:
+  ws2812, pin: GPIO38` (single WS2812 LED) and `binary_sensor: platform:
+  gpio, name: "Boot Button", pin: { number: 0, ... inverted: true }`
+  (active-low BOOT-strap button, standard ESP32-S3 GPIO0 convention).
+- https://raw.githubusercontent.com/ryansch/esphome-config/main/waveshare-esp32-s3-relay-6ch.yaml
+  (via WebFetch) - independent community ESPHome config for this same
+  board (not the same source as devices.esphome.io, cross-checks it).
+  Confirms `pin: GPIO38` for the WS2812 RGB LED and a boot-button
+  binary_sensor `pin: { number: 0, ignore_strapping_warning: true, mode:
+  { input: true }, inverted: true }` on GPIO0.
+- https://github.com/betamoojw/Waveshare_ESP32-S3-Relay-6CH (via
+  WebFetch) - fetched but the visible page content (repo landing page)
+  did not expose pinout source files; not used as evidence either way.
+
+Conclusion on confirmation strength: GPIO38 (WS2812/NeoPixel RGB LED)
+and GPIO0 (BOOT button) are each corroborated by at least three
+independent sources - this board's own pins_arduino.h (`PIN_RGB_LED 38`
+for the LED), a reseller mirror of Waveshare's own wiki text (spotpear),
+and two independently-authored ESPHome hardware configs for this exact
+product (devices.esphome.io and ryansch/esphome-config) - so both were
+tagged. The official waveshare.com wiki page itself could not be
+directly fetched (403 Forbidden) but the pins_arduino.h vendor source
+plus the two independent ESPHome configs are considered sufficient
+corroborating vendor/community hardware evidence per the task's bar.
+
+TX/RX conflict check: this board's TX=43, RX=44 (from pins_arduino.h).
+Neither GPIO0 nor GPIO38 coincides with TX/RX, so no conflict - both
+tags apply cleanly and will not be silently discarded by build_boards.js's
+TX/RX hard reservation.
+
+Pins considered but NOT tagged:
+- GPIO21 (buzzer, per the WebSearch summary only - not independently
+  confirmed via a directly-fetched source, and a buzzer is not one of
+  the allowed button/LED capability tags in any case). Left untouched
+  with its default chip-level capabilities. No guess made.
+- GPIO1, GPIO2, GPIO41, GPIO42, GPIO45, GPIO46 (the six relay-drive
+  outputs, per the WebSearch summary and CNX Software's teardown). These
+  are relay-driver control lines (opto/transistor driven), not LEDs or
+  buttons, and are explicitly out of scope per this task's instructions
+  - left untouched.
+- No separate ESP32 hardware "RESET" button was tagged - a physical
+  RESET button (if present, mentioned only via inference from generic
+  Waveshare board layouts) ties to the chip's EN/RESET pin, not a GPIO,
+  so it has no digital_input capability to tag in the first place.
+
+Summary of what was tagged:
+- GPIO0 -> ["digital_input", "button"] (BOOT button).
+- GPIO38 -> ["digital_output", "led_neopixel", "pwm_output"] (onboard
+  WS2812 RGB status LED; pwm_output kept because it was already present
+  on this pin in the chip-level default).
+Both changes made in a newly-created
+variants/esp32/esp32s3/waveshare_esp32_s3_relay_6ch/board.json (full
+copy of the esp32s3 chip-level default board.json plus these two
+changes and the pfodWeb NOTE comments at the top of the file).

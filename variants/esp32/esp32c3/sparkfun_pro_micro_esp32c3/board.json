@@ -1,0 +1,107 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: SparkFun Pro Micro - ESP32-C3 (SparkFun product 23484), an
+  // ESP32-C3-MINI-1 castellated-header dev board with a Qwiic I2C
+  // connector, Reset + Boot buttons, and Power (red) / STAT (blue) LEDs.
+  // pins_arduino.h declares TX=21, RX=20, SDA=5, SCL=6, SS=10, MOSI=3,
+  // MISO=1, SCK=0, LED_BUILTIN=10, plus I2S alt-function names:
+  // PIN_I2S_SCK=6, PIN_I2S_SD_DOUT=7, PIN_I2S_SD_IN=5, PIN_I2S_FS=10.
+  //
+  // Flagged by the discovery sweep because GPIO5/6/7/10 carry I2S names -
+  // could mean a dedicated onboard mic/codec (EXCLUDE) or just a
+  // general-purpose I2S header alt-function (KEEP).
+  //
+  // Sources consulted:
+  //  - https://docs.sparkfun.com/SparkFun_Pro_Micro-ESP32C3/hardware_overview/
+  //    and .../single_page/ (official Hookup Guide). Lists onboard
+  //    peripherals: Reset/Boot buttons, Power/STAT LEDs, Qwiic I2C
+  //    connector "tied to 2.2 kOhm pull-up resistors". No microphone,
+  //    codec, speaker, or any I2S device is mentioned anywhere in the
+  //    hardware overview.
+  //  - https://github.com/sparkfun/SparkFun_Pro_Micro-ESP32C3
+  //    (docs/resources.md, docs/hardware_overview.md) - same, no audio
+  //    peripheral referenced; schematic/Eagle files linked but not
+  //    machine-readable as fetched.
+  //  - https://raw.githubusercontent.com/sparkfun/SparkFun_Pro_Micro-ESP32C3/main/Arduino_Board_Files/sparkfun_pro_micro_esp32c3/pins_arduino.h
+  //    Vendor's own upstream Arduino core variant file - confirmed to
+  //    match this repo's local pins_arduino.h exactly (SDA=5/SCL=6,
+  //    SS=10/MOSI=3/MISO=1/SCK=0, LED_BUILTIN=10, and the same I2S
+  //    alt-names on GPIO5/6/7/10). This is the vendor's genuine board
+  //    definition, not a mis-copied template from another board.
+  //  - Community post (community.sparkfun.com, "sparkfun-esp32-c3-pro-
+  //    micro-pinout-gpio") independently confirms GPIO5/GPIO6 = I2C
+  //    SDA/SCL (Wire.setPins(5, 6)) and shows users freely wiring GPIO7/
+  //    GPIO10 to their own external SPI hardware (RC522 module) - direct
+  //    evidence these are general-purpose pins, not reserved for an
+  //    onboard consumer.
+  //  - docs.sparkfun.com/.../examples/ - the Blink example for this board
+  //    just redefines LED_BUILTIN=10 and uses the stock Arduino
+  //    Basics>Blink sketch; no inversion/active-low logic is documented,
+  //    but the schematic PDF could not be parsed as text to confirm LED
+  //    polarity, so no led_high/led_low capability tag is added here -
+  //    see reasoning below.
+  //
+  // GPIO5/6/7/10 (I2S SD_IN/SCK/SD_DOUT/FS): KEEP - no onboard
+  // microphone, codec, or speaker is documented anywhere for this board;
+  // these are general-purpose GPIOs exposed on the header that merely
+  // carry I2S alt-function names for users wiring their own I2S hardware
+  // (matches the playbook's "general-purpose bus without documented
+  // exclusive consumer" policy, not the "dedicated I2S audio codec bus"
+  // exclusion policy). Capabilities left at the chip-level default.
+  //
+  // Alias-collision check (required before finalizing): GPIO5 is also
+  // aliased SDA and GPIO6 is also aliased SCL - both CONFIRMED real
+  // (Qwiic connector with onboard pull-up resistors per the vendor's own
+  // hardware overview, plus independent community confirmation of
+  // Wire.setPins(5,6)) - so the i2c_sda/i2c_scl capabilities that
+  // build_boards.js auto-appends from these aliases are correct and were
+  // left in place, not deleted. GPIO10 is also aliased SS (SPI slave
+  // select); GPIO0/1/3 carry SCK/MISO/MOSI. These exactly match the
+  // vendor's own published pins_arduino.h (byte-for-byte, see source
+  // above) - a genuine board-specific default SPI pin mapping, not a
+  // boilerplate copy-paste error from an unrelated template, so left in
+  // place. No alias was deleted.
+  //
+  // GPIO10 (LED_BUILTIN): confirmed onboard STAT (blue) LED - the
+  // vendor's own hookup guide has users define LED_BUILTIN=10 and run
+  // the stock Blink example against it. Left un-tagged with a
+  // led_high/led_low capability because LED polarity could not be
+  // confirmed (schematic PDF was not machine-readable, and other
+  // ESP32-C3 boards are known to vary between active-high and
+  // active-low onboard LEDs). Annotated with an informational "note"
+  // instead, and flagged as sharing GPIO10 with the SPI SS default and
+  // the I2S frame-select alt-function.
+  //
+  // See boardsDetails/esp32/esp32c3/sparkfun_pro_micro_esp32c3/notes.txt
+  // for the full research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"], "note": "Also wired onboard to the Qwiic connector as I2C SDA (with onboard pull-up), and carries the vendor's PIN_I2S_SD_IN alt-function name for a general-purpose I2S header - no dedicated onboard mic/codec documented for this board." },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "Also wired onboard to the Qwiic connector as I2C SCL (with onboard pull-up), and carries the vendor's PIN_I2S_SCK alt-function name for a general-purpose I2S header - no dedicated onboard mic/codec documented for this board." },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "Carries the vendor's PIN_I2S_SD_DOUT alt-function name for a general-purpose I2S header - no dedicated onboard mic/codec documented for this board." },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "Onboard STAT (blue) LED (LED_BUILTIN) per vendor hookup guide; also the default SPI SS pin and carries the vendor's PIN_I2S_FS alt-function name - a multi-role general-purpose pin, not a dedicated onboard mic/codec." },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

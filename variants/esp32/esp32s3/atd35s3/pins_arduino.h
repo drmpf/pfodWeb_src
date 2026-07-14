@@ -17,62 +17,40 @@ static const uint8_t MOSI = 11;
 static const uint8_t MISO = 13;
 static const uint8_t SCK = 12;
 
-// LCD pin
-#define LCD_CS  SS
-#define LCD_SCK SCK
-#define LCD_SDA MOSI
-static const uint8_t LCD_DC = 21;
-static const uint8_t LCD_RES = 14;
-static const uint8_t LCD_BL = 3;
-
-// MicroSD Card pin
-static const uint8_t SD_CS = 18;
-static const uint8_t SD_CD = 17;
+// pfodWeb NOTE: LCD_DC/RES/BL and SD_CS/CD deliberately NOT declared -
+// dedicated onboard TFT display (shares the SS/MOSI/SCK bus above, plus
+// MISO) + microSD card (see board.json chipGpios override).
 
 static const uint8_t BTN_A = 4;
 #define KEY_BUILTIN BTN_A
 
 static const uint8_t LED_BUILTIN = 5;
 
-// DAC pin
-static const uint8_t DAC_DIN = 47;
-static const uint8_t DAC_BCLK = 48;
-static const uint8_t DAC_WS = 45;
+// pfodWeb NOTE: DAC_DIN/BCLK/WS deliberately NOT declared - dedicated
+// onboard I2S DAC/audio output.
 
+// pfodWeb NOTE: A2/A9-A13/A16/A17 and T3/T10-T14 deliberately NOT
+// declared - same dedicated TFT/SD SPI bus and LCD_BL/RES pins as above.
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
-static const uint8_t A2 = 3;
 static const uint8_t A3 = 4;
 static const uint8_t A4 = 5;
 static const uint8_t A5 = 6;
 static const uint8_t A6 = 7;
 static const uint8_t A7 = 8;
 static const uint8_t A8 = 9;
-static const uint8_t A9 = 10;
-static const uint8_t A10 = 11;
-static const uint8_t A11 = 12;
-static const uint8_t A12 = 13;
-static const uint8_t A13 = 14;
 static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
-static const uint8_t A16 = 17;
-static const uint8_t A17 = 18;
 static const uint8_t A18 = 19;
 static const uint8_t A19 = 20;
 
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
-static const uint8_t T3 = 3;
 static const uint8_t T4 = 4;
 static const uint8_t T5 = 5;
 static const uint8_t T6 = 6;
 static const uint8_t T7 = 7;
 static const uint8_t T8 = 8;
 static const uint8_t T9 = 9;
-static const uint8_t T10 = 10;
-static const uint8_t T11 = 11;
-static const uint8_t T12 = 12;
-static const uint8_t T13 = 13;
-static const uint8_t T14 = 14;
 
 #endif /* Pins_Arduino_h */

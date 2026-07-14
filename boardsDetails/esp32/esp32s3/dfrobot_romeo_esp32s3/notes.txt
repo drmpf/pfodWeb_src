@@ -1,0 +1,65 @@
+Board: DFRobot Romeo ESP32-S3 (ESP32-S3 Dev Module variant, onboard motor
+driver + camera(DVP) + display FPC connector (GDI))
+Date: 2026-07-14 (real independent re-verification pass; supersedes the
+prior "documentation backfill" pass, which cited only board.json's own
+comment and no external URLs)
+
+Sources consulted (real, external, independently fetched this pass):
+- https://wiki.dfrobot.com/SKU_DFR0994_Romeo_ESP32_S3_Development_Board
+  Official DFRobot product wiki. Publishes the full GPIO allocation table
+  for this exact board:
+    GDI display FPC interface: SPI clock IO17, MOSI(host-out/slave-in)
+      IO15, MISO(host-in/slave-out) IO16, CS IO18, DC IO3, reset IO38,
+      SD-card-select IO0, flash-CS/font-library-select IO7, touch-select
+      IO12, interrupt IO13, tearproof/busy(TE) IO14, backlight IO21, I2C
+      clock/data (shared with camera SCCB) IO2/IO1.
+    DVP camera interface: D2-D4 on IO39/IO40/IO41, D5-D7 on IO4/IO5(PCLK)/
+      IO6(VSYNC)/IO7/IO8, D8-D9 on IO46/IO48, XCLK IO45, HREF IO42.
+    Motor drivers (4x, EN/PH pairs): Motor1 IO12/IO13, Motor2 IO14/IO21,
+      Motor3 IO9/IO10, Motor4 IO47/IO11.
+    OV3660 onboard camera (OV2640/OV7725-compatible CAM interface); 4-
+    channel 2.5A H-bridge motor driver (PH/EN and PWM control modes).
+- https://www.dfrobot.com/product-2743.html
+  Official DFRobot product page, corroborates the OV3660 camera and
+  4-channel H-bridge motor driver feature set.
+
+Per-pin findings (cross-checked directly against this board's own
+pins_arduino.h #define values):
+- GPIO1, GPIO2: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag. Kept as SDA/SCL (shared general-purpose
+  I2C, also used by the GDI touch controller and camera's SCCB interface
+  per the wiki). CONFIRMED correct to keep.
+- GPIO15, GPIO16, GPIO17, GPIO18: excluded (removed from chipGpios
+  entirely) - the GDI display's SPI bus (MOSI/MISO/SCLK/CS respectively).
+  CONFIRMED exact match against the wiki's GDI SPI pin table.
+- GPIO0, GPIO3, GPIO7, GPIO12, GPIO13, GPIO14, GPIO21, GPIO38: excluded -
+  GDI SD-select/DC/flash-CS(font-library)/touch-select/interrupt/
+  tearproof/backlight/reset lines. CONFIRMED exact match (GPIO0=SD-CS,
+  GPIO3=DC, GPIO7=flash-CS, GPIO12=touch-CS, GPIO13=interrupt,
+  GPIO14=busy/TE, GPIO21=backlight, GPIO38=reset).
+- GPIO4, GPIO5, GPIO6, GPIO7, GPIO8, GPIO39, GPIO40, GPIO41, GPIO42,
+  GPIO45, GPIO46, GPIO48: excluded - the onboard DVP camera's data/clock/
+  sync lines. CONFIRMED exact match (GPIO4=D5, GPIO5=PCLK, GPIO6=VSYNC,
+  GPIO7=D6, GPIO8=D7, GPIO39=D2, GPIO40=D3, GPIO41=D4, GPIO42=HREF,
+  GPIO45=XCLK, GPIO46=D8, GPIO48=D9). Note GPIO7 legitimately appears in
+  both the GDI group (font-library-select) and camera group (D6) in the
+  original board.json comment - this is because DFRobot's own pin table
+  genuinely reuses GPIO7 for both roles (mutually exclusive by use case,
+  GDI vs camera), not a documentation error.
+- GPIO9, GPIO10, GPIO11, GPIO47: excluded - the 4 onboard motor drivers'
+  EN/PH lines. CONFIRMED exact match (GPIO9=Motor3 EN, GPIO10=Motor3 PH,
+  GPIO11=Motor4 PH, GPIO47=Motor4 EN; GPIO12/13/14/21 already counted
+  above as Motor1/Motor2 EN/PH, which double as GDI touch-CS/interrupt/
+  reset/backlight - again a genuine, confirmed dual-use by DFRobot's own
+  design, not an error).
+- GPIO43, GPIO44: kept as TX/RX. Capabilities [digital_input,
+  digital_output, pwm_output] - generic, no tag. CONFIRMED correct to
+  keep (standard UART0 pins, not claimed by any onboard peripheral).
+
+Summary: Every single pin in this board's chipGpios override (kept and
+excluded) is CONFIRMED, pin-for-pin, against DFRobot's own official wiki
+GPIO allocation table. No corrections were needed. No button/LED tags
+apply to this board (no dedicated pushbutton or LED beyond generic
+strapping pins was found in vendor documentation) - the audit correctly
+applied none. board.json's top-of-file comment and this notes.txt were
+both updated with the real citations above.

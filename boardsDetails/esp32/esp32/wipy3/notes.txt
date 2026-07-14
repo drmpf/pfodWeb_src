@@ -1,0 +1,55 @@
+wipy3 board button/LED research notes
+======================================
+
+Sources consulted:
+
+1. https://raw.githubusercontent.com/pycom/pycom-micropython-sigfox/master/esp32/boards/WIPY/mpconfigboard.h
+   Pycom's own ESP32-family MicroPython firmware source. Confirms
+   MICROPY_HW_HB_PIN_NUM = 0 (heartbeat LED on GPIO0) and
+   MICROPY_HW_SAFE_PIN_NUM = 21 (safe-mode/boot pin). Note: the repo only
+   has one ESP32-family "WIPY" board directory (no separate WIPY3 folder),
+   which is Pycom's ESP32-based WiPy line (WiPy 2.0/3.0 share this
+   firmware/pinout); the CC3200-based original WiPy 1.0 is a different
+   chip family entirely and not relevant here.
+
+2. https://docs.pycom.io/datasheets/development/wipy3/ (WiPy 3.0 official datasheet page)
+   Confirms an onboard RGB LED, referenced together with the reset button
+   ("Orient the RGB LED / reset button over the USB connector on any
+   expansion board"). No separate onboard user push-button is documented -
+   only the reset button.
+
+3. https://docs.platformio.org/en/latest/boards/espressif32/wipy3.html
+   PlatformIO board entry for "wipy3" - confirms board identity (ESP32,
+   4MB flash) but does not itself list GPIO/LED details.
+
+4. General web search results (Pycom specsheet PDF titles, Digi-Key/
+   TrustedParts listing pages, Pycom forum thread on WiPy3.0 factory
+   reset) were reviewed as search snippets only, consistent with the
+   above two authoritative sources (WS2812/NeoPixel RGB "heartbeat" LED
+   on GPIO0, reset button only, no dedicated user push-button). No
+   contradicting information found.
+
+Cross-check against local pins_arduino.h (variants/esp32/esp32/wipy3/pins_arduino.h):
+  - PIN_RGB_LED = 0, comment "->2812 RGB" (WS2812 NeoPixel), matches
+    Pycom firmware source's heartbeat LED pin GPIO0.
+  - TX = 1, RX = 3 - GPIO0 does not conflict with the reserved TX/RX pins.
+  - GPIO21 is already excluded from chipGpios (external antenna switch,
+    ANT_SELECT) by a pre-existing NOTE/exclusion - left untouched.
+
+Pins considered but NOT tagged:
+  - No onboard user button was found anywhere in vendor documentation or
+    Pycom firmware source - only a reset button (not GPIO-exposed as a
+    general-purpose input) is present. This is a firm "no", not a guess:
+    both the WiPy 3.0 datasheet and the WiPy/WIPY2/WIPY4-family Pycom
+    firmware source consistently describe only a heartbeat RGB LED plus
+    a reset button, with no separate button pin defined in
+    mpconfigboard.h. No button capability tag was applied anywhere.
+  - GPIO21 (antenna switch) was already excluded pre-task; not
+    reconsidered here (out of scope per task rules).
+
+Summary of change applied:
+  - GPIO0 tagged ["digital_output", "led_neopixel", "pwm_output"] in
+    board.json (pwm_output retained because it was already present on
+    this pin before tagging) - confirmed onboard WS2812/NeoPixel
+    "heartbeat" RGB LED via Pycom's own firmware source
+    (MICROPY_HW_HB_PIN_NUM=0) and the official WiPy 3.0 datasheet.

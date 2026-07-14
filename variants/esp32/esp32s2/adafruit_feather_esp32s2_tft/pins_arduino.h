@@ -21,22 +21,15 @@
 #define RGB_BRIGHTNESS 64
 
 #define NEOPIXEL_NUM      1     // number of neopixels
-#define NEOPIXEL_POWER    34    // power pin
+// pfodWeb NOTE: NEOPIXEL_POWER (GPIO34) and TFT_I2C_POWER (GPIO21)
+// deliberately NOT declared - internal power-gate lines, not
+// general-purpose. TFT_CS/RST/DC/BACKLITE and SS/MOSI/SCK/MISO
+// deliberately NOT declared - dedicated onboard TFT display SPI bus
+// (SS shares the same GPIO7 as TFT_CS) - see board.json.
 #define NEOPIXEL_POWER_ON HIGH  // power pin state when on
-
-#define TFT_I2C_POWER 21
-#define TFT_CS        7
-#define TFT_RST       40
-#define TFT_DC        39
-#define TFT_BACKLITE  45
 
 static const uint8_t SDA = 42;
 static const uint8_t SCL = 41;
-
-static const uint8_t SS = 7;
-static const uint8_t MOSI = 35;
-static const uint8_t SCK = 36;
-static const uint8_t MISO = 37;
 
 static const uint8_t A0 = 18;
 static const uint8_t A1 = 17;

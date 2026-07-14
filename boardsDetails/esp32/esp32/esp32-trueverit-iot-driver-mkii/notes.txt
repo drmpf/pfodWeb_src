@@ -1,0 +1,157 @@
+================================================================
+Date: 2026-07-12 — button/LED capability-tagging audit (playbook
+section 7a), TrueVerit ESP32 IoT Driver Mk II
+================================================================
+
+Board: esp32-trueverit-iot-driver-mkii (chip: esp32)
+Directory: variants/esp32/esp32/esp32-trueverit-iot-driver-mkii/
+
+This board already had a board.json from an earlier dedicated-hardware
+pin-exclusion pass (Ethernet RMII/PHY GPIOs). That earlier pass never
+applied button/LED capability tagging - this pass fills that gap.
+
+pins_arduino.h facts
+---------------------
+- `static const uint8_t LED_BUILTIN = 18;` (plus the usual
+  BUILTIN_LED/LED_BUILTIN compat #defines).
+- TX=1, RX=3 (UART0, already handled by build_boards.js's serial_rx/
+  serial_tx branch).
+- SS=5, MOSI=23, MISO=32, SCK=18 (before this pass's fix - see below).
+- SCL=4, SDA=15.
+- No button-shaped alias name anywhere in the file (no BTN/BOOT/KEY/
+  PROG-style declaration).
+- ETH_PHY_POWER=2, ETH_PHY_MDC=16, ETH_PHY_MDIO=14 (already excluded by
+  the earlier pass, confirmed still correct, not re-litigated here).
+
+Sibling board note: esp32-trueverit-iot-driver (the non-mkii original)
+is being audited in parallel this wave by a separate pass. Its
+pins_arduino.h is IDENTICAL on the LED_BUILTIN=18 / SS=5 / MOSI=23 /
+MISO=32 / SCK=18 block (checked directly, byte-for-byte the same lines)
+- but per task instructions this board was not assumed to share wiring
+with it, and the two board.json/pins_arduino.h files were audited and
+edited independently. This file (mkii) is the only one touched by this
+pass.
+
+Web research consulted
+------------------------
+Searched "TrueVerit ESP32 IoT driver mkii" and several follow-up
+queries. Sources checked:
+1. https://www.espboards.dev/esp32/esp32-trueverit-iot-driver-mkii/ -
+   auto-generated pinout page. Confirms GPIO18 = "LED_BUILTIN SCK" (i.e.
+   it just re-derives the same pins_arduino.h this pass is auditing -
+   circular, not independent corroboration). No polarity, button, or
+   relay information.
+2. https://docs.platformio.org/en/latest/boards/espressif32/trueverit-iot-driver-mk2.html
+   and the v6.1-stable mirror - vendor name, CPU/flash/RAM specs, "40
+   digital IO pins" marketing copy, DP83848 Eth PHY mention. No GPIO-
+   level LED/button/relay detail.
+3. https://github.com/espressif/arduino-esp32/pull/5219 (original board)
+   and #5269 (Mk II) - the PRs that added these variant files to the
+   official Espressif core. Read both PR descriptions/discussion
+   threads directly: neither contains any discussion of LED polarity,
+   button, relay, or SPI-pin reality vs. boilerplate. Only content:
+   "Add support for the Trueverit Universal IoT Driver / MK II ... has
+   onboard Texas Instruments DP83848 Eth PHY chip."
+4. https://git.liberatedsystems.co.uk/jacob.eva/arduino-esp32/.../variants/esp32-trueverit-iot-driver-mkii
+   (a third-party Git mirror) - directory contains only pins_arduino.h,
+   identical to the local copy. No accompanying examples/, README, or
+   schematic in that directory.
+5. https://trueverit.com and https://www.trueverit.com/2021/08/13/trueverit-universal-iot-driver/
+   - vendor's own site. The homepage and product-announcement page are
+   both JavaScript-rendered SPA shells; WebFetch could only retrieve an
+   empty header/logo, no product copy, no schematic, no GPIO table.
+6. Searched for the PR author ("rtu-dataframe") on GitHub for a personal
+   repo with example sketches (blink/button demos would reveal
+   polarity) - none found; only the same upstream PRs turned up.
+7. Searched specifically for relay/button/output documentation on the
+   "Universal IoT Driver" product line - found only marketing pages
+   (trueverit.com/en/iiot-enabled-devices/, PlatformIO docs) with no
+   GPIO-level detail.
+
+Conclusion: no independent, non-circular source anywhere states GPIO18's
+LED polarity, confirms/denies an onboard button, or documents relay-
+output GPIOs on either the original or Mk II board. This is an OEM
+industrial/OEM-integration board (Trueverit's own copy calls it an
+"All-In-One OEM" solution) with essentially no public pin-level
+documentation beyond the vendor-submitted arduino-esp32 variant file
+itself.
+
+Findings and reasoning
+------------------------
+1. GPIO18 (LED_BUILTIN): CONFIRMED as a real onboard LED. Justification:
+   the declaration is the vendor's own submission, accepted into the
+   official Espressif arduino-esp32 core specifically for this board
+   (not a generic/copied template value - LED_BUILTIN is board-specific
+   by definition and both PR descriptions are vendor-authored). This
+   meets the "real onboard LED" bar.
+
+2. GPIO18 polarity: NOT CONFIRMED. Despite the searches listed above, no
+   source independent of pins_arduino.h itself states active-high vs.
+   active-low for this LED. Per this pass's explicit "never guess"
+   policy, NO led_high/led_low tag was applied. GPIO18 keeps its plain
+   digital_input/digital_output/pwm_output capabilities in board.json's
+   chipGpios map, unchanged from the earlier pass.
+   Confidence: LED existence = high; polarity = unknown/unconfirmed (no
+   tag applied, consistent with policy).
+
+3. Button: no evidence of any onboard button found on this board
+   revision in any source consulted. No chipGpios/pinNotes change made.
+
+4. Relay: no evidence of any relay-output GPIO found in any source
+   consulted, despite the "IoT Driver" product name suggesting
+   industrial I/O. Per playbook policy relays are KEEP (never
+   excludable) regardless of confirmation status, but that policy is
+   moot here since no candidate GPIO could be identified as a relay
+   output in the first place - nothing to keep or exclude.
+
+5. CRITICAL alias-collision check (this session's recurring gotcha):
+   GPIO18, the confirmed LED pin, was ALSO declared as `SCK` (SPI clock)
+   in this file: `static const uint8_t SCK = 18;`. build_boards.js
+   (pfodWeb_src/build_boards.js, ~lines 698-703) unconditionally
+   appends an `spi_sck` capability to any GPIO matching the parsed SCK
+   alias, regardless of what board.json's chipGpios map says - this
+   happens today even without any LED tag being added, since the check
+   runs independently. Cross-checked the other three SPI/I2C aliases
+   for collision against GPIO18 too: SS=5, MOSI=23, MISO=32, SDA=15,
+   SCL=4 - none of these coincide with GPIO18, only SCK did.
+   Determined this SCK=18 value is boilerplate, not a vendor-confirmed
+   real SPI connection: it matches the same generic-ESP32-dev-module
+   default (MISO was changed from the standard template's 19 to 32 on
+   this board, evidence of some real customization, but SCK was left at
+   the un-updated default of 18, which only coincidentally collides
+   with this board's own distinct LED_BUILTIN=18 choice). It would make
+   no hardware sense for the vendor to wire a physical LED and an
+   external SPI clock signal onto the same pin.
+   FIX APPLIED: deleted the `static const uint8_t SCK = 18;` line from
+   pins_arduino.h (not commented out - the parser is comment-blind,
+   and no literal reproduction of the old declaration was written into
+   any comment). An explanatory NOTE comment was added in its place.
+   SS/MOSI/MISO lines were left untouched (no collision found for
+   those). board.json's top-of-file comment block was extended (not
+   overwritten) with a matching pfodWeb NOTE documenting both the
+   LED-confirmed/polarity-unconfirmed finding and this SCK fix.
+
+Files written this pass
+-------------------------
+- variants/esp32/esp32/esp32-trueverit-iot-driver-mkii/pins_arduino.h
+  (SCK=18 alias deleted, replaced with an explanatory NOTE comment;
+  everything else unchanged)
+- variants/esp32/esp32/esp32-trueverit-iot-driver-mkii/board.json (new
+  pfodWeb NOTE paragraph appended to the existing top-of-file comment
+  block; existing comment content preserved; chipGpios/pinNotes values
+  unchanged - no LED/button tag was added since polarity/button
+  presence could not be confirmed)
+- this notes.txt (new file)
+
+One-line summary
+-----------------
+GPIO18 (LED_BUILTIN) confirmed as a real vendor-declared onboard LED but
+its polarity could not be confirmed by any independent source (all
+reachable documentation just re-derives the same pins_arduino.h) - per
+"never guess" policy, no led_high/led_low tag was applied. No button or
+relay GPIO could be identified anywhere either. One real bug found and
+fixed: GPIO18 was also boilerplate-aliased as SCK, which would have
+silently contaminated the LED pin with an unwanted spi_sck capability
+regardless of chipGpios - the SCK=18 line was deleted from
+pins_arduino.h (SS/MOSI/MISO left intact, no collision found for those)
+and both files annotated accordingly.

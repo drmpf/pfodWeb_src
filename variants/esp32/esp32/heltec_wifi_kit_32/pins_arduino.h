@@ -35,10 +35,10 @@ static const uint8_t A5 = 33;
 static const uint8_t A6 = 34;
 static const uint8_t A7 = 35;
 
-static const uint8_t A10 = 4;
+// pfodWeb NOTE: A10/A13 deliberately NOT declared - dedicated onboard
+// OLED SDA/SCL pins (see below).
 static const uint8_t A11 = 0;
 static const uint8_t A12 = 2;
-static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
 static const uint8_t A15 = 12;
 static const uint8_t A16 = 14;
@@ -46,10 +46,9 @@ static const uint8_t A17 = 27;
 static const uint8_t A18 = 25;
 static const uint8_t A19 = 26;
 
-static const uint8_t T0 = 4;
+// pfodWeb NOTE: T0/T3 deliberately NOT declared - same as A10/A13 above.
 static const uint8_t T1 = 0;
 static const uint8_t T2 = 2;
-static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
 static const uint8_t T6 = 14;
@@ -60,10 +59,10 @@ static const uint8_t T9 = 32;
 static const uint8_t DAC1 = 25;
 static const uint8_t DAC2 = 26;
 
-static const uint8_t Vext = 21;
 static const uint8_t LED = 25;
-static const uint8_t RST_OLED = 16;
-static const uint8_t SCL_OLED = 15;
-static const uint8_t SDA_OLED = 4;
+// pfodWeb NOTE: Vext (power-gate) and RST_OLED/SCL_OLED/SDA_OLED
+// deliberately NOT declared - internal control line and dedicated
+// onboard OLED display pins. SS/MOSI/MISO/SCK stay kept - no radio chip
+// evidenced on this "WiFi Kit" (non-LoRa) variant.
 
 #endif /* Pins_Arduino_h */

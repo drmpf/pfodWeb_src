@@ -1,0 +1,84 @@
+Board: dfrobot_firebeetle2_esp32c6 (DFRobot FireBeetle 2 ESP32-C6, SKU DFR1075)
+Audit date: 2026-07-12
+Chip: esp32c6 (no prior board.json override existed - chip-level default was in force)
+
+SOURCES CONSULTED
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32c6\dfrobot_firebeetle2_esp32c6\pins_arduino.h (read in full)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32c6\board.json (chip-level default, read in full)
+- https://wiki.dfrobot.com/SKU_DFR1075_FireBeetle_2_Board_ESP32_C6 (WebFetch - primary source:
+  GDI connector description, onboard LED pin, BOOT/RESET buttons, battery voltage detection pin)
+- https://wiki.dfrobot.com/SKU_DFR1075_FireBeetle_2_Board_ESP32_C6_Basic_Tutorial (WebFetch -
+  checked for LED-polarity and battery-ADC example code; no code snippets were retrievable from
+  the fetched content, only tutorial-page tables of contents)
+- https://www.dfrobot.com/product-2771.html (WebFetch - product page, corroborates GDI as an
+  external plug-and-play display connector, integrated LiPo charging/level-monitoring)
+- WebSearch "DFRobot FireBeetle 2 ESP32-C6 wiki.dfrobot.com GDI button LED battery" (initial
+  discovery pass, confirmed "default pin for the onboard LED is pin 15" and battery-level
+  monitoring exists)
+- Sibling files read for established-pattern comparison:
+  variants/esp32/esp32c3/dfrobot_beetle_esp32c3/pins_arduino.h (same GDI-via-existing-alias
+  pattern, precedent for this DFRobot product line)
+  variants/esp32/esp32c5/dfrobot_firebeetle2_esp32c5/pins_arduino.h (same GDI pattern, "being
+  audited in parallel this wave" per task brief - no board.json exists there yet)
+  variants/esp32/esp32s3/dfrobot_firebeetle2_esp32s3/{pins_arduino.h,board.json} (the DIFFERENT
+  case - GDI-exclusive signals with NO general alias, correctly excluded there)
+  variants/esp32/esp32c6/Pcbcupid_GLYPH_C6/board.json (same chip, very similar GPIO9-button /
+  GPIO0-battery-note precedent, used as the template for this board's override style)
+  variants/esp32/esp32c5/XIAO_ESP32C5/board.json (battery-sense pin kept-with-note precedent)
+  variants/esp32/esp32/dfrobot_firebeetle2_esp32e/board.json (no-guess LED-polarity precedent)
+  variants/esp32/esp32p4/dfrobot_firebeetle2_esp32p4/board.json ("button" capability convention)
+
+FINDINGS
+1. GDI connector (GDI_BLK/SPI_SCLK/SPI_MOSI/SPI_MISO/DC/RES/CS/SDCS/FCS/TCS/SCL/SDA/INT/BUSY_TE):
+   confirmed via DFRobot's own wiki as an EXTERNAL plug-in display connector ("a DFRobot dedicated
+   GDI display interface for connecting a screen using a 18pin-FPC wire", supports 1.54"-3.5"
+   external screens) - not a built-in/onboard display. Matches the established DFRobot GDI pattern
+   (Beetle ESP32-C3, FireBeetle 2 ESP32-C5).
+   Critically, EVERY GDI_* macro in this board's pins_arduino.h resolves through an
+   already-declared general-purpose pin alias (D2=8, D3=14, D6=1, D7=18, D11=7, D12=6, D13=15, plus
+   the shared SCK/MOSI/MISO/SCL/SDA bus) - i.e. these are ordinary header-broken-out GPIOs that only
+   optionally double as display-connector signals when the accessory is plugged in. This is the
+   OPPOSITE situation from dfrobot_firebeetle2_esp32s3, where the GDI-exclusive signals (DC/RES/CS/
+   SDCS/FCS/TCS/INT/BUSY_TE) were raw numeric literals with NO general alias declared anywhere in
+   that file, and were therefore excluded from that board's chipGpios. Here: KEEP all, no exclusion.
+
+2. Onboard LED: DFRobot's wiki states "The default pin for the onboard LED is pin 15" - matches
+   this board's own pins_arduino.h (LED_BUILTIN = 15, D13 = 15, also GDI_BLK). No source consulted
+   states active-high/active-low polarity (no example blink code was retrievable), so per this
+   project's no-guess policy, no led_high/led_low capability tag was applied - left at chip
+   defaults for human review.
+
+3. Onboard button: DFRobot's wiki explicitly documents "IO9 / D9 / BOOT: Boot button (GPIO9)" and
+   a separate hardware RST (reset) button (not a GPIO, no pin mapping applicable). GPIO9/D9 tagged
+   "button" in board.json (capabilities reduced to ["digital_input","button"], matching this
+   project's established button-tag convention, e.g. dfrobot_firebeetle2_esp32e GPIO27,
+   dfrobot_firebeetle2_esp32p4 GPIO35, Pcbcupid_GLYPH_C6 GPIO9). GPIO9 is also this chip's
+   boot-mode strapping pin (chip-level board.json already carries the pinNotes "Must be HIGH for
+   normal boot" warning).
+
+4. Battery voltage sense: DFRobot's wiki confirms "IO0: Battery voltage detection pin", used with
+   the board's integrated LiPo charging/level-monitoring circuit and CN3165 solar power-management
+   chip. GPIO0 has NO alias name in this board's pins_arduino.h (no A0 declared; A1..A4 start at
+   GPIO2). No divider ratio or enable-pin requirement could be confirmed from the sources fetched
+   (tutorial pages listed example-code titles but the actual code bodies were not present in the
+   fetched content), so - per this project's no-guess policy - GPIO0's capabilities were left
+   unchanged (analog_input/digital_input/digital_output/pwm_output all kept) and only a
+   documentation "note" was attached in board.json, matching the XIAO_ESP32C5 BAT_VOLT_PIN
+   kept-with-note precedent.
+
+5. Critical alias-contamination check (per task step 4): confirmed neither GPIO15 (LED_BUILTIN/
+   D13) nor GPIO9 (D9, BOOT button) is also aliased as SDA(19)/SCL(20)/SS(5)/MOSI(22)/MISO(21)/
+   SCK(23)/TX(16)/RX(17) anywhere in this board's pins_arduino.h. No contamination found.
+
+APPLIED
+- Created variants/esp32/esp32c6/dfrobot_firebeetle2_esp32c6/board.json as a full copy of the
+  chip-level default, with:
+    - GPIO9 capabilities -> ["digital_input","button"] (dedicated BOOT pushbutton), with note.
+    - GPIO0 capabilities unchanged, "note" added documenting the battery voltage detection role.
+  No pins_arduino.h changes were needed - all GDI signals already reuse existing general-purpose
+  aliases and require no exclusion; no dead/duplicate declarations were found.
+
+SUMMARY: GDI confirmed optional plug-in connector (KEEP, no exclusion, unlike the S3 sibling board);
+GPIO9 tagged "button" (confirmed onboard BOOT pushbutton); GPIO0 documented as the battery-voltage
+detection pin (kept, note only, no divider details confirmable); LED_BUILTIN=GPIO15 confirmed but
+left untagged for polarity (unconfirmed, human review needed).

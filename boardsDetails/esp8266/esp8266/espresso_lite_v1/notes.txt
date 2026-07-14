@@ -1,0 +1,237 @@
+Board: espresso_lite_v1 ("ESPresso Lite 1.0" / "ESPresso Lite Beta")
+Path:  C:\ai\aicode\pfodWeb\variants\esp8266\esp8266\espresso_lite_v1
+Date:  2026-07-11
+
+IMPORTANT: This is v1 ("beta"). The sibling directory espresso_lite_v2 is a
+different, later-redesigned board (made with Cytron Technologies) and was
+NOT touched by this research/edit.
+
+pins_arduino.h for this board only defines SDA=4, SCL=5, LED_BUILTIN=16
+(plus ESPRESSO_LITE_VERSION=1). No board.json existed before this task.
+
+=== URLs consulted ===
+
+1. http://web.archive.org/web/20201026180536/http://beta.espressolite.com/blog/let-s-get-started-with-espresso-lite-beta
+   (Wayback Machine capture of the official ESPresso Lite beta vendor blog
+   post; the live beta.espressolite.com domain no longer resolves.)
+   Told us:
+   - "The onboard button switch labelled USER is using GPIO2 and is being
+     pulled high normally. Pressing the button switch will change the
+     GPIO2 state to LOW." -> onboard user button on GPIO2, active-low.
+   - "The onboard green LED happens to be also connected to GPIO16" and
+     "The default GPIO for LED is GPIO16." -> onboard LED on GPIO16.
+   - "The green LED (GPIO16) is always pulled high..." (boot/idle default
+     state observation, consistent with active-low LED that is off at
+     power-up because GPIO16 is not yet driven LOW by user code).
+   - "There is however a lone analog input pin labelled AD. Be careful
+     when using this pin as it can only take in maximum of 3.3V." -> the
+     analog input (A0/GPIO17) has a documented 0-3.3V max input range,
+     i.e. an on-board resistor divider extends the chip's native 0-1.0V
+     ADC range to 0-3.3V on this board.
+   This is a primary/official vendor source (the board's own product
+   site), so it satisfies the "real vendor documentation" requirement.
+
+2. https://github.com/JimmySoftware/ESPert  (src/ESPert.cpp, src/ESPert.h)
+   Official "ESPert" Arduino library written for the ESPresso Lite board
+   (referenced/recommended from the vendor blog above; JimmySoftware also
+   maintains a separate ESPert2 repo explicitly for "ESPresso Lite
+   Revision 2", confirming this ESPert repo targets Revision 1/this
+   board). Told us, directly from source code (not just naming):
+   - Default pin assignments (used unless the ARDUINO_ESP8266_ESPRESSO_LITE_V2
+     build flag is set): `int ESPERT_PIN_LED = 16;` and
+     `int ESPERT_PIN_BUTTON = 2;` (init() overrides both to 2/13 only when
+     board type == ESPERT_BOARD_ESPRESSO_LITE2) -> confirms GPIO16=LED,
+     GPIO2=button specifically for the v1 (this) board.
+   - `ESPert_Button::init(int pin, int mode)`: `pinMode(buttonPin, (mode
+     == -1) ? INPUT_PULLUP : mode)`; `isOn()`: `bool buttonPressed =
+     (status == LOW)` -> confirms GPIO2 is a plain active-low pushbutton
+     with internal pull-up, i.e. no external pull-up/pull-down resistor
+     network beyond the digital button tag.
+   - `ESPert_LED::set(bool state)`: for every board type except the
+     unrelated ESP201, `digitalWrite(ledPin, state ? LOW : HIGH)` -> LED
+     "on" drives the pin LOW, confirming the LED is wired active-low
+     (LOW = lit, HIGH = off).
+   This is source-code-level confirmation from the board's own official
+   library, not an inference from a pin alias name.
+
+3. https://github.com/esp8266/Arduino/pull/1621/files
+   PR that added/updated the ESPresso Lite 1.0/2.0 descriptions in the
+   esp8266/Arduino core boards documentation. Confirmed general board
+   description (WROOM-02 module, built-in LED, reset/flash buttons, user
+   programmable button, ~500 units produced before retirement) but did
+   NOT include GPIO-level pin assignments or ADC circuit details, so it
+   was not used as a tagging source beyond general context.
+
+4. https://www.espboards.dev/esp8266/espresso-lite-v1/
+   Third-party pinout reference site. Confirmed PIN_16 = LED_BUILTIN
+   (matches pins_arduino.h) but had no electrical polarity or ADC divider
+   detail, so it added no new information beyond what pins_arduino.h
+   already shows and was not used as a standalone source.
+
+5. https://docs.platformio.org/en/latest/boards/espressif8266/espresso_lite_v1.html
+   PlatformIO board definition page. Listed only generic MCU/flash/RAM
+   specs and upload protocol - no ADC or button/LED electrical detail.
+   Not used as a tagging source.
+
+6. https://hackaday.io/project/8113-the-espresso-lite
+   Original designer's (nazt) project log for the ESPresso Lite. General
+   background/history only, no GPIO-level schematic detail found. Not
+   used as a tagging source.
+
+=== Considered but NOT changed, and why ===
+
+- Exact schematic / resistor divider values for the A0 "AD" pin: searched
+  extensively (web search + GitHub search for ESPresso Lite / ESPert /
+  Eagle / KiCad schematic files) but could not locate an official
+  schematic PDF, Eagle, or KiCad source file for the ESPresso Lite 1.0
+  board (unlike e.g. the WEMOS D1 Mini, which has a public KiCad
+  schematic). Because of this, defaultRefVolts is set to "3.3" using the
+  vendor's own stated spec text ("maximum of 3.3V") rather than a
+  resistor-math-derived ratio. If a schematic surfaces later, this value
+  should be re-verified against the actual divider resistors.
+
+- GPIO0 and GPIO15: left untagged (chip-level defaults kept). The vendor
+  blog/library only document GPIO2 (USER button) and GPIO16 (LED) as
+  having dedicated onboard components; GPIO0/GPIO15 are the standard
+  ESP8266 boot-strapping pins with no board-specific component mentioned
+  in any source consulted.
+
+- GPIO1/GPIO3 (hardware UART0 TX/RX): confirmed these are not the pins
+  used for the button or LED (button=GPIO2, LED=GPIO16), so no conflict
+  with build_boards.js's hard-reserved TX/RX pins.
+
+- NeoPixel / discrete RGB tags: no evidence of either on this board; it
+  has a single monochrome green LED only.
+
+=== Summary ===
+
+Created board.json for espresso_lite_v1 (previously had none - now a full
+copy of the esp8266 chip-level default) tagging GPIO16 as
+["digital_output","led_low"] (onboard green LED, active-low) and GPIO2 as
+["digital_input","button"] (onboard USER button, active-low/INPUT_PULLUP),
+both confirmed via the official vendor blog and the official ESPert
+Arduino library source code; also set adc.defaultRefVolts to "3.3" (from
+"1.0") based on the vendor's documented 0-3.3V max input spec for the "AD"
+analog pin (no schematic with exact resistor values was found, so the
+ratio itself is not independently re-derived, only the vendor's stated
+max-voltage figure).
+
+=== 2026-07-12: Dedicated-hardware pin-exclusion audit (later, separate pass) ===
+
+Scope: this pass is the full pin-availability/dedicated-hardware sweep
+(playbook sections 1-6), triggered by a fresh discovery sweep flagging
+this board because its pins_arduino.h contains a version-selector macro
+(`#define ESPRESSO_LITE_VERSION 1`) resembling the pattern that caused a
+real #if/#else branch bug on the sibling `espectro` board this session.
+
+--- Version-branch ambiguity check (the main trigger for this pass) ---
+
+Read variants/esp8266/esp8266/espresso_lite_v1/pins_arduino.h in full and
+grepped it for #if/#ifdef/#ifndef/#else/#endif. Result: the ONLY
+conditional-compilation directives in the file are the standard
+`#ifndef Pins_Arduino_h` / `#define Pins_Arduino_h` / `#endif` include
+guard - there is NO #if/#ifdef/#else branch structure around any pin
+declaration, and ESPRESSO_LITE_VERSION is a plain, unconditional #define
+that is never tested by any #if/#ifdef anywhere in this file. Also
+grepped the whole variants/esp8266/esp8266 tree for ESPRESSO_LITE_VERSION:
+it appears only in this file's own #define and in the sibling
+espresso_lite_v2/pins_arduino.h's own #define (value 2) - never as the
+subject of a preprocessor conditional. Also read generic/common.h (which
+this file #includes) in full: no ESPRESSO_LITE_VERSION reference there
+either, and no #if/#else branch of any kind affecting pin declarations.
+
+Conclusion: UNLIKE `espectro` (where a single file had two #if/#else
+branches for the same declaration name, and build_boards.js's ifdef-blind
+parser resolved to the wrong one), espresso_lite_v1 and espresso_lite_v2
+are two completely separate directories/files, each with its own
+unconditional, unambiguous declarations (v1: LED_BUILTIN=16; v2:
+LED_BUILTIN=2 - confirmed by directly reading both files side by side).
+There is no branch for build_boards.js's comment-blind/ifdef-blind parser
+to get wrong here - the "real compile" and "what the parser resolves to"
+are identical for both directories, because each file only ever declares
+one value per name, unconditionally. NO FIX NEEDED for this concern.
+
+--- Alias-contamination check (SDA/SCL/SS/MOSI/MISO/SCK/TX/RX) ---
+
+Checked whether GPIO16 (LED) or GPIO2 (button), or the newly-considered
+GPIO0, is aliased as SDA/SCL/SS/MOSI/MISO/SCK/TX/RX anywhere in
+pins_arduino.h or the generic/common.h it includes:
+  - pins_arduino.h: SDA=4, SCL=5 (PIN_WIRE_SDA/PIN_WIRE_SCL).
+  - generic/common.h: SS=15, MOSI=13, MISO=12, SCK=14 (PIN_SPI_*), A0=17
+    (PIN_A0).
+  - TX=1/RX=3 are forced at the board.json chip-level default (hardware
+    UART0), not aliased in this file at all.
+None of these values are 0, 2, or 16. CONFIRMED CLEAN - no aliasing
+contamination of the button/LED/flash-button pins.
+
+--- Other onboard peripherals not yet covered by the earlier LED/button pass ---
+
+WebSearch surfaced a description of this exact board from the official
+esp8266/Arduino core's own boards documentation (the same PR #1621 already
+cited as a source in the prior pass, re-fetched here directly):
+https://arduino-esp8266.readthedocs.io/en/latest/boards.html - "ESPresso
+Lite 1.0 (beta version) is an Arduino-compatible Wi-Fi development board
+powered by Espressif System's own ESP8266 WROOM-02 module. It has
+breadboard-friendly breakout pins with in-built LED, two reset/flash
+buttons and a user programmable button." This is the same text the prior
+pass already read (cited as source #3, PR #1621) but that pass's
+conclusion ("did NOT include GPIO-level pin assignments... not used as a
+tagging source beyond general context") missed that "two reset/flash
+buttons" implies two distinct physical buttons: one wired to the chip's
+non-GPIO RST/EN pin (a genuine hardware reset, not a GPIO - not taggable,
+same as every other board in this repo), and one FLASH button, which by
+universal ESP8266 hardware convention is wired to GPIO0 (GPIO0 LOW at
+power-up/reset = flash/programming mode; GPIO0 HIGH/floating = normal
+boot - this is a fixed silicon behaviour of every ESP8266 chip, not a
+board-specific design choice).
+
+Attempted to find a board-specific schematic or photo explicitly labelling
+GPIO0 as the flash-button pin (fetched the live beta.espressolite.com blog
+- DNS no longer resolves; fetched hackaday.io project log - mentions "11
+GPIO pinouts with pin 1 & 3 taken for Tx & Rx; pin 16 for waking up the
+ESP8266" but no button-to-GPIO mapping). None found. This is the exact
+same evidence tier already used and accepted for the sibling `nodemcu`
+board's GPIO0 FLASH/BOOT button tag in this repo (official/semi-official
+board-description text plus the universal GPIO0 convention, not a
+resistor-level schematic) - see boardsDetails/esp8266/esp8266/nodemcu/notes.txt
+for that precedent. Applied the same tag here for consistency: GPIO0
+chipGpios capabilities changed from ["digital_input","digital_output",
+"pwm_output"] to ["digital_input","digital_output","pwm_output","button"]
+(kept the full I/O capability set, unlike the restricted-to-button-only
+GPIO2 tag, because GPIO0 remains a normal usable GPIO outside of its
+boot-time role - same convention already used for nodemcu's GPIO0).
+pinNotes["0"] updated to describe the button; a new pfodWeb NOTE comment
+block added above pinNotes explaining the finding and sources.
+
+No other dedicated onboard peripheral was found beyond LED (GPIO16),
+USER button (GPIO2), FLASH button (GPIO0, this pass), and the AD analog
+input (GPIO17/A0, already documented). GPIO15 remains untagged (standard
+ESP8266 boot-strap pin, tied low via resistor on most boards, no
+board-specific component mentioned in any source consulted across either
+pass). GPIO1/GPIO3 remain the hard-reserved UART0 TX/RX pins, confirmed
+not to collide with GPIO0/GPIO2/GPIO16.
+
+--- Files changed this pass ---
+
+variants/esp8266/esp8266/espresso_lite_v1/board.json - GPIO0 chipGpios
+capabilities gained "button"; pinNotes["0"] updated; new pfodWeb NOTE
+comment block added documenting the version-branch-ambiguity check
+(none found) and the GPIO0 finding.
+
+pins_arduino.h itself: NO CHANGE - no #if/#ifdef structure exists to fix,
+and no static-const alias needed removing or adding (GPIO0's own
+board.json chipGpios entry was sufficient, per playbook section 4b's
+"#define-only pins need no pins_arduino.h edit" case - though here it's
+the reverse: GPIO0 already had a full pins_arduino.h-independent
+chip-level chipGpios entry, so only the capabilities array needed
+editing).
+
+Summary: no espectro-style version-branch bug existed on this board (the
+file has no #if/#else at all, only an unused unconditional #define) -
+documented as NO CHANGE for that specific concern. One new finding
+applied: GPIO0 tagged as the board's FLASH/BOOT button (in addition to
+the already-documented GPIO2 USER button and GPIO16 LED), based on
+official esp8266/Arduino core board-description text plus the universal
+ESP8266 GPIO0 flash-mode convention, following the same evidence
+standard already accepted for the sibling nodemcu board. No SDA/SCL/SS/
+MOSI/MISO/SCK/TX/RX aliasing contamination found on GPIO0/GPIO2/GPIO16.

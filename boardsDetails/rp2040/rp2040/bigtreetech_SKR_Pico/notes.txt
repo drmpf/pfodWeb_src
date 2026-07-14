@@ -1,0 +1,275 @@
+Board: BigTreeTech "SKR Pico" V1.0 (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/bigtreetech_SKR_Pico/
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+Applied dedicated-hardware pin exclusion for this 3D-printer motion-
+control mainboard: 26 of 30 GPIOs are permanently wired to stepper
+driver STEP/DIR/EN lines, endstop/DIAG inputs, thermistor dividers,
+heater/fan MOSFET gates, the shared TMC2209 UART bus, or the probe/servo
+header. Created board.json (this board previously had none - only a
+pins_arduino.h existed, so the Designer was falling back to the empty
+chip-level chipGpios:{} default). Tagged the onboard NeoPixel (GPIO24)
+with led_neopixel. No onboard button or discrete LED exists on this
+board beyond the NeoPixel (confirmed below) - no button/led_high/led_low
+tagging applied. Found and fixed one real pre-existing defect: GPIO8/9
+(the shared TMC2209 UART bus) were being exposed as two innocuous
+general-purpose D8/D9 digital pins because this board's own
+pins_arduino.h declares `static const uint8_t D8/D9` aliases for them -
+corrected via chipGpios capabilities:[] override.
+
+SOURCES CONSULTED
+------------------
+1. This board's own pins_arduino.h (variants/rp2040/rp2040/
+   bigtreetech_SKR_Pico/pins_arduino.h) - already carries a header
+   comment citing both source repos below, and its own "pfodWeb NOTE"
+   (added in an earlier session) explaining that only D0/D1, D8/D9, D24
+   and A0/A1 are declared as `static const uint8_t` pin aliases; every
+   other GPIO (2-7, 10-23, 25, 28, 29) has a `#define PIN_xxx (n)` macro
+   only, which build_boards.js's ESP32-style parser (parseEsp32Consts)
+   does NOT harvest as a routable pin (only `static const uint8_t NAME =
+   n;` declarations are parsed - see build_boards.js lines 411-438).
+   This #define/static-const distinction is the entire reason most of
+   this board's dedicated pins were not already leaking through as
+   general-purpose pins before this audit - only D0/D1/D8/D9/D24/A0/A1
+   were.
+2. github.com/bigtreetech/SKR-Pico (official vendor repo, cited directly
+   in pins_arduino.h's header comment) - Hardware/BTT SKR Pico
+   V1.0-PIN.pdf (pinout diagram) and Hardware/BTT SKR Pico V1.0-SCH.pdf
+   (schematic).
+3. github.com/s-light/bigtreetech-SKR-Pico (the CircuitPython port this
+   board's pins_arduino.h says it is itself "based on") - WebFetch
+   returned a full GPIO pinout table from this repo's README, which was
+   cross-checked pin-for-pin against every #define in this board's own
+   pins_arduino.h and matches exactly:
+     X: DIR=10, STEP=11, EN=12, DIAG/STOP=4
+     Y: DIR=5,  STEP=6,  EN=7,  DIAG/STOP=3
+     Z: DIR=28, STEP=19, EN=2,  DIAG/STOP=25
+     E0: DIR=13, STEP=14, EN=15, DIAG/STOP=16
+     Shared TMC UART: TX=8, RX=9
+     Bed thermistor: GPIO26 (ADC0) / Extruder thermistor: GPIO27 (ADC1)
+     Bed heater: GPIO21 / Extruder heater: GPIO23
+     Fans (3x MOSFET): GPIO17, GPIO18, GPIO20 (GPIO20 doubles as LASER_PWM)
+     RGB LED (NeoPixel): GPIO24 (5V level-shifted)
+     Servo: GPIO29
+     Aux header to host Pi: GPIO0 (I2C0_SDA / UART0 TX), GPIO1 (I2C0_SCL / UART0 RX)
+4. 3dwork.io "SKR PICO: Analysis and complete guide of this great little
+   controller" - independent writeup confirming: 4x TMC2209 (UART mode,
+   sensorless-homing capable), 1x hotend output (HE0, up to 5A), 1x
+   heated-bed output (HB, up to 10A), 2x NTC100K temperature inputs,
+   2x PWM-controlled fans + 1 always-on fan, 3x endstop connectors (X/Y/Z)
+   with a dedicated leveling-probe connector, 1x NeoPixel connector, an
+   optional ADXL345 accelerometer connector reachable over the GPIO0/1
+   I2C0 aux header (input-shaper add-on, not populated on the base
+   board), USB-C for host communication, direct UART GPIO to a Pi.
+5. WebSearch cross-reference specifically for GPIO22 ("P_2" in this
+   board's pins_arduino.h, otherwise unlabeled): confirmed via search
+   result summarizing the vendor schematic that GPIO22 is the
+   leveling-probe/proximity-sensor input, with a "SELECT-PROXIMITY-I/O-
+   PIN" jumper choosing whether it routes to the dedicated PROBE
+   connector or the PS (servo/proximity) connector.
+6. gadgetangel.org Voron Switchwire "SKR Pico Wiring" page - independent
+   wiring table confirming: hotend thermistor TH0=IO27, hotend heater
+   HE=IO23, part-cooling fan FAN1=IO17, hotend fan FAN2=IO18, bed
+   thermistor THB=IO26, bed heater HB=IO21, X endstop X-STOP=IO4, Y
+   endstop Y-STOP=IO3, probe signal Z-STOP=IO25 (routed through a BAT85
+   Schottky diode for inductive-probe voltage protection).
+7. Chip-level default: variants/rp2040/rp2040/board.json (chipGpios: {}
+   - deliberately empty per its own comment).
+8. Schema/style precedent: variants/rp2040/rp2040/wiznet_5500_evb_pico/
+   board.json (dedicated-peripheral capabilities:[] + note pattern) and
+   variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json (exact
+   led_neopixel tagging precedent: ["digital_output","led_neopixel",
+   "pwm_output"], digital_input dropped).
+9. This repo's established "onboard analog sensor KEEP policy":
+   variants/esp32/esp32/oroca_edubot/board.json comment explicitly names
+   "thermistor/battery/etc-class readings" as the canonical example of
+   an onboard analog sensor pin that should be LEFT with full default
+   capabilities rather than restricted to analog_input-only - applied
+   here to keep GPIO26/27 (bed/hotend thermistors) unrestricted, and to
+   keep GPIO0/1 (the ADXL345-capable I2C0/UART0 aux header) general
+   purpose (matches the sibling "I2C bus without an exclusive onboard
+   consumer" KEEP policy from the same file - the ADXL345 is an optional
+   plug-in accessory, not populated on the base board).
+10. pfodWeb_src/build_boards.js (read in full) - confirmed
+    parseEsp32Consts() only harvests `static const uint8_t NAME = n;`
+    declarations (never #define macros), confirmed buildEsp32Board()'s
+    chipGpios-present branch skips the default digital_input/output/
+    pwm_output derivation entirely when capabilities is an explicit
+    array (including empty []), and confirmed the SDA/SCL/SS/MOSI/MISO/
+    SCK auto-append (lines 698-703) only fires for GPIOs matching this
+    board's own consts.SDA/SCL/SS/MOSI/MISO/SCK - none of which resolve
+    to any value here (this board's SPI pins are all sentineled to 99
+    "not available" and its I2C/UART aliases are #define chains, never
+    promoted to `static const` SDA/SCL/TX/RX names), so no bus-role
+    auto-append side effects apply to any pin on this board.
+
+PER-PIN REASONING
+------------------
+GPIO0 (PIN_SERIAL1_TX / PIN_WIRE0_SDA): KEPT general-purpose. This is a
+  genuine multi-purpose aux expansion header (P5, "to Raspberry Pi"),
+  jumper/firmware-selectable as UART0 TX to a host Pi OR I2C0 SDA to an
+  optional (not populated) ADXL345 accelerometer add-on. Not committed
+  onboard hardware - matches this board's own pins_arduino.h "Serial
+  (general comms)" design intent and item 9 above. No chipGpios entry
+  added; default digital_input/digital_output/pwm_output from the D0
+  alias stands unchanged.
+
+GPIO1 (PIN_SERIAL1_RX / PIN_WIRE0_SCL): KEPT, same reasoning as GPIO0
+  (UART0 RX / I2C0 SCL on the same aux header).
+
+GPIO2 (PIN_ZEN): Z-axis TMC2209 EN. capabilities:[] - dedicated.
+
+GPIO3 (PIN_YSTOP): Y endstop input / Y driver DIAG (sensorless homing).
+  capabilities:[] - dedicated.
+
+GPIO4 (PIN_XSTOP): X endstop input / X driver DIAG. capabilities:[] -
+  dedicated.
+
+GPIO5 (PIN_YDIR): Y-axis stepper DIR. capabilities:[] - dedicated.
+
+GPIO6 (PIN_YSTP): Y-axis stepper STEP. capabilities:[] - dedicated.
+
+GPIO7 (PIN_YEN): Y-axis stepper EN. capabilities:[] - dedicated.
+
+GPIO8 (PIN_SERIAL2_TX / TX4): shared TMC2209 UART TX - all four onboard
+  drivers (X/Y/Z/E0) multi-drop off this single line via per-driver
+  UART address (set via MS1/MS2 strapping). REAL DEFECT FIX: this GPIO
+  already carried a `static const uint8_t D8 = (8u);` alias in
+  pins_arduino.h, so without a chipGpios override it was defaulting to
+  full digital_input/digital_output/pwm_output - a Designer sketch
+  driving this pin would corrupt UART framing for every stepper driver
+  on the board simultaneously. Fixed via capabilities:[] override
+  (chipGpios wins over the alias-derived default per build_boards.js's
+  chipEntry-present branch). pins_arduino.h itself was NOT edited - this
+  isn't the SDA/SCL/SS/MOSI/MISO/SCK auto-append collision bug class
+  (TX4/RX4 aren't among those auto-appended roles), just a missing
+  chipGpios correction, which is the intended fix location.
+
+GPIO9 (PIN_SERIAL2_RX / RX4): shared TMC2209 UART RX. Same defect and
+  same fix as GPIO8.
+
+GPIO10 (PIN_XDIR): X-axis stepper DIR. capabilities:[] - dedicated.
+
+GPIO11 (PIN_XSTP): X-axis stepper STEP. capabilities:[] - dedicated.
+
+GPIO12 (PIN_XEN): X-axis stepper EN. capabilities:[] - dedicated.
+
+GPIO13 (PIN_E0DIR): Extruder (E0) stepper DIR. capabilities:[] -
+  dedicated. (Also confirms the commented-out `// #define PIN_LED (13u)`
+  in pins_arduino.h is correctly inactive - GPIO13 is genuinely the E0
+  DIR line, not an LED, on this board.)
+
+GPIO14 (PIN_E0STP): Extruder stepper STEP. capabilities:[] - dedicated.
+
+GPIO15 (PIN_E0EN): Extruder stepper EN. capabilities:[] - dedicated.
+
+GPIO16 (PIN_E0STOP): E0 endstop / filament-runout input, E0 driver DIAG
+  line. capabilities:[] - dedicated.
+
+GPIO17 (PIN_FAN1_PWM): part-cooling fan MOSFET gate PWM. capabilities:[]
+  - dedicated.
+
+GPIO18 (PIN_FAN2_PWM): hotend fan MOSFET gate PWM. capabilities:[] -
+  dedicated.
+
+GPIO19 (PIN_ZSTP): Z-axis stepper STEP. capabilities:[] - dedicated.
+
+GPIO20 (PIN_FAN3_PWM / LASER_PWM): always-on/aux fan MOSFET gate PWM
+  (doubles as a 100R-protected laser-module PWM signal on laser-mod
+  firmware builds, per pins_arduino.h's own LASER_PWM alias).
+  capabilities:[] - dedicated either way.
+
+GPIO21 (PIN_HB_PWM): heated-bed MOSFET gate PWM, rated up to 10A per
+  3dwork.io. capabilities:[] - dedicated and safety-critical; a Designer
+  sketch toggling this pin could leave a real heated bed powered on
+  indefinitely.
+
+GPIO22 (PIN_P_2): leveling-probe/proximity-sensor input, jumper-
+  selectable between the dedicated PROBE header and the PS (servo/
+  proximity) header. capabilities:[] - dedicated.
+
+GPIO23 (PIN_HE_PWM): hotend heater MOSFET gate PWM, rated up to 5A per
+  3dwork.io. capabilities:[] - dedicated and safety-critical, same
+  reasoning as GPIO21.
+
+GPIO24 (PIN_NEOPIXEL, NUM_NEOPIXEL=1): onboard WS2812-style addressable
+  RGB LED data line. Tagged capabilities: ["digital_output",
+  "led_neopixel", "pwm_output"] - matches this repo's existing
+  led_neopixel precedent exactly (rp2040w/sparkfun_thingplusrp2350
+  GPIO14). digital_input dropped since the pin is committed to driving
+  the LED, not general-purpose input. Previously this pin had full
+  default digital_input/digital_output/pwm_output (from its D24 alias,
+  no override existed) with no LED identity surfaced to the Designer
+  UI at all - this is a tagging addition, not a safety exclusion.
+
+GPIO25 (PIN_ZSTOP): Z endstop input / bed-probe signal connector
+  (BAT85-diode protected per gadgetangel.org), Z driver DIAG line.
+  capabilities:[] - dedicated.
+
+GPIO26 (A0 / PIN_THB): bed thermistor NTC divider, ADC0. KEPT
+  general-purpose - no chipGpios override. Matches this repo's
+  established onboard-analog-sensor KEEP policy (item 9 above); default
+  analog_input+digital_input+digital_output+pwm_output from the A0
+  alias stands unchanged, same as this board's plain-Pico sibling
+  rpipico leaves its analog pins unrestricted.
+
+GPIO27 (A1 / PIN_TH0): hotend thermistor NTC divider, ADC1. KEPT, same
+  reasoning as GPIO26.
+
+GPIO28 (PIN_ZDIR): Z-axis stepper DIR. capabilities:[] - dedicated.
+
+GPIO29 (PIN_SERVOS, also aliased ADC3 via a #define - not parsed as a
+  routable pin since it's a #define not a `static const`): dedicated
+  3-pin servo/BLTouch-probe header signal line - a purpose-built
+  connector like the axis/thermistor/fan headers, not a general
+  expansion pin. capabilities:[] added via chipGpios so the Designer
+  shows *why* it's unavailable (it has no pins_arduino.h alias at all,
+  so without this entry it would simply not appear in the pin list -
+  the explicit entry documents the finding instead of silently omitting
+  it, matching the wiznet_5500_evb_pico GPIO20/21 precedent).
+
+No onboard user LED beyond the NeoPixel (GPIO24): this board's
+  pins_arduino.h has `// #define PIN_LED (13u)` commented out (inactive),
+  and boards.txt's `bigtreetech_SKR_Pico.build.led=` is empty (no
+  LED_BUILTIN defined for this board id at all) - both independently
+  confirm no discrete status LED exists. GPIO13 is confirmed above as
+  the E0 stepper DIR line, not an LED. No led_high/led_low tagging
+  applied.
+
+No onboard user button: not documented by any source consulted (vendor
+  schematic/pinout PDF, 3dwork.io writeup, gadgetangel.org wiring pages,
+  s-light pinout table) - this board has no capacitive/mechanical
+  button beyond the RP2040's own BOOTSEL, which per the rpipico/
+  board.json precedent is not a normal GPIO (wired to the QSPI flash CS
+  line via a special SDK trick, not digitalRead()-able) and is out of
+  scope for this repo's GPIO-keyed capability tagging. No button
+  tagging applied.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax with a standalone script
+  reproducing build_boards.js's own stripJsonComments() logic, then
+  JSON.parse() against the result - confirmed valid, and chipGpios
+  contains exactly the 26 expected keys (2-25, 28, 29; GPIO0/1/26/27
+  correctly absent). No build script was executed or required()
+  (per task instructions).
+- All 10 fields from build_boards.js's REQUIRED_BOARD_FIELDS list are
+  present with no extras: boardName, displayName, family,
+  inputOnlyGpios, connections, pinNotes, chipGpios, pwm, dac, adc.
+- pwm/dac/adc/family/connections/pinNotes/inputOnlyGpios/boardName/
+  displayName values reproduce the chip-level
+  variants/rp2040/rp2040/board.json defaults verbatim except for the
+  added chipGpios entries, per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/bigtreetech_SKR_Pico/board.json (new
+  file - this board previously had none)
+- Created: boardsDetails/rp2040/rp2040/bigtreetech_SKR_Pico/notes.txt
+  (this file)
+- pins_arduino.h: NOT modified. The GPIO8/9 defect (see above) was
+  fixed entirely via the new board.json's chipGpios override, since it
+  is not an instance of the SDA/SCL/SS/MOSI/MISO/SCK bus-auto-append
+  collision bug class that would require a pins_arduino.h edit.

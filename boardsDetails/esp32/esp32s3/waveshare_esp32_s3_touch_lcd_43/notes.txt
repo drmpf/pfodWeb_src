@@ -1,0 +1,83 @@
+Board: waveshare_esp32_s3_touch_lcd_43 (Waveshare ESP32-S3-Touch-LCD-4.3, 4.3" ST7262 RGB LCD + GT911 touch)
+Variant dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\waveshare_esp32_s3_touch_lcd_43
+Research date: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4.3
+  WebFetch returned HTTP 403 (blocked). Only saw a WebSearch AI-summary snippet
+  (not fully trusted per session caution about hallucinated snippets) claiming:
+  BOOT button "press and hold while powering on for program flashing"; onboard
+  PWR/CHG/DONE status LEDs for power/battery-charging indication. Treated as a
+  lead only, not as confirming evidence on its own.
+
+https://docs.waveshare.com/ESP32-S3-Touch-LCD-4.3
+  WebFetch succeeded, real page content. Confirms board has a BOOT button
+  (download-mode) and a RESET button, but the doc page text itself does not
+  give exact GPIO numbers for either. Confirms only PWR/CHG/DONE (battery
+  charging + power) status LEDs are mentioned - no GPIO-controllable LED is
+  documented anywhere on this page.
+
+https://spotpear.com/wiki/ESP32-S3R8-4.3inch-LCD-Captive-TouchScreen-Display-LVGL-800x480.html
+  Rebadged/mirrored wiki for the same physical board. WebFetch succeeded.
+  Mentions a RESET button ("press RESET to run the downloaded program") but
+  again no GPIO number given, and no GPIO-controllable LED mentioned.
+
+https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4.3/ESP32-S3-Touch-LCD-4.3-Sch.pdf
+  ***Authoritative source*** - the actual vendor schematic PDF for THIS exact
+  board (4.3, not 4.3B). Downloaded and text-extracted with pdftotext (WebFetch
+  could not parse the binary PDF itself). Findings from the extracted text:
+    - Two push-button switches present, both labelled "KEY" in the schematic:
+        * K1 KEY -> pull-up resistor R38 10K -> net labelled "RESET".
+          The ESP32-S3-WROOM-1/2 module pin table (module pin 3) shows this
+          "RESET" net is actually the module's EN (chip-enable) pin, not a
+          GPIO - i.e. this is a hardware reset button, has no GPIO number,
+          and cannot be represented as a chipGpios digital_input at all.
+        * K2 KEY -> pull-up resistor R39 10K + debounce cap C38 100nF ->
+          net labelled "IO0". The module pin table explicitly cross-references
+          module pin 27 "IO0" to the LCD signal "G3" (i.e. GPIO0 = LCD
+          signal G3), matching this board's own pins_arduino.h
+          (#define WS_LCD_G3 0) and matching the pre-existing board.json
+          NOTE that GPIO0 was already removed
+          from chipGpios as a dedicated onboard LCD RGB data line. So the
+          BOOT button (K2) shares GPIO0 with the LCD's G3 data line.
+    - Searched extracted schematic text for "LED", "PWR", "CHG", "DONE",
+      "WS2812", "NeoPixel": found only "Led1"/"Led2" (two red LEDs) wired
+      into the battery-charging section next to charge-IC U4 (pins
+      CHRG/STDBY/PROG/BAT, part of the CS8501 charge-management circuit).
+      No net connecting Led1/Led2 to any ESP32 GPIO was found - they are
+      driven directly by the charging IC's own status pins (hardware-only
+      PWR/CHG/DONE indicators, matching the vendor doc page description).
+      No WS2812/NeoPixel component or net found anywhere in the schematic.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO0 (BOOT/download-mode button, schematic ref K2): CONFIRMED via vendor
+  schematic to be a real button, but it falls exactly on the pin this board's
+  own board.json already excludes from chipGpios as the dedicated ST7262 LCD
+  "G3" data line (per the existing per-board NOTE comment at the top of
+  board.json and this board's own pins_arduino.h). Per task rules, GPIO0 has
+  no chipGpios entry to modify and re-adding it would reverse a pre-existing,
+  correct pin exclusion - out of scope for this task. This is a confirmed
+  finding, not a guess: left untagged, flagged here for human review only in
+  case the human reviewer decides GPIO0 is boot-only-usable (LCD not yet
+  driving it at power-on) and wants a conditional/documented exception.
+- RESET button (schematic ref K1): confirmed via schematic to tie to the
+  ESP32-S3-WROOM module's EN/RESET pin, not to any GPIO number at all. There
+  is no possible chipGpios entry for this - not applicable to the capability
+  tag system. No guess made; simply not taggable.
+- Led1 / Led2 (red charge-status LEDs) and the vendor-documented PWR/CHG/DONE
+  indicators: confirmed via schematic to be wired directly to the CS8501-area
+  charging IC's own status pins, not to any ESP32 GPIO. Not a candidate for
+  led_high/led_low/led_neopixel tagging. No guess made.
+- No other button or LED (single-color or addressable) was found referenced
+  anywhere in the fetched vendor doc pages or the extracted schematic text.
+
+SUMMARY OF WHAT WAS TAGGED
+---------------------------
+Nothing tagged. board.json was NOT modified. This board has no
+GPIO-representable, confirmable onboard user button or controllable LED:
+the only button reachable on a GPIO (BOOT, GPIO0) is already dedicated to
+the onboard LCD and excluded; the RESET button has no GPIO; the only LEDs
+present are hardware-driven battery-charge/power status indicators with no
+GPIO connection.

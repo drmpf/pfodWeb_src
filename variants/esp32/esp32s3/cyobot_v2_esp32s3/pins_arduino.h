@@ -18,10 +18,8 @@ static const uint8_t CHAR_DET = 23;
 static const uint8_t NEO_BASE = 7;
 static const uint8_t NEO_BRAIN = 15;
 
-static const uint8_t I2S0_MCLK = 16;
-static const uint8_t I2S0_DSDIN = 8;
-static const uint8_t I2S0_SCLK = 9;
-static const uint8_t I2S0_LRCK = 45;
+// pfodWeb NOTE: I2S0_MCLK/DSDIN/SCLK/LRCK deliberately NOT declared -
+// dedicated onboard I2S audio bus, not general-purpose.
 
 static const uint8_t SDA = 17;
 static const uint8_t SCL = 18;
@@ -31,10 +29,8 @@ static const uint8_t MOSI = 2;
 static const uint8_t MISO = 42;
 static const uint8_t SCK = 41;
 
-static const uint8_t ENCODER1_A = 39;
-static const uint8_t ENCODER1_B = 40;
-static const uint8_t ENCODER2_B = 19;
-static const uint8_t ENCODER2_A = 20;
+// pfodWeb NOTE: ENCODER1_A/B and ENCODER2_A/B deliberately NOT declared -
+// dedicated onboard motor/wheel rotary encoder inputs, not general-purpose.
 
 static const uint8_t UART1_RXD = 3;
 static const uint8_t UART1_TXD = 1;
@@ -42,12 +38,10 @@ static const uint8_t UART1_TXD = 1;
 static const uint8_t GPIO46 = 46;
 static const uint8_t ESP_IO0 = 0;
 
-static const uint8_t SD_OUT = 10;
-static const uint8_t SD_SPI_MOSI = 11;
-static const uint8_t SD_SPI_CLK = 12;
-static const uint8_t SD_SPI_MISO = 13;
-static const uint8_t SD_SPI_CS = 14;
+// pfodWeb NOTE: SD_OUT/SD_SPI_MOSI/CLK/MISO/CS deliberately NOT declared
+// - dedicated onboard microSD card SPI bus, not general-purpose.
 
-static const uint8_t PA_CTRL = 25;
+// pfodWeb NOTE: PA_CTRL (GPIO25) deliberately NOT declared - internal
+// audio power-amp enable line, not general-purpose.
 
 #endif /* Pins_Arduino_h */

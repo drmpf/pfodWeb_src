@@ -1,0 +1,122 @@
+adafruit_qtpy_esp32s3_n4r2 board.json button/LED capability-tagging audit
+(section 7a follow-up; dedicated-hardware-exclusion pass already done earlier)
+============================================================================
+
+Board: adafruit_qtpy_esp32s3_n4r2
+  (variants/esp32/esp32s3/adafruit_qtpy_esp32s3_n4r2), chip esp32s3.
+Product: Adafruit QT Py ESP32-S3 (4MB Flash, 2MB PSRAM), product #5700.
+A board.json already existed from an earlier dedicated-hardware-exclusion
+pass (it already excludes GPIO38/NEOPIXEL_POWER from chipGpios and carries
+a pfodWeb NOTE comment saying so), but that earlier pass never applied
+button/LED capability tags to GPIO0 or GPIO39. This session applies those
+tags only.
+
+pins_arduino.h key declarations (full file read)
+--------------------------------------------------
+  PIN_NEOPIXEL      = 39
+  NEOPIXEL_NUM      = 1
+  NEOPIXEL_POWER    = 38, NEOPIXEL_POWER_ON = HIGH
+  LED_BUILTIN/RGB_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_NEOPIXEL (virtual
+    sentinel mapping back to GPIO39, not a separate real GPIO)
+  TX = 5, RX = 16 (TX1/RX1 aliases of same)
+  SDA = 7, SCL = 6 (primary I2C)
+  SDA1 = 41, SCL1 = 40 (Wire1 / STEMMA QT second I2C)
+  SS = 42, MOSI = 35, SCK = 36, MISO = 37
+  A0-A7 = 18,17,9,8,7,6,5,16 (analog aliases, overlap primary I2C/UART pins)
+  T5-T9 = 5,6,7,8,9 (touch aliases)
+No BUTTON #define exists in pins_arduino.h itself - the BOOT button is
+documented only in Adafruit's Learn guide (GPIO0, standard ESP32 strapping
+pin), not as a named macro in this file.
+
+Sources consulted
+------------------
+- https://learn.adafruit.com/adafruit-qt-py-esp32-s3/pinouts
+  Official Adafruit Learn guide pinout page (authoritative vendor source).
+  Confirms: "The RGB NeoPixel is located above the SCK and MI on the silk"
+  and "available in CircuitPython as board.NEOPIXEL, and in Arduino as
+  PIN_NEOPIXEL." States: "There is a NeoPixel power pin that needs to be
+  pulled high for the NeoPixel to work. This is done automatically by
+  CircuitPython and Arduino" (accessible as NEOPIXEL_POWER) - i.e. the
+  Arduino core itself drives this pin, not sketch code; sketches do not
+  need to (and should not) treat it as a freely assignable general-purpose
+  pin. Also states of the BOOT button: "This button can also be read as
+  GPIO 0 (set it to be an input-with-pullup)," in addition to its ROM
+  bootloader-entry function ("hold down DFU button while clicking reset
+  button").
+- https://learn.adafruit.com/adafruit-qt-py-esp32-s3/overview and
+  https://learn.adafruit.com/adafruit-qt-py-esp32-s3/arduino-neopixel-blink
+  (surfaced by WebSearch) - corroborate the NeoPixel pin/power-pin
+  relationship and Arduino usage pattern.
+- https://www.adafruit.com/product/5700 - vendor product listing
+  corroborating board identity (QT Py ESP32-S3 4MB/2MB PSRAM).
+- Existing repo precedent (per task instructions):
+  boardsDetails/esp32/esp32/adafruit_qtpy_esp32/notes.txt - established
+  the NEOPIXEL_POWER-excluded / PIN_NEOPIXEL-tagged-led_neopixel /
+  BOOT-button-tagged-button reasoning pattern this audit follows.
+
+Reasoning per flagged pin
+----------------------------
+
+GPIO39 (PIN_NEOPIXEL) - CONFIRMED onboard NeoPixel (WS2812-style
+  addressable RGB LED) data pin, directly stated by Adafruit's Learn guide
+  and by the RGB_BUILTIN/LED_BUILTIN virtual-sentinel mechanism in
+  pins_arduino.h. Checked against this board's alias list - SDA=7, SCL=6,
+  SDA1=41, SCL1=40, SS=42, MOSI=35, SCK=36, MISO=37, TX=5, RX=16 - GPIO39
+  is not any of those, so no boilerplate bus-alias contamination risk.
+  Was previously listed in chipGpios with plain general-purpose
+  capabilities (["digital_input","digital_output","pwm_output"]); changed
+  to ["digital_output","led_neopixel"] per the repo's led_neopixel
+  precedent (matches adafruit_qtpy_esp32 GPIO5 treatment).
+
+GPIO38 (NEOPIXEL_POWER) - Already EXCLUDED from chipGpios by the prior
+  dedicated-hardware-exclusion pass (confirmed still absent; left
+  unchanged). This is the onboard NeoPixel's power-gate line. Adafruit's
+  own Learn guide for THIS specific board states it "is done automatically
+  by CircuitPython and Arduino" - i.e. driven by the Arduino core itself,
+  not user sketch code - reinforcing that it should not be exposed as a
+  freely assignable general-purpose pin in the Designer's pin picker.
+  Checked against the alias list above - GPIO38 is not SDA/SCL/SDA1/SCL1/
+  SS/MOSI/MISO/SCK/TX/RX - no alias-conflict cleanup needed either way.
+
+GPIO0 (BOOT button) - CONFIRMED onboard physical BOOT/user button,
+  directly stated by Adafruit's Learn guide ("This button can also be read
+  as GPIO 0 (set it to be an input-with-pullup)"). Standard ESP32-S3
+  strapping pin; the existing pinNotes entry "Must be HIGH for normal
+  boot" is expected/documented for exactly this pin and was retained
+  unchanged. Checked against the alias list - GPIO0 is not SDA/SCL/SDA1/
+  SCL1/SS/MOSI/MISO/SCK/TX/RX - no conflicting boilerplate alias to strip.
+  Was previously listed in chipGpios with plain general-purpose
+  capabilities; changed to ["digital_input","button"] (no analog/output/
+  pwm mixed in, per the playbook's button-pin exclusion rule, matching
+  adafruit_qtpy_esp32 GPIO0 treatment).
+
+Alias-conflict check (per this session's playbook step)
+-----------------------------------------------------------
+Explicitly checked whether GPIO0, GPIO38, or GPIO39 is separately aliased
+anywhere else in this board's pins_arduino.h as the primary SDA/SCL/SS/
+MOSI/MISO/SCK (the build_boards.js mechanism that unconditionally appends
+i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck capabilities to any GPIO
+matching those primary alias values). Primary aliases on this board:
+SDA=7, SCL=6, SS=42, MOSI=35, SCK=36, MISO=37. None of these is 0, 38, or
+39. No conflict exists; no pins_arduino.h edit was necessary or performed.
+
+What was changed
+-------------------
+Edited variants/esp32/esp32s3/adafruit_qtpy_esp32s3_n4r2/board.json
+(pre-existing file from the earlier dedicated-hardware-exclusion pass):
+  - GPIO0 capabilities changed to ["digital_input","button"] (was
+    ["digital_input","digital_output","pwm_output"])
+  - GPIO39 capabilities changed to ["digital_output","led_neopixel"] (was
+    ["digital_input","digital_output","pwm_output"])
+  - GPIO38 left absent from chipGpios (already excluded by the prior pass;
+    confirmed correct and left unchanged)
+  - Updated the top-of-file pfodWeb NOTE comment to document the new
+    led_neopixel/button tags and cite the Adafruit "driven automatically"
+    wording for NEOPIXEL_POWER
+No pins_arduino.h edit was made (no alias conflict found).
+
+Summary: PIN_NEOPIXEL (GPIO39) now tagged led_neopixel; NEOPIXEL_POWER
+(GPIO38) remains excluded (already correct from the earlier pass, and
+directly confirmed by Adafruit's own page as core-driven, not sketch-
+driven); onboard BOOT button (GPIO0) now tagged button. No alias-collision
+bug found on this board.

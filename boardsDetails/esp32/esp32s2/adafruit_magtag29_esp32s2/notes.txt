@@ -1,0 +1,114 @@
+Board: Adafruit MagTag 2.9" (ESP32-S2) (adafruit_magtag29_esp32s2), chip esp32s2
+Date: 2026-07-14 (independent verification pass - real vendor sources checked)
+
+SOURCES CONSULTED
+-----------------
+1. https://learn.adafruit.com/adafruit-magtag/pinouts - official Adafruit
+   Learning System pinout guide. Confirms "four user-controllable
+   buttons ... D11, D12, D14, and D15" corresponding to BUTTON_A-D.
+   Confirms GPIO1 drives the 4 NeoPixels, with GPIO21 as the NeoPixel
+   power-gate ("pin 21 to be an output and LOW" - note NEOPIXEL_POWER_ON
+   is LOW on this board, opposite of the Feather boards, but this does
+   not change the exclusion treatment since the pin is fully excluded
+   either way). Confirms LIS3DH accelerometer IRQ on GPIO9. Separately
+   states: "Boot0 button - This is connected to BOOT0 and can be used to
+   put the board into ROM bootloader mode" - explicitly framed as
+   bootloader-only, NOT grouped with the 4 user buttons. Also confirms
+   (checked specifically for this pass): "On the back, on the bottom
+   left, is a red LED labeled D13. It is user-controllable for blinky
+   needs" - a genuine onboard status LED distinct from the NeoPixel
+   strip.
+2. https://learn.adafruit.com/adafruit-magtag/arduino-basics - confirms
+   `digitalWrite(LED_BUILTIN, HIGH)` turns the D13 red LED on ("HIGH is
+   the voltage level") - active-high, LED_BUILTIN maps to IO#13.
+3. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/adafruit_magtag29_esp32s2/pins_arduino.h -
+   vendor pins_arduino.h, fetched in full via curl (authoritative,
+   complete file). Key definitions:
+     LED_BUILTIN = 13  (labeled "// User LED" in the file itself)
+     PIN_NEOPIXEL = 1, NEOPIXEL_NUM = 4, NEOPIXEL_POWER = 21,
+       NEOPIXEL_POWER_ON = LOW
+     PIN_BUTTON1(BUTTON_A)=15, PIN_BUTTON2(BUTTON_B)=14,
+       PIN_BUTTON3(BUTTON_C)=12, PIN_BUTTON4(BUTTON_D)=11,
+       PIN_BUTTON5 = 0 // BOOT0 switch
+     EPD_BUSY=5, EPD_RESET=6, EPD_DC=7, EPD_CS=8, ACCEL_IRQ=9
+     LIGHT_SENSOR=3, BATT_MONITOR=4, SPEAKER_SHUTDOWN=16
+     SDA=33, SCL=34, SPI: SS=8/MOSI=35/SCK=36/MISO=37
+
+PER-PIN FINDINGS
+----------------
+- GPIO1: capabilities ["digital_output","pwm_output","led_neopixel"].
+  CONFIRMED - PIN_NEOPIXEL=1 per source #3, matches the earlier claim.
+- GPIO5, 6, 7, 8: excluded (not present in chipGpios). CONFIRMED -
+  EPD_BUSY/EPD_RESET/EPD_DC/EPD_CS per source #3, the E-ink display
+  control lines.
+- GPIO9: excluded (not present in chipGpios). CONFIRMED - ACCEL_IRQ per
+  source #3, matches the earlier "E-ink display + accelerometer" grouped
+  claim.
+- GPIO11, 12, 14, 15: capabilities ["digital_input","button"] each.
+  CONFIRMED - PIN_BUTTON4(D)=11, PIN_BUTTON3(C)=12, PIN_BUTTON2(B)=14,
+  PIN_BUTTON1(A)=15 per source #3, matching Adafruit's own product
+  naming (source #1). Matches the earlier claim exactly.
+- GPIO19, GPIO20: excluded (not present in chipGpios). Native USB D-/D+
+  for the ESP32-S2 - chip-level convention applied consistently across
+  this whole family of boards, not board-specific hardware; no vendor
+  source contradicts this and it's absent from every sibling board in
+  this batch too.
+- GPIO21: excluded (not present in chipGpios). CONFIRMED - NEOPIXEL_POWER
+  per source #3 (source #1 corroborates: "pin 21 to be an output and
+  LOW" to power the NeoPixel strip). Matches the earlier claim (the
+  exclusion itself is correct regardless of the active-LOW polarity
+  detail, since excluded pins don't carry a polarity tag).
+- GPIO35, 36, 37: excluded (not present in chipGpios). CONFIRMED -
+  MOSI/SCK/MISO per source #3, the E-ink display's SPI bus. Matches the
+  earlier claim.
+- GPIO13: CORRECTED. Previously left at chip-level default capabilities
+  (analog_input_serial/digital_input/digital_output/pwm_output, no LED
+  tag). Source #3 shows `LED_BUILTIN = 13` (explicitly commented "//
+  User LED" in the vendor header), and source #1 independently confirms
+  a real, physically distinct onboard status LED: "a red LED labeled
+  D13. It is user-controllable for blinky needs" - separate from the
+  4-pixel NeoPixel strip on GPIO1. Source #2 confirms active-high
+  (`digitalWrite(LED_BUILTIN, HIGH)` turns it on). Now tagged
+  capabilities ["digital_output","pwm_output","led_high"] instead of
+  being left as a plain GPIO. This was a genuine miss in the earlier
+  audit pass - GPIO13/LED_BUILTIN is easy to overlook on a board whose
+  headline visual feature is the E-ink display and NeoPixel strip, but
+  it's a real independently-documented onboard LED.
+- GPIO0: deliberately left UNCHANGED (chip-level default, no "button"
+  tag), and explicitly checked/rejected as a candidate correction. Source
+  #3 shows PIN_BUTTON5=0 ("BOOT0 switch"), which at first glance looks
+  parallel to the FunHouse's PIN_BUTTON4=0 (which IS tagged "button" on
+  that board). However, source #1 draws an explicit documented
+  distinction for the MagTag specifically: the BOOT0 button's own
+  dedicated pinouts-page entry frames it only as "connected to BOOT0 and
+  can be used to put the board into ROM bootloader mode" - with no
+  companion statement (unlike the FunHouse's guide) that it is also
+  readable as a general application input. Per this audit's "never
+  guess" policy, the tag is withheld given this explicit contrary
+  framing in the vendor's own documentation, rather than assumed by
+  analogy to the FunHouse. If a future pass finds an Adafruit
+  CircuitPython/Arduino example reading BOOT0 as a plain input on the
+  MagTag specifically, this should be revisited.
+- GPIO2, 3, 4, 10, 16, 17, 18, 33, 34, 38-46: kept at chip-level default.
+  LIGHT_SENSOR=3, BATT_MONITOR=4, and SPEAKER_SHUTDOWN=16 are fixed-
+  purpose per source #3 but are simple analog/digital lines a user could
+  still repurpose if the onboard sensor/speaker isn't used - no exclusion
+  or special tag applied, consistent with the earlier pass. SDA=33/SCL=34
+  are general I2C, not internally dedicated. TX=43/RX=44 are the exposed
+  UART.
+
+SUMMARY
+-------
+Independently confirmed via learn.adafruit.com and vendor pins_arduino.h
+(fetched directly, not summarized): GPIO1 led_neopixel, the E-ink+
+accelerometer exclusion (GPIO5-9), USB D-/D+ exclusion (GPIO19/20),
+NeoPixel power-gate exclusion (GPIO21), E-ink SPI bus exclusion
+(GPIO35-37), and the 4 button tags (GPIO11/12/14/15) are all correct as
+previously found. One real correction (addition): GPIO13/LED_BUILTIN is a
+genuine, independently-documented onboard red status LED that the
+earlier pass missed entirely - now tagged led_high. GPIO0/BOOT0 was
+specifically checked as a possible companion correction and deliberately
+NOT tagged as a button - Adafruit's own MagTag documentation frames it as
+bootloader-entry-only, unlike this board's 4 main buttons and unlike the
+FunHouse's own BOOT0 button (which Adafruit does document as
+application-usable on that board).

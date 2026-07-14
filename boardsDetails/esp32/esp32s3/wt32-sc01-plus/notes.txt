@@ -1,0 +1,85 @@
+wt32-sc01-plus (WT32-SC01 PLUS / PANLEE SC01PLUS) - onboard button/LED research notes
+=======================================================================================
+
+Sources consulted:
+
+1. https://guide.riot-os.org/boards/esp32s3-wt32-sc01-plus/
+   RIOT-OS board porting docs (technical, GPIO-table based). Confirms "BOOT (GPIO0)"
+   is a pin exposed on the external Debug connector, not a soldered-on push button.
+   Lists LCD_BACKLIGHT on GPIO45 as the only lighting-related GPIO; no onboard
+   user LED or onboard user button mentioned anywhere in the board's pin table.
+
+2. https://api.riot-os.org/group__boards__esp32s3__wt32__sc01__plus.html
+   RIOT-OS Doxygen API page, same board definition data as (1). Same conclusion:
+   GPIO0 = BOOT strap pin exposed on debug header (not a button), GPIO45 = LCD
+   backlight (PWM). No onboard LED, no onboard GPIO-readable button documented.
+
+3. https://github.com/Cesarbautista10/WT32-SC01-Plus-ESP32/blob/main/firmware/README.md
+   Community firmware repo README. States "Boot mode is entered by holding the
+   BOOT button while pressing the RESET button" - but gives no GPIO numbers and
+   this phrasing looks like generic boilerplate copied from standard ESP32 dev-board
+   instructions rather than a description specific to this display board's physical
+   silkscreen buttons.
+
+4. WebSearch result summaries (could not always resolve to a single fetchable page,
+   content taken from search snippets of the Wireless-Tag/Smart Panlee datasheet and
+   related getting-started guides):
+   - "To enter flashing mode, connect the GPIO0 wire to the GND pin, then press the
+     RST button on the back of the WT32-SC01 Plus" - describes a wire jumper for
+     GPIO0-to-GND (not a soldered button) plus a physical RST button.
+   - "The self-reset button connects to the EN pin of the ESP32" - confirms the
+     physical RST button on the board is wired to EN/CHIP_PU (hardware reset line),
+     NOT to a GPIO the firmware can read as a digital input.
+   - "The power indicator (the red LED on the board) lights up when the USB cable is
+     connected" - this describes a hard-wired power/USB-presence indicator LED (not
+     GPIO-controlled, purely power-rail driven), so it is not a GPIO capability
+     candidate for pfodWeb tagging.
+   - LCD backlight control pin cited as GPIO45 (Smart Panlee Plus datasheet, matches
+     this board's existing board.json pin-exclusion note) - one stray/likely-wrong
+     snippet also mentioned "GPIO23" for backlight, but that appears to be lifted
+     from the ORIGINAL (non-Plus) WT32-SC01 (ESP32-WROVER-based) documentation, not
+     this ESP32-S3 Plus variant, and is inconsistent with every other source plus
+     this board's own board.json note (GPIO45 is already excluded as LCD_BL).
+
+5. https://img03.71360.com/w3/77q677/20241127/e3415284a48489211c04141c8151fa94.pdf
+   ("Getting Started Guide for WT32-SC01 plus" - Smart Panlee/AWS IoT guide)
+   Fetched and read; a general ESP-IDF setup guide with no hardware pinout/button/LED
+   content at all.
+
+6. https://www.marutsu.co.jp/contents/shop/marutsu/datasheet/khe_WT32-SC01-PLUS.pdf
+   and https://device.report/m/d52c096cd5d3fd87d71d3100fcce030c3e88eb7b77c6b089e150b1032cb346eb
+   Both returned HTTP 403 Forbidden when fetched directly - could not retrieve content.
+
+Pins considered but NOT tagged:
+
+- GPIO0 (BOOT_0 / LCD_RS, already present in chipGpios as general I/O per the
+  board's existing pin-exclusion audit). Considered as a possible "button" tag
+  because multiple sources call it "BOOT". Judgment: NOT tagged, with reasonable
+  confidence (not a wild guess) - every technical source (RIOT board tables) agrees
+  GPIO0/BOOT is only exposed on the external Debug/programming header as a strapping
+  pin (to be jumpered to GND during flashing), not wired to an onboard push-button
+  that a running sketch could read as a normal user button. It also already
+  multiplexes as LCD_RS in normal operation, so treating it as a general "button"
+  capability would conflict with real usage documented in this board's own
+  board.json NOTE comments. Also note GPIO0 is not TX/RX on this board, so the
+  TX/RX hard-reservation issue does not apply here - the decision not to tag is
+  purely because no real onboard user-button wiring to GPIO0 could be confirmed.
+
+- Physical "RST" button on the back of the board. Confirmed by search snippets to
+  be wired to the ESP32's EN/CHIP_PU pin (hardware reset), not to any GPIO. This is
+  a chip reset button, not a firmware-readable "button" capability by definition,
+  so no GPIO exists to tag. No guess made - this is a clear exclusion, not a
+  judgment call.
+
+- "Power indicator" red LED. Confirmed (search snippet) to be a hard-wired
+  power-rail/USB-presence indicator, not connected to any GPIO. Not a candidate for
+  GPIO tagging by definition (pfodWeb tags apply to GPIO-controllable LEDs only).
+  No guess made.
+
+- LCD backlight (GPIO45). Explicitly out of scope per task instructions ("backlight
+  is a display control pin, not a button/LED candidate") and already excluded from
+  chipGpios in this board's existing pin-exclusion audit. Not reconsidered.
+
+Summary of action taken: NO CHANGE. No onboard GPIO-connected user button and no
+onboard GPIO-connected status/RGB LED could be confirmed via vendor/community
+documentation for the WT32-SC01 Plus. board.json was not modified.

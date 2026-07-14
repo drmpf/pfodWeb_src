@@ -1,0 +1,270 @@
+circuitplay32u4 (Adafruit Circuit Playground Classic, chip-level boards.txt id "circuitplay32u4cat")
+AVR pin-availability / button-LED audit — 2026-07-14
+
+===========================================================================
+SOURCES CONSULTED
+===========================================================================
+
+1. https://learn.adafruit.com/introducing-circuit-playground/pinouts?view=all
+   Official Adafruit "Introducing Circuit Playground" learn guide, pinouts
+   page. Confirmed (via WebFetch summary of the live page):
+     - Left Button A = D4, Right Button B = D19
+     - Slide Switch = D21
+     - Built-in 10 NeoPixels = D17
+     - Speaker (buzzer) = D5
+     - Light sensor = A5, Temperature sensor = A0, Microphone = A4
+     - Accelerometer interrupt = D7
+     - Red LED = D13
+     - The 8 general-purpose alligator pads = D0, D1, D2, D3, D6, D9, D10, D12
+     - States plainly that all pads are "free" pins not used by
+       USB/LEDs/sensors etc.
+   This page is for the Classic board specifically (as opposed to the
+   separate Circuit Playground Express pinouts page, which is a different,
+   SAMD21-based product with a different, non-overlapping pin numbering
+   scheme — cross-checked and NOT used as evidence for this board).
+
+2. https://github.com/adafruit/Adafruit_CircuitPlayground
+   Official Arduino library for both Circuit Playground boards.
+   PRIMARY/AUTHORITATIVE evidence source used for every pin number in this
+   audit — this is vendor-maintained source code, not a documentation
+   summary, and it is unambiguous about which #define block applies to
+   which physical board:
+     - Adafruit_CircuitPlayground.h (repo root) is a one-line placeholder
+       that just #includes Adafruit_Circuit_Playground.h (note the extra
+       underscores) — the real content lives in the underscored filename.
+     - Adafruit_Circuit_Playground.h, `#ifdef __AVR__ // Circuit Playground
+       'classic'` block (this board uses an ATmega32u4, i.e. __AVR__ is
+       defined — confirmed against this variant's own pins_arduino.h,
+       which is the plain Leonardo/32u4 map) gives, verbatim:
+         CPLAY_CAPSENSE_SHARED = 30
+         CPLAY_REDLED          = 13
+         CPLAY_NEOPIXELPIN     = 17
+         CPLAY_SLIDESWITCHPIN  = 21
+         CPLAY_LEFTBUTTON      = 4
+         CPLAY_RIGHTBUTTON     = 19
+         CPLAY_LIGHTSENSOR     = A5   (= digital pin 23 on this board)
+         CPLAY_THERMISTORPIN   = A0   (= digital pin 18)
+         CPLAY_SOUNDSENSOR     = A4   (= digital pin 22)
+         CPLAY_BUZZER          = 5
+         CPLAY_LIS3DH_CS       = 8
+         CPLAY_LIS3DH_INTERRUPT= 7
+         CPLAY_LIS3DH_ADDRESS  = 0x18
+       Every one of these numeric values matches source #1 above exactly
+       (cross-confirmed, two independent sources agree on every pin).
+     - The IMMEDIATELY ADJACENT `#elif defined(ARDUINO_NRF52840_CIRCUITPLAY)`
+       and `#else // Circuit Playground Express` blocks define a
+       COMPLETELY DIFFERENT set of pin numbers for the Bluefruit and
+       Express boards respectively (different products, different silicon,
+       not this board) — confirmed these are NOT accidentally mixed in.
+       Notably, `CPLAY_IR_EMITTER`/`CPLAY_IR_RECEIVER` (pins 25/26) are
+       declared ONLY in the Express `#else` branch — see "IR receiver /
+       transmitter" finding below.
+     - Adafruit_CircuitPlayground.cpp `begin()`: confirms usage semantics
+       for the __AVR__ branch specifically:
+         pinMode(CPLAY_CAPSENSE_SHARED, OUTPUT);   // shared touch-sense line
+         pinMode(CPLAY_LEFTBUTTON, INPUT);
+         pinMode(CPLAY_RIGHTBUTTON, INPUT);
+         pinMode(CPLAY_SLIDESWITCHPIN, INPUT);
+         pinMode(CPLAY_BUZZER, OUTPUT);
+         strip.setPin(CPLAY_NEOPIXELPIN);
+         lis = Adafruit_CPlay_LIS3DH(CPLAY_LIS3DH_CS, &SPI); // SPI  <-- AVR-only branch; confirms hardware SPI, not I2C, for the accelerometer on this specific board
+         cap[0..7] = CPlay_CapacitiveSensor(CPLAY_CAPSENSE_SHARED, <0,1,2,3,6,9,10,12>);  // the 8 general-purpose pad numbers, matches source #1's pad list exactly
+       and `redLED(bool v) { digitalWrite(CPLAY_REDLED, v); }` — confirms
+       polarity is settable by simply calling redLED(true) to turn the LED
+       on, consistent with active-high.
+
+3. Adafruit "Basic LEDs" lesson (Circuit Playground Lesson #0),
+   https://learn.adafruit.com/circuit-playground-lesson-number-0/basic-leds
+   Confirmed (via WebSearch summary): writing pin 13 HIGH turns the red LED
+   on — corroborates active-high polarity independently of the library's
+   own naming convention.
+
+4. WebSearch: "Circuit Playground Classic" IR receiver IR transmitter —
+   result stated plainly that IR receive/transmit is a Circuit Playground
+   EXPRESS-only feature, added specifically as an Express upgrade, and is
+   NOT present on the Classic. This directly corroborates finding #2 above
+   (CPLAY_IR_EMITTER/CPLAY_IR_RECEIVER only exist in the library's Express
+   #else branch, never in the __AVR__ block) — two independent sources
+   agree the Classic has no IR hardware at all.
+
+5. This variant's own pins_arduino.h
+   (variants/arduino/avr/circuitplay32u4/pins_arduino.h) — read directly.
+   Old-style (2007-era) header: no PIN_A0/PIN_SPI_*/PIN_WIRE_*/
+   analogInputToDigitalPin() macros, just bare `static const uint8_t X = N;`
+   declarations and a `#ifdef ARDUINO_MAIN` block with the port/bitmask/
+   timer tables and an ASCII pin-map comment block. Used to resolve every
+   CPLAY_* constant above to its physical D<n> number, confirm PWM support
+   per digitalPinHasPWM(), and discover the "duplicate index" quirk (next
+   section).
+
+6. pfodWeb_src/build_boards.js (buildAvrBoard(), parseAnalogOffset()) —
+   read directly to understand exactly how chipGpios keys map onto the
+   generated pin list for THIS board's specific (old-style) pins_arduino.h
+   format, before deciding which keys needed tagging. See "PARSER GOTCHA"
+   section below — this is a new finding, not previously documented in the
+   pin-audit playbook.
+
+===========================================================================
+PARSER GOTCHA — analog/digital physical-pin duplication (NEW, AVR-specific)
+===========================================================================
+
+This board's pins_arduino.h is the old (2007-era) style: it declares
+`static const uint8_t A0 = 18;` ... `A11 = 29;` directly, with NO
+`PIN_A0`-style macro and NO `analogInputToDigitalPin(p)` macro anywhere in
+the file. build_boards.js's `parseAnalogOffset()` looks for exactly one of
+those two patterns to determine where the "A<n>" naming range starts;
+finding neither, it returns null for this board. In `buildAvrBoard()`,
+`isAnalog` is therefore always false, so:
+  - pin indices 18-29 are emitted as "D18".."D29" instead of "A0".."A11"
+    (cosmetic — the digital pin NUMBER used as the chipGpios key is
+    unaffected either way), and
+  - those same indices never get the `analog_input` capability tag (a
+    correctness gap, but out of scope for a single board.json edit — not
+    fixed here, flagged for the coordinating/build-boards.js-owning
+    session).
+Separately (and this DOES matter for chipGpios correctness): the same
+missing-macro pattern means PIN_SPI_SS/MOSI/MISO/SCK and PIN_WIRE_SDA/SCL
+are also undetected for this board, so none of D14-D17/D2/D3 would get
+their spi_*/i2c_* capability tags under the *default* (no chipGpios
+override) path either — moot for D14/D15/D16 (excluded outright below)
+and for D17 (chipGpios override intentionally omits spi_ss anyway, see its
+note), and inert/decorative-only for D2/D3 per the pin-audit playbook
+section 12 finding that these capability strings aren't consumed by the
+Designer today. Not fixed here (same out-of-scope reasoning as above).
+
+More importantly: this chip's own Arduino core numbering scheme reuses the
+SAME physical GPIO under two different index numbers for six pins — the
+low D-number (0-17) and a separate "A-number" (18-29) — per this file's
+own comments:
+    A6  = 24  // D4
+    A7  = 25  // D6
+    A8  = 26  // D8
+    A9  = 27  // D9
+    A10 = 28  // D10
+    A11 = 29  // D12
+Since the p-loop in buildAvrBoard() iterates every index 0..NUM_DIGITAL_
+PINS-1 unconditionally (not deduplicated by physical GPIO), BOTH index
+numbers for each of these six pins appear as separate entries in the
+generated pin list — normally cosmetic/harmless for a plain general-
+purpose pin, but a real correctness bug for two of this board's confirmed
+hardware-identity pins:
+  - D4 (left button) is physically the same pin as index 24 ("A6").
+    Tagged BOTH "4" and "24" identically as button.
+  - D8 (accelerometer SPI chip-select) is physically the same pin as
+    index 26 ("A8"). Tagged BOTH "8" and "26" identically ([] excluded).
+The other four duplicate pairs (D6/25, D9/27, D10/28, D12/29) all fall on
+this board's plain general-purpose alligator pads — no chipGpios entry
+needed for those (left at full default capability on both index numbers,
+consistent with "don't exclude general-purpose pins" policy; the harmless
+cosmetic duplication is left as-is, matching the analog-offset gap's
+"flag but don't fix the shared parser" scope decision above).
+
+===========================================================================
+PER-PIN REASONING
+===========================================================================
+
+TAGGED (button / LED / NeoPixel):
+  D4  / D24 (dup) -- button   : Left Button A. Sources #1, #2 (CPLAY_LEFTBUTTON=4).
+  D19             -- button   : Right Button B. Sources #1, #2 (CPLAY_RIGHTBUTTON=19).
+  D13             -- led_high : Onboard red status LED, active-high, PWM-capable
+                                 (TIMER4A). Sources #1, #2, #3.
+  D17             -- led_neopixel : Data pin for the ring of 10 onboard NeoPixels.
+                                 Sources #1, #2. Also this board's hardware SPI SS
+                                 line, but the whole SPI bus is already internal-only
+                                 (see below) so no conflict; spi_ss deliberately NOT
+                                 also tagged (avoids the bus-tag contamination bug
+                                 class from the pin-audit playbook, section 12).
+
+EXCLUDED (capabilities: [], dedicated onboard hardware):
+  D5              -- Piezo speaker/buzzer (CPLAY_BUZZER). Sources #1, #2.
+  A0 / D18        -- NTC thermistor, temperature sensor (CPLAY_THERMISTORPIN).
+                     Sources #1, #2.
+  A4 / D22        -- Analog microphone / sound sensor (CPLAY_SOUNDSENSOR).
+                     Sources #1, #2. (Classic has no PDM digital mic — that's
+                     an Express-only hardware difference; Classic's mic is a
+                     simple analog electret capsule read via analogRead.)
+  A5 / D23        -- Phototransistor, light sensor (CPLAY_LIGHTSENSOR).
+                     Sources #1, #2.
+  D7              -- LIS3DH accelerometer interrupt line (CPLAY_LIS3DH_
+                     INTERRUPT). Sources #1, #2.
+  D8  / D26 (dup) -- LIS3DH accelerometer SPI chip-select (CPLAY_LIS3DH_CS).
+                     Source #2 (cpp: `Adafruit_CPlay_LIS3DH(CPLAY_LIS3DH_CS,
+                     &SPI)` in the __AVR__ branch — confirms hardware SPI
+                     mode, NOT I2C, on this specific board).
+  D14             -- Hardware SPI MISO — this board's ONLY SPI bus is fully
+                     consumed by the onboard accelerometer (no other device,
+                     onboard or user-facing, shares it). Source #2 + this
+                     board's own pins_arduino.h (`MISO = 14`).
+  D15             -- Hardware SPI SCK, same bus/reasoning as D14.
+  D16             -- Hardware SPI MOSI, same bus/reasoning as D14.
+  D30             -- Internal shared "send" reference pin for the onboard
+                     capacitive-touch-sensing circuit covering all 8 general-
+                     purpose pads (CPLAY_CAPSENSE_SHARED). Source #2 (cpp:
+                     `pinMode(CPLAY_CAPSENSE_SHARED, OUTPUT)` +
+                     `CPlay_CapacitiveSensor(CPLAY_CAPSENSE_SHARED, <pad>)`
+                     x8). Not listed as a user-facing pad anywhere in source
+                     #1 either. Driving/reading it independently would
+                     disrupt cap-touch sensing on every general-purpose pad.
+
+CONFIRMED ABSENT — no pin assigned, NO CHANGE (not a guess, actively ruled out):
+  IR receiver / IR transmitter -- The task brief assumed these exist on this
+    board (modeled on the Circuit Playground Express, which does have them).
+    Actively checked and ruled out: in the official library source (source
+    #2), `CPLAY_IR_EMITTER`/`CPLAY_IR_RECEIVER` are defined ONLY in the
+    `#else // Circuit Playground Express` branch of the same #if/#elif/
+    #else block that defines the Classic's __AVR__ pins — they do not
+    appear in the __AVR__ block at all. Independently corroborated by
+    WebSearch (source #4): IR transmit/receive was specifically an Express
+    upgrade over the Classic; the Classic has no IR emitter/receiver
+    hardware onboard at all. No pin excluded or tagged for this — there is
+    no such physical hardware to protect.
+
+LEFT UNCHANGED — full default capability, NO CHANGE (evidence supports
+KEEP, not exclude):
+  D21 (slide switch, CPLAY_SLIDESWITCHPIN) -- A genuine onboard mechanical
+    control, same general category as the two buttons, but there is no
+    "switch" entry in the pfodWeb capability vocabulary (only "button" for
+    momentary pushbuttons) -- inventing a tag not in the vocabulary was not
+    done. Per the pin-audit playbook's KEEP-available policy ("simple
+    onboard buttons ... KEEP available") the switch is legitimately
+    readable by a user sketch (Adafruit's own examples do exactly this via
+    digitalRead) and is not a communication bus or an actuator needing
+    protection, so left at full default capability rather than excluded.
+    Documented here so a future reviewer knows this was a deliberate
+    vocabulary-driven decision, not an oversight.
+  D0, D1, D2, D3, D6, D9, D10, D12 (+ their D25/D27/D28/D29 duplicate
+    indices for D6/D9/D10/D12 respectively; D0/D1/D2/D3 have no duplicate
+    index) -- The 8 general-purpose alligator pads. Confirmed via source
+    #1 ("all pads are free pins... not used by... sensors") and source #2
+    (cpp: these exact 8 pin numbers — 0,1,2,3,6,9,10,12 — are passed as the
+    per-pad "receive" argument to CPlay_CapacitiveSensor alongside the
+    shared D30 send pin). Per the task brief's own guidance, general-
+    purpose pins that can ALSO be used for capacitive touch sensing via a
+    software technique (not dedicated silicon) are left at full default
+    capability, not excluded — this is exactly that case (CapacitiveSensor
+    is a software charge-time-measurement technique using two plain GPIOs,
+    not a dedicated touch-sensor IC). D2/D3 additionally serve as this
+    board's general I2C bus (SDA/SCL) -- confirmed NOT shared with the
+    onboard accelerometer, which uses a completely separate, fully-
+    dedicated hardware SPI bus on this board (see D8/D14/D15/D16 above) --
+    so no "shared bus" concern applies here at all; D2/D3 are genuinely
+    free for the user's own I2C devices.
+
+===========================================================================
+SUMMARY
+===========================================================================
+16 chipGpios entries added to board.json: 4 tagged (2 buttons on D4/D24 +
+D19, 1 LED on D13, 1 NeoPixel on D17) and 12 excluded (buzzer D5; thermistor
+A0/D18; mic A4/D22; light sensor A5/D23; accelerometer interrupt D7,
+chip-select D8/D26, and its private SPI bus D14/D15/D16; capacitive-touch
+shared reference D30). Slide switch (D21) and the 8 general-purpose/touch-
+capable alligator pads (D0/D1/D2/D3/D6/D9/D10/D12, plus their harmless
+duplicate high-index counterparts) intentionally left at full default
+capability. Confirmed the Circuit Playground Classic has NO IR receiver/
+transmitter hardware at all (that's an Express-only feature) — the task
+brief's assumption on this point was incorrect and no pins were excluded
+or tagged for it. Also discovered and documented (but did not fix, out of
+scope) a parser gap: this board's old-style pins_arduino.h defeats
+build_boards.js's analog-offset and SPI/I2C-pin auto-detection, and this
+chip's Arduino-core numbering scheme double-counts six physical pins under
+two different index numbers each.

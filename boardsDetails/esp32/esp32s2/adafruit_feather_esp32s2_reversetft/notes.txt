@@ -1,0 +1,69 @@
+Board: Adafruit Feather ESP32-S2 Reverse TFT (adafruit_feather_esp32s2_reversetft), chip esp32s2
+Date: 2026-07-14 (independent verification pass - real vendor sources checked)
+
+SOURCES CONSULTED
+-----------------
+1. https://learn.adafruit.com/esp32-s2-reverse-tft-feather/pinouts - official
+   Adafruit Learning System pinout guide (note: NOT under the
+   "adafruit-" URL prefix used by the plain Feather guide). Confirms:
+   red LED "labeled #13 on the board", active-high, `LED_BUILTIN`/`13`.
+   NeoPixel via `PIN_NEOPIXEL`/`board.NEOPIXEL`. TFT_I2C_POWER powers the
+   TFT display, BME280 sensor, and STEMMA QT connector; NEOPIXEL_POWER
+   powers the NeoPixel. Also documents 3 onboard pushbuttons: "Pushbutton
+   D0 is D0/GPIO0, Pushbutton D1 is D1/GPIO1, Pushbutton D2 is D2/GPIO2."
+   D0 "is doing double-duty ... both the BOOT button to enter the ROM
+   bootloader, and available as an input in your code" (pulled HIGH,
+   goes LOW when pressed). D1/D2 "are available for use as inputs in your
+   code" (pulled LOW, goes HIGH when pressed).
+2. https://learn.adafruit.com/esp32-s2-reverse-tft-feather/digital-input-multiple-buttons -
+   corroborates D0/D1/D2 as real, application-usable buttons (not merely
+   bootloader-entry), with example code reading all three.
+3. https://github.com/espressif/arduino-esp32/blob/master/variants/adafruit_feather_esp32s2_reversetft/pins_arduino.h -
+   vendor pins_arduino.h (fetched directly). Confirms: LED_BUILTIN=13,
+   PIN_NEOPIXEL=33, NEOPIXEL_POWER=21, TFT_CS=42, TFT_RST=41, TFT_DC=40,
+   TFT_BACKLITE=45, TFT_I2C_POWER=7, SPI MOSI=35/SCK=36/MISO=37/SS=42,
+   UART TX=39/RX=38. No BUTTON/PIN_BUTTON macros defined in this file -
+   the D0/D1/D2 buttons are documented only in the Learn guide (source
+   #1/#2), not aliased in pins_arduino.h.
+
+PER-PIN FINDINGS
+----------------
+- GPIO35, 36, 37, 40, 41, 42, 45: excluded (not present in chipGpios).
+  CONFIRMED - vendor pins_arduino.h (source #3) shows these are exactly
+  MOSI/SCK/MISO/TFT_DC/TFT_RST/TFT_CS(SS)/TFT_BACKLITE - the dedicated
+  onboard TFT display + its SPI bus. Matches the earlier claim exactly.
+- GPIO7, GPIO21: excluded (not present in chipGpios). CONFIRMED -
+  TFT_I2C_POWER=7 and NEOPIXEL_POWER=21 per source #3, matching the
+  earlier claim.
+- GPIO13: capabilities ["digital_output","pwm_output","led_high"].
+  CONFIRMED - LED_BUILTIN=13 (source #3), documented active-high red LED
+  (source #1), matching the earlier claim.
+- GPIO33: capabilities ["digital_output","pwm_output","led_neopixel"].
+  CONFIRMED - PIN_NEOPIXEL=33 (source #3), documented onboard NeoPixel
+  (source #1), matching the earlier claim.
+- GPIO0, GPIO1, GPIO2: capabilities changed from chip-level defaults
+  (GPIO0: digital_input/digital_output/pwm_output; GPIO1/2:
+  analog_input/digital_input/digital_output/pwm_output) to
+  ["digital_input","button"] each. CORRECTION (addition) - this is the
+  headline finding of this verification pass. The previous audit pass
+  completely missed that this board variant physically has 3 onboard
+  pushbuttons (D0/D1/D2), confirmed directly by name in Adafruit's own
+  pinouts guide (source #1) and corroborated by a second dedicated guide
+  page (source #2) with working example code. GPIO0's pinNotes strapping
+  warning ("Must be HIGH for normal boot") is retained unchanged - it is
+  a genuine dual-purpose BOOT-strap/button pin, matching the D0 button's
+  documented dual role.
+- GPIO34, 38, 39, 43, 44: kept at chip-level default - no vendor source
+  suggests dedicated hardware here (GPIO38/39 are the exposed UART
+  RX/TX).
+- GPIO46: kept at chip-level default (input-only) - no change.
+
+SUMMARY
+-------
+Independently confirmed via learn.adafruit.com and vendor pins_arduino.h:
+the TFT+SPI-bus exclusion (GPIO35-37/40-42/45), the power-gate exclusion
+(GPIO7/21), GPIO13 led_high, and GPIO33 led_neopixel are all correct as
+previously found. One real correction (addition): this board has 3
+onboard pushbuttons (D0/D1/D2 on GPIO0/1/2) that the previous audit pass
+missed entirely - confirmed via Adafruit's own pinouts and digital-input
+guide pages, and now tagged "button".

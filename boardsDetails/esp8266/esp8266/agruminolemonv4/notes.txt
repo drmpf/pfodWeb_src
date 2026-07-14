@@ -1,0 +1,207 @@
+Agrumino Lemon v4 board research notes
+=======================================
+Date: 2026-07-11
+Board: variants/esp8266/esp8266/agruminolemonv4 (Lifely "Agrumino Lemon v4" plant-watering/
+irrigation controller, based on WT8266-S1 module)
+
+URLs consulted
+--------------
+1. https://github.com/lifely-cc/agruminoLemon-libraries/blob/master/Agrumino.cpp
+   (also fetched raw: https://raw.githubusercontent.com/lifely-cc/agruminoLemon-libraries/master/Agrumino.cpp)
+   Official vendor firmware library source. Confirmed:
+     - PIN_BTN_S1 (GPIO4) is set pinMode(INPUT_PULLUP) and read via
+       isButtonPressed() { return digitalRead(PIN_BTN_S1) == LOW; } -> real
+       onboard active-low user button with internal pullup.
+     - The onboard status LED is NOT on GPIO2. It is defined as
+       IO_PCA9536_LED = IO0, i.e. output 0 of a PCA9536 I2C GPIO expander
+       chip, driven via pcaGpioExpander.setState(...IO_HIGH/IO_LOW...) over
+       the I2C bus (which itself runs over GPIO2/SDA + GPIO14/SCL). GPIO2 is
+       therefore only the I2C bus SDA line for talking to the expander (and
+       RTC etc.), not itself directly wired to drive an LED.
+     - A0 (GPIO17) is read via analogRead(A0) inside
+       readBatteryVoltageSingleShot(), using a resistor voltage divider:
+       #define BATTERY_VOLT_DIVIDER_Z1 1800   // Z1 (R25), ohms
+       #define BATTERY_VOLT_DIVIDER_Z2  424   // Z2 (R26), ohms
+       float vread = analogRead(A0) / 1024.0;           // native 0-1.0V ADC
+       float volt  = ((z1 + z2) / z2) * vread;           // scaled battery volts
+       Ratio (Z1+Z2)/Z2 = 2224/424 = 5.2453 -> full-scale design voltage at
+       raw ADC max = 1.0V * 5.2453 = 5.2453V. Intended use is sensing a LiPo
+       battery: BATTERY_MV_LEVEL_0=3500 (empty), BATTERY_MV_LEVEL_100=4200
+       (full), i.e. divider sized with headroom above the 3.5-4.2V battery
+       range actually monitored.
+     - PIN_USB_DETECT (GPIO5) read via isAttachedToUSB() == HIGH; not a
+       button/LED capability, left unchanged (already tagged as plain
+       digital_input/output/pwm in board.json with a descriptive note).
+
+2. https://www.lifely.cc/wp-content/uploads/2020/11/Agrumino-Dev-Guide-.pdf
+   Official Lifely Dev Guide PDF. Fetched but returned only raw/binary PDF
+   stream content that could not be parsed into readable text by the fetch
+   tool; no usable text extracted. Not used as evidence either way - relied
+   on the firmware source (Agrumino.cpp) instead, which is unambiguous and
+   is the authoritative vendor-published pin-usage source (used directly by
+   the manufacturer's own library / examples).
+
+3. General web search ("Agrumino Lemon v4 GitHub schematic pinout button LED",
+   "Agrumino Lemon v4 ADC voltage divider A0 schematic") - used only to locate
+   the above two primary sources (github.com/lifely-cc/agruminoLemon-libraries
+   and lifely.cc dev guide); no separate facts taken directly from search
+   result snippets beyond confirming the same Z1/Z2 divider values and formula
+   that were independently verified by fetching Agrumino.cpp directly.
+
+What was changed
+-----------------
+PART A (button/LED):
+  - GPIO4 (PIN_BTN_S1): TAGGED. capabilities changed from
+    ["digital_input","digital_output","pwm_output"] to ["digital_input","button"]
+    per the fixed button-tag rule (strip other caps). Confirmed real onboard
+    user button via Agrumino.cpp (see above). Not TX/RX (TX=1, RX=3 in
+    pins_arduino.h, both already excluded/tagged serial_tx/serial_rx).
+  - GPIO2: NOT tagged as LED. The existing board.json pinNotes claim ("Wired
+    to this board's I2C SDA and the onboard LED") does NOT hold up against
+    the vendor firmware source: the real onboard LED is driven through a
+    PCA9536 I2C GPIO expander chip's IO0 output, reached over the I2C bus
+    that GPIO2 carries as SDA - GPIO2 itself is not directly wired to an LED
+    and does not toggle one via plain digitalWrite/pinMode. Per the capability
+    schema, "led_high"/"led_low" tags are for a GPIO that directly drives an
+    LED, which is not the case here. This is a documented finding (no guess
+    involved - directly confirmed from vendor source code), so GPIO2 was left
+    with its existing capabilities unchanged. The inaccurate pinNotes text
+    was left in place per instructions (never delete/replace existing notes)
+    but a pfodWeb NOTE comment was added near the top of board.json flagging
+    the discrepancy for a human to consider cleaning up pinNotes text later.
+
+===========================================================================
+PART C (2026-07-12): full dedicated-hardware pin-exclusion sweep
+===========================================================================
+Scope: a fresh discovery sweep flagged 5 #define-only pins in
+pins_arduino.h that have NO `static const uint8_t` alias in this board's
+pins_arduino.h and therefore were at risk of falling through to the plain,
+unlabeled chip-level GPIO default in the Designer's picker despite having
+real dedicated onboard hardware functions per their #define comments:
+PIN_PUMP (GPIO12), PIN_MOSFET (GPIO15), PIN_USB_DETECT (GPIO5),
+PIN_BATT_STAT (GPIO13), PIN_LEVEL (GPIO0, boot-mode strap).
+
+Source consulted
+-----------------
+https://raw.githubusercontent.com/lifely-cc/agruminoLemon-libraries/master/Agrumino.cpp
+(same vendor firmware library used for Part A/B above - authoritative,
+manufacturer-published source). Fetched directly again for this pass
+(both via the fetch tool and via a direct curl+grep of the raw file) to
+pull the exact pinMode()/digitalRead()/digitalWrite() call sites for each
+of the 5 candidate pins, quoted below.
+
+Findings per pin
+-----------------
+- PIN_PUMP (GPIO12): `pinMode(PIN_PUMP, OUTPUT);` in initBoard(). Driven
+  only by turnWateringOn() { digitalWrite(PIN_PUMP, HIGH); } and
+  turnWateringOff() { digitalWrite(PIN_PUMP, LOW); }. This is the onboard
+  water-pump relay drive line - a fixed hardware actuator output, not a
+  general-purpose GPIO. Per the heater-PWM/motor-driver-output exclusion
+  precedent: EXCLUDE. Confirmed already excluded in board.json - GPIO12 has
+  no static-const alias in pins_arduino.h and no chipGpios entry, so it does
+  not appear in allGpios (build_boards.js unions pins_arduino.h aliases with
+  chipGpios keys only) - fully hidden from the Designer's pin picker, no
+  further edit required.
+
+- PIN_MOSFET (GPIO15): `pinMode(PIN_MOSFET, OUTPUT);` in initBoard(). Driven
+  by turnBoardOn()/turnBoardOff() (digitalWrite HIGH/LOW) and read back by
+  isBoardOn() { return digitalRead(PIN_MOSFET) == HIGH; } to check the
+  board's own main-power MOSFET load-switch state before toggling it. Even
+  though it's read back, its role is exclusively the vendor library's
+  internal main-power switch control/status line, not a user-facing sensor
+  or general I/O - matches the same fixed-actuator exclusion precedent as
+  PIN_PUMP: EXCLUDE. Also carries the "BOOT: Must be LOW at boot" strap
+  requirement. Confirmed already excluded in board.json (no static-const
+  alias, no chipGpios entry) - no further edit required. The board.json
+  pinNotes["15"] boot-strap text was left in place (unused/inert once the
+  pin is excluded from allGpios - harmless, kept per do-not-delete-notes
+  policy).
+
+- PIN_USB_DETECT (GPIO5): `pinMode(PIN_USB_DETECT, INPUT);` in initBoard().
+  Read only by isAttachedToUSB() { return digitalRead(PIN_USB_DETECT) ==
+  HIGH; }. A genuine input-only USB-power-present sense line - matches the
+  "battery/voltage monitor"-style sensor-input KEEP precedent: KEEP.
+  Confirmed board.json chipGpios["5"] already carries
+  capabilities ["digital_input","digital_output","pwm_output"] plus an
+  informational note "PIN_USB_DETECT — USB power presence sensor" -
+  correctly labelled and kept in the picker, no further edit required.
+
+- PIN_BATT_STAT (GPIO13): `pinMode(PIN_BATT_STAT, INPUT);` in initBoard().
+  Read only by isBatteryCharging() { return digitalRead(PIN_BATT_STAT) ==
+  LOW; } (active-low: LOW means charging). A genuine input-only battery
+  charge-status sense line - same sensor-input KEEP precedent: KEEP.
+  Confirmed board.json chipGpios["13"] already carries the same capability
+  set plus an informational note "PIN_BATT_STAT — battery charge status
+  sensor" - correctly labelled and kept, no further edit required.
+
+- PIN_LEVEL (GPIO0): `#define PIN_LEVEL 0 // BOOT: HIGH for Running and LOW
+  for Program`. Not referenced anywhere else in Agrumino.cpp/.h (no
+  pinMode/digitalRead/digitalWrite call site) - it documents the chip's
+  ordinary ESP8266 GPIO0 boot-strapping behaviour (must be HIGH/floating to
+  run the sketch, LOW at reset to enter the bootloader), not a distinct
+  onboard sensor or actuator. Confirmed this is already correctly handled
+  at the chip level: board.json's pinNotes["0"] carries the boot-strap
+  warning ("Must be HIGH or floating for normal boot; LOW at boot enters
+  flash/programming mode... Wired to PIN_LEVEL...") and chipGpios["0"]
+  keeps GPIO0 as a normal available digital I/O pin (matches the standard
+  ESP8266 convention of leaving GPIO0 selectable with a boot-mode caveat
+  rather than excluding it outright) - not miscategorized, no edit needed.
+
+Collision check (per playbook step 4)
+--------------------------------------
+No new `static const uint8_t` aliases were added to pins_arduino.h during
+this pass (none were needed - GPIO5/13 are already correctly surfaced via
+their existing chipGpios entries, which the build_boards.js allGpios union
+picks up independent of any pins_arduino.h alias). Confirmed none of
+GPIO5, GPIO12, GPIO13, GPIO15, GPIO0 collide with this board's actual
+comms pins (SDA=2, SCL=14, TX=1, RX=3, A0=17; no SS/MOSI/MISO/SCK declared
+on this board), so no risk of build_boards.js misattaching a bus capability.
+
+Outcome
+-------
+board.json was found to already contain the correct chipGpios
+exclusions/notes for all 5 candidate pins prior to this pass (GPIO12 and
+GPIO15 already absent from chipGpios/fully excluded; GPIO5 and GPIO13
+already present with KEEP notes; GPIO0 already left as a normal
+boot-strapped GPIO). This pass independently re-verified every one of
+those 5 pins directly against the vendor firmware source (fresh fetch +
+line-numbered grep of Agrumino.cpp, quoted above) and found the existing
+board.json state to be correct in every case - no board.json edits were
+required. This notes.txt Part C section was added because the prior
+Part A/B pass never documented the pump/MOSFET/USB/battery/level sweep,
+even though the board.json changes for it were already present.
+
+One-line summary
+-----------------
+GPIO12 (pump) and GPIO15 (MOSFET) confirmed dedicated fixed-hardware
+actuator outputs -> excluded (already were); GPIO5 (USB detect) and
+GPIO13 (battery status) confirmed dedicated sense inputs -> kept with
+informational notes (already were); GPIO0 (PIN_LEVEL) confirmed to be the
+ordinary ESP8266 boot-strap pin, correctly left as a normal available GPIO
+with a boot-mode pinNotes warning (already was) - board.json required no
+changes, all verified correct against vendor source Agrumino.cpp.
+
+PART B (ADC reference voltage):
+  - CHANGED. adc.defaultRefVolts updated from "1.0" to "5.25". Confirmed via
+    vendor firmware source (Agrumino.cpp): A0/GPIO17 has an onboard resistor
+    voltage divider (Z1=1800 ohm, Z2=424 ohm) ahead of it, used by the
+    vendor's own readBatteryVoltageSingleShot() to scale the native 0-1.0V
+    ADC reading up by (Z1+Z2)/Z2 = 5.2453x for LiPo battery-voltage sensing.
+    This is solid, non-guessed evidence of a real onboard divider extending
+    the effective input range, so the value was updated (not a "nice" rail
+    voltage like 3.3V because this divider was purpose-built for battery
+    sensing rather than mirroring the board's own logic-level rail, but the
+    instructions call for updating to whatever full-scale voltage the
+    divider is actually designed for, which is 5.2453V, rounded to 5.25).
+    A NOTE comment citing the source and the exact resistor values/formula
+    was added near the top of board.json.
+
+Summary of change
+------------------
+GPIO4 tagged ["digital_input","button"] (confirmed onboard button in vendor
+firmware source). adc.defaultRefVolts changed "1.0" -> "5.25" (confirmed
+onboard battery-sense voltage divider, Z1=1800/Z2=424 ohm, in vendor firmware
+source). GPIO2 left untagged for LED - the board.json's existing "onboard
+LED" note for GPIO2 was checked against vendor source and found inaccurate
+(the LED is on an I2C GPIO expander chip, not directly on GPIO2); flagged via
+a new NOTE comment but original pinNotes text left untouched per instructions.

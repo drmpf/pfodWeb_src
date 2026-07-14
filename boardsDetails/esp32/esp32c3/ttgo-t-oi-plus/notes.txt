@@ -1,0 +1,144 @@
+ttgo-t-oi-plus board.json dedicated-hardware pin-exclusion audit research notes
+================================================================================
+
+Board: LILYGO TTGO T-OI PLUS (variants/esp32/esp32c3/ttgo-t-oi-plus), chip esp32c3.
+pins_arduino.h: LED_BUILTIN=3, TX=21, RX=20, SDA=19, SCL=18, SS=7, MOSI=6,
+MISO=5, SCK=4, A1=2, A2=4, A3=5, BAT_ADC_PIN=2 (#define BAT_VOLT_PIN
+BAT_ADC_PIN). No board.json override existed before this audit (used the
+chip-level esp32c3/board.json default). Flagged by the discovery sweep for
+having BAT_ADC_PIN=2 declared but never individually reviewed.
+
+Sources consulted
+------------------
+- https://github.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS
+  Official LilyGO GitHub hardware/firmware repo for this exact board
+  ("esp32-c3 development board with 16340 battery holder").
+- https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS/main/example/battery_voltage/battery_voltage.ino
+  Official vendor example sketch. Defines `#define BAT_ADC 2` and computes
+  `Voltage = (readADC_Cal(analogRead(BAT_ADC))) * 2;` - vendor-confirmed
+  GPIO2 as the battery-ADC pin with an explicit 2x multiplier applied to the
+  raw calibrated ADC reading.
+- https://community.lilygo.cc/topic/198/esp32-c3-t-oi-plus-reading-battery-level
+  Official LilyGO community forum thread discussing this exact board's
+  battery reading. States "Vbat is connected to the ADC input through a
+  resistive divider made up of two 100K resistors that cut the voltage in
+  half" - matches the vendor example's 2x multiplier exactly (100K series +
+  100K shunt, a 1:1 divider). Two independent official sources agreeing on
+  both the pin and the divider ratio.
+- https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS/main/schematic/T-OI_PLUS_Schematic.pdf
+  Official vendor KiCad/Altium-exported schematic PDF, fetched directly.
+  Binary/vector content could not be text-extracted by the fetch tool (no
+  OCR available), so it could not independently corroborate the 100K/100K
+  values pulled from the community forum, but its existence and the repo
+  structure corroborate this being the correct, current hardware revision's
+  documentation set.
+- https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/lilygo/ttgo_toiplus/ttgo_toiplus.dts
+  Official Zephyr RTOS board device-tree source for this exact board
+  (independent of LilyGO's own Arduino-core files). Contains a gpio-leds
+  node: "green_led (LED0)" on gpio0 pin 3, flagged GPIO_ACTIVE_HIGH, label
+  "Green - LED0" - independently confirms GPIO3 as a real onboard
+  active-high LED, matching this board's own pins_arduino.h LED_BUILTIN=3.
+  No gpio-keys node is present in this DTS - no onboard user button is
+  documented for this board by Zephyr.
+- https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS/main/example/strandtest/strandtest.ino
+  Official vendor NeoPixel-strip example, checked specifically to rule out
+  GPIO3 actually being a NeoPixel/WS2812 data pin instead of the plain
+  active-high LED0 the Zephyr DTS describes (the repo lists an
+  Adafruit_NeoPixel dependency, which could have meant LED_BUILTIN was
+  secretly a NeoPixel). This example uses GPIO19 (`#define D1 19`,
+  `#define LED_PIN D1`) for the NeoPixel strip data line, NOT GPIO3 -
+  confirming the strandtest example targets an external Grove/D1 header
+  strip, not the onboard LED0. (Note: GPIO19 is also this board's SDA pin
+  in pins_arduino.h - that is a pre-existing, out-of-scope overlap between
+  the NeoPixel example's external-strip pin choice and this board's I2C
+  bus; it does not affect LED_BUILTIN=3 or BAT_ADC_PIN=2, the two pins in
+  scope for this audit, so it was not touched.)
+- https://www.espboards.dev/esp32/ttgo-t-oi-plus/
+  Independent third-party pinout table. Lists GPIO2 as "BAT_ADC_PIN"/A1 -
+  matches this board's own pins_arduino.h exactly, corroborating GPIO2 from
+  a source outside LilyGO's own repo. Did not itself document a divider
+  ratio.
+- https://github.com/Xinyuan-LilyGO/LilyGo-T-OI-PLUS/issues/19
+  ("Measuring Vbat") - a user reports unexpected raw millivolt readings when
+  probing GPIO2 directly; does not itself state a resistor ratio, but
+  corroborates that GPIO2 is the pin the LilyGO community actually uses for
+  battery measurement on this board.
+
+Reasoning per pin
+------------------
+GPIO2 (BAT_ADC_PIN / A1) - CONFIRMED onboard battery-voltage-sense pin, via
+  two independent official LilyGO sources (the vendor's own example sketch
+  and the vendor's own community support forum) that agree on both the pin
+  number and a 100K/100K (1:1) resistive divider ahead of the ADC. Using
+  this project's playbook formula, the corrected effective reference is
+  3.3V * (R_series + R_shunt) / R_shunt = 3.3 * (100000 + 100000) / 100000
+  = 6.6V, consistent with the vendor code's raw-reading * 2 multiplier.
+  Per the playbook's battery/voltage-monitor KEEP policy, this is the same
+  KEEP-available bucket as any other confirmed onboard battery-sense pin -
+  NOT excluded from the pin picker. Capabilities left unchanged from the
+  chip-level default (analog_input, digital_input, digital_output,
+  pwm_output); adc.defaultRefVolts left at the chip-level "3.3" board-wide
+  (the divider is wired only to this one dedicated pin, not the board's
+  other analog-capable pins A2=GPIO4/A3=GPIO5, so a board-wide reference
+  change would be wrong) with an informational "note" field added to the
+  GPIO2 chipGpios entry instead, describing the divider and the effective
+  6.6V corrected reference. Checked pins_arduino.h for any SDA/SCL/SS/
+  MOSI/MISO/SCK/TX/RX alias landing on GPIO2: TX=21, RX=20, SDA=19,
+  SCL=18, SS=7, MOSI=6, MISO=5, SCK=4 - none is 2, so no bus-capability
+  contamination risk and no alias line needed deletion from pins_arduino.h.
+
+GPIO3 (LED_BUILTIN) - CONFIRMED onboard active-high LED, via the official
+  Zephyr RTOS board device-tree source for this exact board (independent of
+  LilyGO's own Arduino files), which declares a gpio-leds node "green_led
+  (LED0)" on pin 3 with the GPIO_ACTIVE_HIGH flag. Cross-checked against
+  the vendor's own strandtest (NeoPixel) example to rule out a mix-up with
+  an addressable LED - that example is wired to GPIO19, not GPIO3, so the
+  two are confirmed to be separate, unrelated LEDs (onboard LED0 vs. an
+  external/Grove NeoPixel strip). Tagged capabilities changed to
+  ["digital_output","pwm_output","led_high"], dropping analog_input and
+  digital_input, matching this project's established convention for a
+  confirmed dedicated LED pin (e.g. esp32s3/axiometa_pixie_m1's GPIO11,
+  which made the identical capability-set change for its own
+  vendor-confirmed active-high LED). Checked pins_arduino.h for any SDA/
+  SCL/SS/MOSI/MISO/SCK/TX/RX alias landing on GPIO3: none is 3, so no
+  bus-capability contamination risk and no alias line needed deletion.
+
+No onboard user button - the Zephyr DTS for this board has no gpio-keys
+  node, and no LilyGO source (GitHub repo, product page, community forum)
+  documents a dedicated user/boot button beyond the standard RESET/BOOT
+  pair used purely for flashing (not exposed as a distinct GPIO alias in
+  this board's own pins_arduino.h). Not tagged.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0, 1, 4-11, 20, 21) were left at the
+chip-level esp32c3/board.json default - no evidence found of any other
+dedicated onboard hardware on this small board beyond the battery-ADC pin
+and the single onboard LED. GPIO4/GPIO5 (A2/A3, also SCK/MISO in this
+board's pins_arduino.h) and the rest of the SPI/I2C boilerplate (SDA=19,
+SCL=18, SS=7, MOSI=6) are the standard generic-template aliasing and were
+not found to collide with GPIO2 or GPIO3, so pins_arduino.h required no
+edits (nothing needed deletion for this audit).
+
+What was tagged/changed
+-------------------------
+Created variants/esp32/esp32c3/ttgo-t-oi-plus/board.json (none existed
+before) as a full copy of the chip-level esp32c3/board.json default, with:
+  - GPIO2 given an added "note" field describing the confirmed onboard
+    battery-voltage-sense wiring (100K/100K divider, effective 6.6V
+    corrected reference); capabilities left unchanged
+    (["analog_input","digital_input","digital_output","pwm_output"])
+  - GPIO3 capabilities changed to ["digital_output","pwm_output","led_high"]
+    (was ["analog_input","digital_input","digital_output","pwm_output"])
+plus a pfodWeb NOTE comment block at the top of the file citing the sources
+above. No GPIOs were excluded from chipGpios, adc.defaultRefVolts was left
+unchanged at the chip-level "3.3", and no pins_arduino.h edit was needed (no
+alias-collision deletion was required for GPIO2 or GPIO3 - checked and
+confirmed clean).
+
+Summary: LILYGO TTGO T-OI PLUS GPIO2 confirmed as a real onboard
+battery-voltage-sense pin (100K/100K divider, vendor-applied 2x multiplier,
+KEEP policy applied, documented via a "note" field) and GPIO3 confirmed as
+a real onboard active-high LED (tagged "led_high"); no alias conflicts
+found on either pin, so pins_arduino.h was left unmodified and only
+board.json + this notes.txt file were created.

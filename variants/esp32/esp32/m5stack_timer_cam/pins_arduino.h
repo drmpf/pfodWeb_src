@@ -12,29 +12,17 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 4;
 static const uint8_t SCL = 13;
 
-static const uint8_t SS = 5;
-static const uint8_t MOSI = 23;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 18;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard OV2640 camera data/control pins (confirmed via M5Stack
+// TimerCam docs: XCLK/PCLK/HREF/VSYNC/RESET/SIOC/SIOD/D0-D7).
 
-static const uint8_t G23 = 23;
-static const uint8_t G25 = 25;
-static const uint8_t G27 = 27;
-static const uint8_t G22 = 22;
-static const uint8_t G26 = 26;
-static const uint8_t G21 = 21;
-static const uint8_t G32 = 32;
-static const uint8_t G35 = 35;
-static const uint8_t G34 = 34;
-static const uint8_t G5 = 5;
-static const uint8_t G39 = 39;
-static const uint8_t G18 = 18;
-static const uint8_t G36 = 36;
-static const uint8_t G19 = 19;
-static const uint8_t G15 = 15;
-
+// pfodWeb NOTE: G5/G15/G18/G19/G21/G22/G23/G25/G26/G27/G32/G34/G35/G36/
+// G39 deliberately NOT declared - dedicated onboard OV2640 camera pins.
+// G33 deliberately NOT declared - dedicated battery-hold pin on this
+// board (differs from sibling UnitCam, where it's free) - see
+// board.json chipGpios override. G2 stays kept as the status LED;
+// SDA/SCL (GPIO4/13) stay kept as the general Grove connector.
 static const uint8_t G2 = 2;
-static const uint8_t G33 = 33;
 
 static const uint8_t G13 = 13;
 static const uint8_t G4 = 4;

@@ -1,0 +1,186 @@
+dfrobot_beetle_esp32c3 - dedicated-hardware pin-exclusion audit + opportunistic button/LED/battery check
+==========================================================================================================
+
+Board: DFRobot Beetle ESP32-C3 (SKU DFR0868), coin-sized RISC-V dev board.
+Variant path: variants/esp32/esp32c3/dfrobot_beetle_esp32c3
+
+Why flagged: discovery sweep found a block of GDI_* macros in
+pins_arduino.h:
+  #define GDI_DISPLAY_FPC_INTERFACE
+  #define GDI_SPI_SCLK SCK
+  #define GDI_SPI_MOSI MOSI
+  #define GDI_SPI_MISO MISO
+  #define GDI_DC       A1
+  #define GDI_RES      A2
+  #define GDI_CS       SS
+  #define GDI_SDCS     A0
+  #define GDI_TCS      A3
+  #define GDI_SCL      SCL
+  #define GDI_SDA      SDA
+(plus GDI_BLK = LED_BUILTIN). All of these are #defines pointing at
+already-declared pin aliases (SCK/MOSI/MISO/SS/SDA/SCL/A0-A3/LED_BUILTIN),
+not new GPIO declarations, so they never add pins to the parsed pin list -
+the question was whether the underlying pins should be EXCLUDED as
+dedicated onboard-display hardware, or KEPT as general-purpose. No
+board.json override existed before this audit (used the chip-level
+esp32c3/board.json default).
+
+Sources consulted
+------------------
+- https://wiki.dfrobot.com/dfr0868/
+  Official DFRobot wiki product page (primary vendor source, authoritative,
+  publishes schematics). Fetched via WebFetch. States the GDI connector is
+  "a DFRobot dedicated GDI display interface for connecting a screen using
+  a 18pin-FPC wire" and explicitly "comes without a display attached" -
+  i.e. it is an optional expansion connector for a separately-purchased,
+  user-attached display module, not a fixed onboard screen. Also confirmed
+  "Onboard LED: GPIO 10" and "BOOT Button: GPIO 9", and that battery
+  charging uses a dedicated "BAT" solder-pad connector (not a GPIO).
+- https://wiki.dfrobot.com/SKU_DFR0868_Beetle_ESP32_C3
+  Same vendor wiki under an alternate URL for the same product. Fetched
+  via WebFetch. Independently corroborates the optional-display finding:
+  the board's bundled breakout/expansion board "offers additional power
+  and GPIO pins, battery terminals for the on-board lithium-ion management
+  system, and a ribbon cable connector for an optional display" - the word
+  "optional" here matches the other wiki page's "comes without a display
+  attached". Also describes the extension board as adding "GDI and more
+  power pins for easier soldering, when connecting Beetle ESP32-C3 to
+  sensors or a screen" - GDI is explicitly listed alongside generic sensor
+  wiring, consistent with it being a general expansion standard, not fixed
+  hardware.
+- https://www.espboards.dev/esp32/dfrobot-beetle-esp32c3/
+  Independent third-party board database. Fetched via WebFetch. Pin
+  mapping table shows "Pins 0-9: Analog inputs (A0-A5) with I2C functions
+  (SDA on pin 8, SCL on pin 9)" and "Pins 4-7: SPI functions (SCK, MISO,
+  MOSI, SS)" and "Pin 10: LED_BUILTIN" - all matching this board's own
+  pins_arduino.h aliases exactly. Corroborates GPIO10 = onboard LED.
+  Did not separately confirm the BOOT button GPIO in the content actually
+  returned, but did not conflict with it either.
+- WebSearch summary (multiple secondary/community sources: DFRobot
+  community makelog, DFRobot forum thread on battery supply, general
+  vendor listings): confirms "BOOT (IO9) and RST buttons for entering
+  download boot mode and resetting" - corroborating GPIO9 = BOOT button.
+  Confirms the board has "integrated li-ion battery charging management
+  function" via a TP4057 chip, with the battery wired directly to a BAT
+  solder-pad terminal on the breakout board - a dedicated charge-IC
+  connector, not a GPIO-based voltage-sense/ADC pin. No BAT/VBAT/BATTERY
+  alias exists anywhere in this board's pins_arduino.h, confirming there
+  is no battery-sense GPIO for this parser/database to tag.
+- pins_arduino.h (local, already in repo): `static const uint8_t SCL = 9;`
+  duplicates the confirmed GPIO9 BOOT button pin as the I2C-clock alias -
+  used as corroboration alongside the two independent BOOT-button sources
+  above, and as the trigger for the alias-conflict fix described below.
+
+Reasoning: is the GDI connector fixed or optional?
+-----------------------------------------------------
+CONFIRMED OPTIONAL. Two independent fetches of DFRobot's own wiki (the
+authoritative vendor source, which publishes this board's schematics) both
+state the GDI connector ships "without a display attached" and is a
+"ribbon cable connector for an optional display" - i.e. a genuinely
+pluggable 18-pin FPC expansion connector for a display the end user may or
+may not purchase and attach, matching the task's stated expectation that
+GDI is a general expansion standard across DFRobot's product line (also
+used on other DFRobot boards), not fixed onboard hardware unique to this
+board. Accordingly, SCK/MOSI/MISO/SS/SDA (GPIO4/6/5/7/8) and A0-A3
+(GPIO0/1/2/3) were KEPT at their chip-level default general-purpose
+capabilities - no exclusions applied for the GDI repurposing.
+
+GPIO9 (opportunistic section 7a button check) - TAGGED:
+  Onboard physical BOOT button, confirmed by wiki.dfrobot.com and
+  espboards.dev (and corroborated by community/forum sources describing
+  "BOOT (IO9)"). Standard ESP32-C3 strapping pin; chip-level pinNotes
+  "Must be HIGH for normal boot" retained as-is (expected/documented for
+  this pin, matching the adafruit_qtpy_esp32c3 and waveshare_esp32_c3_zero
+  precedents in this same chip family).
+  capabilities: ["digital_input", "button"] only.
+
+  ALIAS CONFLICT FOUND AND FIXED: this board's own pins_arduino.h also
+  declared this same GPIO as SCL (I2C clock), via
+  `static const uint8_t SCL = 9;`. build_boards.js appends an I2C-clock
+  capability to whatever GPIO number the SCL alias names, independent of
+  anything set in board.json's chipGpios - so leaving that line in place
+  would have silently added an I2C-clock capability on top of the
+  intended button-only capability list, contaminating it. Since GPIO9 is
+  a confirmed physical BOOT button pin, the SCL alias line was deleted
+  outright from pins_arduino.h (not commented out - the parser is
+  comment-blind and matches text regardless of a leading `//`). SDA
+  (GPIO8) was left declared since that pin has no such conflict. A
+  companion `// pfodWeb NOTE:` comment was added directly in
+  pins_arduino.h next to the remaining SDA line, describing the deletion
+  in plain English without reproducing the deleted declaration's literal
+  original text. Additionally, the `#define GDI_SCL SCL` macro (which
+  referenced the now-deleted SCL alias) was repointed at the numeric GPIO
+  value 9 directly, with its own brief NOTE comment, so the file stays
+  internally consistent (the physical GPIO for the optional GDI display's
+  I2C clock line is unchanged - only the removed alias name was updated).
+  This is the same exact conflict pattern (GPIO9 doubling as BOOT button
+  and SCL) already found and fixed on the sibling board
+  waveshare_esp32_c3_zero earlier this session; the same resolution was
+  applied here for consistency.
+
+GPIO10 (LED_BUILTIN) - NOT specially tagged:
+  Confirmed onboard LED per wiki.dfrobot.com ("Onboard LED: GPIO 10") and
+  espboards.dev ("Pin 10: LED_BUILTIN"). This is a plain, non-addressable
+  LED - no PIN_RGB_LED / RGB_BUILTIN / RGB_BRIGHTNESS macros are present
+  in this board's pins_arduino.h (unlike genuine WS2812/NeoPixel boards
+  such as waveshare_esp32_c3_zero or adafruit_qtpy_esp32c3), so no
+  led_neopixel tag applies. This same pin doubles as GDI_BLK (the optional
+  GDI display's backlight-enable line) when a display module is attached,
+  but since the GDI connector itself is optional (see above), this pin
+  remains a general-purpose LED/GPIO. Matching this repo's existing
+  precedent of not adding a special capability tag for a plain LED (e.g.
+  lolin_s3_pro left its TFT-dedicated GPIO14 LED excluded as dedicated
+  hardware but never introduced a generic "led" tag for ordinary LEDs;
+  no such tag exists anywhere in this repo's board.json vocabulary).
+  Left at chip-level default capabilities
+  (["digital_input","digital_output","pwm_output"]).
+  Checked against this board's own pins_arduino.h aliases (TX=21, RX=20,
+  SDA=8, SCL=9 [now removed], SS=7, MOSI=6, MISO=5, SCK=4, A0-A5=0-5) -
+  GPIO10 does not collide with any of them, so no alias-conflict fix was
+  needed for this pin.
+
+Battery voltage-sense pin - NONE FOUND:
+  The board has a TP4057 li-ion charge management chip and a dedicated
+  "BAT" solder-pad terminal on the breakout board for directly connecting
+  a lithium battery, per DFRobot's own wiki and community/forum sources.
+  This is a charge-IC hardware connector, not a GPIO-based ADC
+  voltage-sense pin - no BAT/VBAT/BATTERY alias appears anywhere in this
+  board's pins_arduino.h, so there is nothing for this parser/database to
+  tag or exclude.
+
+Pins considered and NOT changed:
+- GPIO0, 1, 2, 3 (A0-A3 / GDI_SDCS, GDI_DC, GDI_RES, GDI_TCS): left as
+  chip-level default. Repurposed only when an optional GDI display module
+  is physically attached; otherwise fully general-purpose analog/digital
+  pins. No exclusion applied (GDI confirmed optional).
+- GPIO4, 5, 6, 7, 8 (SCK/MISO/MOSI/SS/SDA / GDI SPI+I2C lines): left as
+  chip-level default for the same reason.
+- All other GPIOs (11, 20, 21): unchanged from the chip-level
+  esp32c3/board.json default. No dedicated-hardware declarations found
+  for any of them in this board's pins_arduino.h, and no vendor
+  documentation surfaced during research suggesting any other dedicated
+  onboard peripheral.
+
+Summary of what was changed:
+- Created new board.json for dfrobot_beetle_esp32c3 (none existed
+  before), as a full copy of the esp32c3 chip-level default board.json.
+- GPIO9: capabilities changed to ["digital_input", "button"] - confirmed
+  onboard BOOT button (opportunistic check), strapping pinNote retained.
+- All other chipGpios entries unchanged from the chip-level default,
+  including GPIO10 (plain onboard LED, not specially tagged) and the
+  GDI-repurposed pins (kept general-purpose since GDI is a confirmed
+  optional expansion connector, not fixed onboard hardware).
+- pins_arduino.h: deleted the `SCL = 9` alias line (conflicted with the
+  confirmed GPIO9 BOOT button) and added an explanatory `// pfodWeb NOTE:`
+  comment in its place; repointed `#define GDI_SCL SCL` at the numeric
+  GPIO value 9 with its own brief NOTE comment so the file stays
+  internally consistent; SDA=8 left unchanged.
+- No battery-sense pin found/tagged (dedicated charge-IC hardware
+  connector, not a GPIO alias in this file).
+
+One-line summary: DFRobot Beetle ESP32-C3's GDI connector is a confirmed
+OPTIONAL 18-pin-FPC expansion connector for a separately-attached display
+(kept general-purpose, no pin exclusions); GPIO9 is a confirmed onboard
+BOOT button that also collided with the SCL alias (fixed by deleting the
+alias); GPIO10 is a confirmed plain onboard LED (left untagged, no
+led_neopixel); no battery-sense GPIO exists on this board.

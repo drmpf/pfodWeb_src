@@ -1,0 +1,275 @@
+Board: olimex_pico2bb48 (chip bucket: rp2040/rp2350)
+Audit: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion. Session date 2026-07-13.
+
+Note: a prior attempt at this exact board in an earlier session hit an API
+session-limit error with zero file changes made. This session is a clean
+retry, independently re-sourced from scratch (no reliance on any partial
+prior-session output, since none existed).
+
+SUMMARY (one line): Added chipGpios entry for GPIO25 (PIN_LED / User_Led,
+onboard green 0603 LED, active-high) via a new per-board board.json. No
+button found (only BOOT/BOOTSEL and RESET, both wired to the chip's
+QSPI_SSn/RUN lines, not normal GPIOs, so out of this audit's GPIO-keyed
+tagging scope). No NeoPixel. No pins_arduino.h bug / bus-collision found
+on the LED pin — no source file changes made, only the new board.json.
+
+SOURCES CONSULTED
+
+1. Local file: variants/rp2040/rp2350/olimex_pico2bb48/pins_arduino.h
+   Full contents (as found, unmodified):
+     #pragma once
+     #define PICO_RP2350A 0 // RP2350B
+     #define RP2350_PSRAM_CS (8u)
+     // LEDs
+     #define PIN_LED        (25u)
+     // Serial
+     #define PIN_SERIAL1_TX (0u)
+     #define PIN_SERIAL1_RX (1u)
+     #define PIN_SERIAL2_TX (8u)
+     #define PIN_SERIAL2_RX (9u)
+     // SPI
+     #define PIN_SPI0_MISO  (4u)
+     #define PIN_SPI0_MOSI  (7u)
+     #define PIN_SPI0_SCK   (6u)
+     #define PIN_SPI0_SS    (5u)
+     #define PIN_SPI1_MISO  (24u)
+     #define PIN_SPI1_MOSI  (11u)
+     #define PIN_SPI1_SCK   (10u)
+     #define PIN_SPI1_SS    (9u)
+     // Wire
+     #define PIN_WIRE0_SDA  (12u)
+     #define PIN_WIRE0_SCL  (13u)
+     #define PIN_WIRE1_SDA  (2u)
+     #define PIN_WIRE1_SCL  (3u)
+     #define SERIAL_HOWMANY (3u)
+     #define SPI_HOWMANY    (2u)
+     #define WIRE_HOWMANY   (2u)
+     // DVI connector
+     #define PIN_CKN (15u)
+     #define PIN_CKP (14u)
+     #define PIN_D0N (13u)
+     #define PIN_D0P (12u)
+     #define PIN_D1N (19u)
+     #define PIN_D1P (18u)
+     #define PIN_D2N (17u)
+     #define PIN_D2P (16u)
+     #define PINS_COUNT          (26u)
+     #define NUM_DIGITAL_PINS    (26u)
+     #define NUM_ANALOG_INPUTS   (3u)
+     #define NUM_ANALOG_OUTPUTS  (0u)
+     #define ADC_RESOLUTION      (12u)
+     static const uint8_t D0..D11, D20-D22 (see file - D12-D19 deliberately
+       not declared, with a pre-existing "pfodWeb NOTE" comment explaining
+       GPIO12-19 are reserved for DVI/HSTX use)
+     static const uint8_t A0=26, A1=27, A2=28
+     static const uint8_t SS/MOSI/MISO/SCK = PIN_SPI0_*
+   Only one board-specific LED alias exists: PIN_LED = GPIO25. No button
+   or NeoPixel #define anywhere. GPIO25 does not collide with any SPI/Wire
+   pin declared in this file (SPI0=4-7, SPI1=9-11+24, Wire0=12-13,
+   Wire1=2-3) - so no build_boards.js bus-capability-contamination bug
+   exists on GPIO25 for this board.
+   Note on the pre-existing "DVI connector" block/comment: this content
+   (including the "pfodWeb NOTE" explaining D12-D19's omission) was already
+   present in the file before this session started (consistent with the
+   prior session making zero file changes). It does not touch GPIO25 or
+   any button/LED/NeoPixel pin, so it is out of scope for this audit and
+   was left untouched. (Whether the real BB48 PCB has a physical DVI
+   connector is not confirmed either way by the official user manual's
+   feature list, which does not mention DVI/HDMI output - GPIO12-19 are
+   simply the RP2350's fixed-silicon HSTX peripheral pins, usable for DVI
+   only if a board's PCB routes them to a connector; this is unrelated to
+   the button/LED/NeoPixel task at hand and was not investigated further
+   or changed.)
+
+2. Local file: variants/rp2040/rp2350/board.json (chip-level defaults -
+   chipGpios: {} deliberately empty, every GPIO gets full digital_input/
+   digital_output/pwm_output by default).
+
+3. Local files read for method/format precedent (already-audited RP2040/
+   RP2350 boards in this codebase, used only to confirm the board.json
+   field layout and comment style - all findings below were independently
+   sourced for THIS board, not copied from these):
+     variants/rp2040/rp2350/rpipico2/board.json (RP2350A Pico 2 sibling -
+       confirms the BOOT-button-is-ROM-bootloader / RESET-is-hardware-line
+       out-of-scope rationale used below, and the led_high tagging
+       convention).
+     variants/rp2040/rp2350/olimex_pico2xl/board.json (sibling Olimex
+       RP2350B breadboard board from the same audit wave - confirms same
+       GPIO25/User_Led LED circuit and file-layout convention; that board's
+       own pins_arduino.h has a completely different SPI/Wire pin mapping
+       from this one, so no pin numbers were assumed/copied, only the
+       format).
+     variants/rp2040/rp2040/olimex_rp2040pico30/pins_arduino.h (RP2040
+       sibling with the same UEXT/DVI-connector layout referenced in the
+       task background - read for context on the Olimex family's shared
+       DVI-connector pin convention on other boards, confirming this
+       pattern is a known repo idiom and not unique/suspicious to this
+       file).
+
+4. WebSearch: "Olimex RP2350-PICO2-BB48 board", "Olimex PICO2-BB48 github",
+   "RP2350-PICO2-BB48 pinout GPIO25 LED schematic" - located the official
+   product page (olimex.com/Products/RaspberryPi/PICO/RP2350-PICO2-BB48/
+   open-source-hardware), GitHub hardware repo (github.com/OLIMEX/
+   RP2350-PICO2-BB48), and coverage from CNX Software / Hackster.io /
+   LinuxGizmos confirming: RP2350B chip, all 48 GPIOs exposed, USB-C,
+   BOOT and RESET buttons, status LED, UEXT + Qwiic/Stemma connectors,
+   16MB flash (BB48) or 16MB flash + 8MB PSRAM + microSD (BB48R, same PCB).
+
+5. WebFetch/download (authoritative, olimex.com/github.com/OLIMEX):
+   a. Official Olimex "RP2350-PICO2-BB48 User Manual" Rev.1.0, September
+      2025 (github.com/OLIMEX/RP2350-PICO2-BB48/blob/main/DOCUMENTS/
+      RP2350-PICO2-BB48-user-manual.pdf). Key extracted content:
+        - "Introduction" section confirms feature list: all 48 RP2350
+          GPIOs exposed, USB-C power/data, DCDC 3.3V 2A regulator, 16MB
+          Flash (BB48) / 8MB PSRAM for BB48R, microSD for XXL[sic - shared
+          boilerplate; this board's own layout page shows no SD footprint
+          on the plain BB48 bottom view], "RESET button is add[ed]", UEXT
+          connector, Qwiic/Stemma connector. Explicit note: "Both
+          RP2350-PICO2-BB48 and RP2350-PICO2-BB48R share same PCB with
+          same silkscreen... The only difference is that in BB48 version
+          PSRAM and micro SD card (both on bottom side of the PCB) are
+          not populated."
+        - "RP2350-PICO2-BB48 layout" page (top view, page 6) labels:
+          USB-C, Status LED, Boot button, Reset button, UEXT, Qwicc
+          STemma, RP2350B, 16MB Flash. Only two buttons shown: Reset and
+          Boot (both near the SWD header, physically separate from the
+          GPIO headers).
+        - "Bottom for BB48" page (page 7): no PSRAM/microSD footprint
+          populated (blank silkscreen-only positions) - confirms this is
+          the base BB48 (non-R) variant, consistent with this repo having
+          a single "olimex_pico2bb48" board id/directory.
+        - "RP2350-PICO2-BB48 GPIOs" pinout diagram (page 9): EXT1 header
+          lists GPIO0-23 with their arduino-pico peripheral aliases
+          (matches this board's own pins_arduino.h SPI0/SPI1/Wire0/Wire1
+          assignments exactly: GPIO0/1=UART0_TX/RX, GPIO2/3=I2C1_SDA/SCL,
+          GPIO4=SPI0_RX(MISO), GPIO5=SPI0_CSn(CS#), GPIO6=SPI0_SCK(SCK),
+          GPIO7=SPI0_TX(MOSI), GPIO8=QMI_CS1n, GPIO9=SPI1_CSn,
+          GPIO10=SPI1_SCK\SD_CLK, GPIO11=SPI1_TX\SD_CMD, GPIO12-23 plain).
+          EXT2 header lists GPIO24-47: row 4 = "GPIO24\SPI1_RX\SD_DAT0",
+          row 5 = "GPIO25\User_Led", rows 6-27 = plain GPIO26-47.
+        - "LED connection" schematic (page 16): net label
+          `GPIO25\User_Led` -> R15 (2.2k/0402, in series) -> LED1 anode
+          (LED1, LED/GREEN/0603) -> LED1 cathode -> GND directly. This is
+          a standard current-sourcing drive: GPIO25 driven HIGH sources
+          current through R15 into the LED's anode and out its cathode to
+          GND, i.e. HIGH = LED on (active-high). Matches this board's own
+          `PIN_LED (25u)` alias exactly (same GPIO number).
+        - No NeoPixel/WS2812 component, net, or mention appears anywhere
+          in the manual - the "LED connection" section shows exactly one
+          discrete LED and no addressable/RGB component.
+        - "SOFTWARE" section confirms Raspberry Pi C-SDK, MicroPython
+          (RP2350B/GPIO30-47 not yet supported in MicroPython, noted as a
+          software-side limitation, not a hardware fact), and CircuitPython
+          (all 48 GPIOs implemented) support.
+   b. Official full schematic PDF, KiCad-exported (github.com/OLIMEX/
+      RP2350-PICO2-BB48/blob/main/HARDWARE/RP2350-PICO2-BB48.REV.A/
+      PICO2-BB48_Rev_A.pdf). This is the authoritative circuit-level
+      source and independently confirms:
+        - RP2350B block: "BOOTSEL#" net connects to the chip's
+          QSPI_SSn/QMI_CS0n pin (pin 75), pulled up via R1 (10k) to
+          +3.3V. The "BOOT1" tactile switch (YTS-A016-X) pulls this net
+          to GND when pressed - i.e. pressing BOOT asserts the RP2350's
+          QSPI flash chip-select low, which the boot ROM detects to enter
+          USB mass-storage/bootloader mode. This is NOT a normal
+          digitalRead()-able GPIO - it's the same mechanism used by every
+          other RP2040/RP2350 Pico-style board in this repo (rpipico,
+          rpipico2, olimex_pico2xl, etc.).
+        - "RUN(RESET#)" net (chip pin 35), pulled up via R2 (10k) to
+          +3.3V. The "RST1" tactile switch (YTS-A016-X) pulls this net to
+          GND when pressed - a genuine hardware reset line, not a GPIO
+          at all.
+        - GPIO25/User_Led net: confirmed to have no other alternate
+          net/connection on this PCB besides the LED1/R15 branch already
+          described in the User Manual's LED-connection page - i.e. no
+          hidden SPI/I2C/other bus sharing on this pin at the schematic
+          level either.
+        - Confirms GPIO8 is wired as QMI_CS1n / PSRAM chip-select (used
+          only when the BB48R's PSRAM chip is populated - not populated
+          on this base BB48 board, and this pin is not a button/LED/
+          NeoPixel pin, so out of scope for this audit; matches the
+          `RP2350_PSRAM_CS (8u)` define in pins_arduino.h and the
+          schematic's "Present only in the 'BB48R' variant!" annotation
+          on the PSRAM/microSD blocks).
+        - Confirms GPIO24=SPI1_RX/SD_DAT0, GPIO9-11=SPI1_CSn/SCK/TX-CMD
+          are wired to the microSD-card SPI bus footprint (also
+          "Present only in the 'BB48R' variant!" - unpopulated on this
+          BB48 board, and these are the same SPI1 pins already declared
+          in pins_arduino.h regardless, so no chipGpios change needed).
+
+6. Downloaded artifacts (this session's scratchpad, for reference):
+   pico2bb48_pinout.png, pico2bb48_manual.pdf, pico2bb48_schematic.pdf -
+   all fetched directly from raw.githubusercontent.com/OLIMEX/
+   RP2350-PICO2-BB48/main/... and read via the Read tool.
+
+PER-PIN REASONING
+
+GPIO25 (PIN_LED / User_Led):
+  capabilities: ["digital_output", "pwm_output", "led_high"]
+  Onboard user LED (green, 0603), active-high (see schematic detail above:
+  GPIO25 -> R15 2.2k -> LED1 anode -> LED1 cathode -> GND). digital_input
+  dropped, matching this repo's established led_high/led_low convention
+  for dedicated onboard LED pins (see rpipico2/board.json and
+  olimex_pico2xl/board.json GPIO25 precedents). pwm_output kept since
+  arduino-pico's analogWrite() works on any RP2350 GPIO (enables LED
+  brightness dimming). No SPI/I2C bus alias collision on GPIO25 in this
+  board's own pins_arduino.h (SPI0=GPIO4-7, SPI1=GPIO9-11+24,
+  Wire0=GPIO12-13, Wire1=GPIO2-3 - GPIO25 is untouched by any of these),
+  confirmed independently at the schematic level too (no other net on the
+  GPIO25 pad besides the LED branch). No pins_arduino.h edit needed.
+
+GPIO8 (RP2350_PSRAM_CS / QMI_CS1n):
+  No chipGpios entry added. This pin is wired to the PSRAM chip-select
+  footprint, but that footprint (and the microSD card SPI-bus pins
+  GPIO9-11/24) are only populated on the "BB48R" hardware variant, not on
+  this base "BB48" board (confirmed via both the User Manual's bottom-view
+  photo, showing an empty PSRAM footprint, and the schematic's explicit
+  "Present only in the 'BB48R' variant!" annotations). Since this repo has
+  a single board id for the family and the pin is a normal, unpopulated
+  GPIO on the actual hardware being audited, no dedicated-hardware
+  exclusion was applied - left at chip-level defaults. Out of scope for
+  the button/LED/NeoPixel focus of this audit regardless (not a button,
+  LED, or NeoPixel pin).
+
+Buttons (BOOT/BOOTSEL, RESET):
+  No chipGpios entry added, no capability tag applied. Both are wired to
+  dedicated chip control lines (QSPI_SSn/bootsel for BOOT, RUN/RESET# for
+  RESET), confirmed via the official schematic PDF, not to any numbered
+  GPIO with a pins_arduino.h alias. This is the same out-of-scope
+  rationale already established for every other RP2040/RP2350 Pico-style
+  board in this repo (rpipico, rpipico2, olimex_pico2xl) - neither line is
+  a normal digitalRead()-able Arduino GPIO, so there is no pin to attach a
+  "button" capability to under this repo's GPIO-keyed tagging scheme.
+
+NeoPixel: none present. Confirmed absent from both the official user
+manual (LED-connection section documents exactly one discrete LED, no
+addressable/RGB component) and the full schematic (only one LED
+component, LED1, appears anywhere on the board). No led_neopixel tag
+added.
+
+All other GPIOs (0-7, 9-24, 26-47): no chipGpios entry added - inherit
+only their auto-derived bus/digital capabilities from the chip-level
+defaults (chipGpios: {} at the chip level). No further dedicated onboard
+hardware found on this board beyond the LED (and the BB48R-only
+PSRAM/microSD footprints, addressed above, which are unpopulated on this
+board and not button/LED/NeoPixel pins in any case).
+
+BUG CHECK: No SPI/I2C alias collision found on the LED pin (GPIO25) or any
+other pin in this board's pins_arduino.h relative to its own Wire0/Wire1/
+SPI0/SPI1 definitions, confirmed both from the source file and
+independently from the official schematic. No #define lines were removed
+or modified - this board's pins_arduino.h is completely unchanged by this
+session (including its pre-existing "DVI connector" block and "pfodWeb
+NOTE" comment, which were present before this session started and do not
+intersect with any button/LED/NeoPixel pin).
+
+FILES WRITTEN THIS SESSION
+- variants/rp2040/rp2350/olimex_pico2bb48/board.json (new, full file - chip
+  defaults + chipGpios GPIO25 entry)
+- boardsDetails/rp2040/rp2350/olimex_pico2bb48/notes.txt (this file)
+
+No build commands were run (per task instructions). JSON validity of the
+new board.json was checked manually via a plain JSON.parse after stripping
+"//" line comments with a scratch Node.js script (protecting "https://" URL
+substrings first) - result: VALID JSON, all expected top-level keys
+present, chipGpios.25 capabilities/note as intended.

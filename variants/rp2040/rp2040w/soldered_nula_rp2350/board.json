@@ -1,0 +1,273 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-13.
+// Board: Soldered "NULA Max RP2350" (RP2350B - the 48-GPIO variant -
+// dual Cortex-M33 @150MHz, 520KB SRAM, 16MB flash, DVI/HDMI output,
+// microSD slot, Qwiic/easyC I2C connector, JST Li-Ion battery connector
+// with onboard charger, Raspberry Pi Radio Module 2 [RM2, CYW43439-based]
+// for WiFi/Bluetooth). Confirmed this repo's "soldered_nula_rp2350"
+// variant directory name maps to the "NULA Max RP2350" product - it is
+// the ONLY RP2350-based board in Soldered's "NULA Boards" collection
+// (the others are NULA Mini ESP32-C6, NULA DeepSleep ESP32-S3, NULA
+// Core); no plain, non-"Max" "Nula RP2350" product exists.
+//
+// No board.json override existed before this audit - the rp2040w chip
+// bucket's own board.json documents this board as one of several
+// "self-contained vendor files with their own real pin layouts" in this
+// bucket, meaning every GPIO with ANY alias in this board's own
+// pins_arduino.h (variants/rp2040/rp2040w/soldered_nula_rp2350/
+// pins_arduino.h) defaulted to full digital_input/digital_output/
+// pwm_output via build_boards.js's buildEsp32Board() - including the
+// onboard WiFi radio's power-enable line, the onboard USER button, and
+// (via a bare "D33" alias with no bus-role tag at all) the onboard
+// microSD card's dedicated chip-select pin. The onboard WS2812 NeoPixel
+// LED had NO alias whatsoever (its pins_arduino.h declaration is a bare
+// `#define PIN_NEOPIXEL (26u)`, which build_boards.js's alias parser
+// does not recognise - only `static const uint8_t` declarations count),
+// so it was entirely ABSENT from the generated pin list until this audit
+// added it via chipGpios.
+//
+// Sources consulted:
+//  - This board's own pins_arduino.h (variants/rp2040/rp2040w/
+//    soldered_nula_rp2350/pins_arduino.h), full file read directly.
+//    Key findings: `#include <cyw43_wrappers.h>` (confirms CYW43-family
+//    radio); `#define PIN_NEOPIXEL (26u)` / `NUM_NEOPIXEL (1u)` under a
+//    "//LEDs" comment (bare #define, no D26 alias - previously invisible
+//    to build_boards.js entirely); `static const uint8_t WRL_ON = (23u);`
+//    under "// WiFi power GPIO"; `static const uint8_t USER_BTN = (27u);`
+//    under "// User button"; a dedicated "// SD Card SPI" bus block
+//    (PIN_SPI1_MISO=30/MOSI=31/SCK=32/SS=33) with `#define PIN_SPI1_SS
+//    (33u) // CS pin for SD card.` directly on the SS line - distinct
+//    from the plain, unlabeled "// SPI0" bus (MISO=2/MOSI=3/SCK=4/SS=5)
+//    used for general/header SPI. GPIO30/31 (SPI1 MISO/MOSI) are also
+//    aliased as Wire1 SDA1/SCL1 (PIN_WIRE1_SDA=30/SCL=31), i.e. an
+//    alternate I2C1 role - this board's own file gives no D30 alias at
+//    all (only SDA1), consistent with GPIO30 being header/connector-
+//    exposed for a user-selected purpose rather than SD-only. GPIO32
+//    (SPI1 SCK) has only a plain D32 alias and no alternate documented
+//    role. `static const uint8_t SD_ENABLE = (4u);` under "// SD Card
+//    detect - Active Low" and `static const uint8_t
+//    PERIPHERAL_POWER_ENABLE = (7u);` under "// Power enable for
+//    peripherals - qwiic, sd, rgb. Default HIGH via HW jumper." and
+//    `static const uint8_t BATT_ALRT_N = (6u);` under "// Low battery
+//    alert - Active Low" - all three share their GPIO with a plain D<n>
+//    alias already (D4/D6/D7) and are described as jumper-configurable/
+//    board-specific-use signals, not fixed dedicated silicon (see
+//    per-pin reasoning below). GPIO12-19/24/25/28/29/36-39 have NO alias
+//    of any kind in this file.
+//  - Official raspberrypi/pico-sdk board-support header, fetched
+//    directly (raw.githubusercontent.com/raspberrypi/pico-sdk/master/
+//    src/boards/include/boards/soldered_nula_max_rp2350.h) - this is the
+//    authoritative, vendor-contributed board-definition header upstream
+//    in the official Pico SDK (title comment: "Board definition for the
+//    Soldered NULA Max RP2350"). Confirms, independently of this repo's
+//    own pins_arduino.h:
+//      `#define SOLDERED_NULA_MAX_RP2350_USER_BTN 27` (matches USER_BTN)
+//      `#define PICO_DEFAULT_WS2812_PIN 26` (matches PIN_NEOPIXEL)
+//      `#define SOLDERED_NULA_MAX_RP2350_HDMI_CLK_N 12` / `_CLK_P 13` /
+//        `_D0_N 14` / `_D0_P 15` / `_D1_N 16` / `_D1_P 17` / `_D2_N 18` /
+//        `_D2_P 19` - confirms GPIO12-19 are dedicated DVI/HDMI
+//        differential-pair output lines, matching the product's "DVI
+//        output" feature. Already fully absent from this board's own
+//        pins_arduino.h alias list (no D12-D19 declared anywhere) - i.e.
+//        already correctly excluded from the generated pin set by
+//        omission; no chipGpios entry added or needed for them.
+//      `PICO_DEFAULT_I2C_SDA_PIN 8` / `_SCL_PIN 9` ("Qwiic connector is
+//        on these pins") - matches this board's own PIN_WIRE0_SDA=8/
+//        SCL=9 exactly.
+//      `PICO_DEFAULT_UART_TX_PIN 40` / `_RX_PIN 41`, `PICO_DEFAULT_SPI_*`
+//        pins 35-38 - these are the pico-sdk's own "default peripheral"
+//        picks (a different numbering convention/instance than this
+//        board's Arduino-core PIN_SERIAL1_TX/RX=0/1 and PIN_SPI0_*=2-5),
+//        not a conflict - RP2350 GPIOs are function-mux-routable to
+//        multiple peripheral instances; not acted on here (out of scope,
+//        no button/LED/dedicated-hardware significance).
+//      `PICO_SD_CLK_PIN 2` / `PICO_SD_CMD_PIN 0` / `PICO_SD_DAT0_PIN 3` /
+//        `PICO_SD_DAT3_PIN 1 // DAT3 of the SD card is the chip select
+//        pin` - the pico-sdk's own generic 1-bit-SDIO-mode default pin
+//        picks for boards that declare SD support at all; NOTE this
+//        does NOT match this board's own pins_arduino.h, which instead
+//        gives the microSD card its own dedicated SPI1 bus at GPIO30-33
+//        (see above) and leaves GPIO0-3 as plain Serial1 TX/RX (0/1) and
+//        general SPI0 MISO/MOSI (2/3). Given this board's own
+//        arduino-pico pins_arduino.h is the actual, authoritative source
+//        the Designer's generated sketches compile against (not the
+//        pico-sdk's bare-metal default-pin scheme, which is a separate,
+//        generic fallback not necessarily wired to real silicon on every
+//        SD-capable board), GPIO0-3 are NOT treated as SD-dedicated here
+//        - no chipGpios override added for them. This SD_CLK/CMD/DAT0/
+//        DAT3 pico-sdk default appears to be unused/inapplicable
+//        boilerplate for this specific board's Arduino-core integration.
+//  - soldered.com product listing (soldered.com/product/nula-max-rp2350/),
+//    fetched directly. Confirms: "WS2812 RGB LED" (NeoPixel-style
+//    addressable LED - matches GPIO26); "RESET, BOOTSEL, and USER
+//    buttons" (three buttons total - RESET is a hardware reset line, not
+//    a GPIO; BOOTSEL is the standard RP2040/RP2350-family boot-ROM
+//    button, not a normal digitalRead()-capable GPIO on this family,
+//    matching this repo's existing convention of never tagging BOOTSEL;
+//    USER is the GPIO27 USER_BTN); "Raspberry Pi Radio Module 2
+//    providing reliable and native WiFi and Bluetooth connectivity"
+//    (confirms the RM2/CYW43439 radio, same module family already
+//    researched for sibling board sparkfun_thingplusrp2350); "JST
+//    Li-Ion battery connector" with "onboard charger included" (context
+//    for BATT_ALRT_N - a charger-IC status signal, not vendor-named
+//    beyond this board's own pins_arduino.h comment).
+//  - docs.soldered.com/nula-max-rp2350/hardware/ (official hardware-
+//    details doc page), fetched directly. Confirms a jumper table:
+//    JP1 (default NC) "Disconnects Power LED to reduce standby current"
+//    (a fixed power-indicator LED, not a GPIO - no action); JP2 (default
+//    NC) "Enables MicroSD chip select line"; JP3 (default NC) "Connects
+//    GPIO4 to the MicroSD card power enable line" (directly corroborates
+//    this board's own SD_ENABLE=GPIO4 alias, and confirms it is
+//    jumper-gated and NOT connected by default); JP4 (default NO) "Keeps
+//    the microSD card powered at all times when closed"; JP5 (default
+//    NC) "Enables Qwiic I2C interface". The page states the hardware/
+//    schematic repository for this board is "not available yet" (still
+//    being published by Soldered), so exact per-net schematic labels for
+//    JP2's "chip select line" target and the RM2 radio's control-line
+//    wiring were not independently re-derivable beyond this jumper table
+//    and the pins_arduino.h/pico-sdk sources above.
+//  - github.com/raspberrypi/pico-sdk issue #2816 ("Add Soldered NULA Max
+//    RP2350 board file") - confirms the board-support header above is a
+//    genuine, recently-added (2026) vendor contribution, not a stale or
+//    speculative file.
+//
+// Per-pin findings and decisions:
+//
+//  GPIO23 (WRL_ON): EXCLUDED, capabilities: []. CONFIRMED WiFi/BT radio
+//    (RM2/CYW43439) power-enable control line via this board's own
+//    pins_arduino.h comment "// WiFi power GPIO" + the product's
+//    confirmed RM2 radio. A sketch that treats this as a plain digital
+//    output (e.g. for LED blinking or general I/O) risks powering the
+//    radio off mid-session or interfering with the CYW43 driver's own
+//    enable-sequencing at startup - same functional hazard already
+//    documented for other RM2/CYW43-family radio-control pins in this
+//    chip bucket (see rpipicow/rpipico2w's GPIO23/24/25/29 findings and
+//    sparkfun_thingplusrp2350's WL_ON research). No SDA/SCL/SS/MOSI/
+//    MISO/SCK bus-alias collision on GPIO23 (this board's generic SS/
+//    MOSI/MISO/SCK/SDA/SCL aliases resolve to GPIO2/3/4/5/8/9), so no
+//    pins_arduino.h edit was needed to prevent an unwanted auto-appended
+//    bus tag.
+//
+//  GPIO26 (PIN_NEOPIXEL, no pins_arduino.h D<n> alias at all): ADDED,
+//    capabilities: ["digital_output","led_neopixel","pwm_output"].
+//    CONFIRMED onboard WS2812 addressable RGB LED via this board's own
+//    pins_arduino.h (NUM_NEOPIXEL=1) + the official pico-sdk board
+//    header (PICO_DEFAULT_WS2812_PIN 26) + soldered.com's own product
+//    listing ("WS2812 RGB LED"). digital_input omitted, matching this
+//    repo's established led_neopixel precedent (sparkfun_thingplusrp2350
+//    GPIO14, esp32/esp32c61 GPIO8).
+//
+//  GPIO27 (USER_BTN): RESTRICTED, capabilities: ["digital_input",
+//    "button"] (digital_output/pwm_output dropped from the otherwise-
+//    default full I/O set). CONFIRMED onboard USER button via this
+//    board's own pins_arduino.h ("// User button") + the official
+//    pico-sdk board header (SOLDERED_NULA_MAX_RP2350_USER_BTN 27) +
+//    soldered.com's own product listing ("RESET, BOOTSEL, and USER
+//    buttons"). digital_output/pwm_output deliberately omitted - no
+//    source confirms driving this line as output is electrically safe,
+//    matching this repo's conservative precedent for board user-buttons
+//    (e.g. pimoroni_pico_plus_2w GPIO45).
+//
+//  GPIO33 (PIN_SPI1_SS, aliased only as plain "D33" - no SS-style alias
+//    that build_boards.js's automatic bus-tag matching would recognise,
+//    since consts.SS resolves to PIN_SPI0_SS=5 on this board, not
+//    PIN_SPI1_SS): EXCLUDED, capabilities: []. CONFIRMED onboard microSD
+//    card chip-select via this board's own pins_arduino.h comment
+//    ("// SD Card SPI" bus header + "// CS pin for SD card" directly on
+//    PIN_SPI1_SS) - same confirmation standard already used for
+//    sparkfun_thingplusrp2350's GPIO9 (also commented "CS pin for SD
+//    card", also excluded). No legitimate general-purpose or bus-role
+//    capability applies - a dedicated SD chip-select is never meant to
+//    be user-toggled as plain digital I/O.
+//
+//  GPIO30/31/32 (PIN_SPI1_MISO/MOSI/SCK - the rest of the "SD Card SPI"
+//    bus): NO CHANGE, left at chip-derived general-purpose defaults.
+//    GPIO30/31 are also aliased as this board's Wire1 SDA1/SCL1
+//    (PIN_WIRE1_SDA/SCL), i.e. an alternate, user-selectable I2C1 role -
+//    this indicates the pins are genuinely broken out/shared rather than
+//    SD-internal-only, matching this repo's existing policy for
+//    dual-purpose SPI buses (sparkfun_thingplusrp2350's SPI0 SCK/MOSI/
+//    MISO, left general-purpose because also header-exposed). GPIO32
+//    has no alternate alias but no source confirms it is SD-exclusive
+//    either (unlike GPIO33's explicit CS comment) - left unchanged,
+//    lower-confidence but consistent with the conservative "don't
+//    exclude without a direct dedicated-pin confirmation" policy. Only
+//    GPIO33's unambiguous "CS pin for SD card" comment met that bar.
+//
+//  GPIO4 (SD_ENABLE) / GPIO5 (PIN_SPI0_SS) / GPIO6 (BATT_ALRT_N) /
+//    GPIO7 (PERIPHERAL_POWER_ENABLE): NO CHANGE, left at chip-derived
+//    general-purpose defaults (GPIO5 additionally keeps its automatic
+//    "spi_ss" bus tag via the existing SS-alias match). Reasoning:
+//      - GPIO4 (SD_ENABLE / "SD Card detect - Active Low"): the official
+//        hardware-details page's JP3 entry ("Connects GPIO4 to the
+//        MicroSD card power enable line", default NC) confirms this
+//        connection is jumper-gated and NOT present by default - this is
+//        a board-specific-use, user-configurable signal, not fixed
+//        dedicated silicon, matching this repo's existing precedent for
+//        jumper/board-specific power-enable pins (sparkfun_thingplusrp2350
+//        GPIO13 RT9080 EN - NO CHANGE).
+//      - GPIO5 (PIN_SPI0_SS): possibly related to JP2 ("Enables MicroSD
+//        chip select line", default NC), also jumper-gated and not
+//        connected by default; remains the general-purpose SPI0 SS pin.
+//      - GPIO6 (BATT_ALRT_N / "Low battery alert - Active Low"): a
+//        likely status/alert signal from the onboard Li-Ion charger IC
+//        (product listing confirms "onboard charger included"), but no
+//        vendor source specifically documents this pin as unsafe to
+//        drive as an output or as permanently hardwired without a
+//        jumper - left general-purpose per this audit's "confirm via
+//        real documentation, don't guess a restriction" policy.
+//      - GPIO7 (PERIPHERAL_POWER_ENABLE / "Power enable for peripherals
+//        - qwiic, sd, rgb. Default HIGH via HW jumper."): explicitly
+//        described in this board's own pins_arduino.h as jumper-
+//        configurable (matches JP5 "Enables Qwiic I2C interface" and/or
+//        JP4 "Keeps the microSD card powered at all times when closed"
+//        territory) - board-specific-use, not silicon-dedicated, same
+//        NO CHANGE precedent as GPIO4 above.
+//
+//  GPIO12-19 (HDMI/DVI CLK/D0/D1/D2 N/P differential pairs): NO CHANGE
+//    NEEDED - already fully absent from this board's own pins_arduino.h
+//    alias list (confirmed via direct read - no D12-D19 declared
+//    anywhere), so already correctly excluded from the generated pin set
+//    by omission. Confirmed as dedicated DVI/HDMI output lines via the
+//    official pico-sdk board header's SOLDERED_NULA_MAX_RP2350_HDMI_*
+//    defines. No chipGpios entry added (would incorrectly re-introduce
+//    pins not meant to be general-purpose I/O).
+//
+//  GPIO24/25/28/29/36-39 (no alias in pins_arduino.h, no known dedicated
+//    function identified in any source consulted): NO CHANGE - already
+//    excluded from the generated pin set by omission; no evidence they
+//    are anything other than simply unbroken-out/unused GPIOs on this
+//    board, so no chipGpios entry was fabricated for them.
+//
+//  GPIO0/1 (PIN_SERIAL1_TX/RX): NO CHANGE NEEDED - unlike several sibling
+//    boards in this chip bucket (sparkfun_thingplusrp2350, rpipico2w),
+//    this board's own pins_arduino.h already declares proper bare
+//    `TX`/`RX` aliases (`static const uint8_t RX = PIN_SERIAL1_RX;` /
+//    `TX = PIN_SERIAL1_TX;`), so build_boards.js's g===tx/g===rx
+//    serial-role detection already correctly fires - no pre-existing gap
+//    to flag for this board.
+//
+//  BOOTSEL/RESET: NO CHANGE (no "button" tag) - RESET is a hardware
+//    reset line, not a GPIO; BOOTSEL is read via the boot ROM, not a
+//    normal digitalRead()-capable GPIO on this family, matching this
+//    repo's universal convention of never tagging Pico-family BOOTSEL as
+//    a general-purpose "button".
+//
+// See boardsDetails/rp2040/rp2040w/soldered_nula_rp2350/notes.txt for the
+// full research trail.
+{
+  "boardName": "RP2040W",
+  "displayName": "Raspberry Pi Pico W / 2W",
+  "family": "rp2040",
+  "inputOnlyGpios": [],
+  "connections": ["serial", "tcp", "http", "ble"],
+  "pinNotes": {},
+  "chipGpios": {
+    "23": { "capabilities": [], "note": "WiFi/BT radio (Raspberry Pi RM2 / CYW43439) power-enable line (WRL_ON) - dedicated radio control signal, not general purpose. Confirmed via this board's own pins_arduino.h comment \"// WiFi power GPIO\" + official product listing confirming a Raspberry Pi Radio Module 2 (RM2, CYW43439-based) WiFi/Bluetooth radio, matching the same dedicated-enable-line pattern documented for other RM2-equipped boards in this repo (e.g. sparkfun_thingplusrp2350)." },
+    "26": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "Onboard WS2812 addressable RGB LED (PIN_NEOPIXEL/NUM_NEOPIXEL=1 in this board's own pins_arduino.h; no D26 alias otherwise exists since PIN_NEOPIXEL is a bare #define). Confirmed via the official raspberrypi/pico-sdk board header boards/soldered_nula_max_rp2350.h (PICO_DEFAULT_WS2812_PIN 26) and soldered.com's own product listing (\"WS2812 RGB LED\")." },
+    "27": { "capabilities": ["digital_input", "button"], "note": "Onboard USER button (USER_BTN alias in this board's own pins_arduino.h). Confirmed via the official raspberrypi/pico-sdk board header boards/soldered_nula_max_rp2350.h (SOLDERED_NULA_MAX_RP2350_USER_BTN 27) and soldered.com's own product listing (\"RESET, BOOTSEL, and USER buttons\"). digital_output/pwm_output deliberately omitted - no vendor source confirms driving this line as output is safe, matching this repo's conservative precedent for board user-buttons (e.g. pimoroni_pico_plus_2w GPIO45)." },
+    "33": { "capabilities": [], "note": "Onboard microSD card chip-select (SPI1 SS). Confirmed via this board's own pins_arduino.h comments (\"// SD Card SPI\" bus header + \"// CS pin for SD card\" directly on PIN_SPI1_SS) - same dedicated-CS confirmation standard already used for sparkfun_thingplusrp2350's GPIO9 (also commented \"CS pin for SD card\", also excluded). This board's generic SS/MOSI/MISO/SCK aliases resolve to SPI0 (GPIO2-5), not SPI1, so GPIO33 carries no automatic bus-role tag - capabilities:[] fully excludes it from general I/O as intended." }
+  },
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

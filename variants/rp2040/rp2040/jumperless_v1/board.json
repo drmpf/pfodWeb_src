@@ -1,0 +1,99 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no button alias at all, and
+  // no onboard general-purpose pushbutton could be confirmed via vendor
+  // sources (see notes.txt) — out of scope, not a missed tag.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, 2026-07-13):
+  //
+  // Board: "Jumperless" (v1) by Architeuthis Flux — an analog/digital
+  // breadboard-replacement device: a crossbar switch matrix (12x CH446Q
+  // crosspoint switch ICs) connects almost every RP2040 GPIO to a
+  // virtual breadboard grid, plus a rotary encoder, a probe, DACs/ADCs,
+  // INA219 current/voltage sensors, and a WS2812/NeoPixel addressable
+  // LED chain for under-breadboard row illumination. This is
+  // architecturally unlike a normal dev board — most of this board's
+  // GPIOs are genuinely dedicated to driving the matrix/encoder/probe
+  // hardware, not general-purpose for a user's own sketch.
+  //
+  // Research performed: this board's own pins_arduino.h/comment pointing
+  // at https://github.com/Architeuthis-Flux/Jumperless/tree/main/Hardware,
+  // plus the vendor's official firmware source
+  // (JumperlessNano/src/JumperlessDefinesRP2040.h, LEDs.cpp, main.cpp,
+  // CH446Q.h) fetched from that same repository. The firmware source
+  // does confirm that specific GPIOs are dedicated to the crossbar chip
+  // -selects/clock/data and the rotary encoder (matching the "generally
+  // unused" comments already present against GPIO18/19 in this board's
+  // own pins_arduino.h) — however, repeated independent fetches of
+  // JumperlessDefinesRP2040.h through available tooling produced
+  // internally INCONSISTENT numeric extractions for those exact GPIO
+  // assignments (e.g. GPIO6 attributed to both a chip-select line and
+  // the NeoPixel data-out pin across different fetch passes; GPIO0
+  // attributed to both the encoder pushbutton and UART0 TX across
+  // different passes). Given this board's unusually dense repurposing of
+  // nearly every GPIO, and per this audit's explicit conservative
+  // instruction for this specific board, NO exclusions are applied for
+  // the matrix/encoder/probe pins — a wrong guess here risks either
+  // disabling genuinely free pins or leaving genuinely-reserved pins
+  // incorrectly exposed, and the numeric evidence available could not be
+  // independently corroborated to the confidence bar this repo's audits
+  // otherwise require. Full findings trail:
+  // boardsDetails/rp2040/rp2040/jumperless_v1/notes.txt
+  //
+  // GPIO25 (PIN_LED): declared explicitly in this board's own
+  // pins_arduino.h (not inherited from a generic fallback), with the
+  // file's own header comment citing the vendor's Hardware/schematic
+  // repo as its source — i.e. a real contributor examined the actual
+  // Jumperless schematic and found a physical LED wired to GPIO25,
+  // consistent with the near-universal RP2040/Pico-family convention of
+  // wiring a simple status LED to GP25 regardless of what else a custom
+  // board repurposes elsewhere. The vendor's own current firmware
+  // (main.cpp) contains a `pinMode(LED_BUILTIN, OUTPUT); ...
+  // digitalWrite(LED_BUILTIN, HIGH);` sequence — confirming active-high
+  // polarity — but that sequence is commented out/inactive in the
+  // shipped firmware, which instead does all status/visualization
+  // signalling through the separate NeoPixel chain. This does not
+  // contradict GPIO25's physical existence as a plain LED, only that the
+  // stock firmware doesn't currently exercise it; a Designer sketch
+  // flashed in place of the stock firmware is free to use it. Tagged as
+  // led_high (digital_input dropped) matching this repo's established
+  // dedicated-onboard-LED precedent (rpipico/board.json, GPIO25).
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard status LED. Declared explicitly in this board's own pins_arduino.h citing the vendor Hardware/schematic repo as source; active-high confirmed via a commented-out (currently unused by stock firmware) digitalWrite(LED_BUILTIN, HIGH) sequence in the vendor's own main.cpp. See pfodWeb NOTE above and notes.txt for full trail." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on the RP2040 chip itself — this board does have
+  // onboard buffered DAC ICs for its analog breadboard rails, but those
+  // are separate SPI/I2C-driven chips, not RP2040 GPIO analogWrite/DAC
+  // pins, so this chip-level field is unaffected.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board also has onboard buffered ADC ICs for
+  // its analog breadboard rails, but those are separate chips reached
+  // over SPI/I2C, not the RP2040's own ADC0-2 GPIOs, so this chip-level
+  // field is unaffected.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

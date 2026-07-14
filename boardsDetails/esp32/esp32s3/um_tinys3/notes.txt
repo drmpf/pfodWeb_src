@@ -1,0 +1,52 @@
+um_tinys3 (Unexpected Maker TinyS3, ESP32-S3) - button/LED research notes
+Date: 2026-07-11
+
+Sources consulted:
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\um_tinys3\pins_arduino.h (local, vendor-derived) - defines
+  RGB_DATA=18, RGB_BUILTIN=(RGB_DATA+SOC_GPIO_PIN_COUNT), LED_BUILTIN=RGB_BUILTIN (new rgbLedWrite API),
+  and TX=43, RX=44. No BUTTON/BOOT alias is defined anywhere in this file.
+- https://unexpectedmaker.com/tinys3 - official product page; confirms board has an RGB LED but the
+  fetched content did not include a specific GPIO number or mention any onboard push button.
+- https://esp32s3.com/tinys3.html - Unexpected Maker's own comparison/intro page; lists "Low power RGB LED"
+  as a feature; no GPIO number given; no mention of "button", "reset", or "boot" anywhere on the page.
+- https://www.adafruit.com/product/5398 - Adafruit product listing for TinyS3; lists "Low Power RGB LED"
+  as a feature; explicit text search for "button"/"reset"/"boot" found only a mention of the UF2
+  bootloader (software), no physical button described.
+- https://github.com/UnexpectedMaker/esp32s3 - Unexpected Maker's GitHub repo hosting schematics
+  (schematic-tinys3.pdf) and pinout reference cards; page text itself did not contain pin-level detail
+  (schematic is a PDF, not parsed here).
+- WebSearch results (aggregated, incl. a MicroPython/CircuitPython discussion) - independently reported
+  TinyS3 NeoPixel data on GPIO18 and power-gate on GPIO17, consistent with pins_arduino.h's RGB_DATA=18
+  and this board.json's pre-existing GPIO17 exclusion NOTE (RGB_PWR power gate, already excluded by an
+  earlier audit pass, not touched by this task).
+- https://learn.adafruit.com/products/5398/guides and https://learn.adafruit.com/adafruit-tinys3 -
+  attempted lookups for an Adafruit learn guide with button/pin detail; no accessible guide content found
+  (404 / no guide listing returned).
+- https://help.unexpectedmaker.com/index.php/article-categories/boards/ - 404, not accessible.
+- https://www.crowdsupply.com/unexpected-maker/tinys3 - 403 Forbidden, not accessible.
+
+Tagged:
+- GPIO18 -> led_neopixel (+ digital_output, + pwm_output retained since it was already present).
+  Confirmed via pins_arduino.h RGB_DATA=18 corroborated by the Unexpected Maker/Adafruit product
+  pages ("Low Power RGB LED" feature) and independent web reports of GPIO18 NeoPixel data pin for
+  this exact board. Not TX(43)/RX(44), so no TX/RX conflict.
+
+Considered but NOT tagged:
+- GPIO0 (BOOT/strapping pin, "Must be HIGH for normal boot" per existing pinNotes) - considered as a
+  possible physical "user button" candidate because ESP32/ESP32-S3 dev boards commonly wire a BOOT
+  button to GPIO0. However, no vendor source (product pages, esp32s3.com, Adafruit listing,
+  pins_arduino.h) explicitly documents a physical BOOT or user button on the TinyS3, and
+  pins_arduino.h defines no BUTTON/BOOT alias at all (unlike the RGB LED, which IS explicitly
+  aliased). This is a deliberate no-guess decision, not a best-guess judgment call - there was
+  no confirming evidence either way, and GPIO0's boot-strap role plus lack of documentation made
+  it too risky to tag as a general-purpose button. Left completely untagged; a human reviewer with
+  access to the schematic PDF (schematic-tinys3.pdf, linked from
+  https://github.com/UnexpectedMaker/esp32s3) could confirm/deny an onboard BOOT button and its
+  GPIO if desired.
+- GPIO17 (RGB_PWR / NeoPixel power gate) - NOT reconsidered; this was already excluded from chipGpios
+  by an earlier audit pass (pre-existing NOTE at top of board.json). Out of scope for this task, left
+  untouched.
+
+Summary of changes made: Tagged GPIO18 capabilities to ["digital_output","led_neopixel","pwm_output"]
+in board.json (onboard NeoPixel data pin). No button was tagged - no confirmable onboard physical user
+button was found in vendor documentation for this specific TinyS3 (S3) variant.

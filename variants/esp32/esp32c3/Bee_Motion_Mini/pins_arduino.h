@@ -9,8 +9,14 @@ static const uint8_t RX = 20;
 static const uint8_t BOOT_BTN = 9;
 static const uint8_t PIR = 5;
 
+// pfodWeb NOTE: SCL alias (was GPIO9) deleted - this is generic
+// ESP32-C3 template boilerplate, never vendor-confirmed as a real onboard
+// I2C header, and it silently contaminated the confirmed BOOT_BTN
+// button's capability list with "i2c_scl" (build_boards.js appends
+// i2c_scl to any GPIO matching the SCL alias, unconditionally, the same
+// mechanism as the TX/RX hard-reservation bug). SDA (GPIO8) left as-is -
+// it doesn't collide with any tagged pin.
 static const uint8_t SDA = 8;
-static const uint8_t SCL = 9;
 
 static const uint8_t SS = 7;
 static const uint8_t MOSI = 6;

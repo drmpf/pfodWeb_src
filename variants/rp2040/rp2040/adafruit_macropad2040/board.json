@@ -1,0 +1,193 @@
+// pfodWeb NOTE (button/LED/NeoPixel tagging + dedicated-hardware pin
+// exclusion audit, 2026-07-13):
+//
+// Board: Adafruit MacroPad RP2040 (PID 5100) - a real 12-key mechanical
+// keyboard/macro-pad device with a rotary encoder (with integrated
+// push-button), a 128x64 monochrome OLED display on dedicated hardware
+// SPI, and a 3x4 grid of 12 NeoPixels (one per key).
+//
+// Sources consulted (WebFetch/WebSearch, 2026-07-13):
+//  1. https://learn.adafruit.com/adafruit-macropad-rp2040/pinouts
+//     (authoritative Arduino/CircuitPython pin-name reference)
+//  2. https://learn.adafruit.com/adafruit-macropad-rp2040/macropad-basics
+//  3. https://github.com/adafruit/Adafruit_CircuitPython_MacroPad/blob/main/adafruit_macropad.py
+//     (confirms LED polarity via the library's own digitalio usage)
+//  4. This board's own variants/rp2040/rp2040/adafruit_macropad2040/pins_arduino.h
+//     (bespoke, not ../generic_full/common.h - see its own pfodWeb NOTE)
+//
+// KEYS (GPIO1-12, board.KEY1..KEY12 / Arduino pins 1-12): confirmed via
+// source #1 - "The sockets are available in CircuitPython as board.KEY1
+// through board.KEY12. In Arduino they are pins 1 through 12" and
+// "Pressing a key grounds the pin, so set a pull-up on each pin." These
+// are 12 genuine individually-wired mechanical key switches (not a
+// row/column matrix). This board's own pins_arduino.h already declares
+// D1-D12 static-const aliases for GPIO1-12, so they reach the parser
+// with full chip-default capabilities (digital_input/digital_output/
+// pwm_output) unless overridden - overridden below to
+// ["digital_input","button"].
+//
+// ENCODER SWITCH (GPIO0, PIN_SWITCH): confirmed via source #1 - "The
+// BOOT button is available in CircuitPython at board.ENCODER_SWITCH or
+// board.BUTTON. It is available in Arduino at PIN_SWITCH. Pressing the
+// button grounds the pin." This is the rotary encoder's integrated
+// push-button (press down on the knob), which doubles as a BOOT-mode
+// button when held at power-up. GPIO0 has no static-const alias in this
+// board's pins_arduino.h (grouped under its own "Extra hardware!"
+// comment, no D0 declared), so it is invisible to the parser without an
+// explicit chipGpios entry - added below as ["digital_input","button"]
+// so it surfaces correctly rather than being silently absent.
+//
+// ENCODER A/B (GPIO18=PIN_ROTA, GPIO17=PIN_ROTB): confirmed via source
+// #1 as the rotary encoder's quadrature lines (CircuitPython
+// board.ROTA/ENCODER_A, board.ROTB/ENCODER_B). Neither has a
+// static-const alias in this board's pins_arduino.h (no D17/D18
+// declared), so both are already absent/excluded from the parser's pin
+// list by default. Left fully excluded here (explicit capabilities: []
+// entries added purely for documentation, matching this repo's
+// established precedent of excluding rotary-encoder quadrature pins
+// entirely - see esp32s3/m5stack_dinmeter's "GPIO40/41 (rotary encoder
+// quadrature)" exclusion). No "encoder"/"quadrature" capability tag
+// exists in this repo's vocabulary, and these pins are permanently
+// claimed by the onboard encoder hardware, so they are not offered as
+// general-purpose digital I/O.
+//
+// LED (GPIO13, PIN_LED): confirmed via source #1 - "The red LED is
+// available in CircuitPython at board.LED. It is available in Arduino
+// at PIN_LED" (a single red status LED next to the USB port, separate
+// from the 12 NeoPixels). Polarity confirmed active-high via source #3
+// - Adafruit's own CircuitPython MacroPad helper library wraps board.LED
+// as `self._led = digitalio.DigitalInOut(board.LED)` and exposes it as
+// `red_led`, where `macropad.red_led = True` turns the LED on (library
+// docstring: "The red led next to the USB port" with True/False
+// setter directly driving `.value`). Tagged
+// ["digital_output","pwm_output","led_high"], matching this repo's
+// established led_high precedent (rpipico, akana_r1, wiznet_5100s_evb_pico).
+//
+// NEOPIXELS (GPIO19, PIN_NEOPIXEL, NUM_NEOPIXEL=12): confirmed via
+// source #1 - "The NeoPixel LEDs are available in CircuitPython as
+// board.NEOPIXEL. They are available in Arduino as PIN_NEOPIXEL," with
+// the page describing the onboard 3x4 (12-pixel) grid, matching this
+// board's own NUM_NEOPIXEL=12 #define. Tagged
+// ["digital_output","led_neopixel","pwm_output"], matching this repo's
+// established led_neopixel precedent (sparkfun_thingplusrp2350 GPIO14).
+//
+// SPEAKER (GPIO16=PIN_SPEAKER, GPIO14=PIN_SPEAKER_ENABLE): confirmed
+// via source #1 as the onboard piezo speaker's PWM audio-output pin and
+// its dedicated amplifier-enable pin (CircuitPython board.SPEAKER /
+// board.SPEAKER_ENABLE). Neither has a static-const alias in this
+// board's pins_arduino.h (no D14/D16 declared - already grouped under
+// the header's own "Extra hardware!" comment), so both are already
+// absent from the parser's pin list by default. Explicit
+// capabilities: [] entries added below purely for documentation,
+// matching this repo's established dedicated-onboard-peripheral
+// exclusion precedent (e.g. wiznet_5500_evb_pico2's Ethernet SPI/reset/
+// interrupt lines).
+//
+// OLED DISPLAY (GPIO22=OLED_CS, GPIO23=OLED_RST, GPIO24=OLED_DC, plus
+// the SPI1 bus GPIO26=SCK/GPIO27=MOSI/GPIO28=MISO): confirmed via
+// source #1 - "on high-speed hardware SPI to ensure quick updates" -
+// this board's onboard 128x64 monochrome OLED. OLED_CS/OLED_RST/OLED_DC
+// are plain #defines with no static-const alias (no D22/D23/D24
+// declared), so they are already absent from the parser's pin list by
+// default; explicit capabilities: [] entries added below purely for
+// documentation. GPIO26/27/28, by contrast, DO carry static-const
+// aliases in this board's pins_arduino.h (D26/D27/D28, doubling as
+// A0/A1/A2) even though the same header separately declares them as
+// PIN_SPI1_SCK/MOSI/MISO for the OLED's dedicated hardware SPI bus -
+// this is the exact alias-collision gotcha flagged for this audit
+// (a confirmed dedicated-hardware pin also carrying a general D<n>/A<n>
+// alias that would otherwise expose it as ordinary digital/analog I/O).
+// Unlike the adafruit_feather_scorpio precedent, this SPI1 bus is
+// genuinely in active use (driving the onboard OLED), not a spare/
+// unused bus, so the fix here is a chipGpios capability override
+// (capabilities: []) rather than deleting the #define. GPIO28 (MISO) is
+// included even though a typical write-only OLED module has no SDO/MISO
+// line physically bonded, because arduino-pico's SPI1 peripheral claims
+// the GPIO28 pin-mux function for its hardware SPI role whenever the
+// display library initializes SPI1, making it unavailable as ordinary
+// digital I/O in practice - same reasoning as the wiznet_*_evb_pico*
+// boards' uniform MISO/MOSI/SCK/SS exclusion for their onboard Ethernet
+// SPI bus.
+//
+// GPIO15, GPIO20/21 (PIN_WIRE0_SDA/SCL - STEMMA QT I2C connector),
+// GPIO25, GPIO29 (A3): NO CHANGE. GPIO15/25 are ordinary spare GPIOs
+// with a D-alias and no other declared use. GPIO20/21 are the genuine
+// user-facing STEMMA QT I2C expansion connector (confirmed via source
+// #1: "you can use the STEMMA connector with board.SCL and board.SDA"),
+// not an internally-dedicated bus, so left at full default capability
+// (i2c_sda/i2c_scl auto-tagging is out of scope for this audit and does
+// not fire here anyway, since this board's bespoke pins_arduino.h
+// deliberately declares no unqualified SDA/SCL static-const aliases).
+// GPIO29/A3 is a genuine spare analog-capable pin with no other
+// declared use.
+//
+// Full findings/sources trail:
+// boardsDetails/rp2040/rp2040/adafruit_macropad2040/notes.txt
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board - see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's buttons (12 keys + encoder switch) are ordinary GPIO
+  // push-buttons ("Pressing a key/the button grounds the pin" per
+  // Adafruit's own docs) with a software pull-up, not capacitive-touch
+  // or otherwise input-only - handled entirely via the chipGpios
+  // "button" tags below, so no inputOnlyGpios entry is needed for them.
+  "inputOnlyGpios": [],
+
+  // Default transports - Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"], "note": "PIN_SWITCH - rotary encoder's integrated push-button switch (press down on the knob), also doubles as the BOOT-mode button when held at power-up. Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts: \"The BOOT button is available in CircuitPython at board.ENCODER_SWITCH or board.BUTTON. It is available in Arduino at PIN_SWITCH. Pressing the button grounds the pin.\" No static-const alias in this board's pins_arduino.h, so this entry is required for the pin to surface at all." },
+    "1":  { "capabilities": ["digital_input", "button"], "note": "KEY1 - one of 12 individually-wired mechanical key switches (D1 static-const alias, Arduino pin 1). Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts: \"The sockets are available in CircuitPython as board.KEY1 through board.KEY12. In Arduino they are pins 1 through 12... Pressing a key grounds the pin.\"" },
+    "2":  { "capabilities": ["digital_input", "button"], "note": "KEY2 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "3":  { "capabilities": ["digital_input", "button"], "note": "KEY3 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "4":  { "capabilities": ["digital_input", "button"], "note": "KEY4 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "5":  { "capabilities": ["digital_input", "button"], "note": "KEY5 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "6":  { "capabilities": ["digital_input", "button"], "note": "KEY6 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "7":  { "capabilities": ["digital_input", "button"], "note": "KEY7 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "8":  { "capabilities": ["digital_input", "button"], "note": "KEY8 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "9":  { "capabilities": ["digital_input", "button"], "note": "KEY9 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "10": { "capabilities": ["digital_input", "button"], "note": "KEY10 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "11": { "capabilities": ["digital_input", "button"], "note": "KEY11 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "12": { "capabilities": ["digital_input", "button"], "note": "KEY12 - see GPIO1 (KEY1) note above; same source, same confirmation." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED - onboard red status LED next to the USB port (distinct from the 12 NeoPixels). Confirmed active-high via Adafruit's own Adafruit_CircuitPython_MacroPad library (adafruit_macropad.py): wraps board.LED as a DigitalInOut and exposes red_led such that `macropad.red_led = True` turns it on." },
+    "14": { "capabilities": [], "note": "PIN_SPEAKER_ENABLE - dedicated enable line for the onboard piezo speaker's amplifier, not general purpose. Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts (board.SPEAKER_ENABLE / PIN_SPEAKER_ENABLE). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "16": { "capabilities": [], "note": "PIN_SPEAKER - dedicated PWM audio-output line to the onboard piezo speaker, not general purpose. Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts (board.SPEAKER / PIN_SPEAKER). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "17": { "capabilities": [], "note": "PIN_ROTB - rotary encoder quadrature channel B, permanently dedicated to the onboard encoder, not general purpose. Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts (board.ROTB / board.ENCODER_B). No static-const alias in this board's pins_arduino.h; entry added for documentation, matching this repo's rotary-encoder-quadrature exclusion precedent (esp32s3/m5stack_dinmeter GPIO40/41)." },
+    "18": { "capabilities": [], "note": "PIN_ROTA - rotary encoder quadrature channel A, permanently dedicated to the onboard encoder, not general purpose. Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts (board.ROTA / board.ENCODER_A). No static-const alias in this board's pins_arduino.h; entry added for documentation, matching this repo's rotary-encoder-quadrature exclusion precedent (esp32s3/m5stack_dinmeter GPIO40/41)." },
+    "19": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "PIN_NEOPIXEL - onboard 3x4 grid of 12 addressable NeoPixels (NUM_NEOPIXEL=12), one per key. Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts: \"The NeoPixel LEDs are available in CircuitPython as board.NEOPIXEL. They are available in Arduino as PIN_NEOPIXEL.\"" },
+    "22": { "capabilities": [], "note": "OLED_CS - dedicated chip-select line to the onboard 128x64 monochrome OLED's hardware SPI1 bus, not general purpose. Confirmed via learn.adafruit.com/adafruit-macropad-rp2040/pinouts (\"on high-speed hardware SPI\"). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "23": { "capabilities": [], "note": "OLED_RST - dedicated reset line to the onboard OLED, not general purpose. See GPIO22 (OLED_CS) note above for sourcing. No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "24": { "capabilities": [], "note": "OLED_DC - dedicated data/command select line to the onboard OLED, not general purpose. See GPIO22 (OLED_CS) note above for sourcing. No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "26": { "capabilities": [], "note": "PIN_SPI1_SCK - dedicated hardware-SPI clock line to the onboard OLED. This board's pins_arduino.h also declares this GPIO as D26/A0 (general digital/analog aliases) despite it being consumed by the OLED's active SPI1 bus - flagged alias-collision gotcha for this audit; excluded here rather than editing the header, since the bus is genuinely in use (unlike the adafruit_feather_scorpio precedent's spare/unused SS default). See GPIO22 (OLED_CS) note above for sourcing." },
+    "27": { "capabilities": [], "note": "PIN_SPI1_MOSI - dedicated hardware-SPI data line to the onboard OLED. Also declared as D27/A1 in this board's pins_arduino.h despite active OLED use - see GPIO26 (PIN_SPI1_SCK) note above for the same alias-collision reasoning." },
+    "28": { "capabilities": [], "note": "PIN_SPI1_MISO - part of the onboard OLED's dedicated hardware SPI1 bus. A write-only OLED module typically has no physical SDO/MISO line bonded, but arduino-pico's SPI1 peripheral still claims this GPIO's pin-mux function whenever the display library initializes SPI1, making it unavailable for ordinary digital I/O in practice (same reasoning as the wiznet_*_evb_pico* boards' uniform SPI-bus exclusion). Also declared as D28/A2 in this board's pins_arduino.h - see GPIO26 (PIN_SPI1_SCK) note above for the alias-collision reasoning." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 4 analog channels (A0-A3 = GPIO26-29), 12-bit ADC - matches the
+  // chip-level default. Note A0-A2 (GPIO26-28) are consumed by the
+  // onboard OLED's SPI1 bus (see chipGpios above) and so are not
+  // actually usable as analog inputs on this board; only A3 (GPIO29) is
+  // genuinely free.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

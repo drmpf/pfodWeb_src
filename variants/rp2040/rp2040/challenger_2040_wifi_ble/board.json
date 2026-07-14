@@ -1,0 +1,192 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "iLabs Challenger 2040 WiFi/BLE" (variants/rp2040/boards.txt,
+  // challenger_2040_wifi_ble.name=).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This board's own pins_arduino.h
+  // (top-of-file pfodWeb NOTE, already present before this audit) documents
+  // why: it carries an add-on ESP32-C3 WiFi/BLE co-processor reached over
+  // UART1 (Serial2, GPIO4/5, "ESP AT" build menu option) or SPI1 ("ESP
+  // hosted" build menu option, variants/rp2040/boards.txt
+  // challenger_2040_wifi_ble.menu.espwifitype), NOT the native RP2040 +
+  // CYW43439 combo that Pico W / rp2040w-bucket boards use.
+  // variants/rp2040/tcp.ino, http.ino and ble.ino are written against the
+  // native cyw43 WiFi.h stack, so they do not apply here — this board
+  // would need its own dedicated AT-command/esp-hosted .ino templates
+  // before it could genuinely offer tcp/http/ble connections through the
+  // Designer. Confirmed correctly bucketed in the plain "rp2040" family
+  // (not "rp2040w") for that reason — matches the sibling
+  // challenger_2040_wifi board's own (non-BLE, ESP8285-co-processor)
+  // reasoning, audited earlier this session.
+  //
+  // pfodWeb NOTE (WiFi-bucketing flag, 2026-07-13 audit): this board DOES
+  // have real onboard WiFi+BLE silicon (an ESP32-C3FN co-processor,
+  // confirmed via iLabs' own MkII datasheet), unlike most other boards
+  // correctly left in the plain "rp2040" bucket for lacking WiFi hardware
+  // entirely. It sits here deliberately because the mechanism differs
+  // from the native cyw43 stack (UART-AT or SPI-"hosted" co-processor
+  // protocol vs. a single SPI-attached native radio) rather than through
+  // oversight. Flagging per this audit's standing instruction to surface
+  // (not silently fix) any WiFi-bucketing question — no chip-bucket move
+  // made in this task.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/NeoPixel tagging
+  // audit, 2026-07-13):
+  //
+  // Board: iLabs "Challenger RP2040 WiFi/BLE" (Adafruit Feather form
+  // factor; GPIO map below verified identical against the current
+  // "MkII" datasheet revision — see notes.txt for the exact match
+  // details/caveat).
+  // Sources consulted:
+  //   - https://ilabs.se/challenger-rp2040-wifi-ble-mkii-datasheet/
+  //     (official vendor datasheet; the plain, non-MkII
+  //     challenger-rp2040-wifi-ble-datasheet URL 404s, superseded by the
+  //     MkII page — GPIO numbers confirmed identical to this board's own
+  //     pins_arduino.h, see notes.txt) — confirms: onboard user LED is
+  //     green, "connected to pin D13" (= this board's D13/GPIO10 alias,
+  //     matching PIN_LED/LED_BUILTIN), active-high ("can easily be
+  //     controlled by the user program"); onboard NeoPixel is "an RGB LED
+  //     with intensity control, run by a single GPIO (D14/GPIO11) pin" (=
+  //     this board's NEOPIXEL/D14/GPIO11 alias); ESP32-C3 co-processor
+  //     UART1 TX/RX = GPIO4/5, reset = GPIO19 (active low), mode/flash
+  //     select = GPIO24; SPI1 link SCK=GPIO14, SDI(->MOSI)=GPIO12,
+  //     SDO(->MISO)=GPIO15, CS=GPIO13, handshake=GPIO18; no onboard user
+  //     pushbutton documented (beyond reset/BOOTSEL); separate "CHG" LED
+  //     is a hardware battery charge-controller status indicator, not
+  //     RP2040-GPIO-driven, out of scope.
+  //   - This board's own pins_arduino.h top-of-file pfodWeb NOTE
+  //     (pre-existing) plus its "Uart/SPI connected to ESP32C3" comment
+  //     blocks and pre-existing "pfodWeb NOTE: D15-D21 deliberately NOT
+  //     declared" comment (confirms GPIO12/13/14/15/18/19/24 were already
+  //     stripped from the D-alias list in an earlier pass of this audit
+  //     project, ahead of today's chipGpios pass).
+  //   - variants/rp2040/boards.txt (challenger_2040_wifi_ble.* entries) —
+  //     confirms displayName override text and the two selectable
+  //     co-processor protocols (menu.espwifitype: esp_at = AT-command
+  //     UART, esp_hosted = ESPHOSTSPI=SPI1) — both wiring paths are
+  //     physically present on the PCB regardless of which firmware build
+  //     option is chosen, so all of GPIO4/5/12/13/14/15/18/19/24 are
+  //     excluded regardless.
+  //   - variants/rp2040/rp2040/challenger_2040_wifi/board.json + its
+  //     notes.txt (sibling board, ESP8285-co-processor, audited earlier
+  //     this session) — precedent for capabilities:[] dedicated-pin
+  //     format and led_high/led_neopixel tagging conventions.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/challenger_2040_wifi_ble/notes.txt
+  //
+  // Per-pin reasoning:
+  //   GPIO4  - PIN_SERIAL2_TX / PIN_ESP_TX - ESP32-C3 co-processor UART1
+  //            TX (AT-command mode). Not aliased to any Dn header pin.
+  //            capabilities: [].
+  //   GPIO5  - PIN_SERIAL2_RX / PIN_ESP_RX - ESP32-C3 co-processor UART1
+  //            RX (AT-command mode). Same reasoning as GPIO4.
+  //   GPIO12 - PIN_SPI1_MISO - ESP32-C3 co-processor SPI1 link
+  //            ("ESP hosted" mode). Not general-purpose.
+  //   GPIO13 - PIN_SPI1_SS - ESP32-C3 co-processor SPI1 chip-select.
+  //            Not general-purpose.
+  //   GPIO14 - PIN_SPI1_SCK - ESP32-C3 co-processor SPI1 clock.
+  //            Not general-purpose.
+  //   GPIO15 - PIN_SPI1_MOSI - ESP32-C3 co-processor SPI1 link.
+  //            Not general-purpose.
+  //   GPIO18 - PIN_ESP32_HS - ESP32-C3 co-processor SPI1 handshake line.
+  //            Not general-purpose.
+  //   GPIO19 - PIN_ESP32_RST - ESP32-C3 co-processor active-low reset
+  //            line, driven by the RP2040. Not general-purpose.
+  //   GPIO24 - PIN_ESP32_MODE / ESPHOST_DATA_READY - ESP32-C3
+  //            co-processor mode-select line (AT mode) / continuously
+  //            polled data-ready handshake line (ESP-hosted mode). Not
+  //            general-purpose — capabilities:[].
+  //            ** KNOWN RESIDUAL LIMITATION, FLAGGED NOT FIXED **: this
+  //            board's pins_arduino.h ALSO #defines this same GPIO24 as
+  //            PIN_SPI0_MISO (upstream arduino-pico vendor file, not a
+  //            pfodWeb-introduced alias), which build_boards.js
+  //            unconditionally re-tags with a "spi_miso" capability
+  //            regardless of this capabilities:[] override (see
+  //            pfodWeb_src/build_boards.js line ~702, `if (g === miso)
+  //            caps.push('spi_miso')`, which runs unconditionally after
+  //            the chipGpios-derived capability set is assembled). Unlike
+  //            the adafruit_feather_scorpio precedent (which safely
+  //            dropped an actually-unused PIN_SPI0_SS default), this
+  //            board's SPI0 bus is NOT spare — PIN_SPI0_MOSI/SCK/SS
+  //            (GPIO23/22/21) ARE broken out to header pins D3/D4/A5, and
+  //            arduino-pico's core libraries/SPI/src/SPI.cpp only
+  //            constructs the board's default global "SPI" object inside
+  //            an `#ifdef PIN_SPI0_MISO` guard — so removing this #define
+  //            would not just silence the stray capability tag, it would
+  //            delete the default SPI (SPI0) object entirely, breaking
+  //            SPI0 for every sketch using D3/D4/A5, a far larger
+  //            regression than the cosmetic mistagging. Left unfixed per
+  //            this audit's own qualifier ("if the bus is genuinely
+  //            unused/spare") — this one is not. Recommend a dedicated
+  //            follow-up (with real hardware/compile access) if this
+  //            residual "spi_miso" mistag on GPIO24 needs resolving.
+  //   GPIO10 - PIN_LED / LED_BUILTIN - onboard user LED ("D13" in vendor
+  //            header-pin numbering), confirmed green and active-high by
+  //            the vendor's own MkII datasheet. Tagged led_high per the
+  //            challenger_2040_wifi/rpipico/wiznet_5500_evb_pico
+  //            precedent; digital_input dropped, pwm_output kept for
+  //            brightness dimming.
+  //   GPIO11 - NEOPIXEL - onboard WS2812 addressable RGB status pixel
+  //            ("D14/GPIO11" per the vendor's own MkII datasheet wording,
+  //            verbatim). Tagged led_neopixel (not led_high/led_low),
+  //            matching this repo's established led_neopixel precedent
+  //            (e.g. challenger_2040_wifi/board.json GPIO11, sea_picro/
+  //            board.json GPIO25). pwm_output kept per the same
+  //            precedent; digital_input dropped.
+  //
+  // No onboard user pushbutton beyond BOOTSEL (not a normal GPIO, out of
+  // scope per the same reasoning already documented in rpipico/board.json
+  // and the sibling challenger_2040_wifi/board.json) — confirmed no
+  // separate pushbutton exists on this board via the vendor MkII
+  // datasheet.
+  //
+  // GPIO4/5/12/13/14/15/18/19 carry no OTHER SPI/I2C bus alias on this
+  // board beyond their own dedicated ESP32-C3 SPI1/UART1 role, so the
+  // build_boards.js unconditional bus-capability auto-append (the
+  // "confirmed button/LED/dedicated pin also aliased as
+  // SDA/SCL/SS/MOSI/MISO/SCK" bug class flagged for this audit) does not
+  // apply to them. GPIO24 is the one exception — see its per-pin note
+  // above; flagged rather than fixed since SPI0 is a genuinely active,
+  // partially-broken-out bus, not a spare one.
+  "chipGpios": {
+    "4": { "capabilities": [], "note": "PIN_SERIAL2_TX / PIN_ESP_TX - onboard ESP32-C3 WiFi/BLE co-processor's dedicated UART1 TX line (AT-command mode). Not general-purpose." },
+    "5": { "capabilities": [], "note": "PIN_SERIAL2_RX / PIN_ESP_RX - onboard ESP32-C3 WiFi/BLE co-processor's dedicated UART1 RX line (AT-command mode). Not general-purpose." },
+    "12": { "capabilities": [], "note": "PIN_SPI1_MISO - onboard ESP32-C3 WiFi/BLE co-processor's dedicated SPI1 link (\"ESP hosted\" mode). Not general-purpose." },
+    "13": { "capabilities": [], "note": "PIN_SPI1_SS - onboard ESP32-C3 WiFi/BLE co-processor's dedicated SPI1 chip-select line. Not general-purpose." },
+    "14": { "capabilities": [], "note": "PIN_SPI1_SCK - onboard ESP32-C3 WiFi/BLE co-processor's dedicated SPI1 clock line. Not general-purpose." },
+    "15": { "capabilities": [], "note": "PIN_SPI1_MOSI - onboard ESP32-C3 WiFi/BLE co-processor's dedicated SPI1 link. Not general-purpose." },
+    "18": { "capabilities": [], "note": "PIN_ESP32_HS - onboard ESP32-C3 WiFi/BLE co-processor's SPI1 handshake line. Not general-purpose." },
+    "19": { "capabilities": [], "note": "PIN_ESP32_RST - onboard ESP32-C3 WiFi/BLE co-processor's active-low reset line, driven by the RP2040. Not general-purpose." },
+    "24": { "capabilities": [], "note": "PIN_ESP32_MODE / ESPHOST_DATA_READY - onboard ESP32-C3 WiFi/BLE co-processor's mode-select (AT mode) / data-ready handshake (ESP-hosted mode) line. Not general-purpose. NOTE: this GPIO is also this board's vendor-defined PIN_SPI0_MISO alias; build_boards.js's unconditional spi_miso auto-append will still surface a 'spi_miso' capability on this pin despite this override - a known, flagged, NOT-fixed residual limitation (see board.json header comment) since removing that alias would disable the board's entire default SPI0 object, not just the MISO line." },
+    "11": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "NEOPIXEL - onboard WS2812 addressable RGB status LED (D14). Confirmed via iLabs' own MkII datasheet (\"an RGB LED with intensity control, run by a single GPIO (D14/GPIO11) pin\")." },
+    "10": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN - onboard user LED (\"D13\"), confirmed green and active-high by iLabs' own MkII datasheet (\"connected to pin D13 and can easily be controlled by the user program\")." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

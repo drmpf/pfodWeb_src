@@ -22,7 +22,8 @@ static const uint8_t RGB_BUILTIN = SOC_GPIO_PIN_COUNT + 46;  // RGB LED.
 #define RGB_LED_PIN    RGB_BUILTIN
 #define RGB_BRIGHTNESS 65
 
-#define VP_EN  11  // V Peripheral Enable.
+// pfodWeb NOTE: VP_EN (GPIO11) deliberately NOT declared - internal
+// peripheral-power-enable line, not general-purpose.
 #define BUZZER 12  // Piezo Buzzer.
 #define BOOT   0   // Boot Button.
 #define BUTTON 3   // User Button.

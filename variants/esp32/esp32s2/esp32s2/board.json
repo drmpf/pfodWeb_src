@@ -1,0 +1,111 @@
+// pfodWeb NOTE: GPIO18 tagged "led_neopixel" - confirmed onboard addressable
+// WS2812 RGB LED on GPIO18 on BOTH of Espressif's own official ESP32-S2
+// reference boards, per this variant's own pins_arduino.h source comments
+// ("GPIO pin for Saola-1 & DevKitM-1 = 18") and Espressif's official
+// esp-dev-kits user guides:
+//   - ESP32-S2-Saola-1 (user_guide_v1.2.html): "Addressable RGB LED (WS2812),
+//     driven by GPIO18."
+//   - ESP32-S2-DevKitM-1 (user_guide.html): "Addressable RGB LED, driven by
+//     GPIO18"; J3 pin-header table lists GPIO18 as
+//     "RTC_GPIO18, GPIO18, U1RXD, ADC2_CH7, DAC_2, CLK_OUT3, RGB LED".
+// This "esp32s2" variant (boards.txt id "esp32s2", displayName "ESP32-S2
+// Dev Module") is the single generic Arduino IDE entry both official boards
+// map to - there is no separate dedicated Saola-1/DevKitM-1 entry.
+//
+// CONFIDENCE CAVEAT (same as the esp32c3/esp32s3 precedents in this audit):
+// this generic entry can also be selected as a catch-all for third-party/
+// no-name ESP32-S2 boards with no dedicated variant of their own, where the
+// GPIO18 LED assumption would not hold. The led_neopixel tag below is
+// correct for genuine Espressif Saola-1/DevKitM-1 hardware (and clones
+// thereof); Designer users on unrelated ESP32-S2 hardware should verify
+// against their own board's silkscreen/schematic.
+//
+// GPIO18 also carries real ADC2_CH7 and DAC_2 silicon capability per the
+// chip TRM (see the chip-level default's "dac"/"chipGpios" comments), but
+// per this repo's established LED-tag exclusivity policy (see the esp32c3
+// and esp32s3 board.json precedents) a pin physically committed to driving
+// an onboard addressable LED drops every other capability - only
+// digital_output/pwm_output/led_neopixel are kept here. The chip's second
+// DAC channel remains available and correctly tagged on GPIO17.
+//
+// ALIAS-COLLISION CHECK (new this session): GPIO18 is NOT aliased as SDA/
+// SCL/SS/MOSI/MISO/SCK/TX/RX anywhere in this board's pins_arduino.h (SDA=8,
+// SCL=9, SS=34, MOSI=35, MISO=37, SCK=36, TX=43, RX=44 - all different
+// pins), so build_boards.js's unconditional bus-alias capability append
+// (i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck) cannot contaminate this
+// pin. No pins_arduino.h edit was needed for this check, unlike the
+// esp32c3 case where SDA=8 collided with PIN_RGB_LED=8.
+//
+// Sources consulted - see boardsDetails/esp32/esp32s2/esp32s2/notes.txt
+// for the full list and reasoning trail.
+{
+  "boardName": "ESP32S2",
+  "displayName": "ESP32-S2 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32-S2 has two 8-bit DAC channels on GPIO 17 and GPIO 18.
+  // dacWrite(pin, value): value 0–255 maps to 0.0–3.3 V output.
+  // NOTE: on this board GPIO18's DAC channel is not usable - the pin is
+  // physically committed to driving the onboard WS2812 NeoPixel (see the
+  // pfodWeb NOTE above). Only GPIO17's DAC channel is exposed below.
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // ESP32-S2: GPIO46 is the only input-only pin on the chip.
+  "inputOnlyGpios": [46],
+
+  // ESP32-S2 has WiFi but NO Bluetooth - BLE is omitted.
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: ESP32-S2 Technical Reference Manual — Strapping Pins.
+  "pinNotes": {
+    "0":  "Must be HIGH for normal boot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32-S2 chip.  GPIOs 26-32
+  // (flash/PSRAM) and GPIOs 19-20 (USB) are excluded.  GPIO 46 is
+  // input-only (no output driver).  GPIOs 22-25 do not exist in this
+  // chip's silicon.  GPIO18 is dedicated to the onboard WS2812 NeoPixel
+  // on this board - see pfodWeb NOTE above.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "18": { "capabilities": ["digital_output", "pwm_output", "led_neopixel"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "35": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "36": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "37": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "38": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "39": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "40": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "41": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "42": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "43": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "44": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "45": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "46": { "capabilities": ["digital_input"] }
+  }
+}

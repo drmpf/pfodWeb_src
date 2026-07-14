@@ -1,0 +1,175 @@
+mksthr42 (chip: rp2040) - dedicated-hardware pin-exclusion audit
+=================================================================
+Date: 2026-07-13
+Board: Makerbase "MKS THR42" V1.0_001 - a Klipper "tool header" board
+(RP2040 MCU + onboard TMC2209 stepper driver + ADXL345 accelerometer +
+CAN transceiver + heater/3-fan MOSFET bank), designed for NEMA17 tool
+heads. Sibling board THR36 (same wave, this repo's mksthr36/) is the
+identical PCB/pinout for NEMA14 tool heads - confirmed by diffing both
+boards' pins_arduino.h files byte-for-byte (100% identical, no diff
+output). This board is a genuine commercial product, not a generic
+dev board - almost the entire GPIO range is committed to onboard
+peripherals.
+
+SOURCES CONSULTED
+-----------------
+1. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\mksthr42\pins_arduino.h
+   (local file, read in full) and the identical mksthr36\pins_arduino.h
+   for comparison (byte-for-byte diff = no differences).
+2. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level
+   defaults, chipGpios: {} deliberately empty at chip level).
+3. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\bigtreetech_SKR_Pico\board.json
+   (precedent for the audit mechanism, chipGpios capabilities:[] pattern
+   for both aliased and un-aliased dedicated pins, and the led_neopixel
+   tagging convention).
+4. C:\ai\aicode\pfodWeb\variants\rp2040\boards.txt - confirmed
+   mksthr42.name=Makerbase MKS THR42, mksthr42.build.led= (empty - no
+   LED_BUILTIN defined for this board).
+5. github.com/makerbase-mks/MKS-THR36-THR42-UTC (official vendor repo):
+   - README.md - shared RP2040+TMC2209+ADXL345+CAN-transceiver feature
+     set; THR36 (NEMA14, round, R=25mm) vs THR42 (NEMA17, square,
+     42x42mm) is a form-factor-only difference; "BOOT button for
+     firmware updates" confirmed as the RP2040 BOOTSEL button, not a
+     regular GPIO.
+   - MKS_THR.cfg (vendor-supplied Klipper config, fetched raw and read
+     in full) - gave concrete GPIO numbers for extruder step(5)/dir(4)/
+     enable(10, active-low)/uart(6)/heater(0)/thermistor(26), ADXL345
+     SPI pins (cs=13, sclk=14, mosi=15, miso=12), fans (gpio1/2/3),
+     X endstop (gpio24), Y endstop (gpio25). All cross-checked against
+     the schematic and matched exactly.
+   - hardware/MKS THR42 V1.0_001/PCB  MKS THR42 V1.0_001 PIN.pdf -
+     vendor silkscreen pinout diagram (fetched, rendered as image via
+     the Read tool, transcribed directly): grouped labels for every
+     GPIO 0-26 and 29 (IO22:SDA, IO23:SCL, IO19:MOSI, IO18:SCK,
+     IO17:CS, IO16:MISO as one expansion-header block; X-/IO24;
+     Y-/IO25; Z-/PROBE/IO21; MT-DET/IO29; Neopixel/IO20; 3DTOUCH/IO21+
+     IO11; ADXL345 DO/CS/SCK/DI = IO12/13/14/15; TH/IO26; E-MOTOR
+     EN/STEP/DIR/UART/DIAG = IO10/5/4/6/7; CAN TX/RX = IO9/8; FAN0/1/2
+     = IO1/2/3; HE = IO0).
+   - hardware/MKS THR42 V1.0_001/PCB  MKS THR42 V1.0_001 SCH.pdf - full
+     10-sheet KiCad schematic export (2022-10-27), fetched and rendered
+     page-by-page via the Read tool. Confirmed every net name against
+     the PIN.pdf diagram and MKS_THR.cfg, and additionally found:
+       - GPIO16-19 (SPI0_MISO/CS/SCK/MOSI) and GPIO22-23 (I2C SDA/SCL)
+         land only on PCB test points (T1-T6 in MCU.sch) - NOT wired to
+         any other onboard peripheral, so a genuine unconstrained
+         expansion bus (KEPT general purpose).
+       - GPIO27 ("GPIO27_ADC1") and GPIO28 ("GPIO28_ADC2") are marked
+         with an explicit crossed-out (X) no-connect symbol in MCU.sch
+         - confirmed genuinely unused/spare on this board revision.
+       - S1 "BOOT" button wires to QSPI_SS (RP2040 BOOTSEL, not a GPIO).
+       - S2 reset button wires to the RUN pin (hardware reset, not a
+         GPIO).
+       - D4 "CGREEN" is a fixed power-indicator LED tied directly across
+         a resistor to 3V3 - no GPIO connection, not firmware-
+         controllable, matches boards.txt's empty build.led=.
+   PDFs were downloaded via WebFetch (redirect-followed raw.githubusercontent.com
+   URLs), saved locally, and read directly with the Read tool (which
+   renders PDF pages as images) since the vendor PDFs are graphical/
+   KiCad exports with no extractable text layer.
+
+PER-PIN REASONING
+------------------
+GPIO0  HE0            - heater0 MOSFET gate. No pins_arduino.h alias
+                         (not currently routable either way). chipGpios
+                         override added for pin-picker clarity only.
+                         capabilities: []
+GPIO1  FAN0           - fan-0 MOSFET gate. No alias. capabilities: []
+GPIO2  FAN1           - fan-1 MOSFET gate. No alias. capabilities: []
+GPIO3  FAN2           - fan-2 MOSFET gate. No alias. capabilities: []
+GPIO4  E0_DIR         - onboard TMC2209 DIR. No alias. capabilities: []
+GPIO5  E0_STEP        - onboard TMC2209 STEP. No alias. capabilities: []
+GPIO6  E0_UART        - onboard TMC2209 single-wire UART (PDN_UART).
+                         No alias. capabilities: []
+GPIO7  E0_DIAG        - onboard TMC2209 DIAG (stall/sensorless-homing).
+                         HAS a `D7` alias in pins_arduino.h -> REAL
+                         DEFECT, was exposed as plain digital I/O.
+                         FIXED via chipGpios capabilities: []
+GPIO8  CAN_RX         - onboard CAN transceiver RX. No alias.
+                         capabilities: []
+GPIO9  CAN_TX         - onboard CAN transceiver TX. No alias.
+                         capabilities: []
+GPIO10 E0_EN          - onboard TMC2209 EN (active-low). No alias.
+                         capabilities: []
+GPIO11 3D_Touch       - BLTouch/3D-Touch probe control signal. HAS a
+                         `D11` alias -> REAL DEFECT, FIXED,
+                         capabilities: []
+GPIO12 SPI1_MISO      - onboard ADXL345 dedicated SPI1 bus (MISO/SDO).
+                         HAS a `D12` alias -> REAL DEFECT, FIXED,
+                         capabilities: []
+GPIO13 SPI1_CS        - ADXL345 SPI1 CS. HAS a `D13` alias -> REAL
+                         DEFECT, FIXED, capabilities: []
+GPIO14 SPI1_SCK       - ADXL345 SPI1 SCK. HAS a `D14` alias -> REAL
+                         DEFECT, FIXED, capabilities: []
+GPIO15 SPI1_MOSI      - ADXL345 SPI1 MOSI/SDA. HAS a `D15` alias ->
+                         REAL DEFECT, FIXED, capabilities: []
+GPIO16 SPI0_MISO      - PCB test point only (T1), no other onboard
+                         consumer -> genuine spare/expansion pin.
+                         KEPT general purpose (also this variant's
+                         default `MISO` alias target). NO CHANGE.
+GPIO17 SPI0_CS/SS     - test point T2, same reasoning. KEPT. NO CHANGE.
+GPIO18 SPI0_SCK       - test point T3, same reasoning. KEPT. NO CHANGE.
+GPIO19 SPI0_MOSI      - test point T4, same reasoning. KEPT. NO CHANGE.
+GPIO20 Neopixel       - dedicated addressable-RGB-LED header (3-pin
+                         5V/DATA/GND, J8). HAS a `D20` alias -> REAL
+                         DEFECT (exposed as plain digital I/O). FIXED:
+                         tagged capabilities: ["digital_output",
+                         "led_neopixel","pwm_output"] per this repo's
+                         led_neopixel convention (bigtreetech_SKR_Pico
+                         precedent).
+GPIO21 Z+/PROBE       - shared Z-probe/BLTouch sensor-signal line
+                         (diode-combined between the PROBE and 3D-Touch
+                         headers). HAS a `D21` alias -> REAL DEFECT,
+                         FIXED, capabilities: []
+GPIO22 I2C_SDA        - test point T5 only, no other consumer (ADXL345
+                         uses the separate SPI1 bus, not this I2C bus).
+                         KEPT general purpose (default `SDA` alias
+                         target). NO CHANGE.
+GPIO23 I2C_SCL        - test point T6, same reasoning. KEPT. NO CHANGE.
+GPIO24 IO24           - X-axis endstop input (confirmed "Stepper X"
+                         endstop_pin in vendor MKS_THR.cfg). HAS a
+                         `D24` alias -> REAL DEFECT despite the generic
+                         "#define PIN_IO24" name. FIXED, capabilities: []
+GPIO25 IO25           - Y-axis endstop input (confirmed "Stepper Y"
+                         endstop_pin). HAS a `D25` alias -> REAL DEFECT,
+                         FIXED, capabilities: []
+GPIO26 TH0            - onboard extruder thermistor NTC divider (ADC0).
+                         KEPT general purpose per this repo's
+                         established onboard-analog-sensor KEEP policy
+                         (bigtreetech_SKR_Pico GPIO26/27 precedent). NO
+                         CHANGE - default A0/analog_input capability
+                         applies unchanged.
+GPIO27 (A1/ADC1)      - schematic explicitly marks "GPIO27_ADC1" with a
+                         crossed-out no-connect symbol - confirmed
+                         unused/spare on this board revision. KEPT
+                         general purpose (no collision risk since
+                         nothing else contends for it). NO CHANGE.
+GPIO28 (A2/ADC2)      - schematic explicitly marks "GPIO28_ADC2" with a
+                         crossed-out no-connect symbol - same as GPIO27.
+                         KEPT general purpose. NO CHANGE.
+GPIO29 IO29/MT-DET    - filament-runout/material-detection switch input
+                         (J13 header). HAS a `D29`/`A3` alias -> REAL
+                         DEFECT despite the generic "#define
+                         PIN_IPO29" name. FIXED, capabilities: []
+
+LED / BUTTON SUMMARY
+---------------------
+No onboard user-controllable LED beyond the Neopixel header - D4
+"CGREEN" is a fixed power-indicator LED wired directly to 3V3 with no
+GPIO connection (matches boards.txt's empty mksthr42.build.led=). No
+onboard user button - S1 "BOOT" ties to QSPI_SS (RP2040 BOOTSEL, out of
+scope per the rpipico/board.json precedent) and S2 ties to the
+RUN/reset pin (hardware reset, not a GPIO).
+
+ONE-LINE SUMMARY
+-----------------
+Created variants/rp2040/rp2040/mksthr42/board.json: confirmed and
+fixed 10 pins (GPIO7, 11, 12-15, 20, 21, 24, 25, 29) that carried
+static-const aliases exposing onboard TMC2209/ADXL345/Neopixel/endstop/
+filament-sensor/BLTouch hardware as plain general-purpose digital I/O;
+added informational capabilities:[] entries for GPIO0-6/8-10 (heater/
+fan/stepper/CAN pins with no alias at all, not currently routable
+either way) matching the bigtreetech_SKR_Pico precedent; kept GPIO16-19
+(SPI0) and GPIO22-23 (I2C0) general purpose as genuine unused
+test-point/expansion pins, and GPIO26-28 general purpose as the onboard
+thermistor (KEEP policy) plus two confirmed no-connect spares.

@@ -1,0 +1,82 @@
+pfodWeb board research notes: esp32/esp32/tbeam (LilyGO/TTGO T-Beam)
+Date: 2026-07-11
+
+Board's own pins_arduino.h declares:
+  static const uint8_t KEY_BUILTIN = 39;
+  static const uint8_t LED_BUILTIN = 14;
+  static const uint8_t TX = 1;
+  static const uint8_t RX = 3;
+(KEY_BUILTIN/LED_BUILTIN names are only aliases per task rules - not used alone as
+proof; confirmed independently below via schematic/community pin-map sources.)
+
+Sources consulted:
+- https://tinymicros.com/wiki/TTGO_T-Beam
+  Reproduced a schematic-derived GPIO pin-map table (ESP32 module pin numbers vs
+  GPIO vs net name). Row "GPIO_14 ... Blue LED (0=off, 1=on)" - confirms GPIO14
+  drives an onboard Blue LED directly from the ESP32, active-HIGH (write 1 = on).
+  No explicit "button" label found on GPIO39 row in this table (row only lists
+  GPIO_39 as Touch/SENSOR_VN); table is for the earlier board revision (rev0/rev1
+  ESP32 module U12/U14), consistent with KEY_BUILTIN=39/LED_BUILTIN=14 pinout.
+- https://github.com/espressif/arduino-esp32/discussions/6823
+  ("TBeam pins_arduino.h LED_BUILTIN") - confirms the arduino-esp32 core's
+  ttgo-t-beam pins_arduino.h (LED_BUILTIN=14) corresponds to the older LilyGO
+  TTGO T-Beam V0_7 revision, not the newer V1.1 board (which instead has an
+  extra LED on GPIO4, per LED_POWER in Meshtastic variant.h). Confirms GPIO14
+  is the correct LED pin specifically for the V0.7-era revision this
+  pins_arduino.h/board.json models (matches KEY_BUILTIN=39 also being the
+  earlier-revision assignment, see below).
+- https://github.com/meshtastic/firmware/blob/develop/variants/esp32/tbeam/variant.h
+  (via search-engine excerpt) - current/mainline Meshtastic T-Beam variant.h uses
+  #define BUTTON_PIN 38 ("the middle button GPIO on the T-Beam") for current
+  hardware, and LED_POWER on GPIO4 for "newer tbeams (1.1)". Confirms that on
+  later hardware revisions the user button moved to GPIO38 (not 39) and the
+  extra LED moved to GPIO4 (not 14) - i.e. this variant/board.json's pinout
+  (KEY_BUILTIN=39, LED_BUILTIN=14) is specifically the EARLIER T-Beam revision.
+- Web search results (multiple independent phrasings, meshtastic.discourse.group
+  and related community threads) - repeatedly and consistently state: "T-Beam
+  0.7 variant BUTTON_PIN 39" / "the second [of two buttons, the other being
+  power] connected to GPIO39 of the ESP32... in later versions (V8+) the user
+  button pin GPIO39 was replaced with GPIO38." This corroborates GPIO39 as the
+  genuine onboard user button specifically on the earlier T-Beam revision that
+  matches this variant's pinout.
+- https://cglabs.medium.com/ttgo-t-beam-where-is-power-led-cbd418756f07
+  Describes a separate AXP192-managed "power control LED" and GPS LED (not
+  GPIO-controlled) - a DIFFERENT LED from the GPIO14 blue LED above; did not
+  contradict the GPIO14 finding, just describes other PMU-controlled indicators
+  that are out of scope (not a plain GPIO pin, so not taggable here anyway).
+- https://www.espboards.dev/esp32/lilygo-t-beam/ - pinout/spec page for the
+  (newer) LilyGo T-Beam; did not document button/LED GPIO assignments explicitly,
+  not used as a confirming source.
+- https://github.com/LilyGO/TTGO-T-Beam/issues/32 ("Version T22 V1.0: LED
+  Built-in GPIO") and https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series -
+  general background confirming multiple hardware revisions (V0.7/rev1/V1.0/
+  V1.1/V1.2) exist with DIFFERENT LED/button GPIO assignments across revisions;
+  used to understand why pin assignments vary and to cross-check which revision
+  this board.json's pinout belongs to.
+
+TX/RX conflict check:
+  pins_arduino.h: TX=1, RX=3. Neither GPIO14 (LED) nor GPIO39 (button) coincide
+  with TX/RX, so no TX/RX hard-reservation conflict for either tag.
+
+Pins considered but NOT tagged:
+- GPIO4 (LED_POWER on NEWER T-Beam V1.1 boards, per Meshtastic variant.h) - NOT
+  tagged. This variant's own pins_arduino.h has no LED alias on GPIO4 and its
+  KEY_BUILTIN/LED_BUILTIN values match the EARLIER revision, not V1.1, so GPIO4
+  is not a confirmed LED for this specific variant. No guess made either way.
+- GPIO38 (BUTTON_PIN on NEWER T-Beam revisions, per Meshtastic variant.h) - NOT
+  tagged for the same reason: this variant models the earlier revision
+  (KEY_BUILTIN=39), and GPIO38 is listed in inputOnlyGpios with a plain
+  analog_input/digital_input chipGpios entry already, matching its role as a
+  regular ADC/touch-capable input pin on this earlier-revision board, not a
+  confirmed button here. No guess made.
+- AXP192 PMU "power button"/PWR_KEY and the AXP192-managed "power control LED" /
+  "GPS LED" described in the Medium article - NOT tagged. These are managed via
+  I2C through the AXP192 PMU chip, not a plain ESP32 GPIO pin, so they are out
+  of scope for pfodWeb GPIO capability tagging regardless.
+
+Summary of what was tagged:
+- GPIO14: capabilities set to ["digital_output","led_high","pwm_output"]
+  (pwm_output retained because it was already present on this pin).
+- GPIO39: capabilities set to ["digital_input","button"].
+Both GPIOs already existed as chipGpios entries (not inside any pre-existing
+pin-exclusion range), so no exclusion was reversed.

@@ -1,0 +1,191 @@
+jumperless_v1 (chip: rp2040) - onboard LED / button / matrix-pin research notes
+================================================================================
+Date: 2026-07-13
+
+Board summary
+-------------
+"Jumperless" (v1) by Architeuthis Flux — a real, unusual product: an
+analog/digital breadboard-replacement device. A crossbar switch matrix made
+of 12x CH446Q crosspoint-switch ICs connects almost every RP2040 GPIO to a
+virtual breadboard grid (rows/nodes), plus the Arduino Nano header. The board
+also has a rotary encoder (with pushbutton), a "probe" input, buffered
+DACs/ADCs for the analog rails, 2x INA219 current/voltage sense ICs, and a
+WS2812/NeoPixel addressable LED chain that lights up under each breadboard
+row/hole for visual feedback. This is architecturally very different from a
+normal dev board — approached with extra care per this audit's instructions,
+biased toward reporting NO CHANGE for anything not confidently confirmed.
+
+Files read locally first
+-------------------------
+- variants/rp2040/rp2040/jumperless_v1/pins_arduino.h — declares PIN_LED (25),
+  PIN_SERIAL1_TX/RX (16/17), PIN_SERIAL2_TX/RX (18/19, both commented
+  "generally unused"), SPI0 (MISO=0, SS=1, SCK=2, MOSI=3), Wire0 (SDA=4,
+  SCL=5), Wire1 (SDA=18, SCL=19, "generally unused"). Header comment: "Pin
+  definitions taken from: https://github.com/Architeuthis-Flux/Jumperless/
+  tree/main/Hardware" — i.e. the arduino-pico contributor who wrote this file
+  sourced it from the vendor's own hardware/schematic files, not a generic
+  guess.
+- variants/rp2040/rp2040/generic/common.h (included by this board's
+  pins_arduino.h) — declares D0-D22, A0-A2 (GPIO26-28), and the
+  PINS_COUNT/NUM_DIGITAL_PINS=26 chip-common defaults. No board-specific
+  hardware info beyond the standard RP2040 ADC/pin-count constants.
+- variants/rp2040/rp2040/board.json (chip-level defaults) — chipGpios is
+  deliberately "{}" at the chip level; every declared alias gets full
+  digital_input/digital_output/pwm_output capability unless a per-board
+  board.json overrides it.
+- Precedents read: variants/rp2040/rp2040/rpipico/board.json (simple
+  confirmed-LED tagging, GPIO25 led_high) and
+  variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (dedicated-hardware
+  GPIO exclusion example, GPIO16-21 Ethernet SPI/RSTn/INTn).
+- Confirmed via directory listing (variants/rp2040/rp2040/*/board.json) that
+  per-board board.json files in this repo are created ONLY when there is a
+  concrete override to declare — most RP2040 boards have no board.json at
+  all. This file (jumperless_v1/board.json) was created because one
+  confirmed override (GPIO25 LED) was found.
+
+External research (WebSearch / WebFetch)
+-----------------------------------------
+1. https://github.com/Architeuthis-Flux/Jumperless — main repo (v1/v3/v4
+   hardware + "JumperlessNano" firmware). Confirms: crossbar matrix of CH446Q
+   analog crosspoint switches wired together to connect any breadboard
+   row/Nano-header pin to any other; RGB LEDs under each row for visual
+   circuit feedback; the RP2040 is described as "controlled ... and can be
+   programmed exactly like a Raspberry Pi Pico."
+2. https://github.com/Architeuthis-Flux/JumperlessV5 and
+   https://architeuthis-flux.github.io/JumperlessV5/ and
+   https://docs.jumperless.org/09.8-odds-and-ends/ — these describe the
+   NEWER RP2350B-based "V5" product, a different board (not this variant,
+   which is the original RP2040 "v1"/JumperlessNano hardware). Consulted for
+   background only; GPIO numbers quoted there (GPIO_1-8 = physical
+   GPIO20-27 on RP2350B) do NOT apply to this RP2040 v1 board and were not
+   used for any decision here.
+3. https://hackaday.io/project/191238-jumperless and the "The Code part 3 -
+   Driving the CH446Qs" log
+   (hackaday.io/project/191238-jumperless/log/222626-the-code-part-3-driving-the-ch446qs)
+   — describes the PIO state-machine approach used to bit-bang the 12 chip
+   -select lines (CS_A..CS_L) plus a shared clock/data pair to the CH446Q
+   chips, and confirms "GPIO 18 and GPIO 19" are used for a probing function
+   — consistent with this board's own pins_arduino.h marking GPIO18/19
+   "generally unused" (PIN_SERIAL2 / Wire1 aliases). Does not give exact
+   numeric pin assignments for the CS/CLK/DAT lines themselves.
+4. Vendor firmware source, fetched directly from the repo (raw.githubusercontent
+   .com/Architeuthis-Flux/Jumperless/main/JumperlessNano/src/...):
+   - JumperlessDefinesRP2040.h — the actual pin-define header referenced by
+     the firmware's own README as the source of truth for hardware pin
+     assignments (CS_A..CS_L chip-selects, CLK/DAT for the CH446Q serial
+     protocol, QUADRATURE_A/B_PIN + BUTTON_ENC for the rotary encoder,
+     ADC0-3_PIN, RESETPIN, etc).
+   - CH446Q.h / CH446Q.cpp — crosspoint-switch control and ISR.
+   - LEDs.cpp — confirms LED control is done entirely through an
+     Adafruit_NeoPixel object ("Adafruit_NeoPixel leds(LED_COUNT, LED_PIN,
+     NEO_GRB + NEO_KHZ800)") — i.e. the visualization LEDs mentioned in the
+     task background are addressable WS2812 LEDs on a single dedicated data
+     pin, NOT plain GPIOs each driving one LED, and NOT an I2C/SPI LED
+     driver chip either — a third mechanism (single-wire addressable
+     protocol) distinct from both possibilities the task background raised.
+   - main.cpp — contains a commented-out (i.e. NOT active in the shipped
+     firmware) sequence: `pinMode(LED_BUILTIN, OUTPUT); ...
+     digitalWrite(LED_BUILTIN, HIGH);`.
+
+IMPORTANT caveat on the external research reliability
+------------------------------------------------------
+Repeated, independent fetches of the same JumperlessDefinesRP2040.h file (via
+the available WebFetch tool, which summarizes fetched pages through an
+auxiliary model rather than returning byte-for-byte raw text) produced
+internally INCONSISTENT numeric answers for the exact CS_A..CS_L / CLK / DAT
+/ encoder GPIO assignments — e.g. one pass attributed GPIO6 to a CH446Q
+chip-select line while another pass attributed GPIO6 to the NeoPixel
+LED_DATA_OUT pin; one pass attributed GPIO0 to the rotary encoder pushbutton
+(BUTTON_ENC) while another attributed GPIO0 to UART0_TX. Only two values were
+stable/corroborated across repeated fetches: QUADRATURE_A_PIN=16 and
+QUADRATURE_B_PIN=17 (both appeared twice, matching this board's own
+pins_arduino.h PIN_SERIAL1_TX/RX=16/17 and the "generally unused" framing
+already present in the header — i.e. those two pins are plausibly the rotary
+encoder, not a real UART, on the actual product). Given this board's
+unusually dense repurposing of nearly every GPIO for the
+matrix/encoder/probe/DAC/ADC subsystem, and given the tool-mediated
+extraction could not be independently corroborated to this repo's usual
+confidence bar even after multiple attempts, per the task's explicit
+conservative instruction for this board NO chipGpios exclusions were applied
+for any of the matrix-driving, chip-select, clock/data, encoder, or probe
+pins (including GPIO16/17/18/19, despite the "generally unused" hints in this
+board's own header and the independent GPIO18/19-probe corroboration above) —
+a wrong guess here risks either disabling genuinely free user pins or leaving
+genuinely-reserved pins incorrectly exposed, across an architecture too
+complex to fully verify with the tools available in this session.
+
+Per-pin reasoning
+------------------
+- GPIO25 (PIN_LED) — CHANGED. Tagged
+  `["digital_output", "pwm_output", "led_high"]` (digital_input dropped,
+  matching this repo's established dedicated-onboard-LED precedent, e.g.
+  rpipico/board.json GPIO25). Reasoning: this board's own pins_arduino.h
+  declares PIN_LED explicitly (not via a generic/blanket fallback), and its
+  header comment cites the vendor's own Hardware/schematic repo as the
+  source — i.e. a real contributor examined the actual Jumperless schematic
+  and found a physical LED wired to GPIO25. This matches the near-universal
+  RP2040/Pico-family convention of wiring a simple status LED to GP25
+  regardless of what else a custom board repurposes elsewhere on the chip.
+  Active-high polarity is corroborated by the vendor's own (though currently
+  unused/commented-out) main.cpp sequence `pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);` — the firmware author wrote HIGH to mean
+  "on," which only makes sense for an active-high circuit. The fact that
+  this sequence is commented out in the shipped firmware (which instead does
+  all status signalling through the separate NeoPixel chain) does not
+  contradict GPIO25's physical existence as a plain LED — it only means the
+  stock firmware doesn't currently exercise it. A Designer sketch flashed in
+  place of the stock firmware remains free to use it as a plain LED.
+- GPIO16/17 (PIN_SERIAL1_TX/RX) — NO CHANGE. Corroborated by two independent
+  external sources as the rotary-encoder quadrature inputs
+  (QUADRATURE_A_PIN/QUADRATURE_B_PIN) rather than a real UART — consistent
+  with these pins having no genuine "Serial1" role on the real product.
+  However, per this task's explicit conservative instruction for this board,
+  this was NOT converted into a capability exclusion, because (a) the
+  numeric pin-role extraction for this whole file proved unreliable
+  elsewhere (see caveat above), so even a twice-corroborated value is only
+  as trustworthy as the flawed extraction method allows, and (b) there is no
+  official written vendor statement (schematic, datasheet, or docs page)
+  saying "GPIO16/17 are reserved and unavailable for user code" the way the
+  WIZnet W5500-EVB-Pico precedent has an explicit vendor statement to that
+  effect. Reported here for transparency but not acted on.
+- GPIO18/19 (PIN_SERIAL2_TX/RX "generally unused", PIN_WIRE1_SDA/SCL
+  "generally unused") — NO CHANGE. This board's own pins_arduino.h already
+  hints these are "generally unused," and the Hackaday build-log source
+  independently states GPIO18/GPIO19 are used for a "probing" function on
+  the real product. Not converted into an exclusion for the same reasons as
+  GPIO16/17 above (no firm vendor documentation stating these pins are
+  off-limits to user code, and the corroborating source describes firmware
+  behavior/architecture prose rather than a definitive pin-reservation
+  statement).
+- CH446Q chip-select / clock / data lines (CS_A..CS_L, CLK, DAT) — NO
+  CHANGE. Confirmed to exist and be firmware-critical (12 crosspoint
+  switches must be addressed via dedicated GPIOs), but the exact GPIO
+  numbers could not be reliably extracted (see caveat above) — no exclusion
+  applied.
+- Rotary encoder pushbutton (BUTTON_ENC) — NO CHANGE / not tagged as
+  "button" capability. Even setting aside the GPIO-number extraction
+  reliability problem, this board's own pins_arduino.h declares no button
+  alias at all (only PIN_LED, PIN_SERIAL1/2, SPI0, Wire0/1), so there is no
+  pin in this repo's parsed alias set to attach a "button" capability to —
+  out of scope for this audit's GPIO-alias-driven tagging mechanism, same
+  as the BOOTSEL-button precedent already documented in rpipico/board.json.
+- DAC/ADC ICs, INA219 current/voltage sensors — NO CHANGE. These are
+  documented as separate SPI/I2C-driven chips (buffered DACs/ADCs for the
+  analog breadboard rails), not RP2040 GPIO analogWrite/analogRead pins —
+  the chip-level "dac": {} / "adc": {bits:12,...} fields are unaffected and
+  were copied verbatim from the chip-level board.json.
+- All remaining GPIOs declared in this board's pins_arduino.h/common.h
+  (0-5, D6-D15, D20-D22, A0-A2) — NO CHANGE. No vendor documentation found
+  clearly separating "free for user sketches" from "matrix-dedicated" for
+  these specific numbers; left at full chip-level default capability
+  (digital_input/digital_output/pwm_output, +analog_input for A0-A2 via the
+  existing parser mechanism) per this audit's conservative instruction for
+  this board.
+
+Outcome
+-------
+variants/rp2040/rp2040/jumperless_v1/board.json created as a full per-board
+override file (chip-level fields copied verbatim) with exactly ONE
+chipGpios entry: GPIO25 tagged led_high. No other pins were touched. JSON
+validity checked with a manual `//`-comment-stripping script + JSON.parse
+(no build script or require() of build_boards.js was run, per instructions).

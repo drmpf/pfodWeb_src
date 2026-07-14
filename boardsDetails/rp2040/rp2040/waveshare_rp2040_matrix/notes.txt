@@ -1,0 +1,67 @@
+Board audit notes: waveshare_rp2040_matrix (chip: rp2040)
+Date: 2026-07-13
+
+SOURCES CONSULTED
+-----------------
+- This board's own pins_arduino.h (variants/rp2040/rp2040/waveshare_rp2040_matrix/pins_arduino.h)
+  header comments cite:
+    https://files.waveshare.com/upload/4/49/RP2040-Matrix.pdf
+    https://github.com/earlephilhower/arduino-pico/files/14470983/WaveshareRP2040Matrix.hs.txt
+- Chip-level defaults: variants/rp2040/rp2040/board.json (chipGpios: {} — every aliased GPIO gets
+  full digital_input/digital_output/pwm_output by default).
+- Precedent files read before writing:
+    variants/rp2040/rp2040/waveshare_rp2040_zero/board.json (same vendor, same "sole indicator is
+    a NeoPixel, no plain LED" pattern; only differs in pixel count, 1 vs 25).
+    variants/rp2040/rp2040/rpipico/board.json (BOOTSEL-not-a-GPIO rationale precedent).
+- WebSearch: "Waveshare RP2040-Matrix pinout NeoPixel GPIO16 5x5"
+- WebSearch: "Waveshare RP2040-Matrix wiki BOOT button LED"
+- WebFetch: https://thepihut.com/blogs/raspberry-pi-tutorials/coding-the-waveshare-rp2040-matrix
+    (succeeded; explicit confirmation quoted below)
+- WebFetch attempts to waveshare.com/wiki/RP2040-Matrix and waveshare.com/rp2040-matrix.htm both
+  returned HTTP 403 (site blocks the fetch tool); relied on WebSearch snippets of those same pages
+  plus the successful thepihut.com fetch instead.
+
+FINDINGS
+--------
+- Confirmed: PIN_NEOPIXEL = GPIO16 drives an onboard 5x5 (25-pixel) WS2812 addressable RGB LED
+  matrix — this is the real, documented "RP2040-Matrix" headline feature (product name literally
+  refers to this matrix). Waveshare's own product/wiki pages (via WebSearch snippet) state "Onboard
+  5x5 RGB LED Matrix" / "25 RGB LEDs (WS2812) in a 5x5 array... controlled on GPIO 16". The Pi Hut
+  tutorial (fetched directly) confirms: "25 RGB LEDs (WS2812) in a 5x5 array" controlled via GPIO 16,
+  and explicitly: "The documentation makes no mention of any standalone LED beyond the RGB matrix
+  itself."
+- Confirmed: no separate plain onboard LED exists (matches waveshare_rp2040_zero's pattern — this
+  vendor's boards use the NeoPixel as the sole visual indicator, no LED_BUILTIN alias in
+  pins_arduino.h, and the header even has PIN_NEOPIXEL commented out of LED_BUILTIN:
+  "//#define LED_BUILTIN PIN_NEOPIXEL").
+- Confirmed: only BOOT and RESET buttons exist onboard, per the Pi Hut tutorial and search
+  snippets. BOOT is not a normal GPIO digitalRead() pin (RP2040 BOOTSEL trick reading QSPI CS line,
+  same as rpipico precedent) and RESET is a hardware reset line — neither has a pins_arduino.h
+  alias, so neither gets a "button" capability (out of scope, not a missed tag). The Pi Hut
+  tutorial's mention of an external button wired to GPIO14 is a reader-added component for a DIY
+  game project, not onboard hardware — correctly excluded.
+- Bus-collision check: GPIO16 (the NeoPixel pin) is NOT aliased as any SPI/Wire pin in this board's
+  pins_arduino.h. SPI0 = GPIO2-5, SPI1 = GPIO12-15, Wire0 = GPIO4-5, Wire1 = GPIO26-27 — none
+  overlap GPIO16. No build_boards.js bus-capability contamination possible here; no pins_arduino.h
+  edit needed.
+
+PER-PIN REASONING
+-----------------
+GPIO16 (PIN_NEOPIXEL): chipGpios override to
+  {"capabilities": ["digital_output", "led_neopixel"]}
+  — replaces the chip-level auto-derived digital_input/digital_output/pwm_output with output-only
+  NeoPixel tagging, matching this repo's established convention (pwm_output omitted since WS2812 is
+  a bit-serial protocol data line, not a PWM-dimmable pin). Matches waveshare_rp2040_zero GPIO16
+  exactly in capability shape.
+
+All other GPIOs on this board (Serial1 TX/RX, Serial2 TX/RX, SPI0/SPI1, Wire0/Wire1 pins) are left
+at chip-level auto-derived defaults — no onboard dedicated hardware justifies overriding them
+beyond their declared bus-alias role (which build_boards.js already appends automatically).
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/waveshare_rp2040_matrix/board.json (full per-board file) with a
+chipGpios override tagging GPIO16 (PIN_NEOPIXEL) as ["digital_output","led_neopixel"] — the
+board's onboard 5x5 (25-pixel) WS2812 NeoPixel matrix, its sole visual indicator. No plain LED, no
+button beyond out-of-scope BOOT/RESET, no bus-collision fix needed. JSON validity verified via a
+manual comment-stripping JSON.parse (no build_boards.js invocation).

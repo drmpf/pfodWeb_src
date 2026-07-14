@@ -1,0 +1,71 @@
+// pfodWeb NOTE: excludes GPIO2 (ETH_PHY_POWER), GPIO14 (ETH_PHY_MDIO),
+// and GPIO19/21/22/25/26/27 (standard ESP32 EMAC RMII data pins, fixed
+// silicon pins for the onboard DP83848 Ethernet PHY - none of these are
+// aliased anywhere in this board's own pins_arduino.h, confirming full
+// dedication). GPIO16/17 (MDC / clock out) are already absent from the
+// ESP32-classic chip default (PSRAM-reserved range).
+//
+// pfodWeb NOTE (button/LED capability-tagging pass): GPIO18
+// (LED_BUILTIN in this board's pins_arduino.h) is confirmed as a real
+// onboard LED - it is the vendor's own declaration, submitted directly
+// into the official Espressif arduino-esp32 core (PR #5269, "Trueverit
+// Universal IoT Driver MK II"). However, no independent source could be
+// found anywhere (espboards.dev, PlatformIO's board docs, the GitHub PR
+// discussion thread, trueverit.com's product pages, or any
+// schematic/datasheet) confirming the LED's actual polarity - every
+// reachable source is either silent on the point or is itself just a
+// re-derivation of this same pins_arduino.h file. Per this pass's
+// "never guess" policy, NO led_high/led_low tag was applied; GPIO18
+// keeps its plain digital_input/digital_output/pwm_output capabilities
+// only (chipGpios entry below left unchanged). No onboard button or
+// relay-output GPIO could be identified from any source either - this
+// OEM industrial board has essentially no public pin-level
+// documentation beyond the vendor-submitted variant file itself (per
+// playbook policy, relay outputs are KEEP not excludable regardless,
+// but there was no GPIO to identify as relay-specific in the first
+// place). See notes.txt for the full source list.
+//
+// One real bug WAS found and fixed this pass: `SCK = 18` in
+// pins_arduino.h collided with the confirmed LED pin (GPIO18) -
+// build_boards.js would have unconditionally appended an spi_sck
+// capability onto the LED's GPIO regardless of this file's chipGpios
+// map, since that alias-collision check runs independent of any
+// override here. The SCK alias was deleted from pins_arduino.h
+// (SS/MOSI/MISO left as-is - no collision found for those three) with
+// an explanatory NOTE added there; see notes.txt.
+{
+  "boardName": "ESP32",
+  "displayName": "ESP32 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

@@ -1,0 +1,238 @@
+Board: Arduino Esplora (avr/esplora, split off avr/leonardo)
+Date: 2026-07-14
+
+Reason for split: `esplora.build.variant` pointed at `leonardo`, so the
+Designer treated the Esplora as a plain 32U4 dev board with only a D13
+LED tagged. The Esplora is actually a fixed-form-factor game controller
+with a joystick, 4 face buttons, a slide potentiometer, a light sensor,
+a temperature sensor, a microphone, an analog accelerometer, an RGB
+LED, a piezo buzzer, two TinkerKit I/O connectors, and a socket for an
+optional TFT LCD + microSD card, none of which the shared leonardo
+pins_arduino.h/board.json know anything about. New self-contained
+variant directory created:
+- pins_arduino.h: one-line `#include "../leonardo/pins_arduino.h"`
+  (identical 32U4 mechanical pin map — D0-D30, A0-A11=D18-D29, SPI on
+  D14-D17, I2C SDA=D2/SCL=D3, LED_BUILTIN=D13).
+- board.json: full copy of leonardo's shape, with its own chipGpios
+  (dedicated-hardware exclusions + confirmed LED tags) and pinNotes
+  (TFT/SD socket + TinkerKit connector documentation).
+boards.txt's esplora.build.variant repointed from "leonardo" to
+"esplora" (single-line edit, verified via grep — no other lines in the
+582-line shared boards.txt touched).
+
+Sources consulted:
+1. https://www.arduino.cc/en/Reference/EsploraLibrary (redirects to
+   https://docs.arduino.cc/retired/archived-libraries/EsploraLibrary) —
+   confirmed CH_SWITCH_1..4/CH_SLIDER/CH_LIGHT/CH_TEMPERATURE/CH_MIC/
+   CH_TINKERKIT_A/B/CH_JOYSTICK_SW/X/Y channel constant list; confirmed
+   button polarity (LOW when pressed, HIGH when released); confirmed
+   RGB LED is an "analog output" (brightness 0-255).
+2. https://raw.githubusercontent.com/arduino-libraries/Esplora/master/src/Esplora.h
+   (fetched directly via curl, read in full) — channel constants,
+   class API surface (readSlider/readLightSensor/readTemperature/
+   readMicrophone/readJoystickSwitch/readJoystickX/readJoystickY/
+   readAccelerometer/readButton/readJoystickButton/writeRGB/tone/
+   readTinkerkitInput). No physical pin numbers in this file — channels
+   are virtual/multiplexed IDs (0-12) resolved in the .cpp.
+3. https://raw.githubusercontent.com/arduino-libraries/Esplora/master/src/Esplora.cpp
+   (fetched directly via curl, read in full — the AUTHORITATIVE source
+   for every physical pin assignment used in this audit):
+     const byte MUX_ADDR_PINS[] = { A0, A1, A2, A3 };   // mux select lines
+     const byte MUX_COM_PIN     = A4;                    // mux common analog in
+     const byte RED_PIN    = 5;
+     const byte BLUE_PIN   = 9;
+     const byte GREEN_PIN  = 10;
+     const byte BUZZER_PIN = 6;
+     const byte ACCEL_X_PIN = A5;
+     const byte ACCEL_Y_PIN = A11;
+     const byte ACCEL_Z_PIN = A6;
+     const byte LED_PIN     = 13;
+   readChannel(byte channel) drives the 4 MUX_ADDR_PINS as a binary
+   address (channel & 1/2/4/8) then analogRead(MUX_COM_PIN) — EXCEPT
+   for CH_JOYSTICK_SW, which does a special digitalRead(MUX_COM_PIN)
+   with INPUT_PULLUP as a workaround for "lack of pullup resistor on
+   joystick switch". This is the key confirming fact: it is a genuine
+   16-channel analog multiplexer chip addressed by 4 digital lines (not
+   a resistor ladder), and EVERY switch/joystick/slider/light/temp/mic/
+   TinkerKit-input reading passes through the single shared MUX_COM_PIN
+   (A4) — there is no dedicated per-button GPIO anywhere on this board.
+   readAccelerometer() confirmed analogRead() on ACCEL_X/Y/Z_PIN
+   directly (no Wire/I2C library use at all) — the accelerometer is a
+   real analog-output chip, not I2C.
+4. https://raw.githubusercontent.com/arduino/docs-content/main/content/retired/06.getting-started-guides/ArduinoEsploraExamples/ArduinoEsploraExamples.md
+   (fetched in full via curl) — confirmed:
+     - "Because all of the Esplora's inputs or outputs are dedicated to
+       one function, you don't need pinMode commands" and the
+       Esplora.readButton(SWITCH_2) example — corroborates the button/
+       joystick multiplexing, not a plain digitalRead().
+     - RGB LED fade demo: Esplora.writeBlue(brightness) sweeping
+       0->255->0 "to see the dimming effect" — used as evidence that
+       higher PWM value = brighter (active-high), since no inversion
+       is shown or mentioned.
+     - "The Esplora doesn't expose pins to provide for I2C
+       communication, so you won't be able to use examples that use
+       the Wire library" — corroborates the accelerometer being
+       analog, not I2C, and that D2/D3 (standard 32U4 SDA/SCL aliases)
+       have no I2C header on this board.
+     - SPI note: "The Esplora can communicate via SPI using the ICSP
+       header" — confirms the standard hardware SPI bus (D14-D17) is
+       the same physical bus, just also reachable via the ICSP
+       connector; no Esplora-specific SPI remap found.
+5. https://raw.githubusercontent.com/arduino-libraries/TFT/master/src/TFT.h
+   and .../TFT.cpp (fetched in full via curl) — confirmed:
+     `#if ARDUINO_AVR_ESPLORA
+      TFT EsploraTFT(7, 0, 1);
+      #endif`
+   i.e. TFT(CS, RS, RST) = CS=D7, RS(DC)=D0, RST=D1, hardcoded only for
+   Esplora builds. TFT class extends Adafruit_ST7735 via hardware SPI
+   (no SID/SCLK args passed), so the display's data bus is the standard
+   D14-D17 SPI pins, not a separate soft-SPI bus.
+6. Web search "EsploraTFT library github pins SD chip select TFT source
+   code" surfaced a secondary-source claim of `#define SD_CS 8` in the
+   TFT library's own Esplora example sketches for the onboard microSD
+   slot — consistent with D8 also being the A8 alias (digital id 26)
+   per the 32U4 shared-pin convention, and with D7 already being
+   confirmed as the TFT's own CS, so a second, different CS pin for the
+   SD card is exactly what's expected on a shared-SPI-bus TFT+SD combo
+   module. Treated as adequately corroborated (a specific, plausible
+   pin number from a directly relevant secondary source, consistent
+   with the primary-source TFT.cpp finding) rather than fetching the
+   TFT library's SD-card example .ino directly (not done this pass —
+   flagged here in case of future re-review).
+7. http://21stdigitalhome.blogspot.com/2012/12/esplora-expansion-header-pinouts.html
+   — community reverse-engineering of the Esplora's 10-pin expansion
+   header (the TFT/SD socket). Key corroborating quote: "the Esplora
+   has dedicated the pins for another use - we are repurposing the
+   display pins ... this will not work well with both something else
+   and a display connected" — used as supporting (not sole) evidence
+   that D0/D1's TFT dual-role is a real, documented gotcha, not just an
+   unused hardcoded default in the TFT library.
+8. Web search "Arduino Esplora 'pin 13' LED L onboard schematic TX RX
+   LED" — a secondary source (aggregated from multiple hobbyist/vendor
+   pages, exact URL not individually re-verified) states the Esplora
+   has 4 onboard status LEDs: ON (green, power), RX/TX (yellow, USB
+   activity), and "L (yellow) connected directly to the microcontroller
+   and accessible through pin 13" — same wording/convention as every
+   other 32U4 Arduino's "L" LED. Treated as sufficient confirmation
+   given it matches the universal Leonardo/Uno D13 LED convention this
+   board's pins_arduino.h already inherits, rather than a novel/
+   surprising claim requiring stronger sourcing.
+9. GitHub issue arduino/Arduino#2805 ("Esplora Library: Incorrect Pin
+   Specification For Accelerometer Y Input") — checked because an
+   early secondary source claimed "y-A7" for the accelerometer Y axis,
+   contradicting the ACCEL_Y_PIN=A11 found in Esplora.cpp. The issue
+   confirmed the DISCREPANCY was between an old/wrong comment (claiming
+   A7) and the actual code (A11) — but the CURRENT master Esplora.cpp
+   fetched directly in source-consultation #3 above has BOTH the code
+   (`ACCEL_Y_PIN = A11`) and its own inline comment ("Accelerometer:
+   x-A5, y-A11, z-A6") agreeing with each other, i.e. this
+   library-internal inconsistency has since been resolved in favour of
+   A11. Trusted the current source over the stale secondary-source
+   claim of A7, per the primary-source-wins-over-conflicting-secondary-
+   source rule already established in this playbook (section 4b).
+
+Per-pin findings (digital pin number : finding : action):
+- D18-D21 (A0-A3): multiplexer 4-bit address/select lines, digital
+  outputs. EXCLUDED (capabilities: []).
+- D22 (A4): multiplexer common analog input — the SHARED, time-
+  multiplexed ADC channel for face buttons 1-4, joystick X/Y/switch,
+  slider, light sensor, temperature sensor, microphone, and both
+  TinkerKit analog inputs. EXCLUDED (capabilities: []). Explicitly NOT
+  tagged "button" per the task's own guidance: there is no single
+  dedicated button GPIO here, only a shared analog-mux pin requiring a
+  channel-select + analogRead()/threshold (or, for the joystick switch
+  only, a special digitalRead()) — this does not fit the simple digital
+  "button" capability model, so it is documented and excluded rather
+  than mis-tagged.
+- D23 (A5): accelerometer X axis, analog. EXCLUDED.
+- D4 / D24 (A6): accelerometer Z axis, analog — SAME physical PD4 pin
+  under two digital-pin-number identities (confirmed via this board's
+  inherited pins_arduino.h PROGMEM port/bitmask comments: "D24 / D4 -
+  A6 - PD4" appears verbatim). BOTH "4" and "24" EXCLUDED.
+- D12 / D29 (A11): accelerometer Y axis, analog — same PD6-pin dual-
+  identity situation as D4/D24. BOTH "12" and "29" EXCLUDED.
+- D5: RGB LED red channel, PWM. TAGGED
+  ["digital_output","pwm_output","led_r_high"].
+- D9 / D27 (A9): RGB LED blue channel, PWM — same PB5-pin dual-identity
+  situation. BOTH "9" and "27" TAGGED identically ["digital_output",
+  "pwm_output","led_b_high"] (tagged rather than excluded on the A9
+  side, since selecting either identity in the Designer genuinely
+  drives the same LED channel — excluding the A9 identity would just
+  make it look unavailable rather than correctly-labeled).
+- D10 / D28 (A10): RGB LED green channel, PWM — same dual-identity
+  situation. BOTH "10" and "28" TAGGED
+  ["digital_output","pwm_output","led_g_high"].
+- D6 / D25 (A7): piezo buzzer/speaker driver (tone()/noTone()), same
+  PD7-pin(*) dual-identity situation as the others. BOTH "6" and "25"
+  EXCLUDED — no capability in this vocabulary represents a buzzer/
+  speaker actuator, and it is a genuinely fixed onboard actuator (a
+  physical piezo element), not general I/O.
+- D13: onboard "L" status LED. TAGGED
+  ["digital_output","pwm_output","led_high"], same convention as
+  vanilla Leonardo's own D13 tag.
+- D0: TFT/SD socket RS(DC) pin + standard hardware Serial1 RX. NOTE
+  ONLY, not excluded — the TFT/SD socket is an optional plug-in module
+  (per Arduino's own docs: "a socket for a color TFT LCD screen"), not
+  an always-populated onboard chip like the joystick/buttons/
+  accelerometer/RGB LED/buzzer above, so excluding it would remove
+  real, usable general-purpose functionality on the (likely common)
+  case where no screen is plugged in. Documented instead.
+- D1: TFT/SD socket RST pin + standard hardware Serial1 TX. NOTE ONLY,
+  same reasoning as D0.
+- D3: TinkerKit OUTPUT connector pin (confirmed via Esplora.cpp's own
+  comment "External outputs: D3, D11") + standard I2C SCL alias (no
+  I2C header on this board, confirmed via source #4). KEPT AVAILABLE
+  (note only) — a TinkerKit output pin is meant for the user's own
+  external actuator, matching this project's existing "keep available"
+  policy for relay-style outputs.
+- D11: TinkerKit OUTPUT connector pin (the other of the two named in
+  Esplora.cpp's comment). KEPT AVAILABLE (note only), same reasoning as
+  D3.
+- D7: TFT CS pin. NOTE ONLY, not excluded — same optional-module
+  reasoning as D0/D1.
+- D8 / D26 (A8): microSD card CS pin (SD_CS), same PB4-pin(*)
+  dual-identity situation as the others. NOTE ONLY on both "8" and
+  "26", not excluded — same optional-module reasoning as D0/D1/D7.
+- D14-D17: standard 32U4 hardware SPI bus (MISO/SCK/MOSI/SS), shared
+  with the optional TFT/SD socket if a screen is installed. NOTE ONLY
+  (general-purpose SPI otherwise, per this project's existing
+  multi-drop-SPI keep-available policy) — no capability change, since
+  these already carry their normal spi_miso/spi_sck/spi_mosi/spi_ss
+  labels from the inherited leonardo pin map.
+- D2: standard I2C SDA alias. NO CHANGE — no confirmed Esplora-specific
+  function found for this pin (source #4 confirms no I2C header exists
+  on this board at all, and no vendor source mentions D2 being routed
+  anywhere special); left as an unresearched default rather than
+  guessing at a TinkerKit/other role no source actually states.
+
+(*) The exact physical AVR port/bit for D6/D25 and D8/D26 was not
+individually re-verified against the PROGMEM tables the way D4/D24 and
+D12/D29 were (those two were spot-checked against this board's
+inherited pins_arduino.h comments verbatim) — it follows from the same
+documented "A6-A11 share with digital pins" convention (A6->D4,
+A7->D6, A8->D8, A9->D9, A10->D10, A11->D12) stated in that same file,
+which is trusted as internally consistent.
+
+Not found / not applicable:
+- No confirmed NeoPixel/addressable LED anywhere on the Esplora (the
+  RGB LED is a discrete 3-pin common design, not WS2812-style).
+- No I2C accelerometer or I2C bus of any kind (confirmed absent, see
+  source #4) — the accelerometer is a plain 3-channel analog chip.
+- No stepper/motor-driver/heater-style actuator requiring the
+  fixed-hardware-actuator exclusion class beyond the buzzer already
+  handled above.
+
+Summary: Arduino Esplora split from "leonardo" into its own variant
+directory. Confirmed and applied: multiplexer address/common pins
+(A0-A4, digital ids 18-22) and accelerometer X/Y/Z (A5/A11/A6, digital
+ids 23/29+12/24+4) excluded as dedicated onboard hardware; RGB LED red/
+green/blue channels (D5/D10/D9 and their A10/A9 shared-pin identities,
+digital ids 5/10/28/9/27) tagged led_r_high/led_g_high/led_b_high;
+buzzer (D6 and its A7 shared-pin identity, digital ids 6/25) excluded;
+onboard "L" status LED (D13) tagged led_high. TFT/SD socket pins
+(D0/D1/D7/D8 and D8's A8 shared-pin identity, digital ids 0/1/7/8/26)
+and the standard SPI bus (D14-D17) documented via pinNotes but left
+available (optional plug-in module, not always-attached hardware).
+TinkerKit OUTPUT connector pins (D3/D11) documented via pinNotes and
+kept available for general use. D2 left as NO CHANGE (no confirmed
+dedicated function found).

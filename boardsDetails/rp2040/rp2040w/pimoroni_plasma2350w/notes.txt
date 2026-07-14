@@ -1,0 +1,243 @@
+pfodWeb board audit notes — pimoroni_plasma2350w (Pimoroni Plasma 2350 W, PIM729)
+Chip bucket: rp2040w (RP2350A + Raspberry Pi RM2 / CYW43439 WiFi+Bluetooth module)
+Audit date: 2026-07-13
+Part of: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin-exclusion audit (this board never previously had a per-board board.json —
+chipGpios was inherited empty from the rp2040w chip-level bucket default).
+
+============================================================
+SUMMARY (one line)
+============================================================
+Added chipGpios entries tagging 2 onboard buttons (SWITCH_A/SWITCH_USER),
+3-channel onboard RGB status LED (active-low), and 2 external LED-strip
+screw-terminal pins (CLK/DAT, general-purpose); documented (but could NOT
+fully suppress, and did NOT remove real/live pin-assignment code for) the
+CYW43439/RM2 wireless module's SPI0 bus occupying GPIO24/25/29; removed a
+dead `#if 0`-disabled phantom-pin block from pins_arduino.h.
+
+============================================================
+FILES CHANGED
+============================================================
+1. variants/rp2040/rp2040w/pimoroni_plasma2350w/pins_arduino.h
+   - Removed the vendor's "#if 0 ... #endif"-disabled "Digital pins" block
+     (D0-D10, GPIO26-29/6/7/0/1/2/4/3). Confirmed dead in real compiled
+     firmware (excluded by the real C preprocessor either way) via direct
+     byte-for-byte comparison against the real upstream arduino-pico core
+     file — removing it has ZERO effect on compiled behaviour. This
+     project's own .h parser has no preprocessor awareness, so it was
+     still matching those `static const uint8_t` lines and silently
+     re-exposing GPIO29 (a CYW43/current-sense pin) and other already-
+     tagged pins as plain "Dn" phantom pins. Same bug class already fixed
+     on the non-WiFi pimoroni_plasma2040/pimoroni_plasma2350 siblings this
+     session.
+   - Added an explanatory pfodWeb NOTE above the SPI0 section (PIN_SPI0_*)
+     recording why the live `static const uint8_t SS/MOSI/MISO/SCK`
+     declarations there were deliberately NOT touched (see "SPI0 / CYW43
+     wireless-bus GPIOs" section below) — left as pure documentation, no
+     functional/behavioural change to this section.
+2. variants/rp2040/rp2040w/pimoroni_plasma2350w/board.json — NEW FILE
+   (did not exist before this audit). Full chip-level-default fields
+   copied verbatim from variants/rp2040/rp2040w/board.json (boardName,
+   displayName, family, connections incl. tcp/http/ble, pwm, dac, adc),
+   plus a chipGpios block covering 10 GPIOs (7 capability-tagged, 3
+   note-only — see below).
+
+============================================================
+SOURCES CONSULTED
+============================================================
+1. This board's own pins_arduino.h (variants/rp2040/rp2040w/
+   pimoroni_plasma2350w/pins_arduino.h), read in full before any edit.
+2. variants/rp2040/rp2040w/board.json (chip-bucket defaults/rationale).
+3. Precedent files (read in full):
+   - variants/rp2040/rp2040/pimoroni_plasma2040/board.json + pins_arduino.h
+     (non-WiFi RP2040 sibling, already audited this session — 3 buttons,
+     discrete RGB LED GPIO16/17/18 active-low, CLK/DAT general-purpose).
+   - variants/rp2040/rp2350/pimoroni_plasma2350/board.json + pins_arduino.h
+     (non-WiFi RP2350 sibling, already audited this session — identical
+     findings to the 2040 sibling).
+   - variants/rp2040/rp2040w/rpipicow/board.json + pins_arduino.h (CYW43-
+     reservation precedent: GPIO23/24/25/29 wired to WiFi chip, but
+     achieved via total ABSENCE of any pins_arduino.h alias — a materially
+     different situation from this board, see below).
+   - variants/rp2040/rp2040w/pimoroni_pico_plus_2w/board.json (second
+     CYW43-reservation precedent, same "absence" mechanism, BOOT button
+     GPIO45 chipGpios precedent for note style).
+4. shop.pimoroni.com/products/plasma-2350-w (official product page,
+   WebSearch-summarized): confirms one general-purpose "effects" button,
+   a separate Reset button, an onboard RGB LED, the Raspberry Pi RM2
+   (CYW43439) wireless module, and a QW/ST (Qwiic/STEMMA QT) connector.
+5. WebSearch synthesis of multiple listings (Pimoroni/Pi Hut/Adafruit-
+   style copy): "the board includes Reset, BOOT and a user button" —
+   corroborates two distinct non-Reset onboard buttons.
+6. github.com/matthew-mccall/pico-sdk-plasma2350-w — an independent,
+   third-party Pico-SDK board-support fork specifically targeting this
+   board. Fetched src/boards/include/boards/pimoroni_plasma2350w.h
+   directly (raw.githubusercontent.com). This was the single most
+   valuable corroborating source: it independently confirms, pin-for-pin,
+   every value already present in this board's own pins_arduino.h
+   (LED_R=16/LED_G=17/LED_B=18 with LED_G noted as the default/inverted/
+   active-low pin, SW_A=12, USER_SW=22, CLK=14, DATA=15, A0-A2=26-28,
+   SDA=20, SCL=21) AND, critically, gives an explicit WiFi/CYW43 pin table
+   not found anywhere else: "Power-up: 23, Data out: 24, Data in: 24,
+   Host wake (IRQ): 24, Clock: 29, Chip select: 25, Current sense: 29" —
+   an exact match to this board's own PIN_SPI0_MISO=24 ("wired to wifi
+   module")/MOSI=24/SCK=29/SS=25 and to GPIO23 being entirely absent from
+   this file.
+7. raw.githubusercontent.com/earlephilhower/arduino-pico/master/variants/
+   pimoroni_plasma2350w/pins_arduino.h — the REAL, actively-maintained
+   upstream arduino-pico core source file, fetched directly (via curl, not
+   the summarizing WebFetch tool, to get exact byte content) and diffed by
+   eye against this repo's copy. Confirmed BYTE-FOR-BYTE IDENTICAL except
+   for this repo's own pre-existing A3/GPIO31 sentinel-exclusion fix (a
+   change already present before this audit pass, unrelated to it). This
+   is the decisive source for the SPI0 decision below.
+8. api.github.com tree listings (used only to locate exact file paths in
+   sources 6/7 above, e.g. confirming matthew-mccall/pico-sdk-plasma2350-w
+   uses branch "master" not "main", and the exact path of the upstream
+   arduino-pico plasma2350w variant directory).
+
+============================================================
+PER-PIN FINDINGS
+============================================================
+GPIO12 (PIN_SWITCH_A) — onboard general-purpose pushbutton ("switch
+  between effects" per shop.pimoroni.com). #define-only in pins_arduino.h
+  (no static-const alias — same missing-include gap as both non-WiFi
+  siblings, this file has no common.h include). Confirmed by source #4 and
+  independently by source #6 (SW_A_PIN=12). No diode-isolation or other
+  special-circuitry caveat found in any source.
+  -> chipGpios: digital_input, digital_output, pwm_output, button.
+
+GPIO22 (PIN_SWITCH_USER) — doubles as the BOOT-select switch, confirmed
+  freely reusable as a plain user button per sources #4/#5 ("BOOT button
+  can also be used as a user button") and by direct GPIO-number-mechanism
+  analogy to both non-WiFi siblings' already-confirmed USER_SW treatment.
+  No vendor source documents diode isolation or any other special
+  circuitry (this is an ordinary software-polled GPIO, NOT the true
+  QSPI-flash BOOTSEL silicon line used by e.g. pimoroni_tiny2040/2350's
+  more conservative GPIO23 treatment). Independently confirmed via source
+  #6 (USER_SW_PIN=22).
+  -> chipGpios: digital_input, digital_output, pwm_output, button.
+  (Note: this W-variant board has only 2 non-Reset buttons, not 3 like the
+  non-WiFi siblings' BUTTON_A/BUTTON_B/USER_SW — no BUTTON_B/GPIO13 exists
+  on this board; every source checked is consistent on this point, and no
+  alias for GPIO13 appears anywhere in this file.)
+
+GPIO14 (CLK) — external APA102/Dotstar screw-terminal clock line. NOT
+  declared anywhere in this board's own pins_arduino.h (no PIN_ alias at
+  all — same gap as both non-WiFi siblings). Confirmed general-purpose
+  (not board-owned/dedicated hardware) by direct analogy to both already-
+  audited siblings and independently via source #6 (CLK_PIN=14).
+  -> chipGpios: digital_input, digital_output, pwm_output (no strip-
+     specific capability tag exists in this repo's vocabulary; matches the
+     adafruit_feather_scorpio GPIO16-23 "general-purpose, merely well-
+     suited to strip-driving" precedent).
+
+GPIO15 (DAT / this board's own PIN_NEOPIXEL alias) — external WS2812/
+  Neopixel + APA102/Dotstar screw-terminal data line. Despite the
+  "PIN_NEOPIXEL" name, confirmed NOT an onboard NeoPixel — drives the
+  external strip connector only (confirmed on both non-WiFi siblings,
+  independently corroborated by source #6's DATA_PIN=15).
+  -> chipGpios: digital_input, digital_output, pwm_output. No led_neopixel
+     tag (reserved for a board's OWN onboard addressable LED, which this
+     pin is not).
+
+GPIO16 (LED_R), GPIO17 (LED_G), GPIO18 (LED_B) — the board's own onboard
+  status RGB LED, active-low. Confirmed via this board's own pins_
+  arduino.h PIN_LED_R/G/B and via source #6 (LED_R_PIN=16/LED_G_PIN=17/
+  LED_B_PIN=18, plus an explicit note that the default LED pin is
+  "inverted, active low"), matching both non-WiFi siblings' rp-hal-boards-
+  confirmed polarity exactly.
+  -> chipGpios: digital_output, pwm_output, led_r_low / led_g_low /
+     led_b_low respectively (digital_input dropped, matching this repo's
+     established precedent for dedicated onboard RGB status LEDs; pwm_
+     output kept since arduino-pico's analogWrite() works on any RP2040/
+     RP2350 GPIO, enabling brightness/colour dimming).
+
+GPIO24 (PIN_SPI0_MISO / PIN_SPI0_MOSI, a single shared data line),
+GPIO25 (PIN_SPI0_SS), GPIO29 (PIN_SPI0_SCK) — CONFIRMED the CYW43439/RM2
+  wireless module's own internal gSPI control bus, NOT a user-accessible
+  SPI0 peripheral. Evidence: (a) this file's own "// wired to wifi module"
+  comment on the MISO line; (b) this file's own `#define SPI_HOWMANY (0u)`
+  — the vendor's own declaration that zero SPI peripherals are user-
+  accessible on this board; (c) source #6's independent, exact-match
+  WiFi-pin table (Data in/out=24, Chip select=25, Clock=29); (d) GPIO23
+  (the reference Pico W's WL_ON/enable line) is entirely absent from this
+  file's alias list, matching the rpipicow/pico_plus_2w precedent for the
+  "spare" 4th wireless-bus pin.
+
+  DECISION: unlike the rpipicow/pimoroni_pico_plus_2w precedent (where the
+  equivalent WiFi-reserved GPIOs have NO alias anywhere in pins_arduino.h,
+  so they are already fully and cleanly absent from the generated pin
+  set), THIS board's own pins_arduino.h declares LIVE `static const
+  uint8_t SS/MOSI/MISO/SCK = ...` aliases for these exact GPIOs. Source #7
+  (direct byte-for-byte fetch of the real, actively-compiled upstream
+  arduino-pico core file) confirms these declarations are NOT dead/
+  disabled code like the `#if 0` D0-D10 block removed elsewhere in this
+  same pass — they are live, genuinely-compiled vendor pin assignments,
+  identical to what real Arduino builds for this exact board use today.
+  Per this repo's restriction against modifying hardware-specific pin
+  assignments/configurations without explicit permission, and because
+  altering them would change REAL compiled firmware behaviour (unlike the
+  `#if 0` block, whose removal has zero effect on compiled output either
+  way), these declarations were deliberately left untouched.
+
+  CONSEQUENCE (documented, not fixed): build_boards.js's buildEsp32Board()
+  unconditionally appends spi_ss/spi_mosi/spi_miso/spi_sck capabilities to
+  any GPIO matching consts.SS/MOSI/MISO/SCK (see build_boards.js lines
+  ~697-703), and this happens AFTER and INDEPENDENTLY of any chipGpios
+  capability override (see lines ~677-695) — so a chipGpios entry cannot
+  suppress this auto-append. GPIO24/25/29 will therefore still appear in
+  the generated board as "MISO/MOSI (GPIO24)" / "SS (GPIO25)" /
+  "SCK (GPIO29)" with full digital_input/digital_output/pwm_output +
+  spi_mosi+spi_miso / spi_ss / spi_sck capabilities respectively — this is
+  a genuine, currently-unfixable-without-hardware-file-edits gap, distinct
+  from a "confirmed-spare-bus-genuinely-unused" collision (which this
+  audit's playbook says to fix by removing the colliding #define): this
+  bus is NOT spare — it is genuinely, actively used by the onboard
+  wireless module, so removal was correctly out of scope, not merely
+  deferred out of caution.
+  -> chipGpios: NOTE-ONLY entries added for GPIO24, GPIO25, and GPIO29
+     (no "capabilities" key — build_boards.js's `if (chipEntry &&
+     chipEntry.capabilities)` branch only overrides when the key is
+     present, so omitting it lets the default alias-derived capabilities
+     continue to apply while still attaching a warning note visible in the
+     generated pin list) explaining the CYW43/RM2 reservation and advising
+     sketches to avoid using these GPIOs. GPIO29's dual current-sense role
+     is the same reason A3/GPIO29 was already deliberately excluded from
+     the analog-pin declarations in this file (pre-existing fix from an
+     earlier pass, unchanged here) — cross-referenced in this GPIO's note.
+     No chipGpios entry added for GPIO23 (WL_ON/enable) — it has no alias
+     anywhere in this file and is therefore already fully and correctly
+     absent, matching the rpipicow precedent exactly; adding one would
+     incorrectly re-introduce an inaccessible pin.
+
+============================================================
+OUT-OF-SCOPE GAPS (flagged, not fixed — matches non-WiFi siblings' own
+precedent of explicitly deferring the identical gap)
+============================================================
+- This board's pins_arduino.h does not #include any common.h, so GPIO12/
+  14/15/16/17/18/22 (buttons/LED/strip pins) and Wire0 SDA=20/SCL=21 are
+  ALL declared via #define only, never via a `static const uint8_t` peer
+  alias. This project's parser (parseEsp32Consts in build_boards.js) only
+  scans for `static const|constexpr uint8_t NAME = ...;` patterns, so none
+  of these pins would appear in the generated board at all without the
+  explicit chipGpios entries added this pass. This is the same "missing-
+  include gap" already documented (and explicitly deferred) in both non-
+  WiFi siblings' own board.json comments and notes.txt — not a button/LED/
+  NeoPixel hardware issue, so left as-is, consistent with this audit's
+  narrow mandate.
+- No SDA/SCL bus-collision bug applies to any button/LED/strip pin tagged
+  this pass: GPIO12/14/15/16/17/18/22 don't coincide with GPIO20/21
+  (Wire0 SDA/SCL) — and per the point above, the Wire0 auto-tag mechanism
+  can never fire on this board today regardless, since SDA/SCL are
+  #define-only.
+
+============================================================
+VALIDATION
+============================================================
+- board.json JSON-parses successfully after manually stripping `//` line
+  comments with a small Node script (no build_boards.js require()/run, per
+  this audit's instructions) — confirmed valid, chipGpios has the expected
+  10 keys (12,14,15,16,17,18,22,24,25,29), connections =
+  ["serial","tcp","http","ble"], boardName = "RP2040W".
+- No build commands were run, per instructions.

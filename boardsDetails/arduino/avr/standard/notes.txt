@@ -1,0 +1,36 @@
+Board: Arduino Uno / NG / Diecimila / Uno Mini (avr/standard)
+Date: 2026-07-14
+
+Sources consulted:
+- docs.arduino.cc LED_BUILTIN language reference and Blink tutorial
+  (official) — confirms D13 is LED_BUILTIN on classic AVR boards and
+  "The built-in LED on pin 13 operates as active high".
+
+Per-pin findings:
+- D13 (LED_BUILTIN / PIN_SPI_SCK) — confirmed onboard status LED,
+  active-high. Also this board's SPI SCK line — the classic Arduino
+  pin-13 LED+SCK sharing convention (well documented, not a bug). Tagged
+  ["digital_output","pwm_output","led_high"]. The chipGpios override
+  completely replaces the auto-derived capability list for this pin, so
+  the spi_sck tag it would otherwise pick up is deliberately NOT also
+  appended (avoids the identity/bus-tag contamination bug class
+  documented in the pin-audit playbook section 12).
+
+Propagation note: this board.json is reached via the ancestor-fallback
+mechanism (build_boards.js's board.json discovery walks the #include
+chain when a directory has no board.json of its own) by every sibling
+with no board.json: atmegang, diecimila, unomini (share this directory
+directly) and nano/mini/bt/pro (one level further, via
+../eightanaloginputs/pins_arduino.h which itself #includes this file).
+All of these are ordinary 5V classic-Arduino-pinout boards with the
+identical, universally-documented D13 status LED — confirmed correct to
+apply uniformly. lilypad and fio were split into their own directories
+specifically because they run at 3.3V (different ADC reference voltage,
+not different hardware) — see those board.json/notes.txt files. "pro" is
+a genuine 3.3V/5V user-selectable menu board in the real Arduino IDE, so
+no single fixed ADC voltage applies to it either way — left sharing this
+board.json (5.0V) with a caveat noted here rather than guessing which
+menu option a given user has selected.
+
+Summary: Uno/NG/Diecimila/Uno Mini (+ Nano/Mini/BT/Pro via fallback) —
+D13 onboard LED confirmed and tagged active-high.

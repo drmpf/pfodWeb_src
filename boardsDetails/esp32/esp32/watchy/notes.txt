@@ -1,0 +1,76 @@
+Watchy (esp32/watchy) - button/LED capability research notes
+================================================================
+
+Sources consulted
+------------------
+https://watchy.sqfmi.com/docs/hardware/
+  Vendor hardware docs. Revisions table lists a "Charge Indicator" column:
+  v3.0 = "GPIO10", but v1.0/v1.5/v2.0 = "LED" (no GPIO given). Confirms the
+  earlier revisions have some kind of charge-indicator LED but the page
+  itself does not say whether it is GPIO-driven or autonomous (charger-IC
+  driven). Also states button GPIO mapping is documented in the Watchy
+  library on GitHub, not on this page.
+
+https://raw.githubusercontent.com/sqfmi/Watchy/master/src/config.h
+  Vendor firmware library header. Confirms button pin defines:
+    MENU_BTN_PIN=26, BACK_BTN_PIN=25, DOWN_BTN_PIN=4,
+    UP_BTN_PIN=32 (V1.0/V1.5) or UP_BTN_PIN=35 (V2.0).
+  Also confirms VIB_MOTOR_PIN=13 (vibration motor, already excluded in
+  board.json) and states no LED_BUILTIN/RGB/NeoPixel pin is defined in this
+  header for any revision.
+
+https://github.com/sqfmi/watchy-hardware (repo root / v1.0 tag file listing)
+  Vendor open-hardware CAD repo (KiCad schematic, PCB, BOM, OSHWA-certified
+  design files) - used as the authoritative schematic source, not just
+  pins_arduino.h aliases.
+
+https://raw.githubusercontent.com/sqfmi/watchy-hardware/v1.0/WatchyBOM.csv
+  Vendor BOM for hardware v1.0. Row "D5,LED_0603,1,LED" = one LED on the
+  board. Row "U5,SOT-23-5,1,TP4054" = TP4054 single-cell Li-Ion linear
+  battery charger IC.
+
+https://raw.githubusercontent.com/sqfmi/watchy-hardware/v1.0/Watchy.sch
+  Vendor KiCad legacy schematic (raw text) for hardware v1.0. Confirms:
+    - D5 (LED_0603) is wired into the charging circuit next to the TP4054
+      charger IC (U5) - i.e. it is the TP4054's standard open-drain CHRG-pin
+      charge-status LED, driven autonomously by the charger IC, NOT by an
+      ESP32 GPIO.
+    - SW1 = BTN_1 net = GPIO26 (MENU button)
+    - SW2 = BTN_2 net = GPIO25 (BACK button)
+    - SW3 = BTN_3 net = GPIO4  (DOWN button)
+    - SW4 = BTN_4 net = GPIO32 (UP button, v1.0 hardware)
+  This corroborates config.h's pin numbers with the actual schematic nets,
+  satisfying the "confirm via real schematic, not just alias names" rule.
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO32 (or GPIO35 on v2.0) - UP button (SW4). NOT tagged. This is a
+  confirmed real button (schematic net BTN_4), but the single watchy
+  board.json in this repo covers all three hardware revisions (v1.0/v1.5/
+  v2.0) selectable via the Arduino IDE "Revision" menu, and the UP button's
+  GPIO differs between v1.0/v1.5 (GPIO32) and v2.0 (GPIO35). There is no
+  per-revision board.json in this variant folder, so tagging either GPIO32
+  or GPIO35 alone would be wrong for the other revision(s). This is a
+  deliberate no-guess decision, not a best-guess - left for human review to
+  decide whether a per-revision split/duplicate board.json is warranted.
+  Neither GPIO32 nor GPIO35 falls in an existing pin-exclusion, so both
+  remain available with their original (non-button) capabilities untouched.
+
+- LED D5 (charge indicator, all of v1.0/v1.5/v2.0). NOT tagged. Confirmed
+  via schematic to be wired to the TP4054 charger IC's charge-status output,
+  which is an autonomous hardware indicator (lights automatically while
+  charging over USB) with no ESP32 GPIO connection at all - there is no
+  GPIO for pfodWeb to control here, so no led_high/led_low tag applies.
+  This is a confirmed determination (not a guess): the LED exists but is
+  not GPIO-addressable.
+
+- No RGB/NeoPixel LED exists on Watchy (confirmed absent in config.h and
+  BOM) - not applicable.
+
+What was tagged
+-----------------
+GPIO4  -> ["digital_input","button"]  (DOWN button, SW3, common to all revisions)
+GPIO25 -> ["digital_input","button"]  (BACK button, SW2, common to all revisions)
+GPIO26 -> ["digital_input","button"]  (MENU button, SW1, common to all revisions)
+Neither GPIO4, GPIO25, nor GPIO26 is this board's TX (GPIO1) or RX (GPIO3),
+so no TX/RX-reservation conflict applies to any of the three tagged pins.

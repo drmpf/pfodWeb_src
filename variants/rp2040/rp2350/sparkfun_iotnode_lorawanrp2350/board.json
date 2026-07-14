@@ -1,0 +1,187 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — this board's boards.txt
+  // entry sets it to "SparkFun IoT Node LoRaWAN".
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same pin-declaration style as every other RP2040/RP2350 board — see
+  // variants/rp2040/rp2350/board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only, matching the chip-level default.
+  // This board's onboard Digi XBee LR LoRaWAN module is connected via a
+  // dedicated hardware UART (Serial1), not an on-chip radio, so there is
+  // no TCP/HTTP/BLE Designer-connection change in scope for this
+  // GPIO-focused audit.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel + dedicated-
+  // hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: SparkFun "IoT Node for LoRaWAN" (SparkFun part, RP2350A chip,
+  // `PICO_RP2350A 1` per this board's own local pins_arduino.h). Onboard
+  // hardware, per the official SparkFun hookup guide
+  // (docs.sparkfun.com/SparkFun_IoT_Node_LoRaWAN/hardware_overview/) plus
+  // this board's own upstream arduino-pico firmware source
+  // (github.com/sparkfun/sfe-iot-node-lorawan): a Digi XBee LR module for
+  // LoRaWAN (NOT an SX1262 — corrected from this task's initial premise;
+  // confirmed by direct WebSearch of the vendor hookup guide, which
+  // states the module is "directly connected to a serial port of the
+  // RP2350" and is controlled via Digi's own XBeeArduino library, not an
+  // SPI LoRa radio), an onboard microSD card slot, 8MB PSRAM, a single
+  // WS2812 NeoPixel doubling as the "built-in LED", a user button, and a
+  // Qwiic I2C connector.
+  //
+  // SOURCES CONSULTED (full detail + per-pin reasoning in notes.txt):
+  //  1. This board's own pins_arduino.h (local file) — PIN_LED=25,
+  //     PIN_NEOPIXEL=25/NUM_NEOPIXEL=1, PIN_SERIAL1_TX/RX=18/19,
+  //     PIN_SERIAL2_TX/RX=8/9, PIN_SPI0_MISO/MOSI/SCK/SS=12/15/14/13 (with
+  //     "the board uses SPI1 for uSD card, make that the default" —
+  //     __SPI0_DEVICE remapped to the physical spi1 peripheral),
+  //     PIN_WIRE0_SDA/SCL=20/21, RP2350_PSRAM_CS=0.
+  //  2. variants/rp2040/rp2350/generic/common.h (shared fallback this
+  //     board's pins_arduino.h #includes) — declares D0-D22 aliases
+  //     (GPIO0 included, so the PSRAM CS pin was, until this file,
+  //     wrongly exposed as a plain full-capability D0) plus
+  //     SS/MOSI/MISO/SCK/SDA/SCL statics pointing at PIN_SPI0_*/PIN_WIRE0_*.
+  //  3. Upstream github.com/earlephilhower/arduino-pico
+  //     variants/sparkfun_iotnode_lorawanrp2350/pins_arduino.h (raw fetch)
+  //     — byte-for-byte identical to the local copy; confirms no
+  //     additional comments were dropped when this repo's copy was made.
+  //  4. WebFetch: docs.sparkfun.com/SparkFun_IoT_Node_LoRaWAN/hardware_overview/
+  //     and /single_page/ (official hookup guide) — confirms "Digi XBee LR
+  //     module for LoRaWAN... directly connected to a serial port of the
+  //     RP2350", an "XBLR UART Selection Switch" (RP2350 vs USB connector
+  //     downstream of the same fixed UART wiring, not an extra pin), "The
+  //     User Button is a user-defined general use button connected to
+  //     GPIO" (no number given in the guide itself), an onboard "RGB LED"
+  //     and "microSD card slot" (both gated by an "LP" jumper), and a
+  //     Qwiic connector with built-in SDA/SCL pull-ups. No exact GPIO
+  //     numbers are given in the hookup guide text itself for any of
+  //     these — resolved instead via the firmware source below.
+  //  5. github.com/sparkfun/sfe-iot-node-lorawan (official SparkFun
+  //     Arduino firmware for this exact board), file
+  //     sfeIoTNodeLoRaWAN/sfeNLBoard.h (raw fetch, verbatim): declares
+  //     `const uint8_t kNLBoardUserButton = 24;`,
+  //     `const uint8_t kNLBoardSDCardCSPin = 13;`,
+  //     `const uint8_t kNLBoardLEDBuiltin = 25;`,
+  //     `const uint8_t kNLBoardLEDRGBBuiltin = 25;` — resolves the exact
+  //     GPIO numbers the hookup guide left unstated: user button on
+  //     GPIO24 (NOT aliased in pins_arduino.h at all), microSD CS
+  //     confirmed at GPIO13 (matching this board's own PIN_SPI0_SS),
+  //     and confirms GPIO25 serves as both the plain "LED_BUILTIN" and
+  //     the "RGB" NeoPixel (same physical WS2812, matching
+  //     PIN_LED==PIN_NEOPIXEL==25 in pins_arduino.h).
+  //  6. Same firmware repo, file sfeIoTNodeLoRaWAN/flxLoRaWANDigi.h/.cpp
+  //     (raw fetch, verbatim): `#define kXBeeLRSerial Serial1` and
+  //     `_pXBeeLR = new XBeeArduino(&kXBeeLRSerial, kXBeeLRBaud, XBEE_LORA,
+  //     ...)` — confirms the XBee LR module is hardwired to Serial1
+  //     (this board's PIN_SERIAL1_TX/RX = GPIO18/19), not Serial2
+  //     (GPIO8/9). No source found tying Serial2 (GPIO8/9) to any fixed
+  //     onboard hardware — left untouched (see NO CHANGE note below).
+  //  7. Same firmware repo, file sfeIoTNodeLoRaWAN/sfeNLButton.cpp (raw
+  //     fetch, verbatim): `pinMode(kNLBoardUserButton, INPUT_PULLUP);
+  //     attachInterrupt(kNLBoardUserButton, userButtonISR, CHANGE);` with
+  //     `digitalRead(...) == HIGH ? release : press` — confirms an
+  //     ordinary momentary-to-GND button read via the internal pull-up,
+  //     active-low, on GPIO24.
+  //
+  // GPIO0 (RP2350_PSRAM_CS) BUG FIX: GPIO0 already carries a D0 alias via
+  // the shared generic/common.h fallback, so before this file it was
+  // wrongly exposed in the Designer as a full-capability general-purpose
+  // pin despite being the dedicated onboard 8MB PSRAM chip's chip-select
+  // line. Excluded below (capabilities: []), matching this repo's
+  // established PSRAM-CS-pin precedent (solderparty_rp2350_stamp_xl
+  // GPIO8).
+  //
+  // GPIO12/13/14/15 (onboard microSD, "PIN_SPI0_*") NOTE: this board's own
+  // pins_arduino.h dedicates its default/only usable SPI bus entirely to
+  // the onboard microSD card slot (the "make that the default" comment +
+  // PIN_SPI1_* all sentineled to 31/"not pinned out" — there is no second,
+  // free SPI bus on this board at all). Confirmed physically wired to the
+  // microSD card by the firmware's own `kNLBoardSDCardCSPin = 13` constant
+  // matching PIN_SPI0_SS. Excluded below (capabilities: []), same
+  // dedicated-onboard-SPI-bus precedent as wiznet_5500_evb_pico2 (see that
+  // board's own board.json note) — and, per that same precedent, the
+  // "spi_miso"/"spi_ss"/"spi_sck"/"spi_mosi" capability tags will still be
+  // auto-attached by build_boards.js's buildEsp32Board() via the
+  // MISO/SS/SCK/MOSI static-const aliases in the shared generic/common.h
+  // (independent of this chipGpios override, since that auto-append is
+  // unconditional) — left as-is since this genuinely is the board's one
+  // real SPI bus, just already fully consumed by the onboard microSD
+  // socket rather than free for a second SPI peripheral.
+  //
+  // GPIO18/19 (PIN_SERIAL1_TX/RX, Digi XBee LR module UART): excluded
+  // below (capabilities: []) — confirmed hardwired to the onboard XBee LR
+  // LoRaWAN radio module (`#define kXBeeLRSerial Serial1` in the official
+  // firmware). No SDA/SCL/SS/MOSI/MISO/SCK alias collision on these two
+  // GPIOs, so no auto-append caveat applies here (unlike GPIO12-15 above).
+  //
+  // GPIO8/9 (PIN_SERIAL2_TX/RX) — NO CHANGE: no vendor/firmware source
+  // found tying this second hardware UART to any fixed onboard peripheral
+  // (the hookup guide's "up to two UART... broken out" phrasing and the
+  // firmware's exclusive use of Serial1 for the XBee both suggest this is
+  // a spare/general-purpose header UART option). Left as plain D8/D9 per
+  // this repo's "report NO CHANGE rather than guess" policy.
+  //
+  // GPIO24 (User Button) ADDED: not aliased anywhere in this board's
+  // pins_arduino.h — added directly as a chipGpios entry (matching this
+  // repo's adafruit_itsybitsy GPIO13 / solderparty BTN_USR1 precedent for
+  // button pins with no pins_arduino.h alias). Full digital_input/
+  // digital_output/pwm_output capability retained alongside the "button"
+  // tag (ordinary bidirectional GPIO wired to a momentary switch to
+  // ground, confirmed via the firmware's INPUT_PULLUP + CHANGE-interrupt
+  // handling), matching this repo's established button-pin precedent.
+  //
+  // GPIO25 (PIN_LED / PIN_NEOPIXEL) TAGGED: single WS2812 NeoPixel that
+  // doubles as the "LED_BUILTIN" (confirmed via pins_arduino.h
+  // PIN_LED==PIN_NEOPIXEL==25/NUM_NEOPIXEL=1 and the firmware's
+  // kNLBoardLEDBuiltin==kNLBoardLEDRGBBuiltin==25). Tagged
+  // ["digital_output","led_neopixel"] matching this repo's established
+  // led_neopixel precedent (no digital_input/pwm_output — a NeoPixel is
+  // driven by a single-wire bit-banged protocol, not a simple digital
+  // level or PWM duty cycle). Not aliased in pins_arduino.h (GPIO23/24/
+  // 25/29 are always omitted from the shared generic/common.h D-alias
+  // list) — added directly as a chipGpios entry.
+  //
+  // Qwiic I2C (GPIO20/21, PIN_WIRE0_SDA/SCL): left untouched/unexcluded.
+  // A Qwiic connector is a normal, user-facing I2C bus (built-in pull-ups
+  // per the hookup guide) meant for the user's own sensors — this is
+  // ordinary intended use, not dedicated internal hardware, matching this
+  // repo's treatment of every other Qwiic-equipped board audited so far.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/sparkfun_iotnode_lorawanrp2350/notes.txt
+  "chipGpios": {
+    "0":  { "capabilities": [], "note": "RP2350_PSRAM_CS — dedicated chip-select line to the onboard 8MB PSRAM chip. Confirmed via this board's own pins_arduino.h (`RP2350_PSRAM_CS (0u)`). Previously exposed as a full-capability D0 pin via the shared generic/common.h D-alias fallback; excluded here to match this repo's established PSRAM-CS precedent (solderparty_rp2350_stamp_xl GPIO8). Not general-purpose." },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_SERIAL2_TX — no vendor/firmware source found tying this to any fixed onboard peripheral (the XBee LR module is confirmed hardwired to Serial1/GPIO18-19 instead, per flxLoRaWANDigi.h's `#define kXBeeLRSerial Serial1`). Left as an ordinary general-purpose D8 pin — 'report NO CHANGE rather than guess' policy. Listed here only for documentation continuity; matches the chip-level default capability set." },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_SERIAL2_RX — same reasoning as GPIO8. No confirmed dedicated onboard use found; left as an ordinary general-purpose D9 pin." },
+    "12": { "capabilities": [], "note": "PIN_SPI0_MISO — onboard microSD card slot's dedicated data line. This board's pins_arduino.h remaps its default/only usable SPI bus onto the physical spi1 hardware peripheral specifically for the microSD card (\"the board uses SPI1 for uSD card, make that the default\"); PIN_SPI1_* is entirely sentineled to 31/not pinned out, so there is no second, free SPI bus on this board. Confirmed via the official firmware's `kNLBoardSDCardCSPin = 13` (matching PIN_SPI0_SS on this same bus). Note: build_boards.js will still auto-attach \"spi_miso\" via the shared generic/common.h MISO static-const alias, independent of this override — accurate, since this genuinely is the board's one real SPI bus, just already fully consumed by the onboard microSD socket." },
+    "13": { "capabilities": [], "note": "PIN_SPI0_SS — onboard microSD card slot's dedicated chip-select line. Directly confirmed by the official firmware's `const uint8_t kNLBoardSDCardCSPin = 13;`. Same \"spi_ss\" auto-attach caveat as GPIO12 above." },
+    "14": { "capabilities": [], "note": "PIN_SPI0_SCK — onboard microSD card slot's dedicated clock line. Same bus/reasoning as GPIO12/13. Same \"spi_sck\" auto-attach caveat." },
+    "15": { "capabilities": [], "note": "PIN_SPI0_MOSI — onboard microSD card slot's dedicated data line. Same bus/reasoning as GPIO12/13. Same \"spi_mosi\" auto-attach caveat." },
+    "18": { "capabilities": [], "note": "PIN_SERIAL1_TX — dedicated UART TX to the onboard Digi XBee LR LoRaWAN module. Confirmed via the official firmware's flxLoRaWANDigi.h: `#define kXBeeLRSerial Serial1`, used directly to construct the XBeeArduino object. Not general-purpose. No SDA/SCL/SS/MOSI/MISO/SCK alias collision on this GPIO." },
+    "19": { "capabilities": [], "note": "PIN_SERIAL1_RX — dedicated UART RX to the onboard Digi XBee LR LoRaWAN module. Same source/reasoning as GPIO18." },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "User Button — confirmed via the official firmware's sfeNLBoard.h (`const uint8_t kNLBoardUserButton = 24;`) and sfeNLButton.cpp (`pinMode(kNLBoardUserButton, INPUT_PULLUP); attachInterrupt(kNLBoardUserButton, userButtonISR, CHANGE);` with active-low digitalRead logic). Not aliased anywhere in this board's pins_arduino.h — added directly as a chipGpios entry. Full digital_input/digital_output/pwm_output capability retained (ordinary bidirectional GPIO wired to a momentary switch to ground), matching this repo's established button-pin precedent." },
+    "25": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_LED / PIN_NEOPIXEL — single onboard WS2812 NeoPixel that doubles as the board's LED_BUILTIN (pins_arduino.h: PIN_LED==PIN_NEOPIXEL==25, NUM_NEOPIXEL=1; firmware sfeNLBoard.h: kNLBoardLEDBuiltin==kNLBoardLEDRGBBuiltin==25). Not aliased in pins_arduino.h (GPIO25 is always omitted from the shared generic/common.h D-alias list) — added directly as a chipGpios entry. digital_input/pwm_output omitted per this repo's established led_neopixel precedent (single-wire bit-banged protocol, not a plain digital level or PWM duty cycle)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as the chip-level default.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

@@ -112,6 +112,15 @@ static const uint8_t TK4 = 12;   	// A11
 extern const uint8_t PROGMEM analog_pin_to_channel_PGM[];
 #define analogPinToChannel(P)  ( pgm_read_byte( analog_pin_to_channel_PGM + (P) ) )
 
+// pfodWeb NOTE: this macro was missing from the original file, which
+// silently made build_boards.js treat every pin on this board as
+// PWM-incapable (buildPwmPredicate() falls back to always-false when the
+// macro is absent). Added to match the confirmed pins genuinely wired to
+// a hardware timer per this file's own digital_pin_to_timer_PGM table
+// below (TIMER0A/B, TIMER1A/B, TIMER3A, TIMER4A/D) — identical pin set to
+// the Leonardo variant, since this is the same ATmega32U4 chip.
+#define digitalPinHasPWM(p)         ((p) == 3 || (p) == 5 || (p) == 6 || (p) == 9 || (p) == 10 || (p) == 11 || (p) == 13)
+
 #define digitalPinToInterrupt(p) ((p) == 0 ? 2 : ((p) == 1 ? 3 : ((p) == 2 ? 1 : ((p) == 3 ? 0 : ((p) == 7 ? 4 : NOT_AN_INTERRUPT)))))
 
 #ifdef ARDUINO_MAIN

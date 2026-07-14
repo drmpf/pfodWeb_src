@@ -1,0 +1,144 @@
+Board: heltec_wifi_lora_32_V3 (variants/esp32/esp32s3/heltec_wifi_lora_32_V3)
+Research date: 2026-07-11
+
+POST-REVIEW CORRECTION (2026-07-11): the GPIO35 "led_high" tag described
+below was reverted after the fact for consistency with sibling boards
+heltec_wifi_lora_32_V4, heltec_wireless_shell_v3, and
+heltec_wireless_stick_lite_v3 — all of which share the identical GPIO35
+situation (vendor-confirmed LED, but the pin has no chipGpios entry
+because it falls in the chip-level GPIO33-37 octal-flash/PSRAM exclusion
+range) and all three of those declined to re-add it, treating that as
+reversing a pre-existing chip-level exclusion (out of scope for this
+tagging pass). This board's original subagent run WAS the outlier — it
+added a brand-new GPIO35 entry instead of leaving it absent. The
+board.json now correctly has NO chipGpios entry for GPIO35 (matching the
+siblings) with a NOTE explaining the decision. The research below (button
+GPIO0, LED GPIO35 identity/polarity) is still fully valid evidence — only
+the decision to actually write a chipGpios entry for GPIO35 was reversed.
+A human reviewer should treat this board's GPIO35 exactly the same as its
+three siblings' GPIO35 write-up when deciding whether to lift the
+exclusion family-wide.
+
+SOURCES CONSULTED
+-----------------
+1. https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA_V3(Rev1.1).pdf
+   Official Heltec datasheet (Rev 1.1, Sep 2022) for HTIT-WB32LA_V3. Pin
+   description table (section 2.2, Header J2) explicitly lists:
+     - Pin 8: "0, GPIO0, connect to PRG switch"
+     - Pin 10: "35, GPIO35, SPIIO6, FSPID, SUBSPID, LED Write Ctrl"
+   This is the strongest single source: confirms GPIO0 is the PRG/user
+   button and GPIO35 is the onboard LED control line.
+
+2. https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA(F)_V3_Schematic_Diagram.pdf
+   Official Heltec full schematic (read as a rendered PDF/image, not text
+   extraction). Page 1, "Interface" section (bottom right) shows:
+     - Net "LED" (which the main ESP32-S3FN8 MCU block on the same sheet
+       labels against pin 35, i.e. "35  SPID  LED") runs through resistor
+       R19 (330R/5%) to a diode symbol labelled LED2 ("Wire"/White) to
+       GND. This is GPIO -> resistor -> LED -> GND, i.e. GPIO35 sources
+       current into the LED when driven HIGH: active-HIGH LED.
+     - Separately, LED1 (Orange, the charge-status LED) is wired from
+       VDD_5V through R18 to the CHRG node from the TP4054 charge IC -
+       this is NOT GPIO controlled and was not tagged.
+     - Top-right "USB_UART" block shows switch S2 labelled "USER_SW"
+       (the PRG button), pulled up via R7 (10K/5%) to VDD_3V3, matching
+       the "USER_Key" / GPIO0 pin label on the main MCU block. Standard
+       active-low pull-up button wiring (confirms GPIO0 = physical PRG
+       button, independent confirmation of source #1).
+
+3. https://devices.esphome.io/devices/heltec-wifi-lora-32-v3/
+   ESPHome device database page. "Other Pins" table explicitly states:
+     "Function: Button, GPIO: GPIO0"
+     "Function: LED, GPIO: GPIO35"
+   Independent third-party confirmation matching the vendor datasheet.
+
+4. https://github.com/PaulSchulz/heltec-wifi-lora-32-v3
+   (fetched as github.com/PaulSchulz/heltec-wifi-lora-32-v3) Hardware
+   notes repo; its pin table has a row "LED | 35", corroborating GPIO35.
+   Did not mention a button pin.
+
+5. https://community.platformio.org/t/builtin-led-defined-for-heltec-wifi-lora-32-v3-dev-board/42788
+   PlatformIO community thread. Confirms upstream arduino-esp32 defines
+   "static const uint8_t LED_BUILTIN = 35;" for this board (a user's
+   older platform package had a stale/wrong GPIO97 definition that was
+   fixed after a platform update) - corroborates GPIO35 is the correct,
+   currently-shipped alias, not a leftover generic default.
+
+6. https://raw.githubusercontent.com/meshtastic/firmware/master/variants/esp32s3/heltec_v3/variant.h
+   Meshtastic firmware variant header for this exact board. Defines
+   "#define BUTTON_PIN 0" and "#define LED_POWER LED" (LED alias to
+   GPIO35 via the board's pins_arduino.h). Confirms GPIO0 button / GPIO35
+   LED assignment from a third, independent production firmware project.
+   Did not state LED polarity explicitly (no LED_STATE_ON/LED_INVERTED
+   macro in this file) - polarity was instead confirmed from the vendor
+   schematic (source #2).
+
+7. https://raw.githubusercontent.com/meshtastic/firmware/master/variants/esp32s3/heltec_v3/platformio.ini
+   Checked for LED-related build flags (e.g. LED_INVERTED) - none found
+   beyond "-D HELTEC_V3"; not used for polarity, only for corroborating
+   the variant path/naming.
+
+8. https://heltec.org/project/wifi-lora-32-v3/
+   Official product page - reviewed for LED/button mentions; page does
+   not describe onboard LED/button (marketing/feature page only), so not
+   used as a confirming source, only ruled out as a dead end.
+
+9. https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v3/Pin-diagram-guidance
+   Heltec "GPIO Usage Guide" wiki page - reviewed but did not explicitly
+   describe GPIO35 or GPIO0 as LED/button (only mentioned GPIO21 as OLED
+   reset). Not used as a confirming source.
+
+10. https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v3/
+    Heltec wiki overview page - reviewed, no explicit LED/button GPIO
+    mention found. Dead end.
+
+11. https://docs.cirkitdesigner.com/component/50c87853-226e-49ce-a22c-1064fb9aaf68/heltec-wifi-lora-32v3
+    Third-party pinout page - reviewed, did not mention onboard LED or
+    button pins. Dead end.
+
+12. https://github.com/meshtastic/firmware/issues/3635
+    Meshtastic GitHub issue ("Option to turn off LED indicators on ESP32
+    Heltec V3") - reviewed for LED hardware detail; only a feature
+    request about disabling blinking LEDs in software, no GPIO/polarity
+    detail. Not used as a confirming source.
+
+13. https://raw.githubusercontent.com/Heltec-Aaron-Lee/WiFi_Kit_series/master/esp32/variants/WIFI_LoRa_32_V3/pins_arduino.h
+    Attempted fetch of the vendor's own upstream pins_arduino.h (404,
+    path no longer exists at that location) - could not retrieve
+    directly, but its content was independently corroborated via sources
+    3, 4, 5 and 6 above plus our own copy of pins_arduino.h in this repo,
+    which already declares LED_BUILTIN/LED = 35 and no KEY_BUILTIN/BUTTON
+    alias.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- No other candidate GPIOs were considered. The board's own
+  pins_arduino.h only declares LED_BUILTIN/LED (GPIO35) and no button
+  alias at all (unlike the V1/V2 siblings, which declare KEY_BUILTIN).
+  GPIO0 was tagged as button purely from external vendor/schematic/
+  third-party confirmation (sources 1, 2, 3, 6), not from any alias in
+  this board's pins_arduino.h - this is a confirmed judgment call backed
+  by multiple independent sources, not a guess from a generic name.
+- Checked TX/RX conflict: TX=43, RX=44 in this board's pins_arduino.h.
+  Neither GPIO0 nor GPIO35 coincides with TX/RX, so no conflict and no
+  discarded tagging risk from build_boards.js's TX/RX hard-reservation.
+- GPIO36 (Vext power-gate) was already excluded by the earlier pin-audit
+  pass (see existing NOTE comment in board.json) and was left untouched;
+  it is not an LED, it is the external power rail switch control line.
+- No discrete RGB (separate R/G/B) or NeoPixel/addressable LED was found
+  on this board in any source; only the single white "digital LED2" tied
+  to GPIO35 and the separate hardware-driven orange charge-status LED
+  (LED1, wired directly to the TP4054 charge IC's CHRG pin, not to any
+  GPIO, so out of scope for GPIO tagging).
+- LED polarity (active-high) was not a guess: it was read directly off
+  the vendor schematic diagram (source #2), which shows the GPIO35 "LED"
+  net driving current through R19 to the LED to GND (GPIO sources
+  current when HIGH). This is a confirmed reading, not a judgment call.
+
+SUMMARY OF WHAT WAS TAGGED
+---------------------------
+GPIO0 -> ["digital_input","button"] (onboard PRG/USER button).
+GPIO35 -> ["digital_output","led_high"] (onboard white LED2, active-high;
+no pre-existing capability entry existed for GPIO35 in this board's
+board.json, so pwm_output was not added per the tagging rule that it
+should only be carried over if already present).

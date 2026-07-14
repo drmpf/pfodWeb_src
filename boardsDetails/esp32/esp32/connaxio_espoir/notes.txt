@@ -1,0 +1,71 @@
+Board: connaxio_espoir (Connaxio Espoir / ESP32-MINI-1, PoE+ + mikroBUS)
+Date: 2026-07-14 (independent verification pass - real external research,
+replacing the earlier pass's reliance on this repo's own copied
+pins_arduino.h alone)
+
+Sources consulted (real, external, independently checked):
+- https://github.com/espressif/arduino-esp32/commits/master/variants/connaxio_espoir
+  - the official upstream Arduino-ESP32 core's own commit history for
+    this exact variant. The board was added in PR #6822 ("Add support
+    for Connaxio's Espoir"), authored by GitHub user "ma-lalonde". This
+    is the authoritative, officially-merged hardware support PR for this
+    board, not a third-party guess.
+  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/connaxio_espoir/pins_arduino.h
+    - fetched directly and diffed against this repo's local copy.
+      Confirms `#define ETH_PHY_MDC 32`, `#define ETH_PHY_MDIO 33`,
+      `#define ETH_INT 35`, `#define ETH_PHY_TYPE ETH_PHY_KSZ8081`,
+      `#define ETH_CLK_MODE ETH_CLOCK_GPIO0_IN` - matching this repo's
+      copy exactly (this repo's copy has ETH_INT's declaration replaced
+      with an explanatory pfodWeb comment rather than removed silently).
+      Also confirms the mikroBUS UART (TX1=10/RX1=9), I2C (SDA=23/
+      SCL=18) and SPI (SS=15/MOSI=13/MISO=12/SCK=14) pin assignments
+      match exactly.
+- https://github.com/Connaxio/espoir - the board designer's own GitHub
+  repo (hardware/schematics/firmware), confirming Connaxio as a real,
+  independently-identifiable OSHWA-certified hardware vendor and Espoir
+  as "A PoE+ mikroBUS mainboard based on the ESP32-MINI-1" with full
+  open schematics.
+- https://www.hackster.io/news/connaxio-s-espoir-is-a-compact-dual-core-iot-development-board-with-mikrobus-and-full-poe-support-1c22b118d485.amp
+  - independent third-party hardware writeup corroborating "the KSZ8081
+    PHY for Ethernet connectivity, configured via pins 32 and 33 for MDC
+    and MDIO respectively" and the "16 IOs arranged following the
+    mikroBUS socket specification".
+
+Per-pin findings:
+- GPIO32: excluded (capabilities: [] / omitted from chipGpios) -
+  dedicated onboard Ethernet PHY (KSZ8081) MDC line (ETH_PHY_MDC=32).
+  CONFIRMED via the official arduino-esp32 upstream PR #6822 and
+  independently corroborated by a third-party Hackster.io hardware
+  writeup.
+- GPIO33: excluded - dedicated onboard Ethernet PHY MDIO line
+  (ETH_PHY_MDIO=33). Same sources as GPIO32.
+- GPIO35: excluded - dedicated onboard Ethernet PHY interrupt line
+  (ETH_INT=35). CONFIRMED via the official arduino-esp32 upstream source
+  - this repo's local pins_arduino.h had already removed the literal
+    `#define ETH_INT 35` line (replacing it with an explanatory comment
+    to prevent build_boards.js's alias-scanning from picking it up as a
+    general-purpose alias), so this exclusion could not be re-derived
+    from the local file alone without checking the real upstream vendor
+    source, which is now done.
+- mikroBUS UART/I2C/SPI socket pins (TX1/RX1, SDA/SCL, SS/MOSI/MISO/SCK):
+  explicitly kept (not excluded) - an optional/user-populated click-board
+  slot, not fixed onboard hardware. CONFIRMED - the official Espoir
+  documentation and third-party writeups describe the mikroBUS socket as
+  a standard expansion slot compatible with "over 1,300 existing add-on
+  boards", i.e. these pins carry no fixed onboard function until a
+  click-board is plugged in.
+- GPIO0, GPIO1, GPIO2, GPIO3, GPIO4, GPIO5, GPIO12, GPIO13, GPIO14,
+  GPIO15, GPIO18, GPIO19, GPIO21, GPIO22, GPIO23, GPIO25, GPIO26, GPIO27,
+  GPIO34, GPIO36, GPIO37, GPIO38, GPIO39: kept, unchanged generic
+  capabilities - nothing in the official source or third-party writeups
+  suggests any further dedicated onboard hardware beyond the Ethernet
+  PHY and the standard ESP32 boot-strapping pins already recorded in
+  pinNotes.
+
+Summary: All pre-existing findings CONFIRMED - GPIO32/33/35 excluded as
+the dedicated onboard KSZ8081 Ethernet PHY's MDC/MDIO/interrupt lines
+(directly verified against the official arduino-esp32 upstream PR #6822
+by the board's actual integrator, and corroborated by an independent
+third-party Hackster.io writeup); the mikroBUS click-board socket pins
+were correctly kept since they are optional/user-populated, not fixed
+onboard hardware. No corrections needed.

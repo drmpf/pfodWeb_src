@@ -1,0 +1,191 @@
+Board: WIZnet "WizFi360-EVB-Pico" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/wiznet_wizfi360_evb_pico/
+Audit date: 2026-07-12
+
+SUMMARY
+-------
+Applied dedicated-hardware pin exclusion for the onboard WizFi360
+serial-AT WiFi module's UART1 link + reset line (GPIO4, 5, 6, 7, 20).
+GPIO4/5 (this board's own PIN_SERIAL2_TX/PIN_SERIAL2_RX) are forced to
+serial_tx/serial_rx via chipGpios (bypassing the default digital_input/
+digital_output/pwm_output derivation). GPIO6/7 (UART1 hardware
+RTS/CTS flow control) and GPIO20 (module reset) have no bus-role
+vocabulary of their own, so they get empty capabilities + explanatory
+notes, matching the wiznet_5500_evb_pico/adafruit_trinkeyrp2040qt
+"no legitimate general-purpose role" precedent. No button/LED tagging
+applied - see reasoning below. Created board.json (this board
+previously had none - zero differentiation from a plain Pico, despite
+GPIO4-7/20 being fully committed to the onboard WiFi module).
+
+SOURCES CONSULTED
+------------------
+1. docs.wiznet.io/Product/Chip/Chip_Related_modules/wizfi360-evb-pico
+   (WIZnet's own official documentation - authoritative). States that
+   "GPIO4, GPIO5, GPIO6, GPIO7, GPIO20 are connected to WizFi360 inside
+   the board" for UART1 communication and module reset, and that "If
+   you are using the Wi-Fi function, these pins cannot be used for any
+   other purpose." Per-pin table from the same page:
+     GPIO4  -> WizFi360 RXD1 (UART1 RX side of the module)
+     GPIO5  -> WizFi360 TXD1 (UART1 TX side of the module)
+     GPIO6  -> WizFi360 RTS1
+     GPIO7  -> WizFi360 CTS1
+     GPIO20 -> WizFi360 RST
+   Also: "GPIO25: Connected to user LED", "GPIO24: VBUS sense",
+   "GPIO29: used in ADC mode (ADC3) to measure VSYS/3". No dedicated
+   user pushbutton documented beyond BOOTSEL.
+2. Primary source, WIZnet's own published schematic (authoritative,
+   used to independently verify and resolve TX/RX/RTS/CTS directionality
+   from the RP2040's own perspective rather than trusting only the
+   module-side pin names):
+   github.com/Wiznet/Hardware-Files-of-WIZnet, path
+   08_OSHW/WizFi360-EVB-Pico/WizFi360-EVB-Pico_V100/Schematic/
+   WizFi360-EVB-Pico_SCH_V100.pdf (downloaded and read directly).
+   Confirms net names on the RP2040 side:
+     GPIO4  = net "UART1_TX" (RP2040 transmits -> WizFi360 RXD1)
+     GPIO5  = net "UART1_RX" (RP2040 receives  <- WizFi360 TXD1)
+     GPIO6  = net "UART1_CTS" (RP2040 receives <- WizFi360 RTS1)
+     GPIO7  = net "UART1_RTS" (RP2040 drives   -> WizFi360 CTS1)
+     GPIO20 = net "RSTn", routed from RP2040 GPIO20 through R15 (0R)
+              directly to the WizFi360 module's RST pin.
+   All five nets go only to the onboard WizFi360 module (M1) - none are
+   brought out to the 40-pin header (J1/J2) for general use.
+   Also confirms the onboard LED circuit precisely: LD2 (green) is wired
+   3V3-rail-independent, driven from GPIO25 through R11 (470R) to the
+   LED to GND - i.e. GPIO25 HIGH sources current through R11 into LD2,
+   turning it on (active-high). LD1 (red) is a separate always-on power
+   LED wired directly from the 3V3 rail through R1 (470R), not
+   GPIO-controlled at all (this is a power/status indicator, not a
+   "user LED"). Also confirms SW1 (PTS820) is wired into the QSPI flash
+   chip-select circuit near U4 (W25Q16JVZPIM) - the standard Raspberry
+   Pi Pico reference-design BOOTSEL button, not a general GPIO - and SW2
+   (1185SA) is wired from the RUN pin to GND through R31 (1K) - the
+   standard RESET button, also not a GPIO0-29 pin.
+3. Local codebase: this board's own pins_arduino.h
+   (variants/rp2040/rp2040/wiznet_wizfi360_evb_pico/pins_arduino.h)
+   already customizes PIN_SERIAL2_TX=4/PIN_SERIAL2_RX=5 (matching the
+   real wiring) and moves PIN_WIRE0_SDA=8/PIN_WIRE0_SCL=9 (the board's
+   own header comment explains this swap is "to make room" versus the
+   generic RP2040 default, where WIRE0 SDA/SCL sit at GPIO4/5 instead).
+   GPIO6/7/20 are NOT given their own #define in this file - they only
+   pick up fallback D6/D7/D20 GPIO-number aliases from the included
+   ../generic/common.h, which is exactly why build_boards.js's parser
+   would otherwise treat them as three innocuous general-purpose pins.
+4. Chip-level default: variants/rp2040/rp2040/board.json (chipGpios: {}
+   - deliberately empty per its own comment, since RP2040 boards vary
+   too much for a chip-wide GPIO map).
+5. Schema/style precedent (read in full before writing):
+   - variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json
+     ("no legitimate general-purpose role" empty/omitted-capabilities
+     pattern, per-board chipGpios override schema).
+   - variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (a sibling
+     WIZnet EVB-Pico board already audited in this same wave for its
+     onboard W5500 Ethernet chip) - matched its chipGpios "capabilities":
+     [] + "note" style for chip-driven lines with no bus-role vocabulary,
+     and its explicit decision to leave the common GPIO25 Pico LED
+     untouched as out-of-scope/deferred to a future generic-level pass -
+     followed identically here for consistency across the audit wave.
+6. pfodWeb_src/build_boards.js (read to confirm parser behavior):
+   - buildEsp32Board() (used for the "rp2040" family too, per
+     variants/rp2040/rp2040/board.json's own comment) resolves `tx`/`rx`
+     from consts.TX/consts.RX (plain TX/RX aliases) for the forced-
+     serial-role branch at ~line 662-675 - this board (like all RP2040
+     boards using generic/common.h) never declares bare TX/RX aliases,
+     only PIN_SERIAL1_TX/RX and PIN_SERIAL2_TX/RX, so GPIO4/5 would NOT
+     be auto-tagged serial_tx/serial_rx without an explicit chipGpios
+     override forcing the role (chipEntry.capabilities.includes(
+     'serial_rx'/'serial_tx') at line 657-660) - confirmed this is the
+     documented, intended mechanism (comment at line 652-654 explicitly
+     says a chip-level/board chipGpios entry "can also force this role
+     directly").
+   - Confirmed the empty-capabilities + note pattern for GPIO6/7/20:
+     when chipEntry.capabilities is present, caps = CAP_ORDER filtered
+     to that set (line 680-683) - an empty array yields zero base
+     capabilities - and since GPIO6/7/20 don't match this board's own
+     sda/scl/ss/mosi/miso/sck globals (line 697-703), nothing gets
+     auto-appended either, so the final capability list for these three
+     pins is genuinely empty (note-only, no controllable role offered).
+
+PER-PIN REASONING
+------------------
+GPIO4 (WizFi360 UART1 TX, this board's own PIN_SERIAL2_TX): chipGpios
+  "capabilities": ["serial_tx"] forces the dedicated-USART branch,
+  producing a pin entry with capabilities: ["serial_tx"] only (no
+  digital_input/output/pwm_output offered). Correct - RP2040 transmits
+  to the WizFi360's RXD1 here; a Designer sketch driving this pin
+  digitally while the WiFi library also owns Serial2 would corrupt the
+  AT-command stream.
+
+GPIO5 (WizFi360 UART1 RX, this board's own PIN_SERIAL2_RX): same
+  treatment via "capabilities": ["serial_rx"]. Final capabilities:
+  ["serial_rx"] only.
+
+GPIO6 (WizFi360 UART1 CTS, RP2040 input from the module's RTS1): no
+  serial_rts/serial_cts capability exists in build_boards.js's
+  vocabulary (only serial_tx/serial_rx, plus the SPI/I2C bus roles).
+  chipGpios "capabilities": [] leaves it with NO capabilities at all
+  (note only) - it's a hardware flow-control input the UART peripheral
+  reads internally when hardware flow control is enabled; exposing it
+  as a general digital_input would let a Designer sketch read (and
+  potentially confuse itself over) a signal that's actually part of the
+  WiFi module's serial link, not a general sensor/button input.
+
+GPIO7 (WizFi360 UART1 RTS, RP2040 output to the module's CTS1): same
+  treatment - "capabilities": [] (note only). It's chip/peripheral-
+  driven when hardware flow control is enabled; offering it as a
+  general digital_output would let a Designer sketch fight the UART
+  peripheral for control of the pin.
+
+GPIO20 (WizFi360 RSTn, RP2040 output to the module's reset pin): no
+  SPI/I2C bus-role alias collision on this GPIO, so the auto-append
+  rules never touch it either. chipGpios "capabilities": [] leaves it
+  with no capabilities (note only) - it's driven by whatever WiFi
+  AT-command library the sketch uses to reset/reinitialize the module;
+  a Designer sketch also driving it as a general digital_output could
+  hold the WiFi module in permanent reset or race the library's own
+  init sequence.
+
+GPIO25 (standard Pico onboard LED, PIN_LED / LED_BUILTIN, confirmed via
+  schematic to be a green LED wired active-high through a 470R resistor
+  to GND): left UNCHANGED. This is the same LED every other Pico-form-
+  factor RP2040 board in this database has via the shared
+  generic/pins_arduino.h-style PIN_LED=25 default, and the sibling
+  wiznet_5500_evb_pico audit (same wave, same day) explicitly deferred
+  tagging this pin to a future dedicated LED/button sweep across all
+  Pico-form-factor RP2040 boards rather than doing it board-by-board
+  inconsistently during per-board hardware-link audits. Followed that
+  precedent here rather than tagging it alone, which would make this
+  board inconsistent with its siblings for no audit-scope reason. Note:
+  the board also has a second LED, LD1 (red), but that one is wired
+  directly to the 3V3 rail (always-on power indicator) with no GPIO
+  connection at all, so there is nothing to tag for it regardless.
+
+No onboard user-addressable button - confirmed via schematic: SW1 is
+  the standard RP2040 reference-design BOOTSEL button (wired to the
+  QSPI flash chip-select, not a GPIO0-29 pin) and SW2 is the standard
+  RESET button (wired to the RUN pin, also not a GPIO0-29 pin). Neither
+  is reachable via digitalRead() on any addressable GPIO, so no button
+  capability tagging applies.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax by extracting and
+  running build_boards.js's own stripJsonComments() against it and
+  confirming JSON.parse() succeeds, producing the expected chipGpios
+  shape (verified all 5 GPIO entries: 4, 5, 6, 7, 20) and the full
+  10-key REQUIRED_BOARD_FIELDS shape (boardName, displayName, family,
+  inputOnlyGpios, connections, pinNotes, chipGpios, pwm, dac, adc). No
+  build script was executed (per task instructions).
+- pwm/dac/adc/family/connections/pinNotes/inputOnlyGpios/boardName/
+  displayName values reproduce the chip-level
+  variants/rp2040/rp2040/board.json defaults verbatim except for the
+  added chipGpios entries, per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/wiznet_wizfi360_evb_pico/board.json (new file)
+- Created: boardsDetails/rp2040/rp2040/wiznet_wizfi360_evb_pico/notes.txt (this file)
+- pins_arduino.h: NOT modified (its own PIN_SERIAL2_TX/RX=4/5 and
+  PIN_WIRE0_SDA/SCL=8/9 customizations already correctly reflect the
+  real board wiring; GPIO6/7/20 needed no alias changes, only chipGpios
+  capability corrections, since they only ever had generic D6/D7/D20
+  fallback aliases to begin with).

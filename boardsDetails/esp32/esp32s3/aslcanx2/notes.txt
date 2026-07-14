@@ -1,0 +1,68 @@
+Board: aslcanx2 (Autosport Labs ESP32-CAN-X2), chip esp32s3
+Date: 2026-07-14 (independent verification pass - real vendor/upstream sources
+consulted, replacing the earlier documentation-backfill pass, which cited the
+correct source but had not verified the exact pin numbers against the
+upstream pins_arduino.h)
+
+Sources consulted (real, independently fetched):
+1. Official pins_arduino.h, espressif/arduino-esp32 (the actual upstream
+   Arduino core this board.json is derived from):
+   https://github.com/espressif/arduino-esp32/blob/master/variants/aslcanx2/pins_arduino.h
+   Relevant definitions:
+     static const uint8_t LED_BUILTIN = 2;
+     static const uint8_t CAN1_RX = 6;
+     static const uint8_t CAN1_TX = 7;
+2. Autosport Labs' own official wiki:
+   https://wiki.autosportlabs.com/ESP32-CAN-X2
+   States: CAN1 (built-in TWAI controller) RX on GPIO6, TX on GPIO7; "the
+   built-in blue LED is connected to GPIO2 of the ESP32"; CAN2 uses an
+   external MCP2515 controller (CS=GPIO10, CLK=GPIO12, MISO=GPIO13,
+   MOSI=GPIO11 - not part of this board.json's GPIO6/7 exclusion claim).
+3. Autosport Labs' official GitHub repo, arduino/ping_pong/ping_pong.ino
+   (confirms LED active-low polarity):
+   https://github.com/autosportlabs/ESP32-CAN-X2/blob/main/arduino/ping_pong/ping_pong.ino
+   digitalWrite(LED_BUILTIN, LOW) is immediately preceded by
+   Serial.println("MAIN: Enable LED"); digitalWrite(LED_BUILTIN, HIGH) is
+   preceded by Serial.println("MAIN: Disable LED") - i.e. LOW = on, HIGH =
+   off, confirming active-low.
+4. Autosport Labs' official GitHub repo, circuitpython/blink.py (confirms
+   GPIO2 is the LED pin, independent of the Arduino pins_arduino.h):
+   https://github.com/autosportlabs/ESP32-CAN-X2/blob/main/circuitpython/blink.py
+   Comment: "# For the ESP32-CAN-X2 the LED is on IO2".
+
+Per-pin findings:
+- GPIO6, GPIO7: excluded entirely from chipGpios (no entry). CONFIRMED -
+  these are exactly CAN1_RX and CAN1_TX (the built-in TWAI/CAN1
+  transceiver interface) per the official pins_arduino.h and the vendor's
+  own wiki - dedicated onboard CAN hardware, not general-purpose.
+- GPIO2: tagged "led_low". CONFIRMED - LED_BUILTIN=2 in the official
+  pins_arduino.h, independently corroborated by the CircuitPython
+  blink.py comment ("the LED is on IO2"). Active-low polarity CONFIRMED
+  by the vendor's own ping_pong.ino example sketch (source 3 above).
+  Capabilities: ["digital_output", "pwm_output", "led_low"].
+- GPIO0: no tag - standard capabilities ["digital_input", "digital_output",
+  "pwm_output"] (note: this board's GPIO0 does not carry "analog_input"
+  even though other similar pins do elsewhere on this chip; kept as-is
+  from the source board.json - no vendor source contradicts this).
+- GPIO1,3,4,5,8,9,10: no tag - standard capabilities ["analog_input",
+  "digital_input", "digital_output", "pwm_output"]. No vendor source ties
+  these to dedicated onboard hardware (note: GPIO10 is used as CS for the
+  external MCP2515/CAN2 controller per the wiki's pinout table, but this
+  board.json's methodology only tags/excludes pins for
+  button/LED/dedicated-bus findings already established - GPIO10-13 CAN2
+  SPI pins were not previously flagged and are left as-is; not modified
+  in this pass since the task scope was to verify the existing GPIO2/6/7
+  findings, not to expand tagging).
+- GPIO11,12,13,14,15,16,17,18: no tag - standard ADC2-range capabilities
+  ["analog_input_serial", "digital_input", "digital_output", "pwm_output"].
+- GPIO21,38,39,40,41,42,43,44,45,46,47,48: no tag - standard capabilities
+  ["digital_input", "digital_output", "pwm_output"].
+- No buttons were identified or tagged on this board (the wiki mentions a
+  boot button and reset button for firmware download/reset, standard
+  ESP32-S3 functions, not a separate general-purpose pushbutton).
+
+Summary: GPIO6/7 excluded (dedicated onboard CAN1 transceiver interface,
+CAN1_RX/CAN1_TX) and GPIO2 tagged led_low (active-low status LED) - both
+CONFIRMED via the official, actively-maintained espressif/arduino-esp32
+pins_arduino.h, the vendor's own wiki, and the vendor's own GitHub example
+sketches (Arduino and CircuitPython). No corrections were required.

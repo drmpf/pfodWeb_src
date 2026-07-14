@@ -1,0 +1,107 @@
+Board: XIAO ESP32S3 Plus (ESP32-S3 Dev Module variant)
+Audit date: 2026-07-14
+Batch H independent-verification pass. A prior audit pass (documentation
+backfill, not independently vendor-researched) had excluded GPIO10-13/38-40
+as "dedicated onboard camera (Sense variant) data bus + I2S microphone" and
+tagged GPIO21 "led_low". This pass independently re-researched every finding
+against real vendor sources (Seeed Studio's own product pages/forum,
+official arduino-esp32 upstream source) rather than re-stating the earlier
+board.json comment as already verified.
+
+SOURCES CONSULTED
+-----------------
+1. Seeed Studio official product page for THIS exact board:
+   https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32S3-Plus-p-6361.html
+   - Confirms: "Plus" is a DIFFERENT physical product from "XIAO ESP32S3
+     Sense". The Plus does NOT include a camera or microphone - it lacks
+     the "Built-in Sensors" the Sense version has. Its "redesigned
+     castellations and pad layout" exposes "9 additional GPIOs specifically
+     for advanced Bluetooth projects requiring expanded I/Os".
+   - Confirms GPIO21 onboard LED is active-low: "The LED will only turn off
+     when the user LED pin on the XIAO ESP32-S3 is set to a high level, and
+     it will only turn on when the pin is set to a low level."
+2. Web search corroboration: "the B2B connector of XIAO ESP32-S3-Plus is
+   compatible with Wio-SX1262 extension board but not with Plug-in camera
+   sensor board" - independently repeated across multiple Seeed
+   documentation excerpts, reinforcing (1).
+3. Official upstream arduino-esp32 GitHub repository, fetched directly
+   (raw.githubusercontent.com/espressif/arduino-esp32/master/variants/
+   XIAO_ESP32S3_Plus/pins_arduino.h and the sibling plain XIAO_ESP32S3/
+   pins_arduino.h for comparison):
+   - The plain XIAO_ESP32S3 variant (8MB flash, no camera) has NO camera/
+     DVP/CAM/I2S pin definitions at all.
+   - The XIAO_ESP32S3_Plus variant (16MB flash - matches this board) DOES
+     carry DVP_Y8/YP/PCLK/VSYNC, CAM_SCL/SDA, I2S_SCK/SD/WS, MOSI1/MISO1/
+     SCK1, and XMCLK macro names on GPIO10-13/38-40 (inherited B2B-connector
+     pinout, same physical routing as the Sense board) - BUT critically,
+     the SAME official file also declares D11-D19 as ordinary user-facing
+     Arduino digital pins covering exactly these GPIOs: D11=38, D12=39,
+     D13=40, D14=41, D15=42, D16=10, D17=13, D18=12, D19=11. Espressif's
+     own board definition therefore treats these as normal available GPIO,
+     not as camera-exclusive pins, on the Plus.
+   - This is confirmed via boards.txt (raw fetched and grepped directly):
+     exactly two relevant board ids exist - "XIAO_ESP32S3" (build.variant=
+     XIAO_ESP32S3, 8MB, no Sense/Plus distinction in the file) and
+     "XIAO_ESP32S3_Plus" (build.variant=XIAO_ESP32S3_Plus, 16MB,
+     build.partitions=ffat) - matching this repo's variant directory name
+     exactly.
+4. Seeed Studio community forum thread specifically about this pin:
+   https://forum.seeedstudio.com/t/xiao-esp32s3-plus-adc-bat-on-gpio10/291965
+   - Confirms GPIO10's ADC_BAT/BAT_VOLT_PIN label has NO onboard voltage-
+     divider circuit on the Plus: "I don't see any evidence that this pin
+     is actually connected to the battery circuit or a voltage divider."
+     Users report having to wire their own external divider (e.g. 2x 220k
+     or 2x 200k resistors) to read battery voltage safely.
+
+CORRECTIONS APPLIED (GPIO10-13, 38-40)
+-------------------------------------------
+The prior "dedicated onboard camera + I2S microphone" exclusion does NOT
+hold for this specific "Plus" product - it has no camera or microphone
+hardware onboard, and Espressif's own upstream board definition confirms
+these GPIOs are ordinary, user-available pins on this variant (unlike the
+true Sense/camera board). Corrected:
+- GPIO10: restored, capabilities -> [analog_input, digital_input,
+  digital_output, pwm_output] (plain chip-level default). Retains the
+  ADC_BAT/BAT_VOLT_PIN alias in pins_arduino.h, but with a pinNotes entry
+  documenting that no onboard divider is confirmed (see source 4) - no ADC
+  reference/calibration change applied, matching this repo's established
+  d1_mini32/_VBAT precedent (label kept, capability NOT restricted, and no
+  divider math applied without a confirmed circuit).
+- GPIO11, 12, 13: restored, capabilities -> [analog_input_serial,
+  digital_input, digital_output, pwm_output] (plain chip-level default,
+  matching the parent esp32s3/board.json entries for these GPIOs exactly).
+- GPIO38, 39, 40: restored, capabilities -> [digital_input, digital_output,
+  pwm_output] (plain chip-level default).
+pins_arduino.h was restored to match the official upstream file byte-for-
+byte for the affected declarations (MOSI1/MISO1/SCK1, I2S_SCK/SD/WS,
+MTCK/MTDO/MTDI/MTMS, DVP_Y8/YP/PCLK/VSYNC, CAM_SCL/SDA, XMCLK, ADC_BAT/
+BAT_VOLT_PIN, D11-D19) - a prior pass had deleted these lines specifically
+to enforce the now-corrected exclusion theory. Verified these secondary
+aliases (MOSI1/MISO1/SCK1, I2S_*) are NOT recognized by build_boards.js's
+ESP32 parser (which only matches the primary SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+alias names), so restoring them carries no risk of unintended bus-capability
+contamination on GPIO10-13/38-40.
+
+CONFIRMED, NO CHANGE (GPIO21 - led_low)
+--------------------------------------------
+GPIO21 (LED_BUILTIN) tagged "led_low" is independently re-confirmed via
+Seeed's own XIAO ESP32-S3 Plus product page (source 1 above), which states
+in near-identical wording to the earlier Sense-board doc: the LED is active
+low. Capabilities unchanged: [digital_output, pwm_output, led_low].
+
+No button was found or tagged on this board (BOOT/RESET are standard
+strapping/EN buttons, not tagged per this repo's established ESP32-family
+convention).
+
+SUMMARY
+-------
+XIAO ESP32S3 Plus: GPIO21 active-low LED re-confirmed via Seeed's own
+product page. GPIO10-13/38-40 CORRECTED - the earlier "dedicated onboard
+camera + I2S microphone" exclusion was based on inherited pins_arduino.h
+macro names without checking against the actual physical product; direct
+research (Seeed's own product page + official arduino-esp32 upstream source
++ a Seeed forum thread) established the Plus has no onboard camera/
+microphone and these GPIOs are ordinary user pins - board.json and
+pins_arduino.h both corrected and restored to match upstream. GPIO10's
+ADC_BAT label kept with an informational-only pinNotes entry (no confirmed
+divider), matching this repo's d1_mini32 precedent.

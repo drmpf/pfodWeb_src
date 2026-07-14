@@ -19,50 +19,36 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 18;
-static const uint8_t MOSI = 27;
-static const uint8_t MISO = 19;
-static const uint8_t SCK = 5;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard LoRa radio SPI bus (no other SPI peripheral on this board).
 
+// pfodWeb NOTE: A6/A7/A10/A13/A16/A17/A19 and T0/T3/T6/T7 deliberately
+// NOT declared - dedicated onboard OLED I2C, LoRa radio+SPI bus, and
+// Vext power-gate (see below).
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
 static const uint8_t A4 = 32;
 static const uint8_t A5 = 33;
-static const uint8_t A6 = 34;
-static const uint8_t A7 = 35;
-static const uint8_t A10 = 4;
 static const uint8_t A11 = 0;
 static const uint8_t A12 = 2;
-static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
 static const uint8_t A15 = 12;
-static const uint8_t A16 = 14;
-static const uint8_t A17 = 27;
 static const uint8_t A18 = 25;
-static const uint8_t A19 = 26;
 
-static const uint8_t T0 = 4;
 static const uint8_t T1 = 0;
 static const uint8_t T2 = 2;
-static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
-static const uint8_t T6 = 14;
-static const uint8_t T7 = 27;
 static const uint8_t T8 = 33;
 static const uint8_t T9 = 32;
 
 static const uint8_t DAC1 = 25;
-static const uint8_t DAC2 = 26;
+// pfodWeb NOTE: DAC2 (GPIO26) deliberately NOT declared - same GPIO as
+// the dedicated onboard LoRa DIO0 pin below.
 
-static const uint8_t Vext = 21;
 static const uint8_t LED = 25;
-static const uint8_t RST_OLED = 16;
-static const uint8_t SCL_OLED = 15;
-static const uint8_t SDA_OLED = 4;
-static const uint8_t RST_LoRa = 14;
-static const uint8_t DIO0 = 26;
-static const uint8_t DIO1 = 35;
-static const uint8_t DIO2 = 34;
+// pfodWeb NOTE: Vext (power-gate), RST_OLED/SCL_OLED/SDA_OLED, and
+// RST_LoRa/DIO0/DIO1/DIO2 deliberately NOT declared - internal control
+// line and dedicated onboard OLED display I2C + LoRa radio control lines.
 
 #endif /* Pins_Arduino_h */

@@ -22,96 +22,52 @@
 
 static const uint8_t KEY_BUILTIN = 0;
 
-static const uint8_t TFT_DC = 5;
-static const uint8_t TFT_CS = 39;
-static const uint8_t TFT_RST = 40;
-static const uint8_t TFT_RESET = 40;
-
-static const uint8_t SD_CS = 42;
-static const uint8_t SD_CHIP_SELECT = 42;
+// pfodWeb NOTE: TFT_DC/CS/RST/RESET, SD_CS/SD_CHIP_SELECT, TX1/RX2, and
+// SS/MOSI/SCK/MISO deliberately NOT declared — this board's onboard TFT
+// (DC=5/CS=39/RST=40) and microSD card share one SPI bus (SS=39=TFT_CS,
+// MOSI=35/SCK=36/MISO=37), plus a second UART (TX1/RX2=40/41) also
+// overlapping the TFT RST pin — none general-purpose (see board.json).
 
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 static const uint8_t TX0 = 43;
 static const uint8_t RX0 = 44;
 
-static const uint8_t TX1 = 40;
-static const uint8_t RX2 = 41;
-
 static const uint8_t SDA = 33;
 static const uint8_t SCL = 34;
-
-static const uint8_t SS = 39;
-static const uint8_t MOSI = 35;
-static const uint8_t SCK = 36;
-static const uint8_t MISO = 37;
 
 static const uint8_t DAC1 = 17;
 static const uint8_t DAC2 = 18;
 
+// pfodWeb NOTE: A4-A15 deliberately NOT declared — dedicated onboard
+// TFT/SD/camera pins (see board.json chipGpios override)
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
 static const uint8_t A2 = 3;
 static const uint8_t A3 = 4;
-static const uint8_t A4 = 5;
-static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
-static const uint8_t A7 = 8;
-static const uint8_t A8 = 9;
-static const uint8_t A9 = 10;
-static const uint8_t A10 = 11;
 static const uint8_t A11 = 12;
-static const uint8_t A12 = 13;
-static const uint8_t A13 = 14;
-static const uint8_t A14 = 15;
-static const uint8_t A15 = 16;
 static const uint8_t A16 = 17;
 static const uint8_t A17 = 18;
 
+// pfodWeb NOTE: T5-T11/T13-T15 deliberately NOT declared — same reason
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
 static const uint8_t T3 = 3;
 static const uint8_t T4 = 4;
-static const uint8_t T5 = 5;
-static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
-static const uint8_t T8 = 8;
-static const uint8_t T9 = 9;
-static const uint8_t T10 = 10;
-static const uint8_t T11 = 11;
 static const uint8_t T12 = 12;
-static const uint8_t T13 = 13;
-static const uint8_t T14 = 14;
-static const uint8_t T15 = 15;
 
+// pfodWeb NOTE: D5-D11/D13-D16/D35-D41 deliberately NOT declared —
+// same reason
 static const uint8_t D0 = 0;
 static const uint8_t D1 = 1;
 static const uint8_t D2 = 2;
 static const uint8_t D3 = 3;
 static const uint8_t D4 = 4;
-static const uint8_t D5 = 5;
-static const uint8_t D6 = 6;
-static const uint8_t D7 = 7;
-static const uint8_t D8 = 8;
-static const uint8_t D9 = 9;
-static const uint8_t D10 = 10;
-static const uint8_t D11 = 11;
 static const uint8_t D12 = 12;
-static const uint8_t D13 = 13;
-static const uint8_t D14 = 14;
-static const uint8_t D15 = 15;
-static const uint8_t D16 = 16;
 static const uint8_t D17 = 17;
 static const uint8_t D18 = 18;
 static const uint8_t D33 = 33;
 static const uint8_t D34 = 34;
-static const uint8_t D35 = 35;
-static const uint8_t D36 = 36;
-static const uint8_t D37 = 37;
-static const uint8_t D38 = 38;
-static const uint8_t D39 = 39;
-static const uint8_t D40 = 40;
-static const uint8_t D41 = 41;
 
 // Camera
 #define TFT_CAM_POWER 21

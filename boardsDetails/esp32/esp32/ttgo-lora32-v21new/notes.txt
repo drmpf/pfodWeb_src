@@ -1,0 +1,100 @@
+Board: ttgo-lora32-v21new (LilyGO/TTGO LoRa32 V2.1, T3 V1.6.1 revision)
+Path: C:\ai\aicode\pfodWeb\variants\esp32\esp32\ttgo-lora32-v21new
+Research date: 2026-07-11
+
+pins_arduino.h aliases found (NOT trusted as-is, per task rules): LED_BUILTIN = GPIO25, KEY_BUILTIN = GPIO0.
+Serial TX/RX pins for this board: TX = GPIO1, RX = GPIO3 (no conflict with either candidate below).
+
+SOURCES CONSULTED
+------------------
+1. https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/master/schematic/T3_V1.6.1.pdf
+   Official LilyGO schematic (repo Xinyuan-LilyGO/LilyGo-LoRa-Series, sheet "TTGO LORA T3_V1.6", dated 2021-01-06).
+   Successfully fetched and read as a real 4-page PDF (verified via `file` = "PDF document, version 1.3, 4 pages").
+   Sheet 1 "LED" block shows two LEDs: a RED LED wired through a resistor to VBUS (hardware USB-power-present
+   indicator, not GPIO-controlled) and a GREEN LED wired through a resistor to net "IO25" (i.e. GPIO25) -
+   this is the software-controllable status LED. No pushbutton/switch symbol is wired to the IO0 net anywhere
+   on the schematic. The only physical switches shown are: SW3 "reset" (wired to RST/EN net = hardware reset
+   button) on sheet 1, and JP1 "SK-12D02" (a slide switch in the VBAT/power path) on sheet 4 - a power
+   ON/OFF switch, not a GPIO button. GPIO0 only appears wired to the CP2104 USB-UART bridge's auto-program
+   transistor circuit (U3/UMH3N, driven by DTR/RTS) for automatic bootloader entry during flashing - there is
+   no manual pushbutton on this net.
+
+2. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/lilygo/ttgo_lora32/ttgo_lora32_esp32_procpu.dts
+   (cross-checked independently via https://github.com/zephyrproject-rtos/zephyr/blob/main/boards/lilygo/ttgo_lora32/ttgo_lora32_esp32_procpu.dts )
+   Official upstream Zephyr RTOS board port devicetree for this exact board. Contains:
+     green_led: led_0 { gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>; label = "Green - LED0"; };
+   Confirms GPIO25 = single green LED, active-HIGH. No gpio-keys/buttons node exists anywhere in this
+   devicetree file - i.e. the upstream Zephyr board maintainers, who normally add a "sw0" button alias for
+   boards that have one (as most ESP32 devkits do), did not add one for this board - independent
+   corroboration that there is no wired user button.
+
+3. https://wiki.lilygo.cc/products/t3-series/t3-lora32/
+   Official LilyGO product wiki. Pin mapping table explicitly lists "Onboard LED | GPIO 25 | (not available for
+   other use)". Confirms GPIO25 = onboard LED. Table has no button/key GPIO row.
+
+4. https://devices.esphome.io/devices/lilygo-t3-lora32-v161/
+   Independent ESPHome community device-support page for "LILYGO T3 LoRa32 V1.6.1" lists "LED | GPIO25" under
+   Other Pins. Third independent source confirming GPIO25 = onboard LED.
+
+5. https://github.com/LilyGO/TTGO-LoRa32-V2.1/issues/3 ("Led wrong pin")
+   Issue filed against LilyGO's own official TTGO-LoRa32-V2.1 repo: "the led is on pin 25 and not pin 2" -
+   direct confirmation from the vendor's own repo issue tracker that GPIO25 drives the onboard LED (and that
+   GPIO2, seen in some older example sketches, is wrong for this revision).
+
+6. https://randomnerdtutorials.com/ttgo-lora32-sx1276-arduino-ide/ (reader comment by "Bob Rader")
+   Comment: "Uses Pin 25 for internal Grn LED to indicate transmission made" - confirms color (green) and
+   that it's an internal/onboard LED, matching source 2's "Green - LED0" label.
+
+7. https://lilygo.cc/products/lora3
+   Official LilyGO product page for T3 LoRa32 V1.6.1. Under "Onboard functions" it lists only
+   "Reset \ Power switch" - no separate BOOT/PRG/user pushbutton is advertised as a product feature. This is
+   consistent with source 1's schematic showing no GPIO0 pushbutton.
+
+8. https://github.com/LilyGO/TTGO-LoRa32-V2.1/issues/10 ("free/usable pins")
+   A user's personal annotation copy of the pinout notes "25# geen led" (Dutch: "no led") and "00 // output
+   only, random output at boot" for GPIO0. This single comment CONTRADICTS sources 1-6 regarding GPIO25.
+   Given it is one unverified user annotation versus five independent official/authoritative sources (LilyGO's
+   own schematic, LilyGO's own wiki, LilyGO's own issue tracker admission, Zephyr upstream devicetree, and
+   ESPHome device DB) all agreeing GPIO25 = LED, this comment was treated as unreliable/likely a mistaken
+   personal note and NOT used to override the tagging decision.
+
+9. https://meshtastic.org/docs/hardware/devices/lilygo/lora/buttons/
+   Meshtastic's generic hardware-family button documentation describes a "User/Program Button" with press
+   behaviors, but this page is written across LilyGO's whole LoRa device family (which includes boards that
+   do have a case pushbutton, e.g. some T-Beam/T3S3 variants) and does NOT confirm a physical button exists
+   specifically on the T3 V1.6.1 / V2.1 PCB - no GPIO number given, no schematic reference. Not used as
+   confirming evidence for this specific board (superseded by the official schematic showing no such switch).
+
+10. https://meshtastic.org/docs/hardware/devices/lilygo/lora/gpio/
+    Checked for a per-model GPIO table; only documents a different revision ("Lora V2.1-1.8": "shorting IO12
+    to ground...") which is NOT this board (V2.1_1.6.1) - not used.
+
+11. Additional pages checked but yielding no new confirming/conflicting evidence (dead ends, paywalled/403,
+    or generic tutorials with no schematic-level detail): community.lilygo.cc pinout topic (TLS cert error,
+    could not fetch), github.com/umbm/TTGO-LoRa32-V2.1-T3_V1.6 (image-only pinout, no text detail extracted),
+    github.com/nakhonthai/ESP32APRS_LoRa wiki GPIO config page (no button/LED table), manualshelf.com user
+    guide (403 Forbidden), espboards.dev pinout page (no GPIO25/button detail), docs.zephyrproject.org /
+    docs.nordicsemi.com Zephyr board doc pages (feature summary only, directed to the .dts file used in #2).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO0 (pins_arduino.h KEY_BUILTIN alias, suggesting a "key"/button): investigated specifically because the
+  task warns alias names are often wrong. The official LilyGO schematic (source 1) was checked directly and
+  shows NO pushbutton, switch, or key component wired to the IO0 net - only the CP2104 USB-UART auto-program
+  transistor circuit (used only during firmware flashing, not user-operable) and the ESP32-SIP pin itself.
+  The only two physical user-operable switches on the whole board are a RESET button (wired to RST/EN, not a
+  general GPIO) and a power slide switch (in the battery/VBUS path, not wired to any GPIO at all). This is
+  corroborated by Zephyr's upstream board port having no button/gpio-keys node, and by LilyGO's own product
+  page listing only "Reset \ Power switch" as onboard functions. This is a definite (not a guess) finding:
+  GPIO0 is NOT a confirmable user button on this specific board revision, so it was deliberately left
+  untagged. No capability change was made to GPIO0.
+- GPIO25 RED LED path: the schematic (source 1) shows a second, RED LED on this board's LED block, but it is
+  wired directly to VBUS (hardware USB-power-presence indicator), not to any GPIO - so there is no GPIO to
+  tag for it. Not tagged because it is not GPIO-controlled at all, not because of any uncertainty.
+
+WHAT WAS TAGGED
+-----------------
+GPIO25 capabilities changed to ["digital_output", "led_high", "pwm_output"] (pwm_output retained because it
+was already present in the pin's prior capability set) - confirmed onboard single-color (green) LED,
+active-high, per sources 1-6 above. See the pfodWeb NOTE comment added near the top of board.json for the
+same citation summary.

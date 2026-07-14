@@ -1,0 +1,118 @@
+// pfodWeb NOTE: GPIO27 tagged "led_neopixel" - confirmed onboard
+// addressable WS2812/SK6812 RGB LED (single pixel on ATOM Lite, 5x5 25-LED
+// matrix on ATOM Matrix). Source: docs.m5stack.com "ATOM Lite" and "ATOM
+// Matrix" pin-map tables, both list "G27" -> "RGB LED" / "RGB LED Matrix"
+// against the ESP32-PICO-D4. This board's own pins_arduino.h already
+// declares G27=27 as a plain generic alias (no LED-specific name), so the
+// GPIO number itself required no pins_arduino.h edit - only the capability
+// tag in this board.json changes. Matches this repo's existing
+// led_neopixel precedent (e.g. waveshare_esp32_s3_zero GPIO21,
+// pandabyte_xc3m GPIO6).
+// pfodWeb NOTE: GPIO39 tagged "button" - confirmed onboard programmable
+// push button. Source: docs.m5stack.com "ATOM Lite" and "ATOM Matrix"
+// pin-map tables, both list "G39" -> "Button" against the ESP32-PICO-D4;
+// also corroborated by an M5Stack community forum thread titled "Atom
+// button at GPIO39 without Pullup?". This board's own pins_arduino.h
+// already declares G39=39 as a plain generic alias, so only the
+// capability tag changes here. GPIO39 is chip-level input-only (in
+// inputOnlyGpios), so per this repo's established button-tag convention
+// the capability list is restricted to ["digital_input","button"] (no
+// analog_input), matching the identical case on this same chip-level
+// default at magicbit GPIO34/35.
+// pfodWeb NOTE: alias-collision check - neither GPIO27 nor GPIO39 is
+// aliased anywhere in this board's pins_arduino.h as SDA/SCL/SS/MOSI/
+// MISO/SCK/TX/RX (those aliases resolve to GPIO26/32/19/33/23/22/1/3
+// respectively), so no bus capability gets silently appended by
+// build_boards.js to either tagged pin.
+// pfodWeb NOTE: this generic "m5stack_atom" variant's pins_arduino.h
+// (TX=1/RX=3, SDA=26/SCL=32 Grove pins, SS=19/MOSI=33/MISO=23/SCK=22) is
+// pin-identical to the M5Stack ATOM Lite and ATOM Matrix (both use the
+// same ESP32-PICO-D4 module and expose the same Grove/expansion pins per
+// official docs), so the confirmed GPIO27/GPIO39 hardware applies to
+// this variant regardless of which specific SKU it nominally targets.
+// See boardsDetails notes.txt for full source list and reasoning.
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32" -> designer/boards/ESP32/ESP32.json -> const ESP32Data = {...}
+  "boardName": "ESP32",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32 has two 8-bit DAC channels on GPIO 25 and GPIO 26.
+  // dacWrite(pin, value): value 0–255 maps to 0.0–3.3 V output.
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+
+  // ADC: ESP32 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation can be set via analogSetAttenuation()
+  // for full 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Keys are GPIO numbers as strings; values are plain text shown
+  // under the pin label in the pin picker (use \n for line breaks).
+  // Reference: ESP32 Technical Reference Manual — Strapping Pins section.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32 chip.  GPIOs 6-11 (flash)
+  // and 16-17 (PSRAM) are excluded — not user-accessible on modules with
+  // integrated flash/PSRAM.  GPIOs 34-39 are input-only (no output driver).
+  // GPIOs 20, 24, 28-31 do not exist in this chip's silicon.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "27": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["digital_input", "button"] }
+  }
+}

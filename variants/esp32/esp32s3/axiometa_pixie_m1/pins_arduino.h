@@ -24,7 +24,11 @@ static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
 static const uint8_t SDA = 10;
-static const uint8_t SCL = 11;
+// pfodWeb NOTE: the default SCL alias was deleted - it pointed at the
+// same GPIO as this board's confirmed onboard LED, and build_boards.js
+// unconditionally attaches an i2c_scl capability to any GPIO matching
+// the SCL alias, which was silently contaminating the LED's capability
+// list.
 
 static const uint8_t SS = 1;
 static const uint8_t MOSI = 12;

@@ -1,0 +1,51 @@
+yb_esp32s3_dac - button/LED capability research notes
+======================================================
+
+Sources consulted:
+- https://github.com/yellobyte/YB-ESP32-S3-DAC
+  Vendor (YelloByte) GitHub repo for the "YB-ESP32-S3-DAC" board. README confirms:
+  "control LEDs. One LED labeled 'P' is connected to the 3.3V rail to indicate
+  board power and the other LED labeled 'IO47' is connected to GPIO47 which can
+  be used as status LED." Also documents pushbuttons: "One is labeled 'R' and
+  resets the ESP32-S3 (shorts EN pin to ground) and the other one is labeled
+  'B' and shorts GPIO0 to ground when pressed. The combination is used to
+  force the board into boot mode."
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-DAC/main/README.md
+  Raw README fetched directly (same content as above, verified verbatim rather
+  than relying on a summarized WebFetch pass).
+- https://github.com/yellobyte/YB-ESP32-S3-DAC/raw/main/doc/YB-ESP32-S3-DAC_schematic_1-2.jpg
+  Schematic sheet 1/2. Contains a dedicated "Status LED (GPIO47)" block:
+  GPIO47 -> R7 (5.1k) -> LED (silkscreen "IO47") -> GND. Confirms GPIO47 drives
+  the LED by sourcing current through the resistor to ground, i.e. LED is ON
+  when GPIO47 is driven HIGH (active-high). Also contains a "GPIO0 Button"
+  block: GPIO0 -> pushbutton (labeled BOOT/VAL_S1) -> GND, and a separate
+  "Reset Button" block (EN -> pushbutton -> GND), matching the README's
+  description of the boot-mode-entry button combo.
+- https://github.com/yellobyte/YB-ESP32-S3-DAC/raw/main/doc/YB-ESP32-S3-DAC_schematic_2-2.jpg
+  Schematic sheet 2/2. Confirms microSD SPI bus (GPIO10-13) and TLV320DAC3101
+  I2S/I2C section (GPIO4-9), consistent with the pin-exclusions already
+  recorded in board.json from the earlier audit pass - no new findings
+  relevant to button/LED tagging.
+
+Pin(s) considered but NOT tagged:
+- GPIO0 ("B" / BOOT pushbutton, shorts GPIO0 to GND). This is the standard
+  ESP32-S3 strapping-pin boot button, wired exactly like most dev boards'
+  flash-mode button. The vendor README documents it ONLY in the context of
+  forcing the board into boot/upload mode (combined with the EN reset
+  button) - it is never described as a general-purpose "user button" for
+  application use (unlike e.g. Olimex ESP32-S3-DevKit-LiPo's schematic which
+  explicitly labels its equivalent pin "BUT1"/USER button). Decision: this is
+  a deliberate NO-GUESS judgment call, not a best-effort guess either way -
+  left untagged (capabilities unchanged: digital_input/digital_output/
+  pwm_output) for human review, since the hardware is real and could
+  plausibly be read as a button in a sketch, but the vendor does not confirm
+  that intended usage the way the tagging policy requires.
+- "P" power-indicator LED: not GPIO-driven at all (wired directly to the 3.3V
+  rail per the README), so there is no GPIO to tag - correctly out of scope.
+
+What was tagged:
+- GPIO47 -> capabilities changed from ["digital_input","digital_output",
+  "pwm_output"] to ["digital_output","pwm_output","led_high"] (single-color
+  active-high status LED, confirmed via vendor README + schematic sheet 1/2).
+  Not TX/RX (board's TX=43, RX=44 per pins_arduino.h), so no TX/RX-reservation
+  conflict.

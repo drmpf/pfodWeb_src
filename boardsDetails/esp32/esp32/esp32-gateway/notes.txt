@@ -1,0 +1,123 @@
+esp32-gateway - dedicated-hardware pin-exclusion audit
+=======================================================
+
+Board: Olimex ESP32-GATEWAY (chip: esp32). Flagged by a discovery sweep for
+non-boilerplate ETH_PHY_* macros, KEY_BUILTIN, and BOARD_HAS_1BIT_SDMMC in
+this board's vendor pins_arduino.h, none of which had been individually
+reviewed before.
+
+Sources consulted:
+
+1. https://github.com/OLIMEX/ESP32-GATEWAY (HARDWARE/README.md)
+   Official Olimex open-source-hardware repo for this exact board. States:
+   "LAN8710's pin XTAL1 was disconnected from GPIO0 and connected to
+   GPIO17/EMAC_CLK_OUT_180. GPIO17 is now source clock. GPIO5 is now used
+   as Ethernet 'power enable pin'." Also: "GPIO6-11, which are used by the
+   ESP32's internal flash, were disconnected from CON1 and the 6 SD card
+   signals are now routed instead..." (GPIO6-11 are flash pins already
+   excluded chip-wide from the esp32/esp32 default - no action needed
+   there).
+
+2. https://www.olimex.com/Products/IoT/ESP32/ESP32-GATEWAY/resources/ESP32-GATEWAY-GPIOs-Rev.F-up.pdf
+   Official Olimex vendor GPIO pinout diagram (fetched as PDF, read directly
+   - primary/authoritative source for this audit). States verbatim:
+     "GPIO5, GPIO17 can be used only if Ethernet functionality is not used"
+     "GPIO2, GPIO14, GPIO15 are used for SD card, they are free to use if
+      SD is not used"
+     "GPIO33 - status LED"
+     "GPIO34 - user button"
+     "GPIO4, GPIO12, GPIO13, GPIO32, GPI35, GPIO36, GPI39 - free to use"
+   The board's header pin diagram (CON1) also does NOT expose GPIO18, 19,
+   21, 22, 23, 25, 26, or 27 at all - i.e. those GPIOs are entirely
+   internal to the onboard LAN8720 Ethernet PHY (RMII bus) and never
+   available as general-purpose I/O on this board, corroborating the
+   ETH_PHY_MDC/MDIO #defines in this board's own pins_arduino.h.
+
+3. https://api.riot-os.org/esp32-olimex-evb_2include_2board_8h.html
+   RIOT-OS board.h reference for the closely related sibling Olimex
+   ESP32-EVB (same LAN8720 PHY family, already audited in this database).
+   Confirms GPIO34 = user button, pulled up with an external resistor,
+   GPIO_IN mode, falling-edge interrupt - same physical button circuit
+   pattern as this board's KEY_BUILTIN=34.
+
+4. This board's own vendor pins_arduino.h (variants/esp32/esp32/esp32-gateway/):
+   ETH_PHY_TYPE=LAN8720, ETH_PHY_ADDR=0, ETH_PHY_MDC=GPIO23,
+   ETH_PHY_MDIO=GPIO18, ETH_PHY_POWER=GPIO5, ETH_CLK_MODE=GPIO17_OUT (ESP32
+   drives the 50MHz RMII clock OUT to the PHY on GPIO17 - contrast with
+   sibling esp32-evb, which uses ETH_CLOCK_GPIO0_IN, an external oscillator
+   feeding GPIO0; this board does NOT tie up GPIO0). KEY_BUILTIN=34.
+   BOARD_HAS_1BIT_SDMMC (Rev.F+ only).
+
+Reasoning / decisions:
+
+- GPIO23 (ETH_PHY_MDC), GPIO18 (ETH_PHY_MDIO), GPIO5 (ETH_PHY_POWER),
+  GPIO17 (ETH clock out): EXCLUDED. Confirmed dedicated to the onboard
+  LAN8720 PHY by both the vendor GPIO diagram and the GitHub hardware
+  README. GPIO17 was already absent from the esp32/esp32 chip-level
+  default chipGpios (PSRAM-reserved range), so no removal action was
+  needed for it there; noted for completeness only.
+
+- GPIO19/21/22/25/26/27: EXCLUDED. These are the ESP32's fixed-silicon
+  EMAC/RMII data lines (TXD0/TX_EN/TXD1/RXD0/RXD1/RX_DV) - not
+  configurable in pins_arduino.h and not user-reassignable once EMAC
+  Ethernet is active. Same reasoning already applied to sibling Olimex
+  boards esp32-poe and esp32-evb in this database. Also confirmed absent
+  from the CON1 header pin list in the vendor GPIO diagram (not broken
+  out to the board's external header at all).
+
+- GPIO2/14/15: EXCLUDED. Explicitly identified by the vendor GPIO diagram
+  as the onboard microSD 1-bit SDMMC bus ("GPIO2, GPIO14, GPIO15 are used
+  for SD card"), matching BOARD_HAS_1BIT_SDMMC in this board's own
+  pins_arduino.h and the identical GPIO2/14/15 SDMMC exclusion already
+  applied to sibling boards esp32-evb and esp32-poe. This goes beyond the
+  literal 4-pin/KEY_BUILTIN scope flagged in the discovery sweep, but the
+  vendor diagram supplied the "more info" the original flag said would be
+  needed to act on BOARD_HAS_1BIT_SDMMC - applied here for consistency
+  with the sibling boards' precedent.
+
+- GPIO34 (KEY_BUILTIN): KEPT, tagged ["digital_input", "button"].
+  Confirmed onboard user pushbutton by the vendor GPIO diagram ("GPIO34 -
+  user button") and corroborated by the sibling ESP32-EVB's RIOT-OS
+  board.h (external pull-up, GPIO_IN, falling-edge interrupt - same
+  physical wiring pattern). GPIO34 is input-only on classic ESP32 (no
+  output driver, already in inputOnlyGpios), so no digital_output/
+  pwm_output capability was added; analog_input was also dropped in
+  favour of the plain button tag, per this audit's explicit instruction.
+
+- Alias-collision check (build_boards.js unconditionally appends
+  spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl capabilities for any
+  GPIO matching this board's own SS/MOSI/MISO/SCK/SDA/SCL consts,
+  regardless of chipGpios): this board's vendor pins_arduino.h declared
+  SS=5, MOSI=23, MISO=19, SCK=18 as stock boilerplate SPI aliases - ALL
+  FOUR collide exactly with the Ethernet-dedicated GPIOs above (5=PHY
+  power, 23=MDC, 18=MDIO, 19=fixed EMAC_TXD0 RMII line). None of these
+  are a real SPI bus on this hardware (Olimex's own docs never mention an
+  onboard SPI device on these pins). All four alias lines were deleted
+  from pins_arduino.h and replaced with a pfodWeb NOTE explaining why, so
+  the pin-exclusion in board.json isn't silently undone by the alias
+  fallback path in build_boards.js. SDA=32 and SCL=16 were left
+  unchanged - neither collides with an excluded pin, and GPIO16 isn't
+  part of this chip's default chipGpios list at all, so it's out of
+  scope for this audit.
+
+- LED_BUILTIN=33: the vendor diagram also states "GPIO33 - status LED",
+  but this board was not flagged for LED review in this task (only
+  ETH_PHY_*/KEY_BUILTIN/BOARD_HAS_1BIT_SDMMC were flagged) and the vendor
+  text gives no drive-polarity detail (active-high vs active-low) needed
+  to safely tag led_high/led_low. Left UNTAGGED deliberately - flagging
+  for a future dedicated LED-retrofit pass rather than guessing polarity.
+
+- GPIO0: left unchanged/available. Unlike sibling esp32-evb (which ties
+  up GPIO0 as an external Ethernet clock input, ETH_CLOCK_GPIO0_IN), this
+  board's ETH_CLK_MODE is GPIO17_OUT (ESP32 drives the clock out itself),
+  so GPIO0 is not consumed by Ethernet here. It keeps its existing
+  strapping-pin note ("Must be HIGH or floating on reboot") from the
+  chip-level default.
+
+Summary: Excluded GPIO2, 5, 14, 15, 18, 19, 21, 22, 23, 25, 26, 27 from
+chipGpios (onboard LAN8720 Ethernet PHY + microSD SDMMC bus, all vendor-
+confirmed dedicated hardware). Tagged GPIO34 (KEY_BUILTIN) as a confirmed
+onboard button. Deleted four stale/misleading SPI alias declarations
+(SS/MOSI/MISO/SCK) from pins_arduino.h that collided with the excluded
+Ethernet pins. Created board.json as a full override of the esp32/esp32
+chip-level default.

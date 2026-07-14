@@ -1,0 +1,197 @@
+OROCA EduBot (esp32/esp32/oroca_edubot) - dedicated-hardware pin-exclusion
+audit + button/LED retrofit, 2026-07-12
+============================================================================
+
+Why flagged: discovery sweep hit on
+  static const uint8_t VBAT = 35;
+  #define BAT_VOLT_PIN VBAT
+"OROCA EduBot" is a Korean educational robotics kit (two-wheel line-
+following/ToF robot with OLED, buzzer/speaker, IMU, NeoPixel eyes) built on
+a bare ESP32-WROOM-32 module, not a dedicated PCB with silkscreened net
+names - so almost none of its dedicated hardware is documented in
+pins_arduino.h comments; it had to be reverse-engineered from the vendor's
+own official Arduino library source.
+
+Sources consulted
+------------------
+1. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/oroca_edubot/pins_arduino.h
+   Official upstream Espressif arduino-esp32 core copy of this file.
+   Byte-for-byte matches the local pins_arduino.h as it stood before this
+   session's edits - confirms it was NOT a stale copy, and confirms VBAT is
+   the only board-specific (non-boilerplate) declaration actually present
+   in the file itself. All the other dedicated-hardware findings below come
+   from pins that ARE declared here but only as generic boilerplate
+   (SS/MOSI/MISO/SCK/DAC1/DAC2/D5/D6/D7/T2/T3/T5/T6/T7/T9) whose real
+   function turned out to be something else entirely.
+
+2. https://docs.platformio.org/en/latest/boards/espressif32/oroca_edubot.html
+   PlatformIO board entry. Confirms chip=ESP32, 240MHz, 4MB flash, 320KB
+   RAM, vendor="OROCA". No pin-level detail.
+
+3. https://github.com/oroca/OROCA-EduBot-Library (vendor's own official
+   Arduino library for this exact board, maintainer "Baram", Apache 2.0)
+   This is the primary evidence source for everything below. All GPIO
+   numbers were read directly from the vendor's own working firmware
+   source, not guessed or inferred from naming conventions.
+
+   a. src/EduBot.h / src/EduBot.cpp:
+      - `pinMode(0, INPUT_PULLUP);` with comment "for Unser Button" (typo
+        for "User Button"); `buttonGetPressed()` returns
+        `digitalRead(0) == 0` -> GPIO0 = onboard user button, active-low.
+      - `pinMode(13, OUTPUT); digitalWrite(13, LOW);` with comment "for
+        Internal LED"; `ledOn()` = `digitalWrite(13, LOW)`, `ledOff()` =
+        `digitalWrite(13, HIGH)` -> GPIO13 (= LED_BUILTIN in
+        pins_arduino.h) = onboard single-colour LED, active-low.
+      - `adcInfoEnable(VBAT);` in `begin()` -> confirms GPIO35/VBAT is
+        read as a real battery-voltage ADC channel. Matches this repo's
+        KEEP policy for battery-monitor pins - no change needed for VBAT
+        itself.
+      - `tofBegin()`: sequences `pinMode(D6, OUTPUT)` / `pinMode(D7,
+        OUTPUT)`, drives both low then brings D7 high before `tof_L.begin()`
+        and D6 high before `tof_R.begin()` - the standard VL53L0X multi-
+        sensor XSHUT address-assignment sequencing pattern. D6=GPIO18,
+        D7=GPIO19 (per pins_arduino.h's own D6/D7 aliases, since deleted -
+        see below) -> GPIO18/19 are dedicated XSHUT enable/reset lines for
+        two onboard VL53L0X time-of-flight distance sensors (tof_L/tof_R).
+
+   b. src/driver/stepmotor/motor.cpp:
+      `StepMotor step_l(0); StepMotor step_r(1);` then in `Motor::begin()`:
+        `step_l.begin(27, 14, 32, 1);   // enable_pin, step_pin, dir_pin, dir`
+        `step_r.begin(12, 15, 2, -1);   // enable_pin, step_pin, dir_pin, dir`
+      -> Confirms the onboard two-wheel stepper-motor driver's exact wiring:
+        left motor:  enable=GPIO27, step=GPIO14, dir=GPIO32
+        right motor: enable=GPIO12, step=GPIO15, dir=GPIO2
+      This is the robot's drive train - a fixed hardware actuator requiring
+      specific timing (step pulses) and safety (enable line), matching this
+      repo's EXCLUDE policy for stepper EN/STEP/DIR lines.
+
+   c. src/driver/audio/MAX98357.h:
+      `MAX98357(i2s_port_t i2s_num=I2S_NUM_0, uint32_t pin_lrc=GPIO_NUM_25,
+      uint32_t pin_bck=GPIO_NUM_26, uint32_t pin_din=GPIO_NUM_21);`
+      -> Confirms the onboard I2S audio amplifier (speaker) is wired to
+      GPIO25 (LRC/word-select), GPIO26 (BCK/bit-clock), GPIO21 (DIN/data).
+      GPIO25/26 are the same two GPIOs this board's pins_arduino.h
+      separately (and misleadingly) aliases as DAC1/DAC2 - they are NOT
+      general-purpose DAC outputs on this board, they are the speaker
+      amp's clock lines. Matches this repo's EXCLUDE policy for a
+      dedicated I2S audio codec bus.
+
+   d. src/driver/ir_remote/ir_remote.h:
+      `bool begin(uint8_t _rx_pin = 5);` - and `EduBot::begin()` calls
+      `ir_remote.begin()` with no argument, so the default (GPIO5) is what
+      this board actually uses. GPIO5 is the same GPIO this board's
+      pins_arduino.h separately aliases as SCK and D5. -> GPIO5 = dedicated
+      onboard IR remote receiver input, wired to a fixed onboard IR
+      demodulator component, not a general-purpose header pin. Excluded as
+      dedicated hardware (a user's own SPI/digital use of this pin would
+      electrically contend with the onboard IR receiver's output drive).
+
+   e. src/driver/neopixel/neopixel.cpp:
+      `#define PIN D0` / `#define NUMPIXELS 2` /
+      `NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> pixels(NUMPIXELS, PIN);`
+      -> Confirms a real 2-pixel addressable (WS2812-class, NeoGrbFeature)
+      NeoPixel strip on GPIO4 (D0) - the robot's two "eye" indicator LEDs,
+      driven via `leftBright()`/`rightBright()`. This is a confirmed
+      onboard addressable RGB LED, matches this repo's KEEP-and-tag policy
+      (led_neopixel), not an exclusion.
+
+   f. src/driver/floor/floor.cpp:
+      `#define ADC_LEFT_IN A2` / `ADC_LEFT_OUT A3` / `ADC_RIGHT_IN A1` /
+      `ADC_RIGHT_OUT A0`, read via `adcInfoEnable(A0..A3)` /
+      `adcInfoRead(...)`. -> Confirms four onboard analog floor/line-
+      following IR sensors on A0-A3 (GPIO34/39/36/33). These are ordinary
+      analog sensor readings (matches this repo's KEEP policy for onboard
+      analog sensors, same bucket as thermistors/battery monitors) - no
+      exclusion needed, left unchanged.
+
+   g. src/EduBot.h and src/driver/oled/oled.cpp:
+      `OLed::begin()` calls `Wire1.begin(17, 16);` - the onboard SSD1306
+      OLED display uses a SECOND I2C bus (Wire1) wired to GPIO17/GPIO16,
+      which are the exact same two GPIOs this board's pins_arduino.h
+      already aliases TX=17/RX=16. No board.json action needed: this
+      repo's build_boards.js already hard-reserves whatever GPIO equals a
+      board's TX/RX alias to serial_tx/serial_rx only (overwriting any
+      other capability), so this pre-existing behaviour already prevents
+      GPIO16/17 from being offered as anything but the serial port -
+      documenting the collision here for a future reviewer, not acting on
+      it.
+
+   h. src/driver/imu/imu.cpp (SparkFun MPU9250-DMP library, no custom pin
+      args visible in begin()) - onboard IMU (MPU9250) uses the default
+      Wire bus (SDA=23/SCL=22). Ordinary I2C, KEPT unchanged per this
+      repo's "general-purpose I2C bus without an exclusive onboard
+      consumer" policy - I2C is inherently multi-drop and nothing here
+      proves a user couldn't also attach something else to the same bus
+      via the extension header.
+
+Alias-collision check (critical step per this session's task)
+----------------------------------------------------------------
+This board's original pins_arduino.h declared:
+  SS=2, MOSI=18, MISO=19, SCK=5   (generic Arduino SPI aliases)
+  D5=5, D6=18, D7=19              (generic Arduino digital-pin aliases)
+  T2=2, T3=15, T5=12, T6=14, T7=27, T9=32   (generic touch-sensor aliases)
+  DAC1=25, DAC2=26                (generic Arduino DAC aliases)
+
+Cross-referencing against the confirmed dedicated-hardware GPIOs above
+(motor: 2,12,14,15,27,32; ToF XSHUT: 18,19; IR receiver: 5; audio amp:
+21,25,26) showed EVERY ONE of these boilerplate aliases actually points at
+a GPIO with real, different, dedicated hardware behind it - none of them
+are a real onboard SPI bus, touch sensor, or DAC output on this specific
+board. build_boards.js appends spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/
+i2c_scl/dac_output capabilities UNCONDITIONALLY for any GPIO matching
+these named aliases (see build_boards.js lines ~694-703), regardless of
+what a board.json chipGpios override says - so simply excluding the GPIOs
+from chipGpios would NOT have been sufficient; the alias declarations
+themselves also had to be deleted from pins_arduino.h. All of the above
+(SS/MOSI/MISO/SCK/D5/D6/D7/T2/T3/T5/T6/T7/T9/DAC1/DAC2) were deleted from
+pins_arduino.h - see the `// pfodWeb NOTE:` comments left there (written
+in plain English, describing what changed rather than repeating the
+original `static const uint8_t NAME = value;` declaration text verbatim,
+since build_boards.js's parser is comment-blind and would otherwise
+re-match the exact same pattern inside a `//` comment).
+
+GPIO16/17 (TX/RX) were also checked - no collision requiring action, see
+item (g) above.
+
+Pins considered but NOT changed (explicit reasoning)
+-------------------------------------------------------
+- VBAT / GPIO35: KEPT unchanged. Confirmed real battery-voltage ADC pin
+  (adcInfoEnable(VBAT) in vendor source) - matches KEEP policy, chip-level
+  default capabilities (analog_input, digital_input; already input-only)
+  were already correct, no board.json change needed for this pin alone.
+- A0-A3 (GPIO34/39/36/33): KEPT unchanged. Confirmed onboard analog floor/
+  line sensors - matches KEEP policy for analog sensor readings.
+- SDA/SCL (GPIO23/22): KEPT unchanged. General-purpose I2C bus, IMU is
+  attached but I2C is multi-drop per this repo's policy - not excluded.
+- TX/RX (GPIO17/16): KEPT unchanged (already hard-reserved to serial by
+  build_boards.js). Also internally used for the OLED's second I2C bus,
+  noted for the record but not actionable.
+- GPIO1/GPIO3: KEPT unchanged (chip-level default UART0 pins, not used by
+  this board's own TX/RX which are 17/16, no vendor evidence of dedicated
+  use - left as ordinary general-purpose GPIOs, matching chip-level
+  default capabilities).
+
+Summary of what was changed
+-------------------------------
+- Created board.json (previously used the chip-level esp32/esp32/board.json
+  default; none existed for this board before).
+- EXCLUDED (removed from chipGpios entirely) GPIO2, 5, 12, 14, 15, 18, 19,
+  21, 25, 26, 27, 32 - confirmed dedicated onboard hardware (2x stepper
+  motor driver EN/STEP/DIR lines, IR remote receiver, 2x VL53L0X ToF XSHUT
+  lines, I2S audio amplifier bus).
+- Deleted the corresponding boilerplate aliases (SS, MOSI, MISO, SCK, D5,
+  D6, D7, T2, T3, T5, T6, T7, T9, DAC1, DAC2) from pins_arduino.h so they
+  cannot leak the excluded GPIOs back into the generated pin list or
+  contaminate other pins' capabilities via build_boards.js's unconditional
+  alias-based capability appends.
+- Tagged GPIO0 -> ["digital_input", "button"] (confirmed onboard user
+  button, active-low).
+- Tagged GPIO13 (LED_BUILTIN) -> ["digital_output", "led_low",
+  "pwm_output"] (confirmed onboard single-colour internal LED, active-low).
+- Tagged GPIO4 (D0) -> ["digital_output", "led_neopixel", "pwm_output"]
+  (confirmed onboard 2-pixel addressable NeoPixel "eyes" strip).
+- VBAT (GPIO35) itself required NO change - already correctly represented
+  as a plain analog_input pin by the chip-level default; the flag that
+  triggered this audit turned out to be the least interesting finding
+  once the rest of the board's onboard hardware was reverse-engineered
+  from the vendor's own library source.

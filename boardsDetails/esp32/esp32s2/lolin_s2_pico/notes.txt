@@ -1,0 +1,64 @@
+lolin_s2_pico - onboard button/LED research notes
+==================================================
+
+Sources consulted:
+
+1. https://www.wemos.cc/en/latest/s2/s2_pico.html
+   Official WEMOS S2 Pico documentation page. Text content itself does not
+   describe LED/button pins directly (pinout is an image), but the page
+   linked to the schematic PDF used below.
+
+2. https://www.wemos.cc/en/latest/_static/files/sch_s2_pico_v1.0.0.pdf
+   Official WEMOS schematic (KiCad export, "D32_S2_PICO"), fetched and read
+   directly (as a PDF, not OCR/text-scrape). Confirms:
+     - CORE sheet: LED1 (BLUE) wired as +3V3 -- R6 (2k) -- LED1 -- GPIO10.
+       LED lights when GPIO10 is driven LOW (sinks current) = active-low.
+     - BUTTON sheet: SW1 is on EN (chip reset button, pulled up via R3 10k).
+       SW2 is a separate pushbutton wired to GPIO0 / GND = standard ESP32
+       BOOT/FLASH button (matches pinNotes "0": "Must be HIGH for normal
+       boot" already in board.json).
+
+3. https://circuitpython.org/board/lolin_s2_pico/
+   CircuitPython board download page. Explicitly states "GPIO10 LED (blue
+   status LED)" and "GPIO0 BOOT button", corroborating the schematic.
+
+4. https://github.com/adafruit/circuitpython/blob/main/ports/espressif/boards/lolin_s2_pico/pins.c
+   Adafruit CircuitPython board bring-up source (independent of Arduino
+   pins_arduino.h aliases). Defines MP_QSTR_LED -> pin_GPIO10 and
+   MP_QSTR_BUTTON -> pin_GPIO0, matching the schematic.
+
+5. https://github.com/adafruit/circuitpython/blob/main/ports/espressif/boards/lolin_s2_pico/mpconfigboard.h
+   Confirms MICROPY_HW_LED_STATUS = pin_GPIO10.
+
+6. https://www.espboards.dev/esp32/lolin-s2-pico/
+   Secondary aggregator site; mentions LED_BUILTIN at GPIO10 pin mapping,
+   consistent with above but not used as primary evidence (derived from
+   pins_arduino.h aliases, which the task instructions say not to trust
+   alone) - only used as corroboration, not as sole source.
+
+7. Sibling board precedent: variants/esp32/esp32s2/lolin_s2_mini/board.json
+   already tags GPIO0 as "button" (confirmed via the S2 Mini's own
+   schematic, sch_s2_mini_v1.0.0.pdf) using the same SW1(EN)/SW2(GPIO0)
+   BOOT-button pattern. This is the same WEMOS board family/design
+   convention, used only as cross-check, not as primary evidence for the
+   Pico's own schematic (which was independently confirmed via source #2).
+
+Pins considered but NOT tagged:
+- None. GPIO0 (button) and GPIO10 (LED) were both tagged - see below.
+  No TX/RX conflict: this board's TX=38, RX=33 (from pins_arduino.h),
+  neither GPIO0 nor GPIO10 collide with those.
+  No pre-existing chipGpios exclusion affected GPIO0 or GPIO10 (both had
+  existing chipGpios entries in board.json before this edit).
+  No NeoPixel / discrete RGB LED was found documented anywhere for this
+  board (only the single blue status LED on GPIO10) - not tagged as such,
+  no guess made.
+
+Summary of changes made:
+- GPIO0: capabilities changed to ["digital_input","button"] - confirmed
+  onboard BOOT pushbutton (SW2, schematic sch_s2_pico_v1.0.0.pdf).
+- GPIO10: capabilities changed to ["digital_output","led_low","pwm_output"]
+  (pwm_output retained because it was already present) - confirmed onboard
+  blue status LED1, active-low (schematic sch_s2_pico_v1.0.0.pdf).
+- Added a pfodWeb NOTE comment near the top of board.json documenting both
+  tags and their evidence, placed after the pre-existing GPIO18 exclusion
+  NOTE comment (which was left untouched).

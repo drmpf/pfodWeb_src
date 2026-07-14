@@ -1,0 +1,85 @@
+Board: ESP32-P4-Function-EV-Board (esp32p4, plain/generic variant), chip esp32p4
+Date: 2026-07-14 — REAL independent verification pass (batch C), superseding
+the 2026-07-14 "documentation backfill" entry below, which only cited
+"vendor pins_arduino.h" generically with no external URL.
+
+=== Independent verification (2026-07-14) ===
+
+Sources consulted:
+- https://github.com/espressif/esp-hosted-mcu/blob/main/docs/esp32_p4_function_ev_board.md
+  (Espressif's own official esp-hosted-mcu repo documentation) — CONFIRMS the
+  SDIO link to the onboard ESP32-C6-MINI-1 WiFi/BT companion module verbatim:
+  "GPIOs: CLK[18] CMD[19] D0[14] D1[15] D2[16] D3[17] Slave_Reset[54]",
+  4-bit SDIO at 40 MHz. Exact match to this board's pins_arduino.h
+  BOARD_SDIO_ESP_HOSTED_CLK/CMD/D0/D1/D2/D3/RESET = 18/19/14/15/16/17/54.
+- https://techoverflow.net/2026/02/06/esp32-p4-which-gpios-to-use-for-rmii/
+  (independent technical blog, cross-referenced against the chip's own
+  datasheet pin-function tables) — CONFIRMS the RMII Ethernet PHY wiring:
+  TX_EN=GPIO49, TXD0=GPIO34, TXD1=GPIO35, RXD0=GPIO29, RXD1=GPIO30,
+  CRS_DV=GPIO28, REF_CLK=GPIO50 (50MHz, doubled from a 25MHz crystal outside
+  the PHY), MDIO=GPIO52, MDC=GPIO31. Exact match to this board's
+  pins_arduino.h ETH_RMII_TX_EN/TX0/TX1/RX0/RX1_EN/CRS_DV/CLK and
+  ETH_PHY_MDC/MDIO = 49/34/35/29/30/28/50/31/52. The same source separately
+  states "GPIO51 controls the IP101GRI reset", matching this file's
+  ETH_PHY_POWER=51.
+- https://device.report/manual/13813100 (Espressif's own
+  "ESP32 P4 Function EV Board Owner's Manual", indexed copy) — CONFIRMS
+  GPIO45: "GPIO45 can be enabled by disabling the SD_PWRn function... by
+  moving R231 to R100" - i.e. GPIO45 is factory-wired as the microSD slot's
+  power-enable line (SD_PWRn) and only becomes available as a general GPIO
+  after a hardware rework. Matches this file's BOARD_SDMMC_POWER_PIN=45.
+- https://docs.zephyrproject.org/latest/boards/espressif/esp32p4_function_ev_board/doc/index.html
+  and https://github.com/espressif/esp-dev-kits/blob/master/examples/esp32-p4-function-ev-board/README.md
+  — checked, but neither page's fetched content included a GPIO-numbered
+  pin table (both just describe the board at a feature level: "10/100 Mbps
+  Ethernet RJ45 port driven by ... an IP101 PHY over RMII", "ESP32-C6-MINI-1
+  serves as the WiFi/BT module ... communicates ... using SDIO"). Confirmed
+  the PHY part number (IP101) and companion-chip identity (ESP32-C6-MINI-1)
+  match this board's setup, but did not independently supply GPIO numbers -
+  recorded as a dead end for pin-level detail, not as contradicting evidence.
+- A generic ESP32-P4 chip-level RMII IO-mux table (from the same techoverflow
+  page) lists 3 alternate GPIO groupings the chip's RMII peripheral can be
+  routed to via IO_MUX - this is chip-level flexibility across ANY ESP32-P4
+  board design, not this specific board's actual wiring, and does not
+  conflict with the board-specific confirmation above (this board uses a mix
+  from "group 3" for TX_EN/CLK/CRS_DV/RXD0/RXD1 plus GPIO31/34/35 which the
+  GPIO-matrix-routed MDC/TXD0/TXD1 signals are not constrained to the same
+  fixed IO_MUX groups as the RMII data/clock lines).
+
+Per-pin findings:
+- GPIO14, GPIO15, GPIO16, GPIO17, GPIO18, GPIO19, GPIO54: CONFIRMED excluded.
+  Exact match to Espressif's own esp-hosted-mcu docs for the ESP32-C6 SDIO
+  WiFi-companion link (D0/D1/D2/D3/CLK/CMD/Slave_Reset).
+- GPIO28, GPIO29, GPIO30, GPIO31, GPIO34, GPIO35, GPIO49, GPIO50, GPIO51,
+  GPIO52: CONFIRMED excluded. Exact match to the techoverflow.net RMII
+  writeup for the onboard IP101 Ethernet PHY (CRS_DV/RXD0/RXD1/MDC/TXD0/
+  TXD1/TX_EN/REF_CLK/PHY-reset/MDIO).
+- GPIO45: CONFIRMED excluded. Directly documented in Espressif's own Owner's
+  Manual as the microSD slot's SD_PWRn power-control line, requiring a board
+  rework (moving a resistor) before it could ever be used as general GPIO -
+  about as strong a confirmation as a dedicated-hardware exclusion can get.
+- All remaining present pins (0-13, 20-23, 26, 27, 32, 33, 36-44, 46, 47,
+  48, 53): no change - kept at chip-level default capabilities as before.
+  No button/LED tagging was found or applied - this remains a
+  dedicated-hardware-exclusion-only pass, and no vendor source surfaced any
+  onboard button/LED on this specific board (the "plain"/generic EV board,
+  as distinct from the 4D Systems display variants).
+- GPIO24, GPIO25: unrelated to this board's own exclusion pass - already
+  reserved at the ESP32-P4 chip level (USB pins).
+
+Result: FULLY CONFIRMED, no correction needed. Every excluded GPIO
+(14-19/28-31/34/35/45/49-52/54) is now backed by an external, independent
+source (Espressif's own esp-hosted-mcu repo, a third-party RMII-focused
+technical blog cross-referencing the chip datasheet, and Espressif's own
+Owner's Manual for this exact board) rather than only this board's own
+pins_arduino.h. board.json's header comment was updated with these
+citations.
+
+=== 2026-07-14 (earlier, documentation-backfill entry — cited only "vendor
+pins_arduino.h" generically, no external URL; restated here for history) ===
+
+Summary as originally written: excluded GPIO14-19/28-31/34/35/45/49-52/54 as
+dedicated onboard Ethernet PHY and ESP32-C6 WiFi-companion SDIO/SDMMC pins,
+sourced only from this board's own pins_arduino.h ETH_*/BOARD_SDIO_*/
+BOARD_SDMMC_* defines. The 2026-07-14 independent-verification pass above has
+now confirmed every one of these GPIOs against real external documentation.

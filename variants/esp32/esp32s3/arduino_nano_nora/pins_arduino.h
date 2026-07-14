@@ -96,7 +96,11 @@ static constexpr uint8_t DSR = D4;
 static constexpr uint8_t SS = D10;
 static constexpr uint8_t MOSI = D11;
 static constexpr uint8_t MISO = D12;
-static constexpr uint8_t SCK = D13;
+// pfodWeb NOTE: the default SCK alias (which pointed at the same GPIO as
+// D13/LED_BUILTIN in this file's pin-remap numbering scheme) was
+// deleted - build_boards.js unconditionally attaches an spi_sck
+// capability to any GPIO matching the SCK alias, which was silently
+// contaminating the confirmed onboard LED's capability list.
 
 static constexpr uint8_t SDA = A4;
 static constexpr uint8_t SCL = A5;

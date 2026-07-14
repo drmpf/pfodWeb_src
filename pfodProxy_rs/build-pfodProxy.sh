@@ -21,18 +21,6 @@ pause_before_exit() {
     fi
 }
 
-# Check if Node.js is installed
-if ! command -v node &> /dev/null; then
-    echo "ERROR: Node.js is not installed or not in PATH"
-    echo "Please install Node.js from https://nodejs.org/"
-    echo ""
-    pause_before_exit
-    exit 1
-fi
-
-# Sync version from pfodWeb_src/version.js into Cargo.toml before building.
-node -e "var fs=require('fs');var m=fs.readFileSync('../pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
-
 # Ensure both macOS targets are available (idempotent).
 rustup target add x86_64-apple-darwin aarch64-apple-darwin
 

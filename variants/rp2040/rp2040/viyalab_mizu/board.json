@@ -1,0 +1,73 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in variants/rp2040/boards.txt
+  // (viyalab_mizu.name=Viyalab Mizu RP2040) when present.
+  "displayName": "Viyalab Mizu RP2040",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no button alias of any
+  // kind (no PIN_BUTTON/PIN_USRKEY/etc.), and research below found no
+  // vendor documentation of an onboard user pushbutton either.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only (this is a plain "rp2040" chip
+  // bucket board, no onboard WiFi/BLE radio confirmed).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // NO CHANGE — audited but no chipGpios override applied.
+  //
+  // This board's pins_arduino.h declares PIN_LED (25u), which official
+  // Viyalab documentation (docs.viyalab.com/docs/Mizu/RP2040/intro)
+  // confirms corresponds to a real onboard "Programmable LED" feature
+  // (alongside an LSM6DS3 IMU, QMC6310 compass, BMP280 barometer, and
+  // microSD slot on this underwater-robotics control board). However:
+  //   - No authoritative source (official schematic/datasheet, or
+  //     independent secondary source) could be found confirming the
+  //     LED's polarity (active-high vs active-low) specifically for
+  //     THIS board's own PCB design.
+  //   - No PIN_NEOPIXEL alias is declared anywhere in this board's
+  //     pins_arduino.h (unlike vendors that give an onboard WS2812 its
+  //     own distinct alias, e.g. waveshare_rp2040_zero/matrix,
+  //     vccgnd_yd_rp2040), which argues against it being an addressable
+  //     RGB LED, but this is inference from an absence, not a positive
+  //     confirmation, so no led_neopixel tag was applied either.
+  //   - This board's pins_arduino.h is confirmed to deviate from the
+  //     boilerplate Pico-clone template elsewhere (its SPI0 pins are
+  //     PIN_SPI0_MOSI=7/PIN_SPI0_SCK=6 instead of the standard
+  //     Pico/degz_suibo/rpipico PIN_SPI0_MOSI=19/PIN_SPI0_SCK=18 — a
+  //     genuine board-specific microSD-card SPI0 wiring, confirmed via
+  //     Viyalab's own docs listing a microSD slot among this board's
+  //     peripherals), so the usual "this is just the stock Pico LED
+  //     circuit" assumption cannot be safely extended to GPIO25 without
+  //     its own confirmation.
+  // Per this audit's instructions, polarity/type were NOT guessed from
+  // the PIN_LED alias name alone — GPIO25 is left at the chip-level
+  // auto-derived default (full digital_input/digital_output/pwm_output)
+  // rather than being tagged led_high/led_low/led_neopixel. See
+  // boardsDetails/rp2040/rp2040/viyalab_mizu/notes.txt for full sourcing.
+  //
+  // No SDA/SCL/SS/MOSI/MISO/SCK collision exists on GPIO25 either way
+  // (checked against all six bus alias values in this board's
+  // pins_arduino.h), so this is not a case of the confirmed
+  // adafruit_feather_scorpio-style bus-capability contamination bug.
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

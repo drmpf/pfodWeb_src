@@ -1,0 +1,182 @@
+Phoenix 1.0 (ESP8266) — research notes
+Board dir: variants/esp8266/esp8266/phoenix_v1 (pins_arduino.h only; no board.json existed before this research)
+Date: 2026-07-11
+
+=== Sources consulted ===
+
+1. https://docs.platformio.org/en/latest/boards/espressif8266/phoenix_v1.html
+   PlatformIO's Phoenix 1.0 board page. Lists vendor as "Espressif" and a single
+   "product page" link that is actually the generic esp8266.com wiki module-family
+   page (http://www.esp8266.com/wiki/doku.php?id=esp8266-module-family) — this is
+   the same boilerplate URL PlatformIO uses as a fallback for many boards, not
+   Phoenix-specific documentation. No mention of onboard button, LED pin, or ADC
+   divider. Confirms 80MHz/4MB flash/80KB RAM, esptool upload, no debug support.
+
+2. https://raw.githubusercontent.com/platformio/platform-espressif8266/develop/boards/phoenix_v1.json
+   Same generic "Espressif" vendor + same generic esp8266.com wiki URL as above.
+   No hardware pin/button/LED/ADC detail.
+
+3. https://arduino-esp8266.readthedocs.io/en/latest/boards.html (and older versions
+   2.5.0/3.1.0 checked too) — the official ESP8266 Arduino core board list.
+   Phoenix 1.0 and Phoenix 2.0 entries each list only "Product page: http://www.espert.co"
+   with zero additional description (no LED/button/ADC text, unlike some other
+   boards in the same doc that do get a short blurb).
+
+4. http://www.espert.co — the vendor site named as Phoenix's product page.
+   Domain is dead: redirects to a GoDaddy "domain for sale" parking page. No
+   schematic, datasheet, or product info reachable.
+
+5. https://github.com/esp8266/Arduino/pull/2088 — "Add new boards Phoenix 1.0 & Phoenix 2.0"
+   (merged 2016-06-06, author github user "nazt", who is also the ESPert.co / Chiangmai
+   Maker Club author associated with the separate "ESPresso Lite" boards). PR adds
+   boards.txt entries + variant pins_arduino.h files for both phoenix_v1 and phoenix_v2
+   but the PR text itself carries no hardware description, no schematic links, and no
+   discussion of onboard peripherals.
+
+6. https://raw.githubusercontent.com/esp8266/Arduino/master/doc/boards.rst (current doc)
+   — same single-line "Product page: http://www.espert.co" for both Phoenix entries,
+   confirming (5) is still all upstream documents.
+
+7. GitHub search for the same author's other repo, https://github.com/JimmySoftware/ESPert
+   ("ESPert.co" Arduino library) — this repo is for the separate "ESPresso Lite" board
+   family (which does have a real documented onboard USER button on GPIO2 and reset/flash
+   buttons — see the existing espresso_lite_v1 / espresso_lite_v2 variants in this repo,
+   which are distinct boards from Phoenix). Nothing in this repo documents "Phoenix"
+   specifically — it is not the same product as ESPresso Lite despite the shared author.
+
+8. General web search for "Phoenix 1.0 espert ESP8266 GPIO16 onboard LED / push button" and
+   variants thereof turned up no independent blog posts, teardown photos, hackster.io /
+   hackaday.io / instructables project pages, or forum threads that describe or photograph
+   this specific board's onboard components.
+
+=== Considered but NOT changed, and why ===
+
+- pins_arduino.h defines `#define LED_BUILTIN 16` for this board. Per task instructions,
+  an alias name/LED_BUILTIN value in pins_arduino.h is explicitly NOT sufficient evidence
+  on its own — real vendor documentation or a schematic is required to confirm an onboard
+  LED exists on GPIO16, its drive polarity (active-high/low), and whether it's even
+  present as a physical component (some "Phoenix"-style community-contributed
+  Arduino-core variants are added purely to get pin-numbering right for a chip module,
+  without every declared alias corresponding to a populated onboard part).
+  No such vendor documentation could be located (see sources above — the vendor site is
+  dead and no independent teardown/schematic exists), so GPIO16 was NOT tagged with any
+  led_high/led_low/pwm_output capability. It also would not add pwm_output regardless,
+  since chip-level defaults already correctly omit pwm_output for GPIO16 (RTC-domain pin,
+  no PWM per the ESP8266 chip's own hardware limits — that's chip-wide, not board-specific).
+- No button alias of any kind is declared anywhere in phoenix_v1/pins_arduino.h, and no
+  vendor source confirms a physical user button on this board at all, so no button tag
+  was considered for any GPIO.
+- Conclusion: no board.json was created for phoenix_v1. It continues to inherit the
+  esp8266 chip-level default board.json (variants/esp8266/esp8266/board.json) unchanged,
+  which is the correct behavior in the absence of confirmed board-specific facts.
+
+=== ADC reference voltage ===
+
+- No board.json exists (see above), so defaultRefVolts continues to be inherited from the
+  chip-level default of "1.0" (native ESP8266 bare-chip ADC range, no external divider
+  assumed). No source located (PlatformIO board JSON, ESP8266 Arduino core docs, PR #2088,
+  or any web search) mentions a resistor-divider network, external ADC circuitry, or any
+  0-3.3V analog range claim for this board — unlike NodeMCU/D1 Mini, which do have
+  documented on-board dividers and get an overridden defaultRefVolts in their own
+  board.json. Left at 1.0V (chip default, no override).
+
+=== Summary ===
+
+No vendor-confirmed onboard button or LED was found for Phoenix 1.0 (espert.co is a dead
+domain and no independent documentation/schematic exists), and no evidence of an ADC
+divider was found either — no board.json was created/edited and phoenix_v1 continues to
+fully inherit the esp8266 chip-level defaults unchanged.
+
+=== 2026-07-12 — Dedicated-hardware pin-exclusion audit (sections 1-6 of the playbook) ===
+
+This is a separate, more thorough pass than the 2026-07-11 button/LED/ADC-divider research
+above — it targets pin *availability* (is any GPIO wired to fixed onboard hardware that
+should be excluded from the Designer's pin picker), plus a specific check for a
+version-selector-macro parser bug found on several sibling boards this session.
+
+--- Version-branch ambiguity check (the reason this board was specifically flagged) ---
+
+`variants/esp8266/esp8266/phoenix_v1/pins_arduino.h` contains `#define PHOENIX_VERSION 1`
+but this is a plain, standalone macro — the file has NO `#if`/`#ifdef`/`#else`/`#endif`
+structure anywhere except the ordinary `#ifndef Pins_Arduino_h ... #endif` header guard, and
+no declaration name (macro or `static const`) appears more than once within the file. So
+there is no ambiguity for `build_boards.js`'s comment-blind/ifdef-blind/last-wins regex
+parser to mis-resolve within this file — every declaration it will scan is unique and
+unconditional.
+
+Checked `variants/esp8266/esp8266/phoenix_v2/pins_arduino.h` as instructed, since the task
+flagged this pair as sharing the same era/style as `espectro` and `espresso_lite_v1/v2`,
+where a real `#if`/`#else` branch bug was found hiding behind a similar version macro on
+some siblings. Confirmed phoenix_v1 and phoenix_v2 are **two completely separate,
+self-contained files** (like espresso_lite_v1/v2 turned out to be), NOT one shared file with
+`#if PHOENIX_VERSION==1 ... #else ... #endif` branches (unlike espectro's actual bug
+pattern). Each file declares its own unambiguous `PHOENIX_VERSION` (1 vs 2) and its own
+unambiguous `LED_BUILTIN` (16 vs 2) — no cross-file interaction, and `build_boards.js`
+processes each variant directory independently, so there is no last-wins collision between
+the two files either.
+
+Conclusion: NO version-branch ambiguity exists in phoenix_v1 (or phoenix_v2). NO FIX
+required on this front — the file was already unambiguous going in.
+
+--- Fresh dead-vendor-site re-check (per task instruction to try a couple more searches) ---
+
+- WebSearch: `"Phoenix 1.0" ESP8266 espert.co GPIO16 LED schematic github` — returned only
+  generic ESP8266 Arduino-core board-list pages and the same `JimmySoftware/ESPert` repo
+  already ruled out in the 2026-07-11 notes above (that repo is for the separate ESPresso
+  Lite product line, not Phoenix). The search tool's own summary asserted "the board
+  features a blue LED on GPIO16" but cited no Phoenix-specific source for this claim among
+  the returned links — treated as an unverified/likely-fabricated inference, not evidence,
+  consistent with this project's "don't guess without a real source" policy. Not used to
+  justify any tag.
+- WebSearch: `espert.co Phoenix ESP8266 board wayback machine schematic pinout` — returned
+  only generic ESP8266 pinout-reference sites (lastminuteengineers, studiopieters, etc.),
+  nothing Phoenix- or espert.co-specific.
+- WebSearch: `github "Phoenix" ESP8266 espert schematic OR datasheet OR pinout board` —
+  returned only generic ESP8266 datasheet/pinout pages, no Phoenix-specific hit.
+- WebFetch attempt at a Wayback Machine listing for espert.co failed outright (tool declined
+  to fetch web.archive.org in this environment).
+- Conclusion: same dead-end as the 2026-07-11 pass. No new information found. Confirms
+  espert.co documentation for Phoenix remains unrecoverable.
+
+--- KEEP vs EXCLUDE sweep (sections 1-4 of the playbook) ---
+
+Applied the corrected discovery regex (playbook section 11) to
+`phoenix_v1/pins_arduino.h`. Every `^#define`/`^static const` line in the file is either the
+header guard, the version macro (not a pin), or standard boilerplate already covered by the
+exclude list (`PIN_WIRE_SDA`/`PIN_WIRE_SCL`, `static const uint8_t SDA/SCL`, `LED_BUILTIN`).
+The shared `variants/esp8266/esp8266/generic/common.h` this file includes adds only the
+standard chip-wide `SS`/`MOSI`/`MISO`/`SCK`/`A0` boilerplate aliases (GPIO15/13/12/14, and
+the virtual analog pin) — nothing board-specific, nothing dedicated to an onboard peripheral.
+
+No `#define` or `static const` declaration anywhere in this board's file (or its included
+common.h) names any radio module, SD card, display, motor/servo/stepper driver, analog mux,
+or other fixed onboard peripheral. **No dedicated hardware was found on phoenix_v1** — there
+is nothing to EXCLUDE beyond what the chip-level `board.json` default already omits.
+
+--- SDA/SCL/SS/MOSI/MISO/SCK/TX/RX aliasing / capability-contamination check (critical check per task) ---
+
+Checked whether the candidate GPIO already discussed in this file (GPIO16, `LED_BUILTIN`)
+collides with any bus alias. It does not: `SDA`=GPIO4, `SCL`=GPIO5, `SS`=GPIO15,
+`MOSI`=GPIO13, `MISO`=GPIO12, `SCK`=GPIO14 (all from `common.h`) — none equal GPIO16. Neither
+`phoenix_v1/pins_arduino.h` nor `common.h` declares a `TX`/`RX` alias at all for this board,
+so there is no serial_tx/serial_rx hard-reservation interaction (per playbook section 7a's
+last bullet) to worry about either. No aliasing contamination found.
+
+--- board.json check ---
+
+Confirmed (again, via directory listing) that no `board.json` exists under
+`variants/esp8266/esp8266/phoenix_v1/` — phoenix_v1 still fully inherits the esp8266
+chip-level default `board.json`, which remains correct behaviour since no dedicated hardware
+or vendor-confirmed peripheral was found to exclude.
+
+--- Files touched this pass ---
+
+None under `variants/` or `designer/boards/` — no `pins_arduino.h` edit and no `board.json`
+creation was warranted. Only this `notes.txt` was appended.
+
+Summary: version-branch ambiguity check performed and confirmed NOT present in phoenix_v1
+(file is self-contained and unambiguous; phoenix_v2 is a separate, likewise unambiguous
+file — same pattern as espresso_lite_v1/v2, not the espectro shared-file bug). Dedicated-
+hardware pin-exclusion sweep found nothing to exclude. Alias-collision check found no
+contamination. Vendor site remains dead; fresh searches found nothing new. NO CHANGE to
+`pins_arduino.h` or `board.json` for phoenix_v1.

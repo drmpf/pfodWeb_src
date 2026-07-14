@@ -1,0 +1,79 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  // (boardName/displayName are fallbacks — boards.txt's single "d1" entry,
+  // build.variant=d1, overrides both: d1.name=LOLIN(WeMos) D1 R1. This is
+  // the Arduino-Uno-shield-form-factor board, NOT the "D1 Mini" family,
+  // which lives in the sibling ../d1_mini variant directory.)
+  "boardName": "ESP8266",
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // pfodWeb NOTE: GPIO2 tagged "led_low" (onboard LED, active-low) - confirmed
+  // via this board's own pins_arduino.h (`#define LED_BUILTIN 2`) plus two
+  // independent third-party WeMos D1 R1/R2 technical references:
+  //   https://www.makershop.de/download/d1-wifi-esp8266-board.pdf
+  //     (pin table: "D4 | IO, pull-up, BUILTIN_LED | GPIO2")
+  //   https://envistiamall.com/blogs/learn/wemos-d1-r2-esp8266-wifi-development-board-user-guide
+  //     ("The built-in LED on the WeMos D1 R2 is active LOW — writing LOW
+  //     turns it ON, and writing HIGH turns it OFF.")
+  // This is the same standard ESP-12 module GPIO2 blue-LED wiring used
+  // across the whole D1/D1-mini/NodeMCU family sharing that module.
+  // No onboard user pushbutton was found (only a non-GPIO RESET button) -
+  // see notes.txt for the sources checked and why GPIO0 was left untagged.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. No onboard user button on this board (checked - see notes.txt) - only a non-GPIO RESET button is present",
+    "2":  "Must be HIGH at boot. Onboard LED (active-low, LED_BUILTIN) - confirmed via vendor documentation, see chipGpios note",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. LOLIN(WeMos) D1 R1 has an on-board resistor-divider giving A0 a 0-3.2V range (unlike the bare chip's native 0-1.0V) - see adc note below"
+  },
+
+  // Full usable-GPIO map for the chip — see variants/esp8266/esp8266/board.json
+  // for the full rationale (A0 analog-only, GPIO1/3 forced serial, PWM
+  // available on GPIO0-15 except 16, per randomnerdtutorials.com above).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_output", "pwm_output", "led_low"], "note": "Onboard LED (active-low) — see pfodWeb NOTE above pinNotes for sources" },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  // ESP8266's analogWrite() PWM defaults to a 10-bit range (0-1023),
+  // unlike AVR/ESP32's 8-bit (0-255) default.
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  // No hardware DAC on ESP8266.
+  "dac": {},
+
+  // pfodWeb NOTE: adc.defaultRefVolts changed from "1.0" (chip-level default)
+  // to "3.2" - confirmed via WeMos D1 R1/R2-specific sources (this board is
+  // the Uno-shield-form-factor "D1 R1", distinct from the D1 Mini family
+  // in ../d1_mini which independently documents its own onboard divider):
+  //   https://blekenbleu.github.io/Arduino/ESPDuino
+  //     ("WeMos D1 UNO R1 ... Analog Input: 1 (A0) (3.2V max)")
+  //   https://www.makershop.de/download/d1-wifi-esp8266-board.pdf
+  //     (specs: "Analog Input Pins: 1 (3.2V max input)")
+  //   https://envistiamall.com/blogs/learn/wemos-d1-r2-esp8266-wifi-development-board-user-guide
+  //     ("Analog Input Pins: 1 (A0, 10-bit ADC, 3.2V max)")
+  // 3.2V matches the well-documented 220k/100k on-board resistor divider
+  // used across the WeMos/LOLIN D1 family (same math as D1 Mini's divider -
+  // some marketing copy rounds this up to "3.3V", but 3.2V is the value
+  // that appears consistently across D1 R1/R2-specific sources and matches
+  // the exact divider math: 1.0V * (220k+100k)/100k = 3.2V).
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.2" }
+}

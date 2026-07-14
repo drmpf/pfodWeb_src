@@ -32,10 +32,10 @@ static const uint8_t SCL = 33;
 static const uint8_t SCL = 16;
 #endif
 
-static const uint8_t SS = 5;
-static const uint8_t MOSI = 2;
-static const uint8_t MISO = 15;
-static const uint8_t SCK = 14;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK (GPIO5/2/15/14) deliberately NOT
+// declared - MOSI/MISO/SCK match the fixed onboard microSD SDMMC 1-bit
+// pins (D0/CMD/CLK, see BOARD_HAS_1BIT_SDMMC below); SS is grouped with
+// them as the same dedicated interface.
 
 #define BOARD_HAS_1BIT_SDMMC
 

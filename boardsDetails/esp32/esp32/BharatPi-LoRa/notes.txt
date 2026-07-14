@@ -1,0 +1,154 @@
+BharatPi-LoRa (chip: esp32) - button/LED capability-tagging audit (section 7a)
+Date: 2026-07-12
+
+CONTEXT
+This board already has a board.json override from an earlier dedicated-
+hardware-exclusion pass. That pass already excludes GPIO2/4/14 from
+chipGpios entirely (no "2"/"4"/"14" keys present) because pins_arduino.h's
+own comments identify them as the onboard RFM95W LoRa radio's DIO0/SS/RST
+control lines (and their duplicate A0/A3/A4 analog aliases were removed
+too). This session's task was to apply button/LED tagging, which that
+earlier pass never did. pins_arduino.h also declares
+`static const uint8_t LED_BUILTIN = 2;` (plus the usual BUILTIN_LED /
+LED_BUILTIN redefinition boilerplate) - GPIO2 is the LED_BUILTIN candidate
+this audit had to evaluate.
+
+FLAGGED PIN: GPIO2 (LED_BUILTIN)
+No other undeclared onboard button candidate was found (see BUTTON section
+below).
+
+SOURCES CONSULTED
+
+1. WebSearch "BharatPi LoRa board GPIO2 LED DIO0 pinout" and similar
+   queries - returned vendor pinout PDF links (bharatpi.net and edgehax.com
+   mirror) and confirmed via snippet that GPIO2 is documented as the dio0
+   (interrupt) pin for the onboard RFM95W LoRa transceiver, matching this
+   board's own pins_arduino.h comment trail.
+
+2. https://bharatpi.net/bharat-pi-lora-and-esp32-board/ (vendor product
+   page) - Direct WebFetch: FAILED (connect ECONNREFUSED), same failure
+   pattern as the sibling BharatPi-Node-Wifi audit session had with this
+   host. Not used.
+
+3. https://edgehax.com/wp-content/uploads/2024/08/Bharat-Pi-LoRa-ESP32-Pinout.pdf
+   and https://bharatpi.net/wp-content/uploads/2024/08/Bharat-Pi-LoRa-ESP32-Pinout.pdf
+   (vendor pinout PDF) - Direct WebFetch: FAILED (403 Forbidden). Could not
+   read the actual GPIO-level pinout/legend content.
+
+4. https://www.scribd.com/document/856185732/Bharat-Pi-LoRa-ESP32-Pinout
+   (mirror of the same pinout PDF) - Direct WebFetch: only returned the
+   document's title/description metadata, not the actual pinout table
+   content (Scribd requires viewing/download that this environment could
+   not perform). Not useful for GPIO-level detail.
+
+5. https://r.jina.ai/https://bharatpi.net/bharat-pi-lora-and-esp32-board/
+   (reader-proxy retry of source 2) - Direct WebFetch: FAILED (422
+   Unprocessable Entity). Not used.
+
+6. https://www.instructables.com/Unleashing-IoT-Potential-Integrating-the-Bharat-Pi/
+   - WebFetch succeeded but only returned site navigation/menu boilerplate,
+   no actual tutorial body content (code or hardware description). Not
+   useful.
+
+7. https://www.hackster.io/514255/how-to-connect-the-bharat-pi-lora-board-to-arduino-ide-c7268d
+   - Direct WebFetch: FAILED (403 Forbidden), same pattern as Hackster.io
+   pages hit in the sibling board's session. Not used.
+
+8. https://github.com/Bharat-Pi/iot-projects (official BharatPi GitHub org,
+   MIT-licensed vendor sample code) - HIGH CONFIDENCE SOURCE, fetched
+   successfully via api.github.com (dir listings) + raw.githubusercontent.com
+   (file contents):
+   a) Lora/Lora_tx/Lora_tx.ino - defines the LoRa module's chip-select,
+      reset, and interrupt pins as GPIO4, GPIO14, and GPIO2 respectively
+      (matching this board's own pins_arduino.h LORA_SS/RST/DIO0
+      exclusion), passes them to the LoRa library's pin-setup call, and
+      contains NO LED-related code, no digitalWrite/pinMode calls outside
+      the LoRa setup, and no button/input-reading code anywhere in the
+      sketch.
+   b) Lora/Lora_Rx/Lora_Rx.ino - same GPIO4/14/2 chip-select/reset/
+      interrupt pin assignment for the LoRa module, same absence of any
+      LED control, digitalWrite, or button/input code.
+   c) Repo root listing also shows a generic BharatPi_Blink_LED_Test
+      sketch (already used as LED evidence for the sibling
+      BharatPi-Node-Wifi board in an earlier session) that blinks an LED
+      on the equivalent GPIO number using a standard Arduino Blink
+      pattern. That sketch is a generic BharatPi test example, not
+      LoRa-board-specific, and the board it was actually validated
+      against (Node-Wifi) has no radio module at all, so it cannot
+      confirm that an independent physical LED safely coexists with the
+      LoRa radio's interrupt line on this specific LoRa board.
+
+9. Sibling board precedent: variants/esp32/esp32/BharatPi-LoRa/board.json's
+   own pre-existing top comment (from the earlier dedicated-hardware-
+   exclusion pass, not written this session) already documents that
+   GPIO2/4/14 are the onboard LoRa radio's dedicated control lines and
+   were deliberately excluded from chipGpios for that reason.
+
+REASONING
+
+GPIO2 (LED_BUILTIN): NOT TAGGED, left excluded (no chipGpios "2" entry -
+unchanged from the prior exclusion pass). The vendor's own MIT-licensed
+GitHub sample code for THIS EXACT LoRa board (both transmitter and
+receiver sketches) wires GPIO2 solely to the onboard RFM95W radio's
+interrupt line, with no LED-driving code anywhere. No vendor pinout page,
+schematic, or PDF could be retrieved after a genuine multi-source research
+attempt (5 separate failed fetch attempts across bharatpi.net, edgehax.com,
+Scribd, a reader-proxy retry, and Hackster.io) to confirm whether a
+physically separate onboard LED also exists on the same pin, or whether
+the LED_BUILTIN declaration in pins_arduino.h is simply generic
+Arduino-ESP32 core boilerplate (this exact "LED_BUILTIN = GPIO2" pattern
+is extremely common across many unrelated ESP32-WROOM boards, including
+ones with no physical LED at all). The one piece of LED evidence found
+(the generic BharatPi Blink test sketch) was validated in the sibling
+Node-Wifi board's audit, which has no radio module and therefore no
+conflict - it does not resolve the question for this radio-equipped
+board. Per this project's strict "never guess LED polarity/presence"
+policy, and because the pin is already committed to the LoRa radio's
+interrupt duty by this board's own prior audit pass, this pin was left
+untagged/excluded rather than guessed. This is a documented-reason
+non-tag, not an oversight.
+
+COLLISION CHECK (per playbook step 5): GPIO2 is not aliased anywhere in
+this file as SDA/SCL/SS/MOSI/MISO/SCK (those are GPIO21/22/5/23/19/18
+respectively, all distinct pins) - no bus-capability contamination risk
+applies here regardless of the no-tag decision.
+
+BUTTON CHECK: No additional onboard user pushbutton was found in any
+source. The only boot-button reference found anywhere (WebSearch) is the
+standard ESP32 flash/boot button on GPIO0, which is standard silicon-level
+behavior on every ESP32-WROOM module (not a BharatPi-LoRa-specific
+feature) and is already covered by this file's existing GPIO0 alias
+(declared as A5). Not re-tagged as a separate button alias.
+
+CHANGES MADE
+- variants/esp32/esp32/BharatPi-LoRa/board.json: added an explanatory
+  NOTE paragraph to the existing top-of-file comment block, documenting
+  this audit's GPIO2 LED investigation and its outcome, for future
+  reviewers. No chipGpios/pinNotes/other JSON content was changed -
+  GPIO2 remains excluded exactly as the prior pass left it.
+- pins_arduino.h: NOT modified (task scope was board.json tagging only;
+  the file's existing dedicated-hardware exclusion comments already
+  correctly describe the GPIO2/4/14 conflict).
+- Created this notes.txt (board had none before).
+
+GUESS VS NO-GUESS SUMMARY
+No guess was made. GPIO2 was left untagged/excluded based on: (a) the
+vendor's own MIT-licensed LoRa example code confirming exclusive radio-
+interrupt use with zero LED code, (b) the already-established prior-pass
+exclusion of this pin for the same radio hardware, and (c) the inability,
+after a genuine multi-source attempt, to find any vendor evidence that an
+independent physical LED safely coexists on this specific pin on this
+specific board. The one piece of LED-blink sample code found is a generic
+BharatPi test sketch already consumed as evidence for a different,
+radio-less sibling board, so it does not settle the question here.
+
+SUMMARY
+GPIO2/LED_BUILTIN on BharatPi-LoRa: left untagged and excluded from
+chipGpios (unchanged from the prior dedicated-hardware-exclusion pass) -
+vendor's own LoRa sample code shows the pin dedicated to the radio's DIO0
+interrupt with no LED code, and no source could confirm an independent
+onboard LED safely coexists there; documented as a deliberate no-guess
+non-tag rather than an oversight. No separate onboard user button found
+(GPIO0's boot button is standard ESP32 silicon behavior, already aliased).
+No other board.json changes made; only the top-of-file NOTE comment was
+extended with this audit's findings.

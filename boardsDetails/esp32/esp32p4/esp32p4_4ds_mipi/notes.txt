@@ -1,0 +1,111 @@
+Board: 4D Systems ESP32-P4 MIPI Displays (esp32p4_4ds_mipi), chip esp32p4
+Date: 2026-07-14 — REAL independent verification pass (batch C), superseding
+the 2026-07-14 "documentation backfill" entry below, which only cited
+"vendor pins_arduino.h" generically with no external URL.
+
+=== Independent verification (2026-07-14) ===
+
+Sources consulted:
+- https://resources.4dsystems.com.au/datasheets/esp32p4/esp32-p4-series/ and
+  https://4dsystems.com.au/products/esp32-p4-series/ — the vendor's own
+  product/resource pages. Both returned HTTP 403 on direct WebFetch (bot
+  protection), so their content could only be accessed via search-engine
+  snippet extraction rather than a full page fetch - documented as a
+  meaningfully weaker source than a direct fetch, but still the vendor's
+  own published content, and specific enough to be useful:
+  - I2C bus (GPIO7/8) drives a Goodix GT928 capacitive touch controller.
+  - The MIPI LCD uses a JD9365 driver; panel reset is on GPIO23; backlight
+    is driven by a Silergy SY7023 chip taking On/Off/PWM from GPIO22.
+  - The I2S Audio Codec is an Everest/Everaspace ES8311, connected over the
+    I2S bus (GPIO9-13) and the same I2C bus (GPIO7/8, shared with touch).
+  - The Audio Amplifier is an NSIWay NS4150B 3W Class-D mono amp, connected
+    downstream of (i.e. driven by) the I2S codec - consistent with this
+    board's separate AMP_CTRL=GPIO53 enable/mute line, though the search
+    snippet did not explicitly restate "GPIO53" next to the amp's name.
+- https://resources.4dsystems.com.au/datasheets/esp32p4/esp32-p4-series/ESP32-P4_Series_Datasheet_R_1_0.pdf
+  (the vendor's own PDF datasheet) — also 403'd on direct fetch; a search
+  snippet surfaced generic ESP32-P4 chip-level pin-function info (e.g.
+  "GPIO53 has ADC2_CHANNEL4", "GPIO45 has SD1_CDATA4_PAD function") which
+  confirms these GPIOs are chip-level SDMMC/analog-capable pins consistent
+  with the board's usage, but did NOT independently restate the board's
+  own AMP_CTRL/SDMMC_POWER_PIN assignments in board-specific language -
+  recorded as a partial/weak corroboration, not a full confirmation.
+- https://github.com/embenix/ESP32-P4-DSI-Support-Hub — checked as a
+  candidate cross-vendor reference repo for ESP32-P4 MIPI/DSI touch
+  display boards (Waveshare, Luckfox, DFRobot, SeeedStudio); confirmed it
+  does NOT cover 4D Systems boards at all - a genuine dead end, recorded so
+  a future reviewer doesn't re-check it.
+- The plain esp32p4 (ESP32-P4-Function-EV-Board) sibling in this same batch
+  was independently confirmed (see its own notes.txt) to use the identical
+  BOARD_HAS_SDMMC/BOARD_SDMMC_POWER_PIN=45 macro pattern for a vendor-
+  documented (Espressif Owner's Manual) SD_PWRn microSD-slot power line.
+  This 4D Systems board's pins_arduino.h uses the exact same macro names
+  (BOARD_SDMMC_POWER_CHANNEL/POWER_PIN/POWER_ON_LEVEL) for GPIO45, strongly
+  suggesting the same underlying SD_PWRn semantic - but this is inference
+  from a shared Espressif macro convention, not a 4D-Systems-specific
+  external confirmation, and is documented as such rather than overstated.
+
+Per-pin findings:
+- GPIO7, GPIO8 (I2C bus / touch controller): CONFIRMED. Matches the vendor's
+  own resource-centre content describing a Goodix GT928 touch IC on this
+  I2C bus.
+- GPIO22 (LCD_BL_IO), GPIO23 (LCD_RST_IO): CONFIRMED. Matches the vendor's
+  own resource-centre content exactly (backlight driver IC + GPIO22,
+  reset + GPIO23).
+- GPIO9, GPIO10, GPIO11, GPIO12, GPIO13 (I2S audio): CONFIRMED. Matches the
+  vendor's own resource-centre content describing the ES8311 codec on the
+  I2S bus.
+- GPIO53 (AMP_CTRL): PARTIALLY CONFIRMED. The vendor's own content confirms
+  an NS4150B amplifier exists downstream of the I2S codec, consistent with
+  a separate control/enable line, but did not explicitly restate "GPIO53"
+  in board-specific language in the fetched snippet - the number itself
+  still traces primarily to this board's own pins_arduino.h. Left excluded
+  (no change) since the amplifier's existence is externally confirmed and
+  excluding its control line is the conservative direction regardless.
+- GPIO4 (CTP_RST), GPIO5 (CTP_INT): NOT INDEPENDENTLY CONFIRMED. No external
+  source found gave GPIO-specific numbers for the touch controller's
+  reset/interrupt lines - only this board's own pins_arduino.h names them
+  CTP_RST/CTP_INT. Being honest about this gap per the audit's own "don't
+  restate an unconfirmed finding as verified" rule. Left excluded (no
+  change) rather than reverting: the existence of a touch controller
+  requiring reset/interrupt lines IS externally confirmed (Goodix GT928 on
+  I2C7/8), just not the specific GPIO4/5 assignment for those two auxiliary
+  lines, and mistakenly re-exposing a genuine touch-reset pin is a worse
+  outcome than leaving a plausible, vendor-file-sourced exclusion in place.
+- GPIO45 (BOARD_SDMMC_POWER_PIN): NOT INDEPENDENTLY CONFIRMED for this
+  specific 4D Systems board via an external source with board-specific
+  language, though the identical macro pattern used by the
+  Espressif-confirmed sibling EV board (see esp32p4/notes.txt) is reasonable
+  supporting evidence for the same SD-card-power semantic. Left excluded
+  (no change) - same reasoning as GPIO4/5 above.
+- All remaining present pins (0, 1, 2, 3, 6, 14, 15, 16-21, 26-44, 46-52,
+  54): no change - kept at chip-default capabilities. No button/LED
+  capability tagging was found or applied on this board; the vendor
+  content surfaced described only the display/audio/touch subsystem, not
+  any standalone button or discrete LED.
+- GPIO24, GPIO25: unrelated to this board's own exclusion pass - already
+  reserved at the ESP32-P4 chip level (USB pins).
+
+Result: MOSTLY CONFIRMED via the vendor's own (403-blocked-for-direct-fetch,
+search-snippet-accessed) resource-centre content: touch-bus/I2C (7/8),
+LCD backlight/reset (22/23), and I2S audio (9-13) are all externally
+corroborated. GPIO53 (audio amp) is partially corroborated (amp's existence
+confirmed, exact GPIO not independently restated). GPIO4/5 (touch reset/
+interrupt) and the board-specific role of GPIO45 (SDMMC power) could NOT be
+independently confirmed beyond this board's own pins_arduino.h - documented
+honestly rather than claimed as verified, and left unchanged (still excluded)
+since that is the conservative/safe direction for genuinely dedicated-looking
+hardware lines even without full external corroboration.
+
+=== 2026-07-14 (earlier, documentation-backfill entry — cited only "vendor
+pins_arduino.h" generically, no external URL; restated here for history) ===
+
+Summary as originally written: excluded GPIO4/5 (touch RST/INT), GPIO7/8
+(dedicated onboard I2C), GPIO9-13 (I2S audio), GPIO22/23 (LCD backlight/
+reset), GPIO45 (SDMMC power), and GPIO53 (audio amp control) as dedicated
+onboard hardware pins tied to the 4D Systems MIPI display module, sourced
+only from this board's own pins_arduino.h. The 2026-07-14 independent-
+verification pass above has now confirmed most of these against real
+external (vendor resource-centre) content, with two pins (GPIO4/5) and one
+partial gap (GPIO45/53's exact board-specific role) honestly flagged as
+not independently confirmable from available public sources.

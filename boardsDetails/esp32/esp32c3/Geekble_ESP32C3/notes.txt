@@ -1,0 +1,57 @@
+Geekble_ESP32C3 board.json tagging research notes
+===================================================
+
+Board: Geekble Mini ESP32-C3 (variants/esp32/esp32c3/Geekble_ESP32C3), a
+Korean maker-education brand's ESP32-C3FH4 dev module. pins_arduino.h:
+LED_BUILTIN=10, SW_BUILTIN=9, TX=21, RX=20 (plus the usual SPI/I2C/analog
+boilerplate aliasing the same small GPIO set). No prior board.json override
+existed - board was using the chip-level esp32/esp32c3/board.json default,
+which left GPIO9 with the full ["digital_input","digital_output","pwm_output"]
+capability set (no button tag) despite pins_arduino.h explicitly naming it
+SW_BUILTIN.
+
+Sources consulted
+------------------
+- https://github.com/SooDragon/GeekbleMini-ESP32C3
+  Official hardware repo for this exact board (schematic, KiCad footprint/
+  symbol, dimensions, pinmap images). README confirms "Geekble Mini" is an
+  ESP32-C3 module built for the Arduino community, WiFi + BLE.
+- https://raw.githubusercontent.com/SooDragon/GeekbleMini-ESP32C3/main/PinMap/GEEKBLE%20Mini_V2_PinMap.png
+  DEFINITIVE: official pinmap diagram, "Version 2.0 - 2025.02.26", "Circuit
+  Created by SooD, Designed by Chance" (downloaded and visually inspected).
+  Shows the board's physical silkscreen buttons labelled "B" and "R" next to
+  the USB-C connector. The B (Boot) button trace is followed to pin D9 on
+  both the left-side (VUSB/B/GND/VIN column: "PULL-UP | SW_BUILTIN | BOOT |
+  GPIO9 | D9") and right-side (D9 row: "D9 | GPIO9 | BOOT | SW_BUILTIN |
+  PULL-UP") pin tables. The R (Reset) button is separately wired to the
+  chip's EN/RST line, not a GPIO. LED_BUILTIN/D10/GPIO10 and TX(GPIO21)/
+  RX(GPIO20) shown on the same diagram match this board's own
+  pins_arduino.h exactly, confirming the diagram is for this exact variant
+  (not a different Geekble SKU).
+
+Pins considered and NOT tagged
+--------------------------------
+None beyond GPIO9. LED_BUILTIN (GPIO10) is standard chip-level digital
+output/PWM capability already covered by the default board.json entry - no
+change needed. No other non-boilerplate pins were found in pins_arduino.h.
+
+What was tagged
+-----------------
+Verified GPIO9 is not this board's TX/RX pin (TX=21, RX=20 in
+pins_arduino.h - confirmed by grep and independently by the pinmap image).
+
+Created variants/esp32/esp32c3/Geekble_ESP32C3/board.json (none existed
+before) as a full copy of the chip-level esp32/esp32c3/board.json default,
+with:
+  - GPIO9 capabilities changed to ["digital_input", "button"] only (matches
+    the KEEP-available-onboard-button policy; standard ESP32-C3 BOOT/
+    strapping-pin button pattern, external pull-up per the pinmap)
+  - Chip-level pinNotes["9"] = "Must be HIGH for normal boot" preserved
+    unchanged (boot-strapping warning still applies)
+plus a pfodWeb NOTE comment block at the top of the file citing the sources
+above.
+
+Summary: GPIO9 (SW_BUILTIN) on Geekble_ESP32C3 is a confirmed onboard BOOT
+pushbutton (external pull-up, standard ESP32-C3 strapping pin) per the
+board vendor's official pinmap diagram - tagged ["digital_input","button"]
+in a new per-board board.json override, boot-strapping pinNotes retained.

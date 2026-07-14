@@ -1,0 +1,105 @@
+Board: m5stack_nanoc6 (M5Stack NanoC6), chip esp32c6
+Task: section 7a button/LED capability-tagging retrofit (this board already had a
+board.json from an earlier dedicated-hardware-exclusion pass - it excludes GPIO19,
+the onboard NeoPixel power-gate - but that pass never applied button/LED tagging).
+
+pins_arduino.h aliases relevant to this pass:
+  LED_BUILTIN = 7, BLUE_LED_PIN = 7 (same pin, two names)
+  BTN_PIN = 9
+  IR_TX_PIN = 3 (out of scope - not a button or LED)
+  RGB_LED_DATA_PIN = 20 (already available in chipGpios from the prior pass)
+  RGB_LED_PWR_PIN = 19 (deliberately NOT declared in pins_arduino.h / not in
+    chipGpios - internal NeoPixel power-gate, excluded by the earlier pass)
+  Bus aliases: TX=16, RX=17, SDA=2, SCL=1, SS=4, MOSI=5, MISO=6, SCK=8
+
+Sources consulted:
+- https://docs.m5stack.com/en/core/M5NanoC6
+  Official vendor docs page. Pinmap identifies GPIO7 as "LED(Blue)" and
+  confirms GPIO20/GPIO19 as the WS2812 RGB LED data/power-enable pair
+  ("When using the RGB function, set pin G19 to a high level to enable power
+  supply"). Confirms GPIO9 as the BOOT button ("hold down the GPIO9 button
+  and then connect the data cable" to enter download mode). Did not itself
+  state GPIO7's polarity or NeoPixel-vs-plain nature explicitly in the
+  fetched text - corroborated below via the official example code.
+- https://github.com/m5stack/M5NanoC6 (official M5Stack Arduino library/repo)
+  - examples/Basic/led/led.ino: uses a pin named
+    M5NANO_C6_BLUE_LED_PIN with `digitalWrite(M5NANO_C6_BLUE_LED_PIN, HIGH)`
+    to turn the LED ON and LOW to turn it off in a blink loop. This is the
+    authoritative confirmation that GPIO7 drives a PLAIN discrete LED (named
+    "blue LED" in the vendor's own macro/example, not a NeoPixel/WS2812), and
+    that it is active-HIGH.
+  - src/M5NanoC6.cpp update() method: calls
+    `BtnA.setRawState(ms, !digitalRead(M5NANO_C6_BTN_PIN))` - the leading `!`
+    (logical NOT) confirms the button reads active-LOW at the raw GPIO level
+    (pressed = LOW), consistent with an internal/external pull-up and with
+    the chip-level pinNotes strapping requirement "9: Must be HIGH for normal
+    boot" (button unpressed = pin floats/pulls HIGH = normal boot; button
+    held during reset = pin pulled LOW = download-mode strap).
+  - examples/Basic (directory listing): separate "led", "button", and
+    "rgb_led" example folders exist for this board, confirming the vendor
+    itself treats the plain blue LED (GPIO7) and the RGB NeoPixel (GPIO20)
+    as two distinct, separately-documented pieces of hardware - not the same
+    pin under two names.
+- https://devices.esphome.io/devices/m5stack-nanoc6/ (community ESPHome
+  device page) - used only as corroboration, not as the primary source.
+  Independently confirms: GPIO7 configured via ESPHome's `status_led`
+  platform (a plain non-addressable LED integration) and documented as
+  active-high; GPIO20 configured via the `ws2812`/addressable-light platform
+  with `power_supply` routed through GPIO19 (enable_time/keep_on_time
+  parameters referencing an AW35122FDR power-switch IC on the schematic);
+  GPIO9 configured as a `gpio` binary_sensor with `inverted: true,
+  pullup: true` for the user button, matching the official repo's `!`
+  inversion found above.
+
+Bus-alias collision check (per playbook's mandatory pre-tag check): this
+board's pins_arduino.h declares TX=16, RX=17, SDA=2, SCL=1, SS=4, MOSI=5,
+MISO=6, SCK=8. None of these equal 7, 9, or 20 (the three GPIOs tagged this
+pass), so none collide with build_boards.js's unconditional bus-alias
+capability append (checks against consts.SDA/SCL/SS/MOSI/MISO/SCK). No lines
+needed to be deleted from pins_arduino.h.
+
+Pins considered but NOT tagged:
+- GPIO19 (RGB_LED_PWR_PIN): not a candidate - it's the NeoPixel power-gate
+  control line, not an LED/button itself, and was already correctly excluded
+  from both pins_arduino.h and chipGpios by the prior dedicated-hardware
+  pass. No change made or needed this pass.
+- GPIO3 (IR_TX_PIN): an IR transmitter LED, out of scope for this
+  button/LED(-onboard-indicator) audit - IR_TX is a distinct capability class
+  not covered by this pass's button/LED tag vocabulary (led_high/led_low/
+  led_neopixel/button). Left untouched.
+- No other GPIOs on this board showed any LED/button-shaped alias in
+  pins_arduino.h (checked TX/RX/SDA/SCL/SS/MOSI/MISO/SCK/A1-A3/D1-D6 -
+  all standard bus/board-numbering boilerplate, nothing else onboard-fixed).
+
+Applied (board.json edited in place, prior content/comments preserved):
+- GPIO7 (BLUE_LED_PIN / LED_BUILTIN): capabilities changed from
+  ["digital_input", "digital_output", "pwm_output"] to
+  ["digital_output", "led_high", "pwm_output"]. Confidence: high (official
+  m5stack/M5NanoC6 GitHub example explicitly digitalWrites HIGH to turn the
+  LED on; corroborated by the independent ESPHome community device page).
+  Confirmed this is a PLAIN LED, not the onboard NeoPixel - the NeoPixel is
+  the separate GPIO20/GPIO19 pair, per official docs and the repo's own
+  separate "led" vs "rgb_led" example folders.
+- GPIO20 (RGB_LED_DATA_PIN): capabilities changed from
+  ["digital_input", "digital_output", "pwm_output"] to
+  ["digital_output", "led_neopixel", "pwm_output"]. Confidence: high
+  (docs.m5stack.com explicitly documents GPIO20 as the WS2812 RGB LED data
+  line, gated by the already-excluded GPIO19 power-enable). Matches the
+  established um_tinys3/adafruit_itsybitsy_esp32/bpi-bit precedent pattern.
+- GPIO9 (BTN_PIN): capabilities changed from
+  ["digital_input", "digital_output", "pwm_output"] to
+  ["digital_input", "button"] (digital_output/pwm_output dropped per
+  playbook policy - a dedicated button pin has no useful board-level output
+  role). Confidence: high (official m5stack/M5NanoC6 GitHub source's `!`
+  inversion in BtnA.setRawState confirms active-low; docs.m5stack.com
+  confirms it is the user-accessible BOOT button). The pre-existing
+  chip-level pinNotes entry "9: Must be HIGH for normal boot" (strapping
+  requirement) is retained unchanged - it correctly still applies.
+
+Summary: GPIO7 tagged led_high (plain blue LED, confirmed NOT a NeoPixel),
+GPIO20 tagged led_neopixel (genuine WS2812 data pin), GPIO9 tagged button
+(genuine active-low BOOT button) - all three vendor-confirmed via
+docs.m5stack.com and the official m5stack/M5NanoC6 GitHub repo, no bus-alias
+collisions found, no pins_arduino.h edits needed.
+
+[2026-07-12] Applied section 7a button/LED capability retrofit.

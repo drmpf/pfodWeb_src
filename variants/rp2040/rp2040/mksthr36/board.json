@@ -1,0 +1,231 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "MKS THR36" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only (plain non-WiFi "rp2040" chip
+  // bucket; this board's RP2040 has no onboard WiFi radio - it talks to
+  // the host printer mainboard over USB serial or the onboard CAN
+  // transceiver, neither of which is a pfodWeb-supported transport).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Makerbase "MKS THR36" V1.0 — a real, commercially available
+  // 3D-printer CAN/USB "toolhead" expansion module (NEMA14 variant; the
+  // near-identical MKS THR42 is the NEMA17 variant on the same PCB
+  // family/pinout, per vendor repo) built around a bare RP2040 (8MB NOR
+  // flash). It concentrates all extruder-head wiring — E-axis TMC2209
+  // stepper driver (STEP/DIR/EN/UART/DIAG), heater, 3 fans, thermistor,
+  // ADXL345 input-shaper accelerometer, BLTouch/3D-touch probe, X/Y
+  // endstops, filament-runout sensor and a status NeoPixel — onto one
+  // small board that then talks back to the printer's main controller
+  // over USB or CAN, matching the same "everything is dedicated
+  // hardware" pattern as bigtreetech_SKR_Pico (see that board's own
+  // board.json for the sibling precedent).
+  //
+  // This board's own pins_arduino.h already anticipates most of this
+  // (see the "pfodWeb NOTE" comment above the static-const alias block
+  // in that file) by declaring NO alias at all for GPIO0-6, 8, 9, 10
+  // (heater, 3 fans, E0 DIR/STEP, E0 UART, CAN RX/TX, E0 EN) — so
+  // build_boards.js's parser (which only harvests `static const uint8_t
+  // NAME = n;` declarations, not bare `#define`s) never sees those as
+  // routable pins in the first place. However GPIO7, 11, 12-15, 20, 21,
+  // 24, 25 and 29 ARE given plain D-number (and, for 26-29, A-number)
+  // static-const aliases despite being wired to other dedicated onboard
+  // hardware, so — same real defect class as bigtreetech_SKR_Pico's
+  // GPIO8/9 — they were being offered as innocuous general-purpose
+  // digital/analog/PWM pins. Corrected here via chipGpios overrides.
+  //
+  // Sources consulted (full detail + per-pin cross-check trail in
+  // boardsDetails/rp2040/rp2040/mksthr36/notes.txt):
+  //   - github.com/makerbase-mks/MKS-THR36-THR42-UTC (official vendor
+  //     repo) README.md — feature list: integrated TMC2209 (E-axis) +
+  //     ADXL345, BLTouch/3D-touch, NeoPixel, 3 controllable fans, X/Y/Z
+  //     endstop support, integrated CAN transceiver (120R term.), BOOT
+  //     button used for RP2040 UF2 firmware update (BOOTSEL, not a GPIO).
+  //   - github.com/makerbase-mks/MKS-THR36-THR42-UTC/blob/main/MKS_THR.cfg
+  //     (vendor-provided Klipper reference config) — the authoritative
+  //     per-GPIO pin list used below: gpio0 heater, gpio1/2/3 fans,
+  //     gpio4/5/10 E0 DIR/STEP/EN, gpio6 TMC2208/2209 UART, gpio12-15
+  //     ADXL345 SPI (MISO/SS/SCK/MOSI), gpio24/25 X/Y endstops, gpio26
+  //     E0 thermistor, plus commented-out neopixel/probe/BLTouch entries
+  //     (gpio20 neopixel, gpio21 probe/BLTouch sensor, gpio11 BLTouch
+  //     control) confirmed via the same file.
+  //   - Community Klipper configs/discourse threads confirming
+  //     `[filament_switch_sensor] switch_pin: ^MKS_THR:gpio29` — GPIO29
+  //     is the board's filament-runout sensor connector.
+  //   - makerbase3d.com product page ("MKS THR36/THR42 Board... For
+  //     Klipper Hotend HeatTool Canable Canbus Rp2040 With PT1000") —
+  //     independent confirmation of TMC2209/ADXL345/CAN/PT1000 support.
+  //
+  // Real defect found and fixed by this audit: GPIO7 (E0 TMC2209 DIAG/
+  // stall-detect output), GPIO11 (BLTouch control line), GPIO12-15
+  // (dedicated SPI1 bus to the onboard ADXL345 accelerometer), GPIO20
+  // (NeoPixel data line), GPIO21 (probe/BLTouch sensor trigger line),
+  // GPIO24/25 (X/Y endstop inputs) and GPIO29 (filament-runout sensor
+  // input) all carry plain D-number/A-number static-const aliases in
+  // this board's pins_arduino.h despite being committed to specific
+  // onboard/connector hardware, so without this override they were
+  // being offered as general-purpose digital/analog/PWM pins even
+  // though driving most of them from a Designer sketch would corrupt
+  // stepper-driver diagnostics, the probe/BLTouch signal, the shared
+  // accelerometer SPI bus, or misreport endstop/filament state. Fixed
+  // here via chipGpios capabilities:[] overrides (capabilities:
+  // ["digital_output","led_neopixel","pwm_output"] for the NeoPixel,
+  // matching the bigtreetech_SKR_Pico GPIO24 precedent) rather than
+  // editing pins_arduino.h. No bus-alias/button-LED collision of the
+  // kind build_boards.js auto-appends is involved here — none of these
+  // dedicated pins are also aliased to the generic SS/MOSI/MISO/SCK/
+  // SDA/SCL Arduino bus-object names (those live on the separate,
+  // unconfirmed-consumer SPI0/Wire0 pins below, GPIO16-19/22-23, which
+  // this audit deliberately leaves untouched — see notes.txt).
+  //
+  // Per-pin mapping:
+  //   GPIO0  - PIN_HE0 - hotend heater0 MOSFET gate. Dedicated; no
+  //            static alias in pins_arduino.h (already unexposed).
+  //   GPIO1  - PIN_FAN0 - hotend fan. Dedicated; no alias.
+  //   GPIO2  - PIN_FAN1 - generic/part-cooling fan output. Dedicated;
+  //            no alias.
+  //   GPIO3  - PIN_FAN2 - generic/aux fan output. Dedicated; no alias.
+  //   GPIO4  - PIN_E0_DIR - E0 (extruder) stepper DIR. Dedicated; no
+  //            alias.
+  //   GPIO5  - PIN_E0_STEP - E0 stepper STEP. Dedicated; no alias.
+  //   GPIO6  - PIN_SERIAL1_TX / PIN_E0_UART - single-wire TMC2209 UART
+  //            (driver configuration/diagnostics) to the E0 driver.
+  //            Dedicated; no alias. (PIN_SERIAL1_RX is a bogus (31u)
+  //            out-of-range placeholder — RP2040 only has GPIO0-29 — a
+  //            dummy value to satisfy the Arduino Serial1 object's
+  //            TX+RX requirement for what is physically a half-duplex,
+  //            TX-only single-wire UART; not a real GPIO, no board.json
+  //            entry possible or needed.)
+  //   GPIO7  - PIN_E0_DIAG - TMC2209 DIAG (stall-detect/diagnostic)
+  //            output from the E0 driver. Real defect fix - was exposed
+  //            via plain D7 alias.
+  //   GPIO8  - PIN_CAN_RX / PIN_SERIAL2_TX - onboard CAN transceiver RX
+  //            line. Dedicated; no alias.
+  //   GPIO9  - PIN_CAN_TX / PIN_SERIAL2_RX - onboard CAN transceiver TX
+  //            line. Dedicated; no alias.
+  //   GPIO10 - PIN_E0_EN - E0 stepper EN (enable). Dedicated; no alias.
+  //   GPIO11 - PIN_3D_TOUCH - BLTouch/3D-touch probe control (servo
+  //            signal) line, confirmed via MKS_THR.cfg. Real defect fix
+  //            - was exposed via plain D11 alias.
+  //   GPIO12 - PIN_SPI1_MISO - onboard ADXL345 accelerometer SPI MISO.
+  //            Real defect fix - was exposed via plain D12 alias.
+  //   GPIO13 - PIN_SPI1_SS - onboard ADXL345 accelerometer SPI CS (chip
+  //            select). Real defect fix - was exposed via plain D13
+  //            alias. (Not the board's default Arduino "SS" - that's
+  //            PIN_SPI0_SS/GPIO17 - so no build_boards.js bus-name
+  //            collision here.)
+  //   GPIO14 - PIN_SPI1_SCK - onboard ADXL345 SPI clock. Real defect
+  //            fix - was exposed via plain D14 alias.
+  //   GPIO15 - PIN_SPI1_MOSI - onboard ADXL345 SPI MOSI. Real defect
+  //            fix - was exposed via plain D15 alias.
+  //   GPIO16 - PIN_SPI0_MISO - this board's default Arduino SPI bus
+  //            (SPI0). No vendor-documented onboard consumer found
+  //            (MKS_THR.cfg and README only ever mention the ADXL345
+  //            on the separate SPI1 pins above) - KEPT general-purpose;
+  //            unconfirmed rather than guessed. See notes.txt.
+  //   GPIO17 - PIN_SPI0_SS - default Arduino "SS". Same reasoning/KEEP
+  //            as GPIO16.
+  //   GPIO18 - PIN_SPI0_SCK - default Arduino "SCK". Same reasoning/
+  //            KEEP as GPIO16.
+  //   GPIO19 - PIN_SPI0_MOSI - default Arduino "MOSI". Same reasoning/
+  //            KEEP as GPIO16.
+  //   GPIO20 - PIN_NEOPIXEL - onboard WS2812-style status NeoPixel data
+  //            line, confirmed via MKS_THR.cfg's commented neopixel
+  //            entry and vendor README. Tagged led_neopixel per this
+  //            repo's bigtreetech_SKR_Pico GPIO24 precedent: kept as a
+  //            usable LED output (digital_output+pwm_output+
+  //            led_neopixel), digital_input dropped.
+  //   GPIO21 - PIN_ZPLUS - probe/BLTouch sensor (trigger) signal,
+  //            confirmed via MKS_THR.cfg's commented probe/BLTouch
+  //            sensor_pin entry (both mapped to gpio21). Real defect
+  //            fix - was exposed via plain D21 alias.
+  //   GPIO22 - PIN_WIRE0_SDA / PIN_I2C_SDA - default Arduino "SDA". No
+  //            vendor-documented onboard consumer found (the onboard
+  //            accelerometer is confirmed SPI-based, not I2C) - KEPT
+  //            general-purpose; unconfirmed rather than guessed. See
+  //            notes.txt.
+  //   GPIO23 - PIN_WIRE0_SCL / PIN_I2C_SCL - default Arduino "SCL".
+  //            Same reasoning/KEEP as GPIO22.
+  //   GPIO24 - PIN_IO24 - X endstop input, confirmed via MKS_THR.cfg
+  //            (`endstop_pin: MKS_THR:gpio24` under the X stepper
+  //            section). Real defect fix - was exposed via plain D24
+  //            alias (pins_arduino.h's generic "IO24" name obscured its
+  //            actual dedicated function).
+  //   GPIO25 - PIN_IO25 - Y endstop input, confirmed via MKS_THR.cfg
+  //            (`endstop_pin: MKS_THR:gpio25` under the Y stepper
+  //            section). Real defect fix - was exposed via plain D25
+  //            alias, same as GPIO24.
+  //   GPIO26 - PIN_TH0 / A0 - E0 (hotend) thermistor/PT1000 NTC divider
+  //            (ADC0), confirmed via MKS_THR.cfg `sensor_pin`. KEPT
+  //            general-purpose per this repo's established "onboard
+  //            analog sensor (thermistor/battery/etc-class reading)"
+  //            KEEP policy (see esp32/esp32/oroca_edubot/board.json and
+  //            bigtreetech_SKR_Pico GPIO26/27) - no chipGpios override,
+  //            default analog_input+digital capabilities from the A0/
+  //            D26 aliases apply unchanged.
+  //   GPIO27 - A1 - no #define name anywhere in pins_arduino.h and no
+  //            vendor-documented function found - spare/unpopulated ADC
+  //            pad. KEPT general-purpose; unconfirmed rather than
+  //            guessed.
+  //   GPIO28 - A2 - same as GPIO27: no name, no documented function -
+  //            spare/unpopulated ADC pad. KEPT general-purpose.
+  //   GPIO29 - PIN_IPO29 / A3 - filament-runout sensor input connector,
+  //            confirmed via multiple community Klipper configs using
+  //            `[filament_switch_sensor] switch_pin: ^MKS_THR:gpio29`
+  //            with this exact board. Real defect fix - was exposed via
+  //            plain D29 (and A3) aliases; matches this repo's
+  //            established treatment of switch/endstop-class connector
+  //            pins as dedicated (capabilities:[]), same as
+  //            bigtreetech_SKR_Pico's E0STOP/filament-runout GPIO16.
+  //
+  // No onboard user LED beyond the NeoPixel (GPIO20). No onboard
+  // general-purpose user button is documented - the only physical
+  // button is the RP2040's own BOOTSEL button (used to enter UF2
+  // firmware-update mode per the vendor README), which per the
+  // rpipico/board.json precedent is not a normal GPIO and out of scope
+  // for this repo's GPIO-keyed capability tagging.
+  "chipGpios": {
+    "7":  { "capabilities": [], "note": "E0 TMC2209 stepper driver DIAG (stall-detect/diagnostic) output - dedicated 3D-printer motion-control hardware, not general purpose. Was previously exposed as plain D7 due to a static-const alias in pins_arduino.h; corrected here." },
+    "11": { "capabilities": [], "note": "BLTouch/3D-touch probe control (servo) line, confirmed via vendor MKS_THR.cfg - dedicated, not general purpose. Was previously exposed as plain D11; corrected here." },
+    "12": { "capabilities": [], "note": "Onboard ADXL345 accelerometer SPI1 MISO - dedicated input-shaper sensor hardware, not general purpose. Was previously exposed as plain D12; corrected here." },
+    "13": { "capabilities": [], "note": "Onboard ADXL345 accelerometer SPI1 chip-select (CS) - dedicated, not general purpose. Was previously exposed as plain D13; corrected here." },
+    "14": { "capabilities": [], "note": "Onboard ADXL345 accelerometer SPI1 clock (SCK) - dedicated, not general purpose. Was previously exposed as plain D14; corrected here." },
+    "15": { "capabilities": [], "note": "Onboard ADXL345 accelerometer SPI1 MOSI - dedicated, not general purpose. Was previously exposed as plain D15; corrected here." },
+    "20": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "Onboard WS2812-style status NeoPixel data line, confirmed via vendor MKS_THR.cfg and README - tagged led_neopixel per this repo's bigtreetech_SKR_Pico precedent." },
+    "21": { "capabilities": [], "note": "Probe/BLTouch sensor (trigger) signal, confirmed via vendor MKS_THR.cfg - dedicated, not general purpose. Was previously exposed as plain D21; corrected here." },
+    "24": { "capabilities": [], "note": "X endstop input, confirmed via vendor MKS_THR.cfg (endstop_pin gpio24) - dedicated, not general purpose despite the generic 'IO24' name in pins_arduino.h. Was previously exposed as plain D24; corrected here." },
+    "25": { "capabilities": [], "note": "Y endstop input, confirmed via vendor MKS_THR.cfg (endstop_pin gpio25) - dedicated, not general purpose despite the generic 'IO25' name in pins_arduino.h. Was previously exposed as plain D25; corrected here." },
+    "29": { "capabilities": [], "note": "Filament-runout sensor input connector, confirmed via community Klipper configs (filament_switch_sensor switch_pin gpio29 for this exact board) - dedicated, not general purpose. Was previously exposed as plain D29/A3; corrected here." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference - same as every
+  // other RP2040 board. GPIO26 (E0 thermistor) already carries
+  // analog_input via its A0 pins_arduino.h alias; not affected by this
+  // dedicated-hardware audit (KEEP policy, see above). GPIO27/28 remain
+  // plain spare analog_input-capable pins.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

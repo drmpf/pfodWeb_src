@@ -1,0 +1,90 @@
+node32s (esp32/esp32/node32s) - onboard button/LED research notes
+====================================================================
+
+Board identity: "Node32s" is a generic-style ESP32-WROOM-32 dev board
+designed/sold by Thai maker company Ayarafun (aka "Ayarafun Factory",
+web alias lamloei.com). pins_arduino.h for this variant defines
+LED_BUILTIN = GPIO2 and KEY_BUILTIN = GPIO0, TX = GPIO1, RX = GPIO3.
+Per task rules, these alias names alone are NOT sufficient evidence, so
+independent vendor confirmation was required (found below).
+
+Sources consulted
+------------------
+- https://www.espboards.dev/esp32/node32s/ - third-party pinout aggregator;
+  merely restates LED_BUILTIN=2 / KEY_BUILTIN=0 from pins_arduino.h-style
+  data (i.e. same alias source, not independent) - not used as primary
+  evidence, but consistent with schematic findings below.
+- https://docs.platformio.org/en/latest/boards/espressif32/node32s.html -
+  PlatformIO board page; confirms vendor = "Aiyarafun", chip
+  ESP32/240MHz/4MB flash. No GPIO/LED/button details given.
+- https://www.hackster.io/ploy/make-it-fun-door-alarm-system-with-node32s-aiyarafun-board-46f20e
+  and https://www.instructables.com/Door-Alarm-System-With-Node32s-Aiyarafun/ -
+  community project pages referencing the Node32s Aiyarafun board; fetch
+  only returned page chrome/footer, no usable board-feature content.
+- http://www.ayarafun.com/2016/11/introduction-node32s/ and
+  http://www.ayarafun.com/2016/11/esp32-node32s-pinout/ - official vendor
+  (Ayarafun) intro/pinout pages for Node32s; could NOT be fetched (TLS
+  cert mismatch on www.ayarafun.com, both http and https), so treated as
+  unavailable/not consulted for content.
+- https://github.com/lamloei/node32s-book/blob/master/ch01/node32s-schematic.pdf
+  (raw: https://raw.githubusercontent.com/lamloei/node32s-book/master/ch01/node32s-schematic.pdf)
+  - PRIMARY EVIDENCE. This is the vendor/author's own KiCad-exported Eagle
+  schematic for the Node32s board (title block: "NODE32S / node32s /
+  lamloei.com/node32s"), downloaded and read directly (not just text-
+  scraped). It shows:
+    * ESP32-WROOM module (U1) with standard USB-UART (FT231XS) and LiPo
+      charger (MCP73831) circuitry.
+    * Two tactile switches (B3U-1000P footprints), K1 and K2: K1 pulls
+      CHIP_PU (EN) low through a 10K pull-up (R6) = standard EN/RESET
+      button; K2 pulls IO0 low through a 10K pull-up (R9) = standard
+      BOOT/flash-mode button. This is the generic EN+BOOT strapping pair
+      found on almost all ESP32 devkits, not a distinct user button.
+    * Three LEDs: LED1 is driven by the MCP73831 charger's STAT output
+      through R8 (330R) - this is the LiPo charge-status LED, not
+      GPIO-controlled, not relevant to this task.
+    * LED3 is wired from the 3.3V rail through resistor R10 (330R) to
+      net "IO2" (GPIO2), with the LED's cathode on the GPIO2 side -
+      i.e. GPIO2 sinks current to light it -> active-LOW onboard LED.
+      This independently corroborates the board's own pins_arduino.h
+      LED_BUILTIN = GPIO2 designation with real schematic evidence (not
+      just the alias name).
+    * A third LED (LED2, via R7) also appears in the schematic; its
+      driving net was not clearly legible/traceable with confidence in
+      the extracted schematic (possible power/status indicator) - see
+      "not tagged" section below. Not needed for this task since it does
+      not affect the GPIO2 confirmation.
+
+Pins considered and NOT tagged
+--------------------------------
+- GPIO0 (KEY_BUILTIN / "BOOT" button, switch K2): NOT tagged as "button".
+  Confirmed via the vendor schematic above that this is the standard
+  BOOT/flash-mode strapping button, paired with a separate EN/RESET
+  button (K1) on CHIP_PU - exactly the generic EN+BOOT pair the task
+  instructions say to exclude ("many of these generic boards only have
+  EN/BOOT strapping buttons, no user button"). This is a confident
+  decision based on solid schematic evidence, not a guess.
+- LED2 (via resistor R7): NOT tagged / not further investigated. The
+  schematic text extraction for the net feeding R7/LED2 was not reliably
+  legible (risk of misreading GPIO net labels in the compressed vector
+  PDF's text layer, e.g. "IO0" vs "IO2" glyph confusion). Since GPIO2/
+  LED3 already gives solid, unambiguous confirmation of the one GPIO-
+  driven onboard LED matching pins_arduino.h's LED_BUILTIN, LED2 was not
+  pursued further. If LED2 turns out to be GPIO-driven on some other pin,
+  a human reviewer should re-examine the schematic PDF directly (saved
+  copy used at C:\ai\aicode\pfodWeb\boardsDetails via raw.githubusercontent.com
+  URL above) - this is an explicit "no guess made" item for review.
+- No discrete RGB LED or NeoPixel/WS2812 was found on this board; only a
+  single-color LED (LED3/GPIO2) plus a non-GPIO charge-status LED (LED1).
+
+TX/RX conflict check
+----------------------
+Board's pins_arduino.h: TX = GPIO1, RX = GPIO3. GPIO2 (the tagged LED
+pin) is neither TX nor RX, so no TX/RX hard-reservation conflict applies.
+
+Summary of what was tagged
+-----------------------------
+GPIO2 tagged ["digital_output", "led_low", "pwm_output"] in
+variants/esp32/esp32/node32s/board.json (new file created, full copy of
+the esp32/esp32 chip-level default board.json with only GPIO2's
+capabilities modified, plus a pfodWeb NOTE comment at the top). GPIO0
+(BOOT button) deliberately left untagged as explained above.

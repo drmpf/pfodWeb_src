@@ -1,0 +1,104 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "ArtronShop RP2 Nano" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — the
+  // only identity pin (onboard LED) is handled entirely via the
+  // chipGpios capability override below.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) RP2040 board,
+  // no onboard radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-13):
+  //
+  // Board: "ArtronShop RP2 Nano" — a Thai-vendor (ArtronShop Co.,Ltd.,
+  // www.artronshop.co.th) RP2040 board in the classic Arduino Nano 3.0
+  // form factor, with USB-C, a single onboard status LED, a BOOT
+  // button, and a RESET button.
+  //
+  // Sources consulted (official vendor documentation, found via
+  // ArtronShop's public download server):
+  //  - Official schematic PDF: "ArtronShop RP2 Nano REV: 1.0", dated
+  //    23/7/2022, drawn by Sonthaya Nongnuch, ArtronShop Co.,Ltd.
+  //    (https://dl.artronshop.co.th/RP2-Nano/RP2 Nano schematic.pdf)
+  //  - Official pinout diagram PNG
+  //    (https://dl.artronshop.co.th/RP2-Nano/RP2 Nano pinout.png)
+  //  - CNX Software article "RP2 Nano is a $6.6 Raspberry Pi RP2040
+  //    board with Arduino Nano form factor" (2023-07-26), confirms
+  //    "Built-in LED, Boot & Reset buttons" as the board's onboard
+  //    peripherals (no NeoPixel/RGB addressable LED mentioned).
+  //
+  // Per-pin findings (from the schematic, component-by-component):
+  //   GPIO13 (PIN_LED) — LED1 (part "19-213/Y2C-CQ2R2L/3T(CY)"), wired
+  //     RP2040 GPIO13 -> R8 (330ohm series resistor) -> LED1 -> GND —
+  //     standard active-high LED-to-GND circuit, matching this repo's
+  //     rpipico/vccgnd_yd_rp2040/adafruit_feather_scorpio led_high
+  //     precedent. This GPIO is simultaneously broken out to the Nano
+  //     header as D13, labelled "CS" (SPI, purple) on the official
+  //     pinout diagram — i.e. it doubles as PIN_SPI1_SS, exactly
+  //     mirroring the classic Arduino Uno/Nano tradition where D13 is
+  //     both the onboard LED and an SPI pin (SCK there; SS/CS here).
+  //     Unlike the adafruit_feather_scorpio precedent (where the
+  //     colliding PIN_SPI0_SS default was a *vendor-unused* alias
+  //     removed from pins_arduino.h), this board's SPI1 bus is
+  //     genuinely and fully broken out to the header — D10=SCK,
+  //     D11=MOSI, D12=MISO, D13=CS are all labelled and colour-coded
+  //     "SPI" on ArtronShop's own official pinout diagram — so the
+  //     bus is not spare/unused and the PIN_SPI1_SS #define is left
+  //     untouched; build_boards.js's auto-appended SS capability on
+  //     GPIO13 is correct/expected here, not a contamination bug.
+  //   BOOT button (SW1) — wired with a 1K pull-up (R10) across the
+  //     QSPI flash chip-select line (schematic's "FLASH_SS" net,
+  //     RP2040 QSPI_SS pin 56, shared with the external ZD25WQ16
+  //     flash chip's CS# pin), the same resistor value and topology as
+  //     the official Raspberry Pi Pico's BOOTSEL button. This is NOT a
+  //     numbered GPIO — it is the same QSPI_SS-based BOOTSEL mechanism
+  //     documented in this repo's rpipico/board.json note ("not
+  //     connected to a standard GPIO, so it cannot be read using the
+  //     usual digitalRead function") — out of scope for GPIO-keyed
+  //     capability tagging, not a missed tag. Confirmed further by the
+  //     official pinout diagram, which labels GPIO0 only as "TX1"
+  //     (Serial1 TX), with no button annotation anywhere.
+  //   RESET button (SW2) — wired directly across the RP2040's RUN pin
+  //     (pin 26) to GND, with a 10K pull-up (R1) and 100nF debounce
+  //     capacitor (C1) to +3V3 — the standard external reset circuit
+  //     present on effectively every RP2040 board. RUN is not a
+  //     GPIO-numbered pin, so this is likewise out of scope.
+  //   No onboard NeoPixel/addressable RGB LED exists on this board —
+  //     confirmed absent from both the schematic (only the single
+  //     plain LED1 above) and the CNX Software feature summary.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/artronshop_rp2_nano/notes.txt
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard LED1, active-high, standard series-resistor-to-GND circuit (RP2040 GPIO13 -> R8 330ohm -> LED1 -> GND). Confirmed via ArtronShop's official schematic PDF (dl.artronshop.co.th/RP2-Nano/RP2 Nano schematic.pdf, REV 1.0, 23/7/2022). This GPIO is also broken out to the Nano header as D13/CS (PIN_SPI1_SS / global SS), genuinely and fully wired per ArtronShop's own pinout diagram (D10=SCK, D11=MOSI, D12=MISO, D13=CS all labelled SPI) — mirroring the classic Arduino Uno/Nano D13 LED+SPI dual-purpose tradition, so the bus is not spare and the auto-appended SS capability is left as-is (not a contamination bug like adafruit_feather_scorpio's vendor-unused PIN_SPI0_SS). digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — matches the
+  // chip-level default and this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS = 4, ADC_RESOLUTION = 12, A0-A3 = GPIO26-29).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

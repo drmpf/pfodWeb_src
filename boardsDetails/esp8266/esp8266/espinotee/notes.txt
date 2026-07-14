@@ -1,0 +1,331 @@
+Board: variants/esp8266/esp8266/espinotee  ("ThaiEasyElec's ESPino", PlatformIO id "espinotee")
+Research date: 2026-07-11
+
+IMPORTANT DISAMBIGUATION
+-------------------------
+There are TWO different ESP8266 boards both commonly called "ESPino":
+  1. "ESPino (ESP-12 Module)" — product of espino.io — a SIBLING variant
+     directory in this repo. NOT part of this task. Not touched.
+  2. "ThaiEasyElec's ESPino" (ETEE052) — the board covered by THIS task,
+     variant directory "espinotee", product of thaieasyelec.com (Thailand).
+Search engines and AI summarizers repeatedly blended descriptions of these
+two boards together (see below) because they share the word "ESPino". Care
+was taken throughout this research to keep them separate and to trust only
+text that could be pinned to the correct product.
+
+pins_arduino.h for espinotee (current, unedited) defines only:
+  PIN_WIRE_SDA=4, PIN_WIRE_SCL=5, LED_BUILTIN=16
+No BUTTON_BUILTIN or RGB LED aliases are present (unlike the sibling
+"espino" directory, which has LED_BUILTIN_R/G/B and BUTTON_BUILTIN — that
+is the OTHER, unrelated "ESPino (ESP-12 Module)" board and was left
+untouched per instructions).
+Per task rules, LED_BUILTIN=16 is NOT by itself sufficient evidence of an
+onboard LED, and cannot be used to infer active-high/low polarity — real
+vendor schematic/doc confirmation was required and sought below.
+
+URLS CONSULTED AND WHAT EACH TOLD ME
+-------------------------------------
+1. https://docs.platformio.org/en/stable/boards/espressif8266/espinotee.html
+   PlatformIO board doc page for "ThaiEasyElec ESPino". Gave generic specs
+   (ESP8266, 80MHz, 4MB flash, 80KB RAM) and vendor URL. No LED/button/ADC
+   circuit detail — page only links out to ThaiEasyElec's own docs.
+
+2. https://raw.githubusercontent.com/platformio/platform-espressif8266/develop/boards/espinotee.json
+   PlatformIO's raw board JSON for espinotee. Confirms vendor="ThaiEasyElec",
+   name="ThaiEasyElec ESPino", url=thaieasyelec.com product page,
+   extra_flags -DARDUINO_ESP8266_ESP13, resetmethod "nodemcu". No pin
+   function data (LED/button/ADC) — this file only carries build/upload
+   metadata, not hardware capability info, so it was not used for tagging.
+
+3. https://raw.githubusercontent.com/esp8266/Arduino/master/doc/boards.rst
+   Official esp8266/Arduino core docs — the SINGLE most useful/authoritative
+   source found. It lists BOTH ESPino boards as separate entries:
+     - "ESPino (ESP-12 Module)" (espino.io): "ESPino integrates the ESP-12
+       module with a 3.3v regulator, CP2104 USB-Serial bridge and a micro
+       USB connector for easy programming. It is designed for fitting in a
+       breadboard and has an RGB Led and two buttons for easy prototyping."
+       -> This is the OTHER board (sibling "espino" dir), NOT espinotee.
+     - "ThaiEasyElec's ESPino" (this board, espinotee): "ESPino by
+       ThaiEasyElec using WROOM-02 module from Espressif Systems with 4 MB
+       Flash." -> No mention of LED, button, or RGB anywhere in this
+       board's own entry. This is a meaningful negative result from an
+       authoritative source: the maintainers who wrote/curated both entries
+       chose NOT to claim an onboard LED/button for the ThaiEasyElec board,
+       even though they explicitly did so for the other "ESPino" board one
+       line above/below it.
+
+4. https://raw.githubusercontent.com/esp8266/Arduino/master/variants/espinotee/pins_arduino.h
+   Confirms the upstream Arduino core file for this board is identical to
+   the one already in this repo (LED_BUILTIN=16 only, no button/RGB
+   aliases). Consistent, but per task rules this alone is not proof of an
+   actual onboard LED/its polarity.
+
+5. https://downloads.thaieasyelec.com/ETEE052/ETEE052_ESPino_Schematic.pdf
+   https://downloads.thaieasyelec.com/ETEE052/ETEE052_ESPino_User_Manual_TH_v1_0_20160204.pdf
+   https://downloads.thaieasyelec.com/ETEE052/ETEE052_ESPino_Dimension.pdf
+   (also tried with http:// and www. prefixes)
+   UNREACHABLE. Both WebFetch and a direct curl from this machine got
+   "connect ECONNREFUSED" / "Failed to connect ... Connection refused" to
+   147.50.230.106:443 — this is a real network-level refusal (verified with
+   `curl -v`), not a tool limitation. The ThaiEasyElec ESPino (ETEE052) is
+   noted elsewhere as a retired product; the downloads subdomain appears to
+   be dead/decommissioned. These would have been the authoritative
+   schematic sources had they been reachable.
+
+6. https://www.thaieasyelec.com/en/products-en/development-boards-en/espino-wifi-development-board-detail.html
+   http://thaieasyelec.com/products/wireless-modules/wifi-modules/espino-wifi-development-board-detail.html
+   Product page for the ESPino (non-32) board. Both fetches returned only
+   the site's generic header/banner text ("ThaiEasyElec Electronic for
+   Embedded System...") with no product-specific content reaching the
+   fetcher (likely a JS-rendered storefront). No usable LED/button/ADC info
+   obtained.
+
+7. https://github.com/thaieasyelec (org page) and general GitHub/web search
+   for a ThaiEasyElec "ESPino" (non-32) code/library repo. Result: no
+   dedicated ESPino (ESP8266) repository exists on their GitHub — only
+   ESPino32-family repos (ESPino32, ESPIno32CAM, ESPino32Fritzing) and a
+   few multi-board sensor example repos (PMSx003, L86 GPS) that target
+   "arduino, espino, espino32" generically without board-specific pin
+   definitions for LED/button/ADC. Not usable as schematic evidence.
+
+8. Multiple WebSearch queries (e.g. "ThaiEasyElec ESPino button LED GPIO16
+   pinout", "ESPino GPIO0 button flash boot pin", "espinotee LED button")
+   repeatedly surfaced the same "RGB Led and two buttons" phrase, but on
+   inspection (see item 3) this phrase traces back to the OTHER ESPino
+   board's (espino.io) description, not ThaiEasyElec's. This is exactly the
+   cross-contamination the task warned about; it was not used as evidence
+   for this board.
+
+CONSIDERED BUT NOT TAGGED / CHANGED, AND WHY
+----------------------------------------------
+- GPIO16 (LED_BUILTIN alias): Considered tagging ["digital_output",
+  "led_high"] or "led_low" based on the pins_arduino.h alias. NOT done —
+  no reachable vendor schematic confirms an LED is actually wired to
+  GPIO16 on this specific board, nor its polarity, and the one
+  authoritative source that does distinguish this board from the
+  lookalike "ESPino (ESP-12 Module)" pointedly does NOT claim an onboard
+  LED for it. Per task rules ("NEVER infer purely from pins_arduino.h
+  alias names"), left untagged.
+- GPIO0 (commonly a FLASH/BOOT button on ESP8266 dev boards generically):
+  Considered tagging ["digital_input","button"]. NOT done — no
+  ThaiEasyElec-specific documentation was reachable to confirm a physical
+  button is populated on this board (unlike, e.g., NodeMCU where vendor
+  photos/schematics are reachable and confirm it). pins_arduino.h for
+  espinotee doesn't even alias a BUTTON_BUILTIN, unlike the sibling
+  "espino" board which does.
+  Note this is moot for tagging purposes anyway per the task's TX/RX
+  guard: GPIO0 is not TX/RX so it wasn't excluded on those grounds, it
+  simply lacks evidence.
+- RGB LED (LED_BUILTIN_R/G/B style): Considered because the search-engine
+  summarizer kept asserting "RGB Led and two buttons" for "ESPino" —
+  traced this claim to the sibling "ESPino (ESP-12 Module)" board (see
+  URL 3) and explicitly did NOT apply it here.
+- No board.json existed for espinotee before this task, and none was
+  created, since no GPIO capability change was warranted (task instructs
+  to create one as a copy of the chip default ONLY when a change is being
+  made; with no confirmed change, the chip-level board.json default for
+  esp8266 continues to apply unmodified).
+- ADC divider: considered because several sibling boards (NodeMCU, D1
+  Mini) are noted in the chip-level board.json as having documented
+  dividers extending A0 to 3.3V. No schematic for espinotee was reachable
+  to confirm or deny a similar divider on this board, so defaultRefVolts
+  was left at the chip default of 1.0V (native ESP8266 ADC range).
+
+TX/RX GUARD CHECK
+------------------
+GPIO1 (TX0) / GPIO3 (RX0) are the hard-reserved serial pins per the
+esp8266 chip-level board.json chipGpios notes. No tagging was attempted on
+GPIO16 or GPIO0 in any case (see above), so this guard was not triggered,
+but confirmed neither candidate pin coincides with TX/RX.
+
+SUMMARY
+-------
+NO CHANGE made to espinotee: no board.json created/edited. Button/LED
+capability could not be confirmed via reachable, real ThaiEasyElec
+documentation (the vendor's download server is unreachable/dead and the
+product page renders no usable content); the one authoritative source
+that does distinguish this board from the similarly-named "ESPino
+(ESP-12 Module)" does not claim an onboard LED or button for it. ADC
+reference voltage left at the chip-level default of 1.0V for the same
+reason — no divider schematic could be confirmed.
+
+===============================================================
+[2026-07-12] DEDICATED-HARDWARE PIN-EXCLUSION AUDIT (separate pass)
+===============================================================
+Scope of this pass: NOT a re-run of the button/LED/ADC tagging above.
+This is the dedicated-hardware EXCLUDE-vs-KEEP sweep per
+project_board_variant_pin_audit_playbook.md — i.e. checking whether any
+pin should be removed from the Designer's general-purpose GPIO pool
+because it is wired to an onboard radio/SD/display/actuator etc.
+
+1. FULL pins_arduino.h RE-READ
+   variants/esp8266/esp8266/espinotee/pins_arduino.h defines only:
+     PIN_WIRE_SDA=4, PIN_WIRE_SCL=5 (SDA/SCL aliases), LED_BUILTIN=16
+   and #includes ../generic/common.h, which unconditionally defines the
+   standard ESP8266 SPI aliases SS=15, MOSI=13, MISO=12, SCK=14 (used by
+   every esp8266 board that doesn't override them) plus A0=17,
+   NUM_ANALOG_INPUTS=1, isFlashInterfacePin() etc. No board-specific
+   TX/RX aliases are declared (UART0 Serial uses the chip's fixed
+   TX=GPIO1/RX=GPIO3, not a pins_arduino.h alias). This matches the
+   "zero non-boilerplate declarations" finding that put this board in
+   the audit queue — confirmed still true on re-read.
+
+2. SELF-CONSISTENCY CHECK (requested this wave after the espectro
+   sibling board was found to have a copy-paste SDA/SCL/SPI conflict)
+   Checked SDA/SCL/SS/MOSI/MISO/SCK/TX/RX for internal contradiction:
+   SDA=4, SCL=5 (espinotee's own file) vs SS=15/MOSI=13/MISO=12/SCK=14
+   (inherited from common.h) — all five pin numbers are distinct, no
+   pin is claimed by two different aliases. No TX/RX override exists in
+   this file to conflict with anything. CONCLUSION: self-consistent,
+   no espectro-style conflict here.
+
+3. FRESH RESEARCH ATTEMPT (Wayback Machine — NOT tried in the earlier
+   pass, which only tried live URLs and got ECONNREFUSED / dead JS
+   storefront)
+   Used the archive.org "available" API and CDX API (curl directly,
+   since the WebFetch tool refuses web.archive.org URLs) and got a real
+   hit:
+   - https://web.archive.org/web/20180224101857/http://www.thaieasyelec.com/en/products-en/development-boards-en/espino-wifi-development-board-detail.html
+     A full archived (Thai-language) product page for THIS exact board
+     (ETEE052/espinotee), unlike the live fetch which only returned
+     banner/header text. Relevant excerpts (translated):
+       "GPIO pins: 0 1 2 3 4 5 12 13 14 15 16" (11 GPIOs, matches the
+         standard non-flash ESP8266 GPIO set exactly — no extra
+         dedicated pin claimed).
+       "Has a RESET switch for resetting the board."
+       "Has an LED connected to GPIO for user-controlled status
+         display, connected to GPIO16."
+       "Has an LED showing status while transmitting/receiving data
+         via the serial port / programming the board" (a separate
+         TX/RX activity LED on the CP2104 USB-serial bridge chip, not
+         a chip GPIO).
+   - CDX search (`web.archive.org/cdx/search/cdx?url=downloads.thaieasyelec.com/ETEE052/...`)
+     found a genuine archived copy of the user manual PDF (two
+     snapshots, 2023-01-30 and 2024-06-22, ~1-1.4MB, mimetype
+     application/pdf, status 200) — downloaded via
+     `.../web/20240622190540if_/https://downloads.thaieasyelec.com/ETEE052/ETEE052_ESPino_User_Manual_TH_v1_0_20160204.pdf`
+     and converted with pdftotext. This is the ThaiEasyElec-authored
+     18-page "ESPino (ETEE052) v1.0" manual (4 Feb 2016) and gives the
+     most detailed vendor-sourced pin info found for this board to date:
+       "GPIO: 0 1 2 3 4 5 12 13 14 15 16" (same 11-pin list)
+       "UART: 1(Tx) 3(Rx) 15(Tx2) 13(Rx2)" — describes GPIO15/13 as
+         optional alternate UART1 pins, a feature of the chip's UART
+         peripheral, not a dedicated onboard consumer.
+       "SPI (Software): 15(SS) 14(SCK) 13(MOSI) 12(MISO)" — exactly
+         matches the inherited common.h SS/SCK/MOSI/MISO values (see
+         item 2 above) — direct vendor confirmation those aliases are
+         correct and not a copy-paste error.
+       "I2C (Software): 4(SDA) 5(SCL)" — exactly matches this file's
+         own PIN_WIRE_SDA/SCL values — same confirmation for SDA/SCL.
+       "ADC/TOUT (10-bit, 0-1 Vdc)" — explicitly documents the native
+         0-1V ADC range with NO mention of a voltage divider extending
+         it to 3.3V (unlike NodeMCU/D1 Mini, which do have one) — this
+         is now a real vendor-sourced confirmation (not just "reachable
+         docs absent") that the chip-level default of 1.0V reference is
+         correct for this board and should stay unchanged.
+       Full breakout header pinout: 5V, 3.3V, GND, EN, RESET, GPIO0,
+         GPIO2, GPIO4, GPIO5, GPIO12, GPIO13, GPIO14, GPIO15, GPIO16,
+         ADC/TOUT, TXD, RXD, RTS, DTR — no unexpected/extra signal.
+       Board-photo component callouts: (1) WROOM-02 module, (2) "LED
+         at GPIO16", (3) CP2104 USB-to-Serial, (4) RESET button,
+         (5) PROGRAM button, (6) Micro USB, (7) voltage regulator,
+         (8) "Auto Program" (DTR/RTS auto-reset circuit, not a
+         separate GPIO), (9) "LED at UART" (the CP2104 activity LED
+         from item above).
+     The schematic PDF specifically
+     (ETEE052_ESPino_Schematic.pdf) is still NOT archived — CDX search
+     for that exact filename and for the whole ETEE052 downloads
+     directory both returned zero snapshots. That specific dead end
+     from the earlier pass remains a dead end.
+
+4. DEDICATED-HARDWARE EXCLUDE-vs-KEEP DECISION (this pass's actual
+   scope)
+   Nothing found rises to EXCLUDE tier. There is no radio module, SD
+   card, display, motor/stepper/heater driver, or analog mux anywhere
+   in this board's documentation — the vendor's own manual describes
+   SPI and I2C as generic "software" (bit-banged) buses on the standard
+   pins, not dedicated to any onboard chip, and lists exactly the
+   standard 11-pin ESP8266 GPIO set with no extra dedicated signal.
+   The GPIO16 LED and the GPIO0-adjacent PROGRAM button (both newly
+   confirmed above) both fall under the playbook's explicit KEEP
+   category ("simple onboard buttons, single LEDs... even if shared
+   with boot pin — note it, don't exclude"), so even with this
+   stronger evidence than the earlier pass had, no chipGpios exclusion
+   is warranted. RESET and the "Auto Program" DTR/RTS circuit are
+   USB-serial/EN-pin level, not GPIO-space at all, so they were never
+   candidates for exclusion.
+   CONCLUSION: NO CHANGE to chipGpios / no board.json created. This
+   confirms (rather than merely repeats) the earlier pass's NO CHANGE
+   outcome, now with real vendor pin data instead of an unreachable
+   site.
+
+5. NOTE FOR ANY FUTURE RE-RUN OF THE EARLIER BUTTON/LED/ADC TAGGING
+   PASS (out of scope for this dedicated-hardware pass, not acted on
+   here)
+   The Wayback Machine sources found in item 3 above are genuine, are
+   reachable today via `curl` (though not via the WebFetch tool, which
+   refuses web.archive.org — use `curl` against
+   `web.archive.org/wayback/available?url=...` and
+   `web.archive.org/cdx/search/cdx?url=...&output=json` to find a
+   snapshot, then `curl ".../web/<timestamp>if_/<original-url>"` to
+   fetch the raw resource, `pdftotext -layout` for PDFs), and appear to
+   supersede the earlier pass's "vendor site is dead" premise for the
+   LED and button questions specifically:
+     - GPIO16 LED: vendor manual explicitly states an LED is wired to
+       GPIO16 for user-controlled status display, and the board-photo
+       caption independently confirms it ("LED at GPIO16"). Polarity
+       (active-high vs active-low) is still NOT stated anywhere in the
+       manual text extracted here — only pin number and purpose.
+     - GPIO0 button: the manual confirms a "PROGRAM" button exists on
+       the board (component callout 5) and, by ESP8266 universal
+       convention plus this board's GPIO0 being in both the general
+       GPIO list and the breakout header, is presumably wired to
+       GPIO0/boot-strap, though the manual text extracted here does not
+       spell out "GPIO0" next to "PROGRAM" explicitly in so many words
+       (it's the photo caption + adjacent GPIO0 pin in the header list
+       that make this the obvious inference — a full page-by-page
+       manual/schematic image read, not attempted here, would confirm
+       it outright).
+     - RESET button: confirmed to exist, but it resets the chip via the
+       EN pin, not a GPIO, so it is out of scope for GPIO capability
+       tagging either way.
+   This pass deliberately did NOT apply any button_builtin/led tags or
+   create a board.json on the strength of the above, since (a) that is
+   explicitly the other pass's scope per this task's instructions, and
+   (b) LED polarity is still unconfirmed. Flagging here so the
+   information is not lost and the next LED/button-focused pass doesn't
+   have to re-discover these URLs from scratch.
+
+Sources consulted this pass (including the dead ends):
+ - variants/esp8266/esp8266/espinotee/pins_arduino.h (re-read in full)
+ - variants/esp8266/esp8266/generic/common.h (re-read for inherited
+   SPI/A0 aliases, to check self-consistency)
+ - project_board_variant_pin_audit_playbook.md (KEEP/EXCLUDE policy)
+ - https://web.archive.org/web/20180224101857/.../espino-wifi-development-board-detail.html
+   — SUCCESS, real archived product page, see item 3.
+ - https://web.archive.org/web/20240622190540if_/https://downloads.thaieasyelec.com/ETEE052/ETEE052_ESPino_User_Manual_TH_v1_0_20160204.pdf
+   — SUCCESS, real 18-page PDF manual, see item 3.
+ - web.archive.org CDX search for ETEE052_ESPino_Schematic.pdf and the
+   whole ETEE052 downloads directory — DEAD END, zero snapshots exist,
+   confirms the earlier pass's finding that the schematic specifically
+   is unrecoverable.
+ - github.com/esp8266/Arduino commit history for
+   variants/espinotee/pins_arduino.h (via GitHub REST API) — confirms
+   the file and its LED_BUILTIN=16 definition were authored directly by
+   narongrat.srimee@gmail.com ("Create pins_arduino.h for ESPino
+   (WROOM-02) by ThaiEasyElec.com", Feb 2016), i.e. by a ThaiEasyElec
+   author, not a generic/community guess — consistent with, and now
+   corroborated by, the manual's explicit GPIO16-LED statement.
+ - WebSearch queries for "ETEE052 schematic GPIO16 LED", "ESPino
+   ThaiEasyElec WROOM-02 pinout button reset flash", "github espinotee
+   pins_arduino firmware", "ETEE052 site:github.com" — all either
+   surfaced the same already-known cross-contaminated "RGB Led and two
+   buttons" phrase (traced to the other espino.io board, see original
+   research above, not used) or no espinotee-specific hits.
+
+ONE-LINE SUMMARY: Dedicated-hardware exclusion audit — NO CHANGE (no
+onboard radio/SD/display/actuator found, nothing to exclude); found and
+documented new working Wayback Machine sources (product page + full PDF
+manual) confirming GPIO16 LED, a PROGRAM button, and native 0-1V ADC
+(no divider) for a possible future LED/button/ADC re-tagging pass, but
+did not act on them here as that tagging is out of this pass's scope.

@@ -1,0 +1,113 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Espressif's own generic "ESP32C5 Dev Module" entry, which
+  // represents the official ESP32-C5-DevKitC-1 reference board. No
+  // board.json override existed before this audit (used the chip-level
+  // esp32c5/board.json default). Flagged by the discovery sweep for
+  // having PIN_RGB_LED 27 / RGB_BRIGHTNESS 64 plus LP_SDA=2, LP_SCL=3
+  // (WIRE1_PIN_DEFINED/SDA1/SCL1), LP_RX=4, LP_TX=5 declared in
+  // pins_arduino.h but never individually reviewed.
+  //
+  // Sources consulted:
+  //  - https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html
+  //    Official Espressif esp-dev-kits documentation for the
+  //    ESP32-C5-DevKitC-1. States the board includes an addressable RGB
+  //    LED "driven by GPIO27", and lists GPIO27 among the chip's
+  //    strapping pins (MTMS, MTDI, GPIO7, GPIO25, GPIO26, GPIO27,
+  //    GPIO28). Same page's pin-function table gives:
+  //      GPIO2 = MTMS, GPIO2, LP_GPIO2, LP_UART_RTSN, LP_I2C_SDA, ADC1_CH1, FSPIQ
+  //      GPIO3 = MTDI, GPIO3, LP_GPIO3, LP_UART_CTSN, LP_I2C_SCL, ADC1_CH2
+  //      GPIO4 = MTCK, GPIO4, LP_GPIO4, LP_UART_RXD, ADC1_CH3, FSPIHD
+  //      GPIO5 = MTDO, GPIO5, LP_GPIO5, LP_UART_TXD, ADC1_CH4, FSPIWP
+  //    None of these four pins' function lists references any onboard
+  //    peripheral beyond the fixed LP_I2C/LP_UART controller pin mux -
+  //    this matches this variant's own pins_arduino.h comments ("LP I2C
+  //    Pins are fixed on ESP32-C5" / "LP UART Pins are fixed on
+  //    ESP32-C5"): the LP peripherals are hard-wired by the chip's
+  //    internal pin mux to these four GPIOs, not to an onboard device.
+  //  - https://esp32.co.uk/esp32-c5-devkitc-pinout-diagram-safe-gpios/
+  //    Independent pinout/safe-GPIO guide, corroborates the onboard
+  //    addressable RGB LED on GPIO27 and describes GPIO2-GPIO5 as
+  //    general-purpose pins (GPIO2/GPIO3 flagged only as strapping pins
+  //    to use cautiously; GPIO4/GPIO5 explicitly recommended as safe
+  //    general-purpose choices) - no dedicated onboard peripheral wired
+  //    to any of the four.
+  //  - ESP32-C5 Series Datasheet (documentation.espressif.com) - confirms
+  //    LP_GPIO2..LP_GPIO5 are the chip's fixed low-power I2C/UART
+  //    controller pins (an LP-domain hardware pin-mux constraint of the
+  //    chip itself, present on every ESP32-C5 module regardless of
+  //    board), not evidence of an onboard I2C/UART device on this
+  //    specific reference board.
+  //
+  // GPIO27 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+  // addressable RGB LED, directly stated by Espressif's own official
+  // user guide for this exact reference board. High confidence -
+  // matches this repo's existing led_neopixel precedent (e.g.
+  // esp32c6/esp32c6 GPIO8, waveshare_esp32_s3_zero GPIO21,
+  // adafruit_qtpy_esp32c3 GPIO2). Checked this variant's pins_arduino.h
+  // alias list - SDA=0, SCL=1, SS=6, MOSI=8, MISO=9, SCK=10, TX=11,
+  // RX=12 - GPIO27 is not aliased as any of those, and is not in the
+  // A0-A5 analog alias list either, so no conflicting boilerplate bus
+  // alias exists for this pin (the build_boards.js unconditional
+  // SDA/SCL/SS/MOSI/MISO/SCK/TX/RX-append bug does not apply here).
+  // Tagged capabilities ["digital_output","led_neopixel","pwm_output"].
+  // Note: GPIO27 is itself a documented strapping pin per the same
+  // official user guide, but the chip-level board.json's pinNotes
+  // (sourced from the ESP32-C5 Technical Reference Manual) does not
+  // list GPIO27 as one of the boot-mode-sensitive strapping pins -
+  // left unchanged/uninvestigated as out of scope for this audit (no
+  // TRM-sourced strapping behavior found to add).
+  //
+  // GPIO2/GPIO3 (LP_SDA/LP_SCL, LP-domain I2C) and GPIO4/GPIO5
+  // (LP_RX/LP_TX, LP-domain UART): KEEP as general-purpose GPIOs - no
+  // onboard peripheral documented at any of the four pins on this
+  // reference board. The "LP I2C/UART Pins are fixed" comments in
+  // pins_arduino.h describe a chip-internal pin-mux constraint of the
+  // ESP32-C5's low-power core (these specific GPIOs are the ONLY ones
+  // capable of driving the LP-domain I2C/UART hardware blocks), not a
+  // dedicated onboard device wired to them. A user sketch remains free
+  // to use GPIO2/3/4/5 as plain digital/analog GPIOs. Left unchanged
+  // from chip-level defaults (all four already carry
+  // analog_input+digital_input+digital_output+pwm_output, matching
+  // their A1/A2/A3/A4 analog aliases).
+  //
+  // See boardsDetails/esp32/esp32c5/esp32c5/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C5",
+  "displayName": "ESP32-C5 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "4":  "Must be LOW or floating on reboot",
+    "5":  "Must be LOW or floating on reboot",
+    "6":  "Must be LOW or floating on reboot",
+    "23": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "26": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "27": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "28": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

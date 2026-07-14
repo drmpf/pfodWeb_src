@@ -1,0 +1,152 @@
+// pfodWeb NOTE: created from the esp8266 chip-level default with GPIO0,
+// GPIO2, GPIO4 and GPIO5 tagged, and adc.defaultRefVolts overridden.
+// This is the "ESPino (ESP-12 Module)" by makerlab.mx (Merida, Mexico) —
+// a breadboard-form-factor (2.7cm x 4.5cm) ESP-12-based board, NOT the
+// unrelated ThaiEasyElec "ESPino" (WROOM-02) or the ESP32
+// "ESPino32"/"espea32" boards.
+// Confirmed via the vendor's own GitHub repo (makerlabmx/ESPino-tools,
+// https://github.com/makerlabmx/ESPino-tools) Docs folder:
+//   - ESPino-Datasheet-EN.pdf p.2 "Integrated Devices": "The board
+//     includes an RGB LED (red, green and blue), and two buttons. One is
+//     RESET and the other, USER/PROG, is connected to pin 0 ... Red LED:
+//     Pin 2, Green LED: Pin 5, Blue LED: Pin 4, USER/PROG Button: Pin 0,
+//     RESET Button: Pin RST."
+//   - ESPino-A-Schematic.pdf (KiCad, Rev A, 2015-05-03): RGB LED (D1) is
+//     wired common-ANODE to VCC/3.3V, with each color's cathode through a
+//     470-ohm resistor to the LED_R/LED_G/LED_B net (driven by the GPIO) —
+//     i.e. the GPIO must go LOW to sink current and light that color, so
+//     all three channels are ACTIVE-LOW (matches the common
+//     "ESP8266 dev-board LED is inverted logic" convention for GPIO2).
+//   - The schematic's own handwritten note "GPIO4 y GPIO5 estan
+//     invertidos" (GPIO4 and GPIO5 are inverted) flags a known Rev-A
+//     labelling mistake in the schematic/silkscreen table for those two
+//     pins. The corrected assignment (GPIO4=Green, GPIO5=Blue) matches
+//     both this board's own pins_arduino.h (LED_BUILTIN_G=4,
+//     LED_BUILTIN_B=5, i.e. what the shipped firmware actually uses) and
+//     the vendor's newer v0.2.0 pinout-diagram PDF (ESPino-Pinout-EN.pdf),
+//     so GPIO4=led_g_low / GPIO5=led_b_low is used here, NOT the older
+//     v0.1.1 spec-sheet text (which has the G/B pins swapped — the exact
+//     mislabeling the schematic note warns about).
+//   - USER/PROG button (GPIO0) is a plain flash/boot button pulled up via
+//     a 10k resistor to VCC and pulled to GND when pressed — tagged
+//     ["digital_input","button"] only (no active-high/low variant defined
+//     for the "button" tag). The RESET button ties to the chip's physical
+//     RST pin, not a GPIO, so it is not tagged.
+//   - GPIO1/GPIO3 (hardware UART0 TX0/RX0) are untouched — confirmed as
+//     this board's actual Serial pfod pins from both the schematic
+//     (CP2104 USB-serial bridge wired to GPIO1/GPIO3 as TXD0/RXD0) and
+//     the pinout diagram's "TX0"/"RX0" labels — none of the tagged GPIOs
+//     (0, 2, 4, 5) collide with these.
+// ADC: ESPino-Datasheet-EN.pdf p.2 "ADC" section: "The ESP8266 board
+// includes a 10-bit ADC that can sense an input from 0V to 1V. For
+// convenience, the board integrates a voltage divider in that Pin, that
+// allows the input to be between 0V and 3.3V" — with the accompanying
+// resistor diagram showing R10=220k (in series from ADC_IN to the ADC
+// pin) and R11=100k (from the ADC pin to GND), i.e. the same 220k/100k
+// divider used on NodeMCU/D1 Mini/D1 R1 elsewhere in this repo. Exact
+// math: 1.0V * (220k+100k)/100k = 3.2V full-scale (the vendor's "0-3.3V"
+// text is rounded/approximate, as on the other 220k/100k boards already
+// audited here) — defaultRefVolts set to "3.2" to match.
+//
+// FULL DEDICATED-HARDWARE SWEEP (later pass): GPIO4/GPIO5's pins_arduino.h
+// PIN_WIRE_SDA/PIN_WIRE_SCL default Wire-pin aliases were changed to -1 in
+// this board's local pins_arduino.h copy, because they pointed at the
+// exact same two GPIOs already confirmed above as this board's onboard RGB
+// LED Green/Blue channels (GPIO4/GPIO5 — electrically committed to
+// sinking the LED cathodes through their 470-ohm resistors). Left
+// unchanged, build_boards.js would have unconditionally appended
+// "i2c_sda"/"i2c_scl" onto those two chipGpios entries regardless of the
+// led_g_low/led_b_low override above, silently offering a bus capability
+// on pins that can't actually be repurposed without also disabling the
+// onboard LED. See boardsDetails/esp8266/esp8266/espino/notes.txt for the
+// full alias-collision-check writeup (matches the same fix already
+// applied on variants/esp32/esp32c3/esp32c3/pins_arduino.h for its
+// NeoPixel/SDA collision on GPIO8).
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  "boardName": "ESP8266",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Generic ESP8266 Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // "esp8266" is its own family value (so the Designer's board picker
+  // keeps ESP8266 as a separate top-level family from ESP32), but it
+  // routes through the same buildEsp32Board() parser as "esp32" —
+  // ESP8266's pins_arduino.h declares pins via the identical
+  // `static const uint8_t NAME = value;` convention — matching how
+  // "ccode"/"unlistedBoard" already share one parser function.
+  "family": "esp8266",
+
+  // No GPIO concept applies to inputOnlyGpios here — GPIO16's lack of
+  // PWM/interrupt support is expressed via chipGpios below instead,
+  // since GPIO16 still supports digital_output (unlike a true input-only pin).
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over.  ESP8266 has WiFi but no
+  // on-chip Bluetooth — BLE is omitted.
+  "connections": ["serial", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers, plus the
+  // ADC caveat on the synthetic A0 slot (see chipGpios comment below for
+  // why A0 is numbered 17 here).
+  // Reference: Espressif ESP8266 datasheet + Arduino-ESP8266 core `common.h`,
+  // cross-checked against https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. This board's USER/PROG button (pulled up via 10k, pulled to GND when pressed)",
+    "2":  "Must be HIGH at boot. This board's RGB LED Red channel — active-low (common-anode RGB LED)",
+    "4":  "This board's RGB LED Green channel — active-low (common-anode RGB LED)",
+    "5":  "This board's RGB LED Blue channel — active-low (common-anode RGB LED)",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. Board has an onboard 220k/100k resistor divider extending the native 0-1.0V range to 0-3.2V — see adc.defaultRefVolts"
+  },
+
+  // Full usable-GPIO map for the chip, so every commonly-broken-out pin
+  // shows up in the picker even on boards whose own pins_arduino.h
+  // doesn't alias it (matches the ESP32 chipGpios convention).
+  // GPIO1/GPIO3 are the hardware UART0 TX/RX lines used by the Serial
+  // pfod connection on every ESP8266 board — forced here rather than
+  // relying on a literal TX/RX alias in pins_arduino.h because most
+  // vendor variant files (including NodeMCU and D1 Mini) alias these
+  // pins under board-specific names (D9/D10, D1/D3, ...) instead.
+  // GPIO16 has no PWM/interrupt support (RTC-domain pin, see pinNotes).
+  // A0 (GPIO17, PIN_A0's synthetic slot number) is analog-input-only —
+  // it is a dedicated ADC pin on the real chip, not a GPIO, so it has no
+  // digital or PWM capability at all, unlike ESP32's ADC-capable GPIOs.
+  // GPIOs 6-11 are internal flash SPI and are never broken out on a
+  // standard (non-8285) module — intentionally omitted here.
+  // Source for per-pin PWM/digital availability:
+  // https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // ("ESP8266 allows software PWM in all I/O pins: GPIO0 to GPIO15").
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"] },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "led_r_low"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "led_g_low"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "led_b_low"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  // ESP8266's analogWrite() PWM defaults to a 10-bit range (0-1023),
+  // unlike AVR/ESP32's 8-bit (0-255) default.
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  // No hardware DAC on ESP8266.
+  "dac": {},
+
+  // ESP8266 has one 10-bit ADC (0-1023) exposed as A0.  This board has a
+  // confirmed onboard 220k/100k resistor divider (see NOTE at top of
+  // file) extending the native 0-1.0V range to 0-3.2V.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.2" }
+}

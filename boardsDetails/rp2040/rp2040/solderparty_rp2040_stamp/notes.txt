@@ -1,0 +1,128 @@
+Board: Solder Party "RP2040 Stamp" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/solderparty_rp2040_stamp/
+Audit date: 2026-07-12 (RP2040/RP2350 button/LED/NeoPixel tagging + dedicated-hardware pin exclusion audit)
+
+SOURCES CONSULTED
+------------------
+1. This board's own pins_arduino.h (local file) — declares only
+   PIN_LED (20u) and PIN_NEOPIXEL (21u) as onboard-hardware aliases,
+   plus standard Serial1/Serial2/SPI0/SPI1/Wire0/Wire1 bus pins and
+   `#include "../generic_full/common.h"`. Header comment: "Pin
+   definitions taken from: https://rp2040-stamp.solder.party/carrier".
+2. variants/rp2040/rp2040/generic_full/common.h (local file) — confirms
+   all 30 GPIOs (D0-D29) are genuinely exposed on this board (this board
+   uses generic_full, not generic, so GPIO23/24/25/29 are NOT reserved
+   the way they are on the plain Raspberry Pi Pico).
+3. variants/rp2040/rp2040/board.json (chip-level defaults, local file).
+4. Precedents read: rpipico/board.json, wiznet_5500_evb_pico/board.json,
+   adafruit_trinkeyrp2040qt/board.json (older NeoPixel style, no
+   led_neopixel tag), and — more importantly, since they're from this
+   same 2026-07-12 audit session — waveshare_rp2040_zero/board.json and
+   sparkfun_promicrorp2040/board.json, which establish the CURRENT
+   "led_neopixel" tagging convention (digital_output + led_neopixel,
+   pwm_output omitted for a pure WS2812 data pin since it's a
+   bit-serial protocol line, not PWM-dimmable).
+5. Official vendor docs: solder.party/docs/rp2040-stamp/ (bare module
+   product page — lists "A Neopixel" and "charging LED [for LiPo]" as
+   features; "All 30 GPIOs broken out"; no discrete plain-LED feature
+   listed) and solder.party/docs/rp2040-stamp/carrier (the separate
+   Carrier breakout board's product page — lists the Carrier's OWN
+   distinct features: "USR LED", a separate "Power (3.3V) LED", and a
+   "Bootsel button").
+6. Adafruit CircuitPython's own board definition for this exact board id:
+   github.com/adafruit/circuitpython, ports/raspberrypi/boards/
+   solderparty_rp2040_stamp/pins.c (aliases GPIO21 as "NEOPIXEL"; GP0-GP29
+   otherwise get only their plain GPIOxx names — no LED alias for GPIO20)
+   and mpconfigboard.mk (USB_PRODUCT = "RP2040 Stamp", confirming this
+   CircuitPython board id targets the bare module, not the Carrier).
+7. rp-rs community Rust BSP crate `solderparty-rp2040-stamp`:
+   github.com/rp-rs/rp-hal-boards, boards/solderparty-rp2040-stamp/
+   src/lib.rs — bsp_pins! table names Gpio21 "neopixel"; Gpio20 has no
+   custom name (default gpio20).
+8. Module's own official KiCad hardware source:
+   github.com/solderparty/rp2040_stamp_hw, rp2040_stamp.kicad_sch —
+   instantiates a `LED_Extra:WS2812B-2020` symbol with its DIN pin
+   routed to the GPIO21 net; the GPIO20 net was traced from the RP2040
+   (U1 pin 31) directly to the castellated-edge header/connector only,
+   with no LED (or any) component instance attached anywhere in the
+   file; the reset button (SW1, Switch:SW_SPST) is wired directly to
+   the RP2040's RUN (hardware reset) pin, not to any GPIO.
+9. Carrier board's own official KiCad hardware source:
+   github.com/solderparty/rp2040_stamp_carrier_hw,
+   rp2040_stamp_carrier.kicad_sch — searched for the "USR LED" feature
+   mentioned on the Carrier's doc page; no LED symbol instance of any
+   kind was found in this schematic file either.
+10. arduino-pico upstream history: PR #407 "Add the RP2040 Stamp board",
+    authored and merged from arturo182 (the Stamp's own
+    designer/vendor), earlephilhower/arduino-pico, 2022-01-03. PR
+    discussion covers only boot2/flash-chip selection (GD25Q64C) — no
+    mention of LED/NeoPixel/button electrical details.
+11. Secondary/tertiary corroboration (no new pin-level facts beyond the
+    above): Tom's Hardware RP2040 Stamp review, Hackaday.io RP2040 Stamp
+    project page (both describe "a Neopixel", a "reset button", and a
+    "charge LED" as the module's I/O-adjacent features, no discrete
+    plain user LED mentioned), Pimoroni/Tindie/Lectronz product
+    listings.
+
+PER-PIN FINDINGS
+------------------
+GPIO21 (PIN_NEOPIXEL) — CHANGED. Onboard WS2812 addressable RGB LED,
+confirmed by four independent sources (vendor docs, CircuitPython
+pins.c, Rust BSP bsp_pins!, and the module's own KiCad schematic
+component instance) beyond this board's own pins_arduino.h alias.
+Tagged chipGpios["21"] = { "capabilities": ["digital_output",
+"led_neopixel"] } — output-only (bypasses the chip-level default
+digital_input/digital_output/pwm_output derivation), pwm_output omitted
+per the WS2812-is-a-data-line-not-a-dimmable-pin rationale established
+in waveshare_rp2040_zero/board.json (GPIO16, same capability list).
+
+GPIO20 (PIN_LED) — NO CHANGE. This board's pins_arduino.h declares
+PIN_LED=20 (which also becomes LED_BUILTIN via generic_full/common.h's
+`#ifdef PIN_LED / #define LED_BUILTIN PIN_LED`), and the macro was
+contributed by the Stamp's own vendor (arturo182) — a real signal, not
+a random guess. However every independent, non-arduino-pico source
+checked (CircuitPython pins.c, Rust BSP bsp_pins! table, and — most
+directly — the module's own official KiCad schematic net-trace) failed
+to corroborate a physically attached LED on GPIO20: the schematic shows
+that net going straight from the RP2040 die pin to the castellated
+header, with no LED component anywhere on it. The pins_arduino.h header
+comment sources its definitions from the separate CARRIER board's
+pinout page, and the Carrier's own doc page does list a distinct
+"USR LED" feature — but the Carrier's own official KiCad schematic
+was also searched and contains no LED symbol instance at all, so even
+that alternate explanation for PIN_LED=20 could not be corroborated in
+primary hardware sources. Given directly conflicting/insufficient
+evidence, and per this audit's rule to report NO CHANGE rather than
+guess a pin's existence or polarity from an alias name alone, GPIO20 is
+left with the chip-level default derived capabilities (digital_input,
+digital_output, pwm_output) — no chipGpios override added, no
+led_high/led_low tag applied.
+
+Onboard button — NO CHANGE (no button GPIO exists to tag). The module's
+only button is a reset button, confirmed via the module's own KiCad
+schematic to be wired directly to the RP2040's RUN pin (hardware reset
+line), not to any GPIO — same out-of-scope rationale as the BOOTSEL/
+RESET buttons already excluded on every other RP2040 board in this
+repo (e.g. rpipico, waveshare_rp2040_zero). No separate GPIO-readable
+"boot"/"user" button is documented for this board in any source
+consulted. The "charge LED" mentioned in vendor docs (LiPo charging
+status indicator) is a passive hardware indicator driven by the
+battery-charger IC (MCP73831 STAT pin per the module's own schematic
+library), not RP2040-GPIO-connected — out of scope for GPIO capability
+tagging, same rationale as the passive power-indicator LEDs already
+excluded on other boards (e.g. sparkfun_promicrorp2040's red power LED).
+
+SUMMARY
+------------------
+One change applied: GPIO21 (PIN_NEOPIXEL) tagged
+["digital_output","led_neopixel"], confirmed via four independent
+sources. GPIO20 (PIN_LED) left as NO CHANGE — the vendor-authored
+pins_arduino.h alias exists, but no independent source (CircuitPython,
+Rust BSP, or the module's own KiCad schematic) could corroborate an
+actual LED component attached to that GPIO, so it was not guessed at.
+No onboard GPIO-readable button exists (reset button is wired to RUN,
+not a GPIO) — no button tag applied. No dedicated-hardware pin exclusion
+needed elsewhere on this board (all bus-role pins — Serial/SPI0/SPI1/
+Wire0/Wire1 — are ordinary breakout aliases already handled by
+build_boards.js's standard bus-role auto-append, not board-integrated
+peripherals requiring capability stripping).

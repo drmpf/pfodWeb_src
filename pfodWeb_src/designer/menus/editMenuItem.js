@@ -254,16 +254,42 @@ const DesignerEditMenuItem = (() => {
                      || item.type === 'pwm'
                      || item.type === 'datadisplay');
     if (itemHasPin) {
-      // Targets with no routable pins (e.g. the Minimal C Code board)
-      // have nothing for the picker to offer — disable the row instead
-      // of opening a picker with only "Not connected" in it.
-      const hasPins = state.board.pins.length > 0;
-      const pinLabel = !hasPins ? 'No I/O pins defined'
-                      : item.pin ? 'Connected to ' + item.pin.name
-                      : 'Not connected to an I/O pin';
-      const pinFmt = hasPins ? fmt1 : ('<-1>' + DESIGNER_DISABLED_FMT);
+      // Targets with no routable pins fall into two cases:
+      //  - Minimal C Code has no Arduino pin API at all — disable the
+      //    row, there's nothing meaningful to offer.
+      //  - Any other no-pin target (e.g. Unlisted Board) still
+      //    generates a normal Arduino/C++ sketch, so offer a `?`
+      //    placeholder toggle instead — see editMenuItemPin.js's
+      //    _togglePlaceholder for the matching dispatch-side logic.
+      const hasPins       = state.board.pins.length > 0;
+      const isPlaceholder = item.pin && item.pin.name === PLACEHOLDER_PIN_NAME;
+      const canPlaceholder = !hasPins && state.board.family !== 'ccode';
+      let pinLabel, pinFmt, hint;
+      if (hasPins) {
+        pinLabel = item.pin ? 'Connected to ' + item.pin.name : 'Not connected to an I/O pin';
+        pinFmt   = fmt1;
+        hint     = EM_HINT_COLOUR + '<i>Click here to change';
+      } else if (canPlaceholder) {
+        pinFmt = fmt1;
+        if (isPlaceholder) {
+          pinLabel = DesignerGenerateCode.pinConstName(item.autoCmd) + ' = ?';
+          hint     = EM_HINT_COLOUR + '<i>Click here to remove placeholder';
+        } else {
+          pinLabel = 'No I/O pins defined';
+          // Middle line reverts to plain (non-italic, default colour) so
+          // the actual generated variable name reads clearly against the
+          // yellow-italic instructional text around it.
+          hint = EM_HINT_COLOUR + '<i>Click here to add</i></y>\n' +
+                 DesignerGenerateCode.pinConstName(item.autoCmd) + ' = ?\n' +
+                 EM_HINT_COLOUR + '<i>placeholder in generated code';
+        }
+      } else {
+        pinLabel = 'No I/O pins defined';
+        pinFmt   = '<-1>' + DESIGNER_DISABLED_FMT;
+        hint     = null;
+      }
       out += '|d' + EMI_IO_PIN_CMD + pinFmt + '~' + pinLabel;
-      if (hasPins) out += '\n<-3>' + EM_HINT_COLOUR + '<i>Click here to change';
+      if (hint) out += '\n<-3>' + hint;
     }
 
     // Change Item's Appearance — opens the sub-screen carrying
@@ -777,7 +803,12 @@ const DesignerEditMenuItem = (() => {
     }
   }
 
-  return Object.freeze({ send, renderItemHeaderAndPreview });
+  // renderUpdateScreen is exposed so editMenuItemPin.js's placeholder
+  // toggle (a plain button click, not a select-list submit — no
+  // implicit pfod back-navigation to rely on) can refresh this screen
+  // in place after mutating item.pin.  Mirrors the editPrompt.js /
+  // editPromptText.js renderFor() cross-module pattern.
+  return Object.freeze({ send, renderItemHeaderAndPreview, renderUpdateScreen: _renderUpdateScreen });
 })();
 
 /// Handle s<path> cmd — navigate the editor into the sub-menu at the

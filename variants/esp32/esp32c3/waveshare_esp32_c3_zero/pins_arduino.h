@@ -19,7 +19,13 @@ static const uint8_t TX = 21;
 static const uint8_t RX = 20;
 
 static const uint8_t SDA = 8;
-static const uint8_t SCL = 9;
+// pfodWeb NOTE: SCL deliberately not declared on this GPIO - that pin is
+// the confirmed onboard BOOT button (see board.json for sources).
+// Declaring it as SCL here would let the parser silently add an
+// I2C-clock capability on top of the button-only capability list, since
+// build_boards.js appends the I2C-clock capability to whatever GPIO
+// number this alias names, independent of anything set in board.json.
+// SDA above is left declared since its pin has no such conflict.
 
 static const uint8_t SS = 7;
 static const uint8_t MOSI = 6;

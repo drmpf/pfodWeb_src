@@ -16,33 +16,16 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 8;
 static const uint8_t SCL = 9;
 
-static const uint8_t SS = 21;
-static const uint8_t MOSI = 35;
-static const uint8_t MISO = 37;
-static const uint8_t SDO = 35;
-static const uint8_t SDI = 37;
-static const uint8_t SCK = 36;
+// pfodWeb NOTE: SS/MOSI/MISO/SDO/SDI/SCK and SD_CS/SD_DETECT deliberately
+// NOT declared - dedicated onboard microSD card SPI bus (GPIO21/35/36/37/38).
 
-static const uint8_t SD_CS = 21;
-static const uint8_t SD_DETECT = 38;
-
-static const uint8_t A0 = 1;
-static const uint8_t A1 = 2;
-static const uint8_t A2 = 3;
-static const uint8_t A3 = 4;
+// pfodWeb NOTE: A0-A3/A5-A6 and T1-T4/T6-T7 deliberately NOT declared -
+// same dedicated onboard I2S amp/RTC_INT/RGB_PWR pins below.
 static const uint8_t A4 = 5;
-static const uint8_t A5 = 6;
-static const uint8_t A6 = 7;
 static const uint8_t A7 = 8;
 static const uint8_t A8 = 9;
 
-static const uint8_t T1 = 1;
-static const uint8_t T2 = 2;
-static const uint8_t T3 = 3;
-static const uint8_t T4 = 4;
 static const uint8_t T5 = 5;
-static const uint8_t T6 = 6;
-static const uint8_t T7 = 7;
 static const uint8_t T8 = 8;
 static const uint8_t T9 = 9;
 
@@ -55,17 +38,8 @@ static const uint8_t VBAT_SENSE = 17;
 #define BAT_VOLT_PIN VBAT_SENSE
 static const uint8_t VBUS_SENSE = 16;
 
-static const uint8_t I2S_MIC_SEL = 39;
-static const uint8_t I2S_MIC_WS = 40;
-static const uint8_t I2S_MIC_DATA = 41;
-static const uint8_t I2S_MIC_BCLK = 42;
-
-static const uint8_t I2S_AMP_SD = 4;
-static const uint8_t I2S_AMP_DATA = 3;
-static const uint8_t I2S_AMP_BCLK = 2;
-static const uint8_t I2S_AMP_WS = 1;
-
-static const uint8_t RTC_INT = 7;
+// pfodWeb NOTE: I2S_MIC_*/I2S_AMP_*/RTC_INT deliberately NOT declared -
+// dedicated onboard mic (GPIO39-42), amp (GPIO1-4), and RTC interrupt (GPIO7).
 
 static const uint8_t RGB_DATA = 18;
 // RGB_BUILTIN and RGB_BRIGHTNESS can be used in new Arduino API rgbLedWrite()
@@ -76,6 +50,7 @@ static const uint8_t LED_BUILTIN = RGB_BUILTIN;
 #define BUILTIN_LED LED_BUILTIN  // backward compatibility
 #define LED_BUILTIN LED_BUILTIN  // allow testing #ifdef LED_BUILTIN
 
-static const uint8_t RGB_PWR = 6;
+// pfodWeb NOTE: RGB_PWR (GPIO6) deliberately NOT declared - internal
+// power-gate for the onboard RGB LED, not general-purpose.
 
 #endif /* Pins_Arduino_h */

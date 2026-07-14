@@ -1,0 +1,113 @@
+pandabyte_xc6 board research notes
+====================================
+
+Board directory: variants/esp32/esp32c6/pandabyte_xc6
+No board.json existed prior to this task; created as a full copy of the
+esp32c6 chip-level default board.json with only GPIO22 and GPIO23
+capabilities modified (see NOTE comments at top of board.json).
+
+pins_arduino.h candidates found (before this audit's edit):
+  LED_BUILTIN    = GPIO3
+  RGB_BUILTIN    = GPIO23
+  BUTTON_BUILTIN = GPIO22
+  TX = GPIO16, RX = GPIO17 (no conflict with either candidate above)
+  SDA = GPIO23 (== RGB_BUILTIN), SCL = GPIO22 (== BUTTON_BUILTIN)  <-- boilerplate collision, deleted
+  SS = GPIO18, MOSI = GPIO19, MISO = GPIO20, SCK = GPIO21 (no conflict)
+  WIRE1_PIN_DEFINED: SDA1 = GPIO6, SCL1 = GPIO7 (LP I2C, fixed by chip silicon)
+
+Sources consulted
+------------------
+1. https://github.com/espressif/arduino-esp32/pull/12220
+   "PandaByte Board Support" - PR merged into the official Espressif
+   arduino-esp32 core, adding 5 PandaByte boards in one PR: x32, xC3m,
+   xS3, xC5, and xC6. Fetched via the GitHub REST API (api.github.com)
+   since the HTML PR page did not render its body through WebFetch. The
+   PR description includes a vendor hardware test-results table, tested
+   on real hardware with Arduino IDE 2.3.7 / arduino-esp32 v3.3.5, with a
+   dedicated "xC6" column:
+     Blink (digitalWrite)        PASS
+     Blink RGB (FastLED)         PASS
+     Digital Input (Switch)      PASS
+     Serial CDC (USB)            PASS
+     WiFi (WiFiClient)           PASS
+     I2C (BMP280, ADXL345)       PASS
+     SPI (BMP280, ADXL345)       PASS
+   This is real vendor-submitted, hardware-verified confirmation (not
+   just an alias name in pins_arduino.h) that GPIO23 drives a real
+   addressable RGB LED via FastLED, and GPIO22 is a real digital-input
+   switch, specifically on the xC6 board (not just inferred from a
+   sibling board sharing the same PR).
+
+2. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/pandabyte_xc6/pins_arduino.h
+   Confirms the merged upstream file matches the local pins_arduino.h
+   byte-for-byte (before this audit's edit): LED_BUILTIN=3,
+   RGB_BUILTIN=23, BUTTON_BUILTIN=22, TX=16, RX=17, SDA=23, SCL=22,
+   SS=18, MOSI=19, MISO=20, SCK=21, SDA1=6, SCL1=7. This is the vendor's
+   own file, so the SDA=23/SCL=22 boilerplate collision with the RGB
+   LED/button pins is confirmed to originate upstream, not from a local
+   copy-paste error.
+
+3. https://www.pandabyte.in/product-page/pandabyte-xc6-esp32-c6-microcontroller-board-arduino-compatible
+   Official PandaByte product page for the xC6. States the board
+   "features a programmable single-color LED, an onboard push button,
+   and an RGB LED." Corroborates that a real onboard button and a real
+   RGB LED physically exist, but gives no GPIO numbers or wiring
+   detail - the PR #12220 hardware test table (source 1) is the
+   authoritative pin-level confirmation.
+
+4. Sibling audit precedent (same session): esp32c6/esp32c6 board.json
+   (generic Espressif ESP32-C6-DevKitC-1 entry) and pandabyte_xs3
+   board.json (same PR #12220, ESP32-S3 sibling). Both established:
+     - RGB_BUILTIN / FastLED test -> led_neopixel tag.
+     - BUTTON_BUILTIN / Switch test -> button tag.
+     - WIRE1_PIN_DEFINED SDA1/SCL1 on ESP32-C6 is the chip's fixed LP_I2C
+       pin-mux location (confirmed via Espressif's ESP32-C6-DevKitC-1
+       user guide and the ESP32-C6 datasheet in the esp32c6/esp32c6
+       audit), not evidence of a dedicated onboard I2C device - applies
+       to every ESP32-C6 board, including this one, absent contrary
+       vendor documentation.
+
+Alias-collision check (step 4/5 of this audit's instructions)
+----------------------------------------------------------------
+This variant's original pins_arduino.h aliased SDA to GPIO23 (identical
+to RGB_BUILTIN) and SCL to GPIO22 (identical to BUTTON_BUILTIN). This is
+the same generic-template pattern Espressif uses across many boards
+where no distinct default I2C pin pair was chosen, not a statement that
+an I2C device is wired to those pins. build_boards.js appends
+"i2c_sda"/"i2c_scl" capabilities to a GPIO purely by numeric match
+against the SDA/SCL constants (pfodWeb_src/build_boards.js lines
+~698-699), independent of what capabilities are set in a board.json
+chipGpios entry. Left in place, this would have silently added
+"i2c_sda" onto GPIO23 next to "led_neopixel", and "i2c_scl" onto GPIO22
+next to "button" - contradicting the confirmed dedicated-hardware
+identity of both pins. Fix applied: deleted the `SDA`/`SCL` alias
+declaration lines from pins_arduino.h, with a `// pfodWeb NOTE:` comment
+describing the change in prose only (per this audit's instruction not to
+reproduce the exact original declaration text inside the comment, since
+the parser is comment-blind and would re-match it).
+No other declared alias (TX=16, RX=17, SS=18, MOSI=19, MISO=20, SCK=21,
+A0-A6=0-6, SDA1=6, SCL1=7) collides with GPIO22 or GPIO23.
+
+What was tagged
+-----------------
+GPIO23 -> ["digital_output", "led_neopixel", "pwm_output"] - confirmed
+  addressable/WS2812-style RGB LED (RGB_BUILTIN + PR #12220 "Blink RGB
+  (FastLED)" PASS on the xC6 column specifically). High confidence.
+GPIO22 -> ["digital_input", "button"] - confirmed onboard user push
+  button (BUTTON_BUILTIN + PR #12220 "Digital Input (Switch)" PASS on
+  the xC6 column specifically + product page listing "an onboard push
+  button"). High confidence.
+GPIO6/GPIO7 (SDA1/SCL1) -> left unchanged at chip-level defaults
+  (general-purpose digital/analog/PWM pins). No onboard I2C peripheral
+  documented at either pin for this board; same LP_I2C fixed-pin-mux
+  reasoning as the sibling esp32c6/esp32c6 audit applies unchanged.
+
+One-line summary
+------------------
+GPIO23 tagged led_neopixel and GPIO22 tagged button on vendor-confirmed
+PR #12220 hardware test evidence specific to the xC6 board; the
+boilerplate SDA=23/SCL=22 aliases that collided with those two pins were
+deleted from pins_arduino.h to prevent build_boards.js from silently
+appending i2c_sda/i2c_scl capabilities onto them; GPIO6/7 (SDA1/SCL1)
+left as general-purpose, per the same fixed-LP_I2C-pin-mux reasoning
+already confirmed for the sibling esp32c6/esp32c6 board.

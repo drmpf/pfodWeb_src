@@ -1,0 +1,95 @@
+// pfodWeb NOTE: GPIO0 tagged "button" - confirmed onboard BOOT button
+// (ExploreEmbedded official "Hornbill Devboard Schematic v1.0.pdf",
+// github.com/ExploreEmbedded/Hornbill-ESP32-DEV: SW2 "Boot Switch" wired
+// directly between GND and IO0; vendor pinout diagram
+// pinout_horbil_v1.0l.jpg labels the physical button "BOOT"). Not TX/RX
+// (TX=1, RX=3).
+// pfodWeb NOTE: GPIO5 tagged "led_high" - confirmed onboard Blue LED D4
+// (same official schematic PDF: net IO5 -> R13 (330 ohm) -> D4 "Blue" LED
+// -> GND, i.e. GPIO sources current through the LED to ground = active-high).
+// pwm_output kept since GPIO5 already had it in the chip-level default.
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32" -> designer/boards/ESP32/ESP32.json -> const ESP32Data = {...}
+  "boardName": "ESP32",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32 has two 8-bit DAC channels on GPIO 25 and GPIO 26.
+  // dacWrite(pin, value): value 0–255 maps to 0.0–3.3 V output.
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+
+  // ADC: ESP32 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation can be set via analogSetAttenuation()
+  // for full 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Keys are GPIO numbers as strings; values are plain text shown
+  // under the pin label in the pin picker (use \n for line breaks).
+  // Reference: ESP32 Technical Reference Manual — Strapping Pins section.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32 chip.  GPIOs 6-11 (flash)
+  // and 16-17 (PSRAM) are excluded — not user-accessible on modules with
+  // integrated flash/PSRAM.  GPIOs 34-39 are input-only (no output driver).
+  // GPIOs 20, 24, 28-31 do not exist in this chip's silicon.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_output", "pwm_output", "led_high"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "27": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

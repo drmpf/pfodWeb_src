@@ -1,0 +1,203 @@
+Board: iLabs "Challenger RP2040 LoRa" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/challenger_2040_lora/
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+Confirmed the onboard RFM95W (SX1276-family) LoRa radio module occupies
+GPIO9-15 and GPIO18 (SPI1 bus + reset + 3 DIO interrupt lines). Found
+these pins were ALREADY fully excluded from the Designer's pin list by a
+prior-session edit to this board's pins_arduino.h (no static const
+uint8_t alias declared for any of them) - so no board.json chipGpios
+entries were needed or added for the LoRa pins themselves (see
+"WHY NO chipGpios ENTRIES..." reasoning below - adding them would have
+been counterproductive). Created board.json (this board previously had
+none) containing a single chipGpios entry: GPIO24, tagged as the onboard
+general-purpose LED (active-high). No onboard NeoPixel or user button
+found. pins_arduino.h was NOT modified this session (already correct).
+
+SOURCES CONSULTED
+------------------
+1. ilabs.se/challenger-rp2040-lora-datasheet (official iLabs datasheet -
+   authoritative). States verbatim: "The board uses the second SPI
+   channel (SPI1) of the MCU to connect to the RFM95W module... GPIO9 -
+   GPIO12 is configured as SPI bus 1 (SPI1)... GPIO13 is connected to
+   the reset input of the RFM95W, and GPIO14, GPIO15 and GPIO18 is
+   connected to DIO0 - DIO2 respectively." Also: "GPIO24 is connected to
+   the general purpose LED."
+2. ilabs.se/product/challenger-rp2040-lora/ (official iLabs product
+   page) - describes the LED as a "user programmable green LED" on "the
+   other side of the USB connector", "easily controlled by the user
+   program." No NeoPixel or user button mentioned anywhere on the page.
+3. github.com/BNNorman/ilabs-challenger-rp2040-lora (community
+   configuration-notes repo, cross-check) - independent table:
+     NSS=GPIO9, SCK=GPIO10, MOSI=GPIO11, MISO=GPIO12, RST=GPIO13,
+     DIO0=GPIO14, DIO1=GPIO15, DIO2=GPIO18 (noted "unused" by that
+     project's own code, but still physically wired to the RFM95W, so
+     still dedicated hardware, not general-purpose GPIO).
+4. tinygo.org/docs/reference/microcontrollers/machine/challenger-rp2040
+   (independent third-party board port, cross-check) - corroborates the
+   identical LoRa CS/SCK/SDO/SDI/RESET/DIO0-2 -> GPIO9-15,18 mapping,
+   and the same GPIO24 LED assignment. Also lists this board's other bus
+   defaults (SPI0, I2C0/I2C1, UART0/1) - all consistent with the local
+   pins_arduino.h, no new information relevant to this audit.
+5. github.com/earlephilhower/arduino-pico
+   variants/challenger_2040_lora/pins_arduino.h (upstream arduino-pico
+   source that this repo's local copy is derived from) - fetched and
+   confirmed identical pin assignments to the local file; no additional
+   pin-role documentation in the upstream comments beyond what's already
+   annotated locally.
+6. Local codebase: variants/rp2040/rp2040/challenger_2040_lora/
+   pins_arduino.h - already carried a prior-session "pfodWeb NOTE"
+   comment (predating this board.json) stating: "D14-D17 deliberately
+   NOT declared -- GPIO13/14/15/18 are the RFM95W LoRa module's RST/
+   DIO0/DIO1/DIO2 lines, not general-purpose (GPIO9-12, the module's
+   SPI1 bus, are already correctly excluded above)." Verified directly:
+   the file's only `static const uint8_t` declarations are D0-D13, D18,
+   and A0-A5, resolving to GPIOs {16,17,20,23,22,2,3,0,1,4,5,6,7,8,24,
+   26,27,28,29,19,21} - none of {9,10,11,12,13,14,15,18} appear anywhere.
+7. variants/rp2040/rp2040/board.json (chip-level defaults - chipGpios:{}
+   deliberately empty, copied verbatim into this board's new board.json
+   except for the added chipGpios entry).
+8. Precedent/schema reference: variants/rp2040/rp2040/wiznet_5500_evb_pico/
+   board.json (dedicated-hardware SPI exclusion pattern for an onboard
+   radio/network chip) and variants/rp2040/rp2040/rpipico/board.json
+   (simple onboard-LED active-high tagging pattern) - both read in full
+   before writing this board's board.json.
+9. pfodWeb_src/build_boards.js (read directly to confirm parser
+   behavior - see "WHY NO chipGpios ENTRIES..." below for the exact
+   mechanism traced).
+
+WHY NO chipGpios ENTRIES FOR THE LORA PINS (GPIO9-15,18)
+-----------------------------------------------------------
+build_boards.js's buildEsp32Board() (the parser the "rp2040" family
+routes through - confirmed via ../board.json's own family-selection
+comment) only lists a GPIO in the Designer's pin picker if it appears
+either (a) as a `static const uint8_t`/`constexpr` alias in
+pins_arduino.h (parsed by parseEsp32Consts(), ~build_boards.js line
+439-489 - `#define`-only macros like PIN_SPI1_MISO are deliberately NOT
+harvested, only peer `static const uint8_t NAME = ...;` declarations),
+or (b) as a key in this board's chipGpios object:
+  `const allGpios = new Set(aliasesByGpio.keys());
+   for (const key of Object.keys(chipGpiosMap)) { ... allGpios.add(n); }`
+  (~build_boards.js line 535-539)
+
+Since this board's pins_arduino.h already declares NO `static const
+uint8_t` alias resolving to GPIO9, 10, 11, 12, 13, 14, 15, or 18 (see
+source #6 above), those eight GPIOs are already 100% absent from the
+Designer's pin list with zero board.json involvement. Adding chipGpios
+entries for them here would have been COUNTERPRODUCTIVE: it would
+re-add each one to allGpios as a bare, visible "GPIO<n>" row, and
+build_boards.js unconditionally appends a "Check if available on board"
+note to any rp2040-family GPIO absent from pins_arduino.h regardless of
+a chipGpios override (~build_boards.js line 705-718: "Suppressed for
+the esp32 and esp8266 families... Left in place for rp2040, which
+hasn't had the same board-by-board audit.") - which would undo the full
+concealment the prior pins_arduino.h edit achieved, and would
+misleadingly suggest the pin's availability is merely unverified rather
+than confirmed-dedicated to the onboard LoRa module. This board's own
+D14-D17 comment already documents the intended fully-hidden outcome;
+this audit's board.json simply leaves that outcome untouched.
+
+Also confirmed by cross-checking build_boards.js's alias-name matching
+(~line 543-548, `consts.SDA/SCL/SS/MOSI/MISO/SCK/TX/RX`): this board's
+pins_arduino.h declares NONE of those literal names as bare `static
+const uint8_t` globals (only PIN_SPI0_*/PIN_SPI1_*/PIN_WIRE0_*/
+PIN_SERIAL1_* #defines, which are macro-only and not harvested per
+source #6 above) - so there is also no risk of build_boards.js's
+unconditional spi_ss/spi_mosi/spi_miso/spi_sck/i2c_sda/i2c_scl
+auto-append (~line 697-703) silently re-adding a bus-role capability to
+any GPIO on this board, LoRa-dedicated or otherwise. (Note: this also
+means the board's genuinely general-purpose SPI0/Wire0/Serial1 pins
+GPIO0,1,16,17,20-23 do NOT currently get spi_*/i2c_*/serial_* role
+capabilities auto-tagged either, since none of the required bare-named
+consts exist in this file - a pre-existing pins_arduino.h gap unrelated
+to the LoRa/LED audit and out of scope for this task, flagged here only
+for awareness of a future full-audit pass on this board.)
+
+PER-PIN REASONING
+------------------
+GPIO9 (RFM95W NSS/CS, LoRa SPI1 chip-select): no pins_arduino.h alias
+  exists for this GPIO; already fully absent from the Designer pin list.
+  No board.json entry needed or added.
+
+GPIO10 (RFM95W SCK, LoRa SPI1 clock): same - no alias, already excluded.
+
+GPIO11 (RFM95W MOSI, LoRa SPI1 data out): same - no alias, already
+  excluded.
+
+GPIO12 (RFM95W MISO, LoRa SPI1 data in): same - no alias, already
+  excluded.
+
+GPIO13 (RFM95W RST, active-low reset driven by the LoRa library): same -
+  no alias, already excluded.
+
+GPIO14 (RFM95W DIO0, radio interrupt line): same - no alias, already
+  excluded.
+
+GPIO15 (RFM95W DIO1, radio interrupt line): same - no alias, already
+  excluded.
+
+GPIO18 (RFM95W DIO2, radio interrupt line - "unused" by at least one
+  community library per source #3, but still physically wired to the
+  radio module and not exposed on any breakout header per source #3's
+  "these pins are not available on the breakout connectors"): same - no
+  alias, already excluded.
+
+GPIO24 (PIN_LED / LED_BUILTIN, D18 alias): tagged in the new board.json
+  chipGpios with ["digital_output", "pwm_output", "led_high"]. Presence
+  confirmed by the official iLabs datasheet ("GPIO24 is connected to the
+  general purpose LED") and independently by the product page and
+  TinyGo docs. Active-high polarity is an inference (no schematic or
+  devicetree source was found that states the polarity explicitly for
+  this specific board), based on: (a) the standard arduino-pico
+  Blink-example idiom (digitalWrite(LED_BUILTIN, HIGH) turns the LED
+  on) used uniformly across every RP2040 board this core supports,
+  including every other RP2040 board already audited in this repo
+  (rpipico, wiznet_5500_evb_pico, adafruit_feather_scorpio - all
+  confirmed active-high, none active-low), and (b) no vendor
+  documentation, schematic, or third-party board port found describing
+  a reversed/active-low LED wiring for this specific board. This
+  matches the confidence bar used by the rpipico precedent (which also
+  relies on the "digitalWrite(LED_BUILTIN, HIGH); // LED on" idiom
+  rather than a literal schematic read). digital_input capability
+  dropped to match this repo's established led_high precedent for
+  dedicated onboard LED pins; pwm_output kept since arduino-pico's
+  analogWrite() works on any RP2040 GPIO.
+
+No onboard NeoPixel found - confirmed absent by the iLabs datasheet and
+  product page (neither mentions one; this board's marketing focus is
+  the LoRa radio + Feather form factor, not NeoPixel driving like the
+  unrelated adafruit_feather_scorpio board). No chipGpios tag applied.
+
+No onboard user button (beyond the standard RP2040 BOOTSEL, which is
+  not a normal GPIO on RP2040 - it is read via a QSPI-flash-CS-pin SDK
+  trick, not digitalRead(), matching the rpipico precedent's reasoning -
+  out of scope since this repo's capability tagging is keyed by GPIO
+  number) - confirmed absent by the iLabs datasheet and product page
+  (neither mentions a discrete user button). No chipGpios tag applied.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax using a standalone
+  script that strips `//` line comments (respecting quoted strings) and
+  then runs a plain JSON.parse() - confirmed valid, and confirmed the
+  file has exactly the required 9 top-level fields (boardName,
+  displayName, family, inputOnlyGpios, connections, pinNotes,
+  chipGpios, pwm, dac, adc) plus the chipGpios object with one entry
+  (GPIO24). No build script was executed and build_boards.js was never
+  require()'d, per task instructions.
+- inputOnlyGpios/connections/pinNotes/pwm/dac/adc/boardName/displayName/
+  family values reproduce the chip-level variants/rp2040/rp2040/
+  board.json defaults verbatim except for the added chipGpios entry,
+  per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/challenger_2040_lora/board.json (new
+  file - this board previously had none)
+- Created: boardsDetails/rp2040/rp2040/challenger_2040_lora/notes.txt
+  (this file)
+- pins_arduino.h: NOT modified this session (a prior session had
+  already correctly removed all D-alias declarations for the LoRa
+  module's GPIOs; verified correct and left untouched)

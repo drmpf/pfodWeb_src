@@ -1,0 +1,181 @@
+Board: heltec_wireless_mini_shell (variants/esp32/esp32c3/heltec_wireless_mini_shell)
+Chip: ESP32-C3 (ESP32-C3FN4)
+Audit type: dedicated-hardware pin-exclusion audit (flagged by discovery sweep for
+            "#define WIRELESS_MINI_SHELL true" and "#define RGB_BRIGHTNESS 64"),
+            plus button/LED capability retrofit and the SDA/SCL/SS/MOSI/MISO/SCK
+            alias-collision check.
+Researched: 2026-07-12
+
+1) FULL FILE READ (variants/esp32/esp32c3/heltec_wireless_mini_shell/pins_arduino.h, before edits)
+-----------------------------------------------------------------------------------------------
+  #define WIRELESS_MINI_SHELL true
+  static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + 8;   (virtual/NeoPixel-style pin encoding)
+  #define RGB_BUILTIN    LED_BUILTIN
+  #define RGB_BRIGHTNESS 64
+  static const uint8_t TX = 21;  RX = 20;
+  static const uint8_t SDA = 8;  SCL = 9;
+  static const uint8_t SS = 7;  MOSI = 6;  MISO = 5;  SCK = 4;
+  static const uint8_t A0..A5 = 0..5;
+Confirmed via WebFetch of the vendor's own upstream file (see source 3 below) that this is
+BYTE-IDENTICAL to the official Heltec-Aaron-Lee/WiFi_Kit_series repo copy - not stale, not a
+local modification. The LED_BUILTIN virtual-pin encoding (SOC_GPIO_PIN_COUNT + 8) is the same
+pattern used by Espressif's generic ESP32-C3 template (variants/esp32/esp32c3/esp32c3/pins_arduino.h
+in this repo, PIN_RGB_LED = 8) - strong evidence this board's pins_arduino.h is unmodified,
+copy-pasted generic ESP32-C3 boilerplate that was never customized to reflect the actual HT-CT62
+module's onboard LoRa radio wiring.
+
+2) SOURCES CONSULTED
+---------------------
+1. https://resource.heltec.cn/download/HT-CT62/HT-CT62(Rev1.1).pdf
+   Official Heltec datasheet for the HT-CT62 LoRa module (Rev 1.1, Sep 2022). Downloaded and read
+   in full via the Read tool (PDF support). Section 2.2 "Pin description" (Table 2.2) is the
+   authoritative pin table for all 22 physical castellated pins. Key rows:
+     GPIO0:  "GPIO0, ADC1_CH0, 32K_XP"                          - no dedicated function
+     GPIO1:  "GPIO1, ADC1_CH1, 32K_XN"                          - no dedicated function
+     GPIO2:  "GPIO2, ADC1_CH2, FSPIQ"                           - no dedicated function
+     GPIO3:  "GPIO3, ADC1_CH3, connected to SX1262_DIO1"        - dedicated LoRa control line
+     GPIO4:  "GPIO4, ADC1_CH4, FSPIHD, MTMS, connected to SX1262_BUSY"  - dedicated LoRa control line
+     GPIO5:  "GPIO5, ADC2_CH0, FSPIWP, MTDI, connected to SX1262_RST"   - dedicated LoRa control line
+     GPIO6:  "GPIO6, FSPICLK, MTCK, connected to SX1262_MISO"   - dedicated LoRa SPI bus
+     GPIO7:  "GPIO7, FSPID, MTDO, connected to SX1262_MOSI"     - dedicated LoRa SPI bus
+     GPIO8:  "GPIO8, connected to SX1262_NSS"                   - dedicated LoRa SPI chip-select
+     GPIO9:  "GPIO9"                                            - no dedicated function
+     GPIO10: "GPIO10, FSPICS0, connected to SX1262_SCK"         - dedicated LoRa SPI bus
+     GPIO18: "GPIO18, USB_D-"; GPIO19: "GPIO19, USB_D+"
+     GPIO20: "RXD I/O U0RXD, GPIO20"; GPIO21: "TXD I/O U0TXD, GPIO21"
+   No LED, RGB, NeoPixel, WS2812, button, key, or switch function is mentioned anywhere in the
+   12-page document (pin table, feature list, or general specs). "Hardware Resource" summary states
+   "5*ADC1+1*ADC2; 2*UART; 1*I2C; 3*SPI; 15*GPIO" - the "1*I2C" is the SoC's generic peripheral
+   capability (any GPIO can be assigned via the pin matrix), NOT evidence of a wired-up I2C device
+   on GPIO8/9. GPIO11 is entirely absent from the 22-pin table - the pin count (0-10 = 11 pins,
+   plus 18-21 = 4 pins = 15 total) matches "15*GPIO" exactly only when GPIO11 is excluded,
+   confirming it is not broken out on this module (consistent with GPIO11 being committed
+   internally to VDD_SPI on ESP32-C3 modules using SiP-packaged/embedded flash, as this one does
+   per "4MB SiP Flash" in the datasheet's General specifications table).
+
+2. https://raw.githubusercontent.com/Heltec-Aaron-Lee/WiFi_Kit_series/master/variants/heltec_wireless_mini_shell/pins_arduino.h
+   Vendor's own upstream Arduino core pins_arduino.h for this exact board variant. Confirmed
+   byte-for-byte identical to the local copy in this repo (same WIRELESS_MINI_SHELL flag,
+   LED_BUILTIN = SOC_GPIO_PIN_COUNT + 8, TX=21/RX=20, SDA=8/SCL=9, SS=7/MOSI=6/MISO=5/SCK=4,
+   A0-A5=0-5). This is the same generic template pattern as the plain "ESP32C3 Dev Module" entry
+   (variants/esp32/esp32c3/esp32c3/pins_arduino.h in this repo), strongly indicating none of the
+   SDA/SS/MOSI/MISO/SCK/A3-A5 values were customized for this board's actual LoRa module wiring.
+
+3. https://raw.githubusercontent.com/meshtastic/firmware/master/variants/esp32c3/heltec_esp32c3/variant.h
+   Independent, real-world, shipped third-party firmware (Meshtastic) targeting actual physical
+   HT-CT62 hardware. Confirms the LoRa SPI/control pin assignments from source 1 exactly:
+   LORA_SCK=10, LORA_MISO=6, LORA_MOSI=7, LORA_CS(NSS)=8, LORA_RESET=5, LORA_DIO1=3, LORA_BUSY=4.
+   100% match with the official datasheet - high-confidence independent corroboration.
+   This file ALSO defines BUTTON_PIN=9 and LED_POWER=2 - see section 3 below for why these were
+   NOT used as evidence for this board's own default profile.
+
+4. https://docs.heltec.org/en/node/esp32/ht_ct62/index.html and
+   https://docs.heltec.org/en/node/esp32/ht_ct62/programming_esp32.md (via GitHub HeltecDocs source)
+   and https://heltec.org/project/ht-ct62/
+   Official docs/product pages for the HT-CT62. Confirm the Arduino IDE board-selection name is
+   literally "Wireless Mini Shell" (FAQ: "Please select Wireless Mini Shell"), matching this
+   variant directory. None of these pages mention any onboard RGB LED, NeoPixel, WS2812, status
+   LED, or user/PRG button anywhere in feature lists or FAQ content.
+
+5. FCC ID 2A2GJ-HT-CT62 ("Wireless mini shell" by Heltec Automation Technology Co., Ltd)
+   Confirms "HT-CT62" and "Wireless mini shell" are the same product/filing, consistent with
+   source 4.
+
+6. WebSearch for "Heltec HT-CT62 test board / backplate / carrier board button LED USB" turned up
+   Heltec's "ESP-Dev Backplane" - a SEPARATE accessory product compatible with both HTIT-Wsh and
+   HT-CT62 modules, providing USB connectivity and a button. This is analogous to the "Wireless
+   Shell Test Bottom Board" accessory already discounted as evidence in this session's
+   heltec_wireless_shell_v3 audit (see boardsDetails/esp32/esp32s3/heltec_wireless_shell_v3/notes.txt)
+   - an optional add-on carrier PCB, not part of the bare module's own default Arduino board
+   profile. Not used as evidence for this board's own button/LED.
+
+7. Community pinout thread (community.heltec.cn/t/ht-ct62-pinout/13103) surfaced only via
+   WebSearch snippet (direct WebFetch failed - connection refused). Snippet mentioned "USER_Key on
+   GPIO8" and "CHIP_PU on GPIO10" - but this directly CONTRADICTS the official vendor datasheet
+   (source 1), which shows GPIO8 = SX1262_NSS and GPIO10 = SX1262_SCK, both confirmed independently
+   by the Meshtastic firmware (source 3). Treated as unreliable/likely-confused third-party
+   community content (possibly describing a different board or a misremembered pinout) and
+   explicitly NOT relied upon given it conflicts with two independent, higher-quality sources.
+
+2) PINS CONSIDERED BUT NOT TAGGED
+-----------------------------------
+- GPIO8 (LED_BUILTIN/RGB_BUILTIN virtual-pin target per pins_arduino.h, SOC_GPIO_PIN_COUNT + 8):
+  NOT TAGGED as an LED. The official datasheet and independent Meshtastic firmware both confirm
+  GPIO8 is physically wired to the onboard LoRa SX1262's NSS (SPI chip-select) line, not any LED.
+  The pins_arduino.h LED_BUILTIN encoding is unmodified generic ESP32-C3 template boilerplate
+  (identical to the plain "ESP32C3 Dev Module" entry's PIN_RGB_LED=8), not board-specific evidence.
+  GPIO8 was excluded from chipGpios entirely (dedicated LoRa hardware) rather than tagged.
+
+- GPIO9 (Meshtastic variant.h's BUTTON_PIN) and GPIO2 (Meshtastic variant.h's LED_POWER):
+  NOT TAGGED. No Heltec vendor source (datasheet, docs.heltec.org, heltec.org product page, or
+  the vendor's own pins_arduino.h) documents any button or LED function on either pin for the
+  stock "Wireless Mini Shell"/HT-CT62 module. The Meshtastic definitions most likely describe an
+  add-on carrier board (Heltec's own "ESP-Dev Backplane" accessory, or one of several third-party
+  DIY carrier PCBs found during research - e.g. CheapMesh, OSHWLab "Meshtastic Heltec CT62 tiny
+  board" - both of which add their own components around the bare module), not the bare module's
+  own onboard hardware. Consistent with the precedent set earlier this session for
+  heltec_wireless_shell_v3, where a similar separate backplane/bottom-board accessory was
+  explicitly excluded as evidence for the module's own default board profile. GPIO9 and GPIO2
+  remain in chipGpios with their unmodified default capabilities (no button/led tag).
+
+3) SDA/SCL/SPI ALIAS-COLLISION CHECK (critical check per task instructions)
+------------------------------------------------------------------------------
+- SDA=8 in pins_arduino.h collided with GPIO8's real, vendor-confirmed dedicated LoRa NSS
+  function (and with the LED_BUILTIN virtual-pin encoding, itself unconfirmed - see above).
+  build_boards.js unconditionally appends "i2c_sda" to whatever GPIO the file's SDA alias points
+  at (see pfodWeb_src/build_boards.js line ~698), REGARDLESS of chipGpios content, and - critically
+  - even GPIOs excluded from chipGpios are still pulled back into the generated pin list via
+  `allGpios = new Set(aliasesByGpio.keys())` (line ~535) if any pins_arduino.h alias still
+  references them, landing them in the generic capability-derivation fallback path. Simply
+  removing GPIO8 (and GPIO3-7/10) from board.json's chipGpios would NOT have been sufficient by
+  itself - the SDA/SS/MOSI/MISO/SCK/A3/A4/A5 aliases in pins_arduino.h had to be edited too, or
+  those excluded GPIOs would have silently reappeared in the compiled board data with generic
+  digital_input/digital_output/pwm_output (+ wrongly-inferred spi_*/i2c_sda) capabilities via the
+  fallback branch. Fixed by:
+    - Changing pins_arduino.h's SDA assignment to -1 (matches the existing "-1 = no default Wire
+      pin" convention already used in variants/esp32/esp32c3/esp32c3/pins_arduino.h and
+      variants/esp32/esp32c3/xteink_x4/pins_arduino.h). SCL=9 left unchanged (GPIO9 has no real
+      dedicated hardware conflict, and Wire pins remain fully software-reassignable regardless).
+    - Deleting the SS/MOSI/MISO/SCK declaration lines entirely (GPIO7/6/5/4 in the original file) -
+      those GPIO numbers don't even match the LoRa module's real SPI wiring (6/7/8/10 per the
+      datasheet), confirming they were never customized boilerplate, and GPIO4/5/6/7 are all
+      separately confirmed dedicated LoRa lines regardless.
+    - Deleting the A3/A4/A5 declaration lines (GPIO3/4/5 - dedicated LoRa DIO1/BUSY/RST), keeping
+      A0/A1/A2 (GPIO0/1/2 - free, vendor-confirmed no dedicated function).
+  Comments added to pins_arduino.h describe the changes in plain English only - no literal
+  original C declaration text was written inside any comment, per the task's parser-blindness
+  warning (build_boards.js's alias scan is a plain regex over the whole file, comments included).
+
+4) SUMMARY OF WHAT WAS APPLIED
+---------------------------------
+- Created board.json as a full copy of the ESP32-C3 chip-level default
+  (variants/esp32/esp32c3/board.json), then removed chipGpios entries for GPIO3/4/5/6/7/8/10
+  (dedicated onboard LoRa SX1262 SPI bus + control lines, per official HT-CT62 datasheet Table 2.2,
+  cross-confirmed by independent Meshtastic firmware pin definitions) and GPIO11 (not broken out
+  on this module - absent from the datasheet's pin table, likely internal VDD_SPI on this
+  SiP-flash package). Remaining chipGpios: 0, 1, 2, 9 (general-purpose GPIO, unmodified
+  capabilities) and 20/21 (RX/TX, unchanged).
+- Edited pins_arduino.h: set SDA to -1 (was 8, colliding with the confirmed-dedicated LoRa NSS
+  pin); deleted the SS/MOSI/MISO/SCK lines entirely (unmodified boilerplate that doesn't match
+  the real LoRa SPI wiring and whose GPIO numbers are separately confirmed dedicated); deleted the
+  A3/A4/A5 lines entirely (GPIO3/4/5 are dedicated LoRa control lines, not general analog inputs).
+  Added plain-English NOTE comments explaining each change; no original C declaration text was
+  quoted inside any comment.
+- No button or LED/NeoPixel capability was tagged anywhere - no genuine vendor evidence of either
+  exists for this board's own default hardware (the LED_BUILTIN/RGB_BUILTIN macros in
+  pins_arduino.h are unmodified generic-template boilerplate pointing at a pin that is actually
+  the onboard LoRa radio's chip-select line, and the only button/LED evidence found - Meshtastic's
+  variant.h - describes an add-on carrier board, not the bare module).
+- LED_BUILTIN/RGB_BUILTIN/RGB_BRIGHTNESS/WIRELESS_MINI_SHELL macro definitions in pins_arduino.h
+  were left untouched: they are C preprocessor macros that build_boards.js's alias parser does not
+  recognize or act on (it only parses TX/RX/SDA/SCL/SS/MOSI/MISO/SCK/A#/T#/DAC# assignments), so
+  editing them would have no effect on the generated board data and would be an out-of-scope
+  refactor of code the task did not ask to change.
+
+ONE-LINE SUMMARY: HT-CT62 module (Heltec "Wireless Mini Shell") - vendor datasheet + independent
+Meshtastic firmware confirm GPIO3/4/5/6/7/8/10 are dedicated onboard LoRa SX1262 SPI/control
+lines (not the generic boilerplate SDA/SS/MOSI/MISO/SCK/A3-A5 aliases the vendor's unmodified
+pins_arduino.h implies) and GPIO11 isn't broken out at all; no onboard button or LED/NeoPixel
+exists on the bare module (LED_BUILTIN's GPIO8 target is actually the LoRa NSS pin) - excluded
+the seven dedicated-LoRa GPIOs plus GPIO11 from chipGpios, removed the colliding pins_arduino.h
+aliases so build_boards.js's fallback path can't resurrect them, and tagged nothing as button/LED.

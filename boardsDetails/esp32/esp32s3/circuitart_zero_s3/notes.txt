@@ -1,0 +1,67 @@
+Board: circuitart_zero_s3 (CircuitART Zero-S3), chip esp32s3
+Date: 2026-07-14 (documentation backfill — findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- github.com/CircuitART/ESP32S3zero HRW/Schematic_ESP2S3-ZERO.pdf (official
+  vendor schematic), "BTN" block (R22 10k pull-up to GPIO0, DFU switch to
+  GND) and "NeoPixel" block (4x SK6805-EC15, WS2812-compatible, chained)
+
+Per-pin findings:
+- This is the CircuitART Zero-S3, combining an onboard TFT+microSD (shared
+  SPI bus) and camera. Removed from the chip-level default chipGpios map:
+    GPIO5, 39, 40 - TFT DC/CS/RST
+    GPIO35, 36, 37, 42 - shared TFT+SD SPI bus (MOSI/SCK/MISO/SD_CS)
+    GPIO41 - second UART (RX2)
+    GPIO6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 21, 38, 48 - onboard DVP camera
+      data/clock/sync lines and power line
+- GPIO0: tagged "button" - confirmed onboard DFU/BOOT pushbutton (separate
+  from the RST button on CHIP_EN) per official vendor schematic
+  github.com/CircuitART/ESP32S3zero HRW/Schematic_ESP2S3-ZERO.pdf, "BTN"
+  block (R22 10k pull-up to GPIO0, DFU switch to GND). Capabilities:
+  ["digital_input", "button"].
+- GPIO47: tagged "led_neopixel" - confirmed onboard addressable RGB LED
+  (PIN_RGB_LED/RGB_BUILTIN, driven via rgbLedWrite()) per the same
+  schematic's "NeoPixel" block (4x SK6805-EC15, WS2812-compatible,
+  chained). Capabilities: ["digital_output", "pwm_output",
+  "led_neopixel"].
+- GPIO46: considered but NOT tagged - "User LED" (LED2, 0402) existence
+  confirmed in the schematic, but its active-high/active-low polarity
+  could not be reliably read from the schematic text, so it was left
+  untagged with standard capabilities ["digital_input", "digital_output",
+  "pwm_output"].
+- GPIO45: kept in chipGpios with standard capabilities ["digital_input",
+  "digital_output", "pwm_output"] - not explicitly discussed in the
+  override comment's "Kept" list, but present unchanged in the board.json.
+- GPIO1,2,3,4: kept ("Kept" list does not name these individually but they
+  survive as general-purpose) - standard capabilities ["analog_input",
+  "digital_input", "digital_output", "pwm_output"].
+- GPIO12,17,18: kept per comment as "DAC1/DAC2 (17,18)" plus GPIO12 -
+  standard ADC2-range capabilities ["analog_input_serial", "digital_input",
+  "digital_output", "pwm_output"].
+- GPIO43,44: kept per comment as "TX/RX (43,44)" - standard capabilities
+  ["digital_input", "digital_output", "pwm_output"].
+- GPIO33 (SDA) / GPIO34 (SCL): kept, confirmed correct. This board's own
+  `pins_arduino.h` declares `static const uint8_t SDA = 33;` /
+  `SCL = 34;` directly (also `#define SIOD_GPIO_NUM SDA` /
+  `SIOC_GPIO_NUM SCL` for the onboard camera's SCCB interface, matching
+  the override comment's "shared general I2C also used by the camera's
+  SCCB interface"). Neither GPIO needs its own chipGpios entry: absence
+  from chipGpios does NOT mean excluded — build_boards.js auto-derives
+  default capabilities for any pin without an override, including the
+  `i2c_sda`/`i2c_scl` bus tags (via `consts.SDA`/`consts.SCL` matching),
+  so the plain default derivation already produces the correct result
+  here. Confirmed via the actual generated output: both pins are present
+  as "D33"/"D34" with `["digital_input","digital_output","pwm_output",
+  "i2c_sda"/"i2c_scl"]`. (CORRECTION 2026-07-14: an earlier draft of this
+  notes.txt wrongly flagged this as a data discrepancy, speculating the
+  pins were excluded via a nonexistent "chip-level flash/PSRAM exclusion
+  range 33-37" — no such chip-level exclusion exists for esp32s3, and
+  the pins are genuinely present and correctly tagged. The override
+  comment was accurate all along; only this notes.txt's own
+  interpretation was wrong.)
+
+Summary: Board-specific override removes TFT/SD/camera/second-UART pins;
+GPIO0 tagged button (DFU/BOOT switch) and GPIO47 tagged led_neopixel
+(onboard addressable RGB LED), both confirmed via the vendor's own KiCad-
+derived schematic PDF; GPIO46 "User LED" identified but left untagged due
+to unconfirmed polarity.

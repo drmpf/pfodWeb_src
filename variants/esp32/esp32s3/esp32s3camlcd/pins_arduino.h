@@ -12,10 +12,8 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 17;
 static const uint8_t SCL = 18;
 
-static const uint8_t SS = 10;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK not declared — these are all also
+// camera/TFT data lines below (Y6/PCLK/Y2/TFT_D3), not general-purpose.
 
 // Wire1 for Cam and TS
 #define I2C_SDA 17

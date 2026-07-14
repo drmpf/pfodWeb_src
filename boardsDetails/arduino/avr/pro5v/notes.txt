@@ -1,0 +1,76 @@
+Arduino Pro or Pro Mini (5V, 16 MHz) — split off from the ambiguous "pro" entry
+=================================================================================
+Date: 2026-07-14 (follow-up pass)
+
+Reason for split: variants/arduino/avr/boards.txt's real "pro" entry
+(pro.build.variant=eightanaloginputs) is a single boards.txt id backing
+a genuine Arduino IDE menu (pro.menu.cpu.16MHzatmega328 = "ATmega328P
+(5V, 16 MHz)", pro.menu.cpu.8MHzatmega328 = "ATmega328P (3.3V, 8 MHz)",
+plus two older ATmega168 variants of the same voltage split that don't
+affect this audit). build_boards.js only reads top-level
+`<id>.build.variant=` lines, never `.menu.` sub-keys, so this menu was
+completely invisible to the Designer — a single board.json was forced to
+pick ONE fixed ADC reference voltage for what is, in real life, two
+genuinely different physical products (SparkFun/Arduino have historically
+sold Pro Mini 5V/16MHz and 3.3V/8MHz as distinct SKUs with different
+crystals/regulators populated).
+
+Sources consulted
+------------------
+1. variants/arduino/avr/boards.txt's own `pro.menu.cpu.*` lines — the
+   authoritative source for the menu structure and exact voltage/speed
+   text ("ATmega328P (5V, 16 MHz)").
+2. Independent verification pass (2026-07-14) against REAL external
+   vendor documentation (not just this repo's own boards.txt):
+   - https://www.arduino.cc/en/Main/ArduinoBoardProMini — Arduino's own
+     official board page. Confirms: "There is a built-in LED connected
+     to digital pin 13. When the pin is HIGH value, the LED is on, when
+     the pin is LOW, it's off." Also confirms the two-SKU split: "One
+     runs at 3.3V and 8 MHz, the other at 5V and 16 MHz."
+   - https://learn.sparkfun.com/tutorials/using-the-arduino-pro-mini-33v/all
+     — SparkFun's own Pro Mini tutorial line, corroborating the 3.3V/8MHz
+     vs 5V/16MHz two-SKU split (5V version uses a KB33 regulator/16MHz
+     crystal; 3.3V version uses a KB50 regulator/8MHz crystal).
+   - Arduino forum threads (e.g.
+     https://forum.arduino.cc/t/promini-how-to-distinguish-between-3-3v-8mhz-and-5v-16mhz/687155)
+     corroborating that these are two distinct physical SKUs, not a
+     single board with a software-selectable voltage.
+
+Per-pin findings
+-----------------
+Identical to standard/board.json's own D13 LED finding — inherited via
+this SKU's #include of ../eightanaloginputs/pins_arduino.h, which itself
+includes ../standard/pins_arduino.h. D13 (LED_BUILTIN / PIN_SPI_SCK) is
+the confirmed onboard status LED, active-high, same classic Arduino
+pin-13 LED+SCK dual role as every other board sharing this pin map — now
+independently confirmed against Arduino's own official documentation
+(see Sources above), not just inherited unchanged from an earlier pass.
+No other findings — this is a plain, minimal Pro Mini-style breakout
+with no additional onboard sensors/actuators; nothing in Arduino's or
+SparkFun's documentation suggests otherwise.
+
+ADC voltage
+------------
+5.0V — this is the 16MHz/ATmega328P menu option, which runs at 5V per
+the real Arduino IDE's own menu text ("ATmega328P (5V, 16 MHz)").
+
+boards.txt edit
+----------------
+Commented out the ambiguous `pro.name=`/`pro.build.variant=eightanaloginputs`
+lines (lines 836/852) rather than deleting them, so the real upstream
+content is still visible/reversible if this repo's boards.txt is ever
+diffed against a fresh Arduino core download. Added new
+`pro5v.name=`/`pro5v.build.variant=pro5v` lines directly below, clearly
+marked as a pfodWeb Designer-only addition not present in the real
+upstream file.
+
+Summary
+--------
+Arduino Pro or Pro Mini (5V, 16 MHz) — new pfodWeb-only Designer entry
+disambiguating the real Arduino IDE's 3.3V/5V "pro" menu choice. D13 LED
+tagged active-high — independently confirmed (2026-07-14) against
+Arduino's own official board documentation and corroborated by
+SparkFun's tutorial (real external vendor sources, not just this repo's
+boards.txt). ADC reference voltage correctly set to 5.0V for this
+specific SKU, also confirmed against the same official sources. No
+corrections needed — existing finding holds up.

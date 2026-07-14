@@ -1,0 +1,79 @@
+// pfodWeb NOTE: excludes GPIO19 - onboard NeoPixel power-gate
+// (RGB_LED_PWR_PIN, see vendor pins_arduino.h). GPIO20 (NeoPixel data,
+// RGB_LED_DATA_PIN) stays available, matching the um_tinys3 precedent.
+//
+// pfodWeb NOTE (button/LED capability retrofit, 2026-07-12): this board.json
+// already had the dedicated-hardware GPIO19 exclusion from an earlier pass,
+// but never had button/LED tagging applied. Applied now:
+//  - GPIO7 (BLUE_LED_PIN / LED_BUILTIN in pins_arduino.h) tagged "led_high" -
+//    confirmed a PLAIN status LED, NOT the onboard NeoPixel, driven
+//    active-high. Sources: official m5stack/M5NanoC6 GitHub repo,
+//    examples/Basic/led/led.ino uses digitalWrite(M5NANO_C6_BLUE_LED_PIN,
+//    HIGH) to turn the LED on; corroborated by the ESPHome community device
+//    page (devices.esphome.io/devices/m5stack-nanoc6) which documents GPIO7
+//    as a status_led configured active-high. The genuine addressable
+//    NeoPixel is the separate RGB_LED_DATA_PIN=GPIO20 (WS2812, gated by the
+//    already-excluded GPIO19 power line) - confirmed via docs.m5stack.com/
+//    en/core/M5NanoC6, which lists GPIO20 as the WS2812 RGB LED data line
+//    and GPIO19 as its power-enable ("set pin G19 to a high level to enable
+//    power supply"). Checked GPIO7 against this board's own pins_arduino.h
+//    aliases (SDA=2, SCL=1, SS=4, MOSI=5, MISO=6, SCK=8, TX=16, RX=17) -
+//    GPIO7 is not any of those, so no bus-alias contamination to strip.
+//  - GPIO20 (RGB_LED_DATA_PIN) tagged "led_neopixel" - confirmed genuine
+//    WS2812 addressable RGB LED data pin, same docs.m5stack.com source
+//    above. Not any bus alias on this board (see list above) - no
+//    contamination. Matches the established um_tinys3/adafruit_itsybitsy_
+//    esp32/bpi-bit precedent of NeoPixel-data-pin-gets-"led_neopixel"-while-
+//    its-power-gate-pin-stays-excluded.
+//  - GPIO9 (BTN_PIN) tagged "button" - confirmed genuine user-accessible
+//    BOOT button, active-low with internal pull-up. Sources: official
+//    m5stack/M5NanoC6 GitHub repo, src/M5NanoC6.cpp update() method calls
+//    BtnA.setRawState(ms, !digitalRead(M5NANO_C6_BTN_PIN)) - the leading
+//    "!" confirms active-low inversion; docs.m5stack.com/en/core/M5NanoC6
+//    documents holding this same GPIO9 button to enter download mode
+//    (consistent with the chip-level pinNotes "9: Must be HIGH for normal
+//    boot" strapping requirement, which is retained unchanged). Not any bus
+//    alias on this board (see list above) - no contamination.
+//  - GPIO3 (IR_TX_PIN) - left untouched. Out of scope for this button/LED-
+//    only audit pass; not a button or LED.
+//
+// See boardsDetails/esp32/esp32c6/m5stack_nanoc6/notes.txt for the full
+// research trail.
+{
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_output", "led_high", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

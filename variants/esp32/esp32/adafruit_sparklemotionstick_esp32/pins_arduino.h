@@ -24,9 +24,9 @@ static const uint8_t RX = 26;  // not broken out, defined to fix compilation
 static const uint8_t SDA = 13;  // not broken out, defined to fix compilation
 static const uint8_t SCL = 15;  // not broken out, defined to fix compilation
 
-static const uint8_t SS = 19;    // not broken out, defined to fix compilation
-static const uint8_t MOSI = 21;  // output to drive dotstars
-static const uint8_t SCK = 22;   // output to drive dotstars
+static const uint8_t SS = 19;  // not broken out, defined to fix compilation
+// pfodWeb NOTE: MOSI/SCK (GPIO21/22) deliberately NOT declared -
+// dedicated onboard DotStar LED output (see vendor comment).
 static const uint8_t MISO = 23;  // not broken out, defined to fix compilation
 
 static const uint8_t A0 = 2;  // not broken out, defined to fix compilation

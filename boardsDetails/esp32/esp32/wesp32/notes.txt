@@ -1,0 +1,74 @@
+Board: WESP32 (ESP32 Ethernet + PoE board by Silicognition LLC, chip: esp32)
+Date: 2026-07-14 — REAL independent verification pass (batch C), superseding the
+2026-07-14 "documentation backfill" entry below, which only cited this board's
+own board.json/pins_arduino.h and never checked an external vendor source.
+
+=== Independent verification (2026-07-14) ===
+
+Sources consulted:
+- https://wesp32.com/software/ (Silicognition's own official wESP32 software/
+  developer page) — CONFIRMS. States verbatim: "IO0, IO16, IO17, IO19, IO21,
+  IO22, IO25, IO26, IO27" are reserved for the Ethernet PHY's high-speed RMII
+  bus and are "not available" to users, because "many of the signals between
+  the ESP32 and the Ethernet PHY are part of the high speed RMII bus, and they
+  are directly connected together without any protection." The page adds an
+  explicit hardware-damage warning: software that misconfigures these pins as
+  outputs can create a short circuit through the PHY/ESP32 output drivers, and
+  states the manufacturer will not replace units damaged this way. IO16 (MDC)
+  and IO17 (MDIO) are separately named.
+- https://www.espboards.dev/esp32/wesp32/ (third-party pinout reference) —
+  CORROBORATES. Independently lists GPIO16/17 as MDC/MDIO and describes the
+  board as ESP32-WROOM-32-based with Ethernet; consistent with the wesp32.com
+  RMII pin list, though less detailed on the full exclusion set.
+- https://wesp32.com/files/wESP32-Product-Brief.pdf (official product brief) —
+  fetched but returned as unparseable binary/PDF image data via the available
+  tooling; not usable as a citation this pass, but not needed since
+  wesp32.com/software/ already gives an exact, explicit, vendor-authored
+  GPIO list.
+- WLED/HomeSpan/arduino-esp32 GitHub threads (wled.discourse.group,
+  github.com/HomeSpan/HomeSpan, github.com/espressif/arduino-esp32#6181) —
+  background only; confirm the board moved from LAN8720 (rev <7) to RTL8201
+  (rev 7/8) PHY and that MDC=16/MDIO=17/PHY addr=0/RTL8201 type are the
+  correct ETH.begin() parameters. Consistent with, but does not add beyond,
+  the primary wesp32.com source.
+
+Per-pin findings:
+- GPIO0, GPIO19, GPIO21, GPIO22, GPIO25, GPIO26, GPIO27: CONFIRMED excluded.
+  Directly matches wesp32.com/software/'s own explicit "not available to
+  users" GPIO list for the RMII bus. This is the strongest possible source —
+  the board vendor's own developer documentation, phrased as an explicit
+  warning rather than an inference from a header file.
+- GPIO16, GPIO17 (MDC/MDIO): CONFIRMED as part of the same RMII-reserved set
+  by wesp32.com/software/ and espboards.dev, but as previously noted these
+  are already absent from the ESP32-classic chip-level default (PSRAM-
+  reserved range) so no additional board-specific exclusion was required in
+  board.json — no change needed.
+- GPIO1, GPIO2, GPIO3, GPIO4, GPIO5, GPIO12, GPIO13, GPIO14, GPIO15, GPIO18,
+  GPIO23, GPIO32, GPIO33, GPIO34, GPIO35, GPIO36, GPIO37, GPIO38, GPIO39:
+  KEPT, standard chip-default capabilities — consistent with the "15 of the
+  ESP32 GPIOs available for your application" figure cited by Mouser's
+  wESP32 product listing (matches keeping 19 chip-listed pins minus a few
+  strapping/reserved ones typically not counted in vendor "usable pin"
+  marketing figures; close enough to be consistent, not treated as a
+  precise independent per-pin source).
+
+Result: FULLY CONFIRMED, no correction needed. The existing 7-GPIO exclusion
+(0/19/21/22/25/26/27) is verified against the vendor's own official developer
+page rather than only this board's own pins_arduino.h. board.json's header
+comment was updated to cite https://wesp32.com/software/ directly.
+
+=== 2026-07-14 (earlier, documentation-backfill entry — findings restated
+here for history, NOT independently verified at the time it was written) ===
+
+Sources consulted:
+- This board's own board.json top-of-file comment (dedicated-hardware
+  exclusion pass), which cites the vendor's own ETH_PHY_TYPE/ETH_PHY_MDC/
+  ETH_PHY_MDIO/ETH_CLK_MODE macros in this board's pins_arduino.h as the
+  primary evidence, and cross-checks against the sibling board cnrs_aw2eth
+  (audited earlier in this project) for consistency. No external URLs were
+  cited — all reasoning traced only to this board's own pins_arduino.h.
+
+Summary: this earlier pass excluded GPIO0/19/21/22/25/26/27 based solely on
+this board's own pins_arduino.h vendor macros, without external verification.
+The 2026-07-14 independent-verification pass above has now confirmed this
+finding against the vendor's own official developer documentation.

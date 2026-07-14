@@ -14,36 +14,33 @@ static const uint8_t MOSI = 23;
 static const uint8_t MISO = 19;
 static const uint8_t SCK = 18;
 
+// pfodWeb NOTE: A5/A10/A16/A17/A19 and T0/T6-T8 deliberately NOT declared
+// - dedicated onboard Teleinfo(TIC)/LoRa module pins (see below). GPIO26/
+// 27 are ambiguously either LORA_TX/RX (1st revision) or LED_GRN/RED
+// (2nd revision) depending on which is actually populated - excluded to
+// avoid risking the LoRa link on 1st-revision boards.
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
 static const uint8_t A4 = 32;
-static const uint8_t A5 = 33;
 static const uint8_t A6 = 34;
 static const uint8_t A7 = 35;
-static const uint8_t A10 = 4;
 static const uint8_t A11 = 0;
 static const uint8_t A12 = 2;
 static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
 static const uint8_t A15 = 12;
-static const uint8_t A16 = 14;
-static const uint8_t A17 = 27;
 static const uint8_t A18 = 25;
-static const uint8_t A19 = 26;
 
-static const uint8_t T0 = 4;
 static const uint8_t T1 = 0;
 static const uint8_t T2 = 2;
 static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
-static const uint8_t T6 = 14;
-static const uint8_t T7 = 27;
-static const uint8_t T8 = 33;
 static const uint8_t T9 = 32;
 
 static const uint8_t DAC1 = 25;
-static const uint8_t DAC2 = 26;
+// pfodWeb NOTE: DAC2 (GPIO26) deliberately NOT declared - same ambiguous
+// LoRa/LED pin as above.
 
 // Specific CH2i (Charles Hallard) Boards
 // 1st Revision Denky with ESP WROOM32 + LoRa RN2483 module

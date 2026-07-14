@@ -1,0 +1,71 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "DFRobot Beetle RP2040",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases. The board only has BOOT (bootloader-entry, tied to
+  // the same non-GPIO QSPI-CS trick as every other RP2040 board's
+  // BOOTSEL) and RESET (hardware reset) buttons — confirmed via
+  // wiki.dfrobot.com (SKU_DFR0959_Beetle_RP2040 / dfr0959) — neither is
+  // digitalRead()-able, out of scope per this repo's established
+  // rpipico/board.json BOOTSEL rationale. The "Read Digital Pins with
+  // Internal Pull-up" wiki tutorial that wires a button to GP0 is an
+  // EXTERNAL user-supplied breadboard circuit (explicit hardware list:
+  // pushbutton + R1 pull-up + R2 current-limit resistor), not an onboard
+  // component — confirmed by a second, separate wiki page stating this
+  // board has exactly two onboard buttons (BOOT, RESET) and no other
+  // user-accessible button.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO13 (PIN_LED / LED_BUILTIN) is this board's only onboard visual
+  // indicator — confirmed via wiki.dfrobot.com (SKU_DFR0959_Beetle_RP2040
+  // pinout section: "Onboard LED ... Pin 13 ... Green ... Active high")
+  // and corroborated by the wiki's own Arduino Blink-style example code
+  // (docs/21548, "Light LED") which drives it with
+  // digitalWrite(LED_BUILTIN, HIGH) to turn it ON. Tagged led_high per
+  // this repo's established onboard-LED convention (matches
+  // rpipico/board.json GPIO25). GPIO13 is NOT one of this board's 8
+  // broken-out header pins (confirmed broken-out set per wiki pinout
+  // table: GP0-GP5, GP28, GP29 only) — consistent with this board's own
+  // pins_arduino.h "// Not pinned out" comment directly above the
+  // `PIN_LED (13u)` #define — it is an internal-only status LED, not
+  // wired to any castellated pad, but that does not change its GPIO
+  // capability tagging. No collision with any bus alias in this board's
+  // pins_arduino.h (SPI0/Wire0/Wire1/Serial1/Serial2 all use GPIO0-5,
+  // 28-29 — none use GPIO13), so no #define removal is needed (unlike
+  // the adafruit_feather_scorpio precedent). pwm_output kept since
+  // arduino-pico's analogWrite() works on any RP2040 GPIO. digital_input
+  // dropped to match this repo's led_high/led_low precedent for
+  // dedicated onboard LED pins.
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard green status LED, active-high, confirmed via wiki.dfrobot.com (SKU_DFR0959_Beetle_RP2040 pinout + docs/21548 Light LED example); not a broken-out header pin (see pfodWeb NOTE above), but still GPIO13 for capability-tagging purposes" }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 4 analog channels declared by this board's generic_full/common.h
+  // (A0-A3 = GPIO26-29), 12-bit ADC — matches the chip-level default.
+  // Only A2/A3 (GPIO28/29) are actually broken out per the wiki pinout
+  // table, but that is a header-exposure detail, not a capability change.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

@@ -1,0 +1,101 @@
+// pfodWeb NOTE: PWM0-PWM7 (GPIO12-19) left as ordinary general-purpose GPIO
+// (KEEP) - not tagged as fixed onboard actuator channels. Evidence is
+// genuinely mixed for this board id: the VintLabs "ESP32 Devkit V1" is a
+// plain general-purpose ESP32 dev board (espboards.dev/esp32/vintlabs-devkit-v1
+// lists only standard ESP32 specs, no onboard driver hardware), but VintLabs
+// separately sells a companion "ESP32-PWM-Driver-Devkit" product with 8
+// onboard 2A/5-15V driver channels (github.com/vintlabs/ESP32-PWM-Driver-Devkit).
+// The PWM0-7 aliases were added to this single pins_arduino.h/board id by its
+// original author specifically "to reference PWM driver outputs on the PWM
+// driver kit" (per espressif/arduino-esp32 PR #3252, contributor pvint, merged
+// 2019-09-24) so that Arduino IDE users of either VintLabs product select the
+// same board entry ("a lot of users confused as to which board to select").
+// This pfodWeb variants tree has only this one vintlabsdevkitv1 directory -
+// no separate entry exists for the PWM-driver-only product - so this entry
+// has to serve as the general board selection too. Since every ESP32 GPIO
+// already supports LEDC PWM natively, "PWM0-7" reads as a convenience alias
+// for a standard GPIO block on the base board rather than proof of dedicated
+// driver wiring on the specific hardware a pfodWeb Designer user has. Per the
+// pin-audit playbook's default-to-KEEP-on-ambiguity rule (a wrongly-excluded
+// pin has no user recourse; a wrongly-kept one is just avoidable), all of
+// GPIO12/13/14/15/16/17/18/19 are kept as plain GPIO.
+//
+// Alias-collision check (see playbook step 4): PWM6=18 collides with this
+// board's own SCK=18, and PWM7=19 collides with its own MISO=19. Both SCK/
+// MISO aliases were verified byte-for-byte identical to the authentic
+// upstream espressif/arduino-esp32 variants/vintlabsdevkitv1/pins_arduino.h
+// (fetched from raw.githubusercontent.com) - they are genuine vendor-shipped
+// aliases, not something invented locally, and match the standard ESP32
+// VSPI default pins used across most ESP32 Dev Module variants. Since the
+// PWM0-7 decision above is KEEP (no capability exclusion attempted on
+// GPIO18/19), build_boards.js's unconditional spi_sck/spi_miso capability
+// append for these pins is correct additive behaviour, not contamination -
+// no alias deletion was needed or performed.
+//
+// Separate, unambiguous fix: the chip-level default (variants/esp32/esp32/
+// board.json) omits GPIO16 and GPIO17 from chipGpios entirely, on the
+// assumption they are reserved for PSRAM on modules that have it. This
+// board's own vendor pins_arduino.h explicitly declares PWM4=16 and PWM5=17
+// as named, usable pin aliases - direct evidence the VintLabs DevKit V1 uses
+// a plain ESP32-WROOM-32 module without PSRAM, so both pins are genuinely
+// user-accessible GPIO here. Re-added both to chipGpios below with plain
+// digital_input/digital_output/pwm_output capabilities (no analog_input -
+// GPIO16/17 are not ADC-capable on ESP32), following the same precedent as
+// variants/esp32/esp32/espino32/board.json, which re-added GPIO16 for its
+// own confirmed non-PSRAM module.
+//
+// Sources consulted: https://www.espboards.dev/esp32/vintlabs-devkit-v1/ ;
+// https://github.com/vintlabs/ESP32-PWM-Driver-Devkit (README.md) ;
+// https://github.com/espressif/arduino-esp32/pull/3252 (original board
+// definition PR and author's description) ;
+// https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/vintlabsdevkitv1/pins_arduino.h
+// (confirms this repo's local pins_arduino.h is the authentic, unmodified
+// vendor file). See boardsDetails/esp32/esp32/vintlabsdevkitv1/notes.txt for
+// the full write-up.
+{
+  "boardName": "ESP32",
+  "displayName": "ESP32 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "27": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

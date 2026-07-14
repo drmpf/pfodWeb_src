@@ -1,0 +1,64 @@
+Board: Adafruit Feather ESP32-S2 (adafruit_feather_esp32s2), chip esp32s2
+Date: 2026-07-14 (independent verification pass - real vendor sources checked)
+
+SOURCES CONSULTED
+-----------------
+1. https://learn.adafruit.com/adafruit-esp32-s2-feather/pinouts - official
+   Adafruit Learning System pinout guide. Confirms: "This little red LED,
+   labeled #13 on the board" is user-controllable, available as
+   `board.LED` (CircuitPython) / `LED_BUILTIN` or `13` (Arduino).
+   NeoPixel confirmed as `board.NEOPIXEL` / `PIN_NEOPIXEL`, requiring
+   NEOPIXEL_POWER to be pulled high. I2C_POWER confirmed as controlling
+   power to the BME280 sensor footprint and STEMMA QT connector.
+2. https://learn.adafruit.com/adafruit-esp32-s2-feather/read-a-push-button -
+   official Adafruit tutorial. Confirms an onboard physical pushbutton:
+   "This example uses the board's built-in push-button and internal
+   pull-up resistor instead of wiring a push-button up ... built into the
+   Adafruit ESP32-S2 Feather. On the board, it is located under the
+   STEMMA port and labeled BOOT." Documented as usable in application
+   code, not just for bootloader entry.
+3. https://github.com/espressif/arduino-esp32/blob/master/variants/adafruit_feather_esp32s2/pins_arduino.h -
+   vendor pins_arduino.h (fetched directly). Confirms: LED_BUILTIN=13,
+   PIN_NEOPIXEL=33, NEOPIXEL_POWER=21 (NEOPIXEL_POWER_ON=HIGH), I2C_POWER
+   (PIN_I2C_POWER)=7. No BUTTON/PIN_BUTTON macro is defined in this file
+   (the BOOT button on GPIO0 is the standard ESP32-S2 strapping pin, not
+   given a dedicated alias here) - confirmed instead via source #2's
+   tutorial text.
+
+PER-PIN FINDINGS
+----------------
+- GPIO7: excluded (not present in chipGpios). CONFIRMED - I2C_POWER power-
+  gate line per vendor pins_arduino.h (source #3), matches the earlier
+  claim.
+- GPIO21: excluded (not present in chipGpios). CONFIRMED - NEOPIXEL_POWER
+  power-gate line per vendor pins_arduino.h (source #3), matches the
+  earlier claim.
+- GPIO13: capabilities ["digital_output","pwm_output","led_high"].
+  CONFIRMED - LED_BUILTIN=13 (source #3), documented active-high red LED
+  (source #1: "labeled #13", user-controllable), matching the earlier
+  claim.
+- GPIO33: capabilities ["digital_output","pwm_output","led_neopixel"].
+  CONFIRMED - PIN_NEOPIXEL=33 (source #3), documented onboard NeoPixel
+  (source #1), matching the earlier claim.
+- GPIO0: capabilities changed from ["digital_input","digital_output",
+  "pwm_output"] to ["digital_input","button"]. CORRECTION (addition) -
+  the previous audit pass missed this. Source #2 explicitly documents a
+  real onboard BOOT pushbutton on this board, confirmed usable in
+  application code (not merely a bootloader-entry pin), consistent with
+  this repo's established "button" tag precedent for similar dual-purpose
+  BOOT/GPIO0 buttons on other boards (e.g. adafruit_sparklemotionstick_esp32,
+  d1_mini32). pinNotes retains the chip-level strapping warning "Must be
+  HIGH for normal boot", unchanged - it's a dual-purpose pin.
+- GPIO1-6, 8-12, 14-18: kept at chip-level default capability sets - no
+  vendor source suggests any of these are dedicated hardware on the plain
+  (non-TFT) Feather ESP32-S2.
+- GPIO34-45: kept at chip-level default - no change.
+- GPIO46: kept at chip-level default (input-only) - no change.
+
+SUMMARY
+-------
+Independently confirmed via learn.adafruit.com and vendor pins_arduino.h:
+GPIO7/21 power-gate exclusions, GPIO13 led_high, GPIO33 led_neopixel - all
+correct as previously found. One correction (addition): GPIO0 is a real,
+application-usable onboard BOOT pushbutton per Adafruit's own tutorial
+page and was missing the "button" tag; it has now been added.

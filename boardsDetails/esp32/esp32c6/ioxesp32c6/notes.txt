@@ -1,0 +1,94 @@
+Board: ioxesp32c6 (chip: esp32c6)
+Directory: variants/esp32/esp32c6/ioxesp32c6/
+Audit date: 2026-07-12
+
+FLAGGED BY DISCOVERY SWEEP FOR:
+  #define PIN_RGB_LED 8
+  #define RGB_BRIGHTNESS 64
+in pins_arduino.h, never individually reviewed. Also opportunistically
+checked for a button per this session's audit playbook.
+
+SOURCES CONSULTED
+1. https://www.artronshop.co.th/product/647/ioxesp32-c6-...
+   Vendor's own product page for this exact board ("IOXESP32-C6 บอร์ด
+   ESP32-C6 เชื่อมต่อ WiFi 6, Bluetooth 5, Thread/Zigbee"), sold by
+   ArtronShop / IOXhop (Thai maker brand, same family as the existing
+   ioxesp32/board.json ESP32 board already in this repo, and as
+   ArtronShop/IOXESP32 on GitHub). Confirms:
+     - "มีหลอดแอลอีดี RGB แบบโปรแกรมสีและความสว่างได้อิสระจำนวน 1 ดวง"
+       = "has one RGB LED with independently programmable colour and
+       brightness" (i.e. an addressable/WS2812-style LED, not a simple
+       on/off LED).
+     - "มีสวิตช์รีเซ็ต และสวิตช์บังคับเข้าโหมดอัพโหลดโปรแกรม (BOOT)"
+       = "has a reset switch and a switch to force entry into upload/
+       program mode (BOOT)".
+   Page also links a schematic PDF, pinout SVG, dimension PDF, and
+   Fritzing part.
+
+2. https://dl.artronshop.co.th/IOXESP32/IOXESP32-C6/IOXESP32-C6%20Schematic.pdf
+   Vendor's own schematic for this exact product (linked from the
+   product page above). Shows:
+     - Component LED3, part XL-1615RGBC-WS2812B (a genuine WS2812B
+       addressable RGB LED IC), wired to IO8 - directly confirms
+       PIN_RGB_LED=8 in this variant's pins_arduino.h is a real onboard
+       NeoPixel-type device, not a copy-paste placeholder inherited from
+       a generic template.
+     - A pushbutton pulled up to VCC through a 10K resistor on the IO9
+       net, consistent with the product page's "BOOT" switch description
+       and with GPIO9 being the chip's own boot-strapping pin (chip-level
+       pinNotes: "Must be HIGH for normal boot"). The separately
+       mentioned reset switch is the board's EN/reset line, not a GPIO,
+       so it is out of scope for chipGpios tagging. (Note: automated PDF
+       text extraction also surfaced a second switch reference on the
+       same IO9 net; this was not independently verified and is treated
+       as extraction noise - the IO9-BOOT-button correlation itself is
+       corroborated independently by the product description and by the
+       chip's own strapping-pin requirement, so it was tagged with
+       reasonable confidence regardless.)
+
+3. This variant's own pins_arduino.h (read in full). Standard
+   Arduino-core-style declaration: PIN_RGB_LED 8, RGB_BRIGHTNESS 64,
+   LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED, matching the pattern
+   already reviewed and confirmed genuine on sibling boards earlier this
+   session (esp32c6/esp32c6 generic reference board, and
+   waveshare_esp32_c6_zero). Bus-pin aliases: TX=16, RX=17, SDA=21,
+   SCL=22, SS=18, MOSI=23, MISO=20, SCK=19.
+
+4. Chip-level default variants/esp32/esp32c6/board.json (used as the
+   base for the new override) and the earlier-audited sibling entries
+   variants/esp32/esp32c6/esp32c6/board.json and
+   variants/esp32/esp32c6/waveshare_esp32_c6_zero/board.json, consulted
+   for this session's led_neopixel / button tagging conventions.
+
+REASONING
+- GPIO8 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+  addressable RGB LED (schematic component LED3, XL-1615RGBC-WS2812B,
+  wired to IO8). Tagged capabilities ["digital_output","led_neopixel",
+  "pwm_output"], dropping digital_input/analog_input as done for the
+  other led_neopixel pins in this repo.
+- GPIO9 (chip strapping pin): CONFIRMED onboard BOOT pushbutton for this
+  exact product via the vendor's own product page and schematic. Tagged
+  capabilities ["digital_input","button"] only, per this session's
+  button-pin convention (dropping digital_output/pwm_output).
+- Alias-collision check (critical per this session's playbook): the
+  variant's pins_arduino.h aliases TX/RX/SDA/SCL/SS/MOSI/MISO/SCK are
+  16/17/21/22/18/23/20/19 - none of those values is 8 or 9, so neither
+  GPIO8 nor GPIO9 is double-aliased as a bus pin. build_boards.js will
+  not silently append a conflicting i2c/spi/uart capability to either
+  pin. No pins_arduino.h edit was required (no boilerplate alias to
+  strip).
+- All other GPIOs left unchanged from the chip-level esp32c6 defaults.
+
+MECHANISM
+Created variants/esp32/esp32c6/ioxesp32c6/board.json as a full copy of
+the chip-level default (variants/esp32/esp32c6/board.json) with GPIO8
+and GPIO9 capabilities updated as above. No board.json existed before
+this audit (board previously used the chip-level default unmodified).
+No pins_arduino.h changes were needed.
+
+SUMMARY
+GPIO8 is a vendor-confirmed onboard WS2812 RGB LED (tagged
+led_neopixel) and GPIO9 is a vendor-confirmed onboard BOOT pushbutton
+(tagged button); no bus-alias collisions found on either pin, so no
+pins_arduino.h edits were needed - only a new board.json override was
+added.

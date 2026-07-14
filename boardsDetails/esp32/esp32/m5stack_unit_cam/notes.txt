@@ -1,0 +1,68 @@
+m5stack_unit_cam - onboard button/LED research notes
+======================================================
+
+Sources consulted:
+
+1. https://docs.m5stack.com/en/unit/unit_cam
+   Official M5Stack UnitCam product docs. Features section lists
+   "Programmable LED indicator (blue)". PinMap table states
+   "LED (blue) D1 connects to Unit Cam pin G4". Documentation does not
+   mention any onboard push button anywhere on the page.
+
+2. https://static-cdn.m5stack.com/resource/docs/products/unit/unit_cam/unit_cam_sch_01.webp
+   Official schematic image (linked from the docs page above).
+   Downloaded and visually inspected (cropped/upscaled with Pillow for
+   legibility). Shows:
+     - D1 "蓝灯 0603" (blue LED, 0603 package): anode tied to +3V rail,
+       cathode routed through R7 (1K ohm) down to the ESP-WROOM-32E pin
+       row at position 26. Standard ESP-WROOM-32/32E 38-pin module
+       pinout places physical pin 26 = GPIO4 (pin 25=GPIO0, pin
+       27=GPIO16, pin 28=GPIO17, pin 34=RXD0, pin 35=TXD0 all match
+       the schematic's printed labels exactly, confirming pin 26=GPIO4
+       even though that one row's text label was blank in the image).
+       This corroborates the docs.m5stack.com pinmap claim of LED->G4,
+       and additionally reveals the drive polarity: GPIO4 LOW sinks
+       current through R7/D1 turning the LED ON; GPIO4 HIGH leaves
+       both LED terminals near +3V with no current flow, LED OFF.
+       => active-low LED.
+     - J1 (HY-2.0_UART 4-pin connector): GPIO16/GPIO17 broken out as
+       RX/TX/VCC/GND - this is the general-purpose connector referenced
+       in pins_arduino.h as SDA/SCL, not a button.
+     - P1 and P2: two 3-pin "Header 3" pads (RXD0/TXD0/5V and
+       EN/GPIO0/GND respectively) - these are bare programming/pogo-pin
+       headers for flashing, not physical user-facing push buttons.
+       No button component (no SW/tact-switch symbol) appears anywhere
+       on the schematic.
+
+3. Web search: "CAMERA_MODEL_M5STACK_UNITCAM LED_GPIO_NUM camera_pins.h"
+   (espressif/arduino-esp32 camera_pins.h and related repos).
+   Confirms the OV2640 camera data/control pin assignments for this
+   board model (RESET=15, XCLK=27, SIOD=25, SIOC=23, Y9=19, Y8=36,
+   Y7=18, Y6=39, Y5=5, Y4=34, Y3=35, Y2=32, VSYNC=22, HREF=26, PCLK=21)
+   - consistent with the pre-existing pin-exclusion list already in
+   board.json/pins_arduino.h (not modified by this task). No
+   LED_GPIO_NUM constant is defined for this specific camera model in
+   camera_pins.h; the LED assignment used here comes from the M5Stack
+   product docs/schematic instead (sources 1 and 2 above).
+
+Pins considered but NOT tagged:
+  - No button candidate exists at all. Docs explicitly show no push
+    button, and the schematic confirms P1/P2 are solder-pad
+    programming headers only (RXD0/TXD0/+5V and EN/GPIO0/GND) - not
+    user-operable buttons. No guess was made; this is a firm "no
+    button on this board" conclusion, not an uncertain judgment call.
+  - GPIO0 appears on header P2 alongside EN, but this is a boot-mode
+    strapping pin routed to a programming pad, not a button - not
+    tagged, no guess involved.
+  - GPIO4 was checked against this board's TX/RX pins (TX=1, RX=3 in
+    pins_arduino.h, matching the schematic's TXD0/RXD0 = physical pins
+    35/34). GPIO4 does not conflict with TX/RX, so the tag was safe to
+    apply.
+
+Summary of change made:
+  - board.json: GPIO4 capabilities changed from
+    ["analog_input_serial","digital_input","digital_output","pwm_output"]
+    to ["digital_output","led_low","pwm_output"] (pwm_output retained
+    since it was already present). Added a pfodWeb NOTE comment at the
+    top of board.json (after the existing exclusion NOTE) documenting
+    the source and reasoning.

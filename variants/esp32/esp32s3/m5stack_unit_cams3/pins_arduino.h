@@ -16,11 +16,10 @@ static const uint8_t RXD2 = 2;
 static const uint8_t SDA = 13;
 static const uint8_t SCL = 15;
 
-// Modified elsewhere
-static const uint8_t SS = -1;
-static const uint8_t MOSI = -1;
-static const uint8_t MISO = -1;
-static const uint8_t SCK = -1;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - upstream
+// declares these as -1 ("Modified elsewhere", set programmatically by the
+// camera library, not via this file). -1 wraps to 255 as a uint8_t, which
+// would otherwise leak a phantom "GPIO255" pin.
 
 static const uint8_t G0 = 0;
 static const uint8_t G1 = 1;

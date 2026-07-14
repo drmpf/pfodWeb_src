@@ -1,0 +1,112 @@
+Board: variants/esp32/esp32s3/heltec_wireless_tracker (Heltec Wireless Tracker, NOT the _v2 variant)
+Researched: 2026-07-11
+
+SOURCES CONSULTED
+
+1. https://resource.heltec.cn/download/Wireless_Tracker/Wireless%20Tracker1.1.pdf
+   Official Heltec "Wireless Tracker V1.1" datasheet (Rev 1.1, May 2023, fetched and
+   read in full as PDF). This is the primary confirming source.
+   - Section 2.1 Pin assignment diagram (HT-Tracker_V1 Pin map) and Section 2.2 Pin
+     description tables (Header J2 and Header J3) give the authoritative GPIO function
+     list.
+   - Header J2 pin 2: "0  I/O  GPIO0, USER_SW" -> GPIO0 is a genuine onboard user
+     pushbutton, separate from pin 1 "RST P RST_SW" (the reset button). The pin-map
+     diagram also shows two physical round button icons on the board silkscreen next
+     to these two pins, consistent with a distinct RST button and USER/PRG button.
+   - Header J2 pin 10: "48 I/O GPIO48, D_SEL" -> GPIO48 is a display-select control
+     line, NOT an LED pin. This directly contradicts the generic Arduino-ESP32 core's
+     pins_arduino.h, which aliases LED_BUILTIN/RGB_BUILTIN to GPIO48 (SOC_GPIO_PIN_COUNT
+     + 48 sentinel for the rgbLedWrite()/neopixelWrite() API). That LED_BUILTIN mapping
+     appears to be boilerplate carried over from the generic ESP32-S3 Arduino core
+     template (the pins_arduino.h even contains the stock comment about "board design
+     bug ... too low voltage on this pin ... use different pin ... for example 38",
+     which is the same boilerplate seen on unrelated ESP32-S3 boards) and does NOT
+     reflect a real onboard NeoPixel/RGB LED on this specific board.
+   - Header J2 pin 8: "21 I/O GPIO21, TFT_LED_K" -> this is the cathode/control line
+     for the onboard 0.96" TFT-LCD's backlight, not a general-purpose status LED.
+   - Header J3 pin 1: "18 I/O GPIO18, U1RXD, ADC2_CH7, CLK_OUT3, LED Write Ctrl" ->
+     labeled "LED Write Ctrl" but datasheet gives no further explanation; most likely
+     related to TFT display backlight/write control given its co-location with the
+     other TFT signals (GPIO38/39/40/41/42 = TFT_CS/RES/RS/SCLK/SDIN) and GPIO21
+     TFT_LED_K, rather than an independent user-visible LED.
+
+2. https://docs.heltec.org/en/node/esp32/wireless_tracker/index.html
+   Official Heltec docs index page for Wireless Tracker. Page content itself did not
+   contain pin-level button/LED details (referred to the datasheet/pin-map/schematic
+   downloads instead, which were obtained directly above).
+
+3. https://heltec.org/project/wireless-tracker/
+   Product page, general product description only; did not add pin-level detail
+   beyond what the datasheet already confirmed.
+
+4. WebSearch: "Heltec Wireless Tracker onboard button GPIO0 PRG schematic"
+   Search snippet corroborated GPIO0 = PRG/USER switch functioning as programming/boot
+   button; used as a pointer toward the datasheet PDF above for the authoritative
+   confirmation.
+
+5. WebSearch: "Heltec Wireless Tracker RGB LED GPIO48 WS2812 schematic"
+   Search snippet surfaced the pin description table entry "GPIO48 has the function
+   D_SEL" - this is what led to fetching the full datasheet PDF and confirming GPIO48
+   is NOT an LED pin, contradicting the generic core's LED_BUILTIN alias.
+
+6. https://github.com/espressif/arduino-esp32/pull/8464/files
+   ("Create pins_arduino.h for heltek wireless tracker" PR) - fetched to see the origin
+   of this board's pins_arduino.h. Confirmed the file defines LED_BUILTIN/RGB_BUILTIN
+   as SOC_GPIO_PIN_COUNT+48 with the generic "board design bug / too low voltage /
+   use pin 38 instead" boilerplate comment, and does not separately define any
+   BUTTON/PRG/USER_SW constant - GPIO0 is not named in the Arduino core file at all
+   (it only appears via the generic pin number, not as a named alias). This further
+   supports that the Arduino core's variant file was not custom-verified against real
+   silkscreen/schematic labels for this board and should not be trusted alone.
+
+7. WebSearch: "Heltec Wireless Tracker GPIO18 LED Write Ctrl pinout" /
+   "Wireless Tracker heltec schematic PDF GPIO18 TFT OR LCD reset OR backlight"
+   Snippets confirmed GPIO18 = "LED_Write_Ctrl" also appears (on the V2 board) while
+   V1.1 uses GPIO35 for the same "LED Write Ctrl" label per one snippet (search results
+   were a little inconsistent about V1 vs V2 pin numbers for this specific signal, but
+   consistently described it as tied to the TFT/LCD block, not a discrete status LED).
+
+PINS CONSIDERED BUT NOT TAGGED
+
+- GPIO48 (D_SEL) - considered because the Arduino core pins_arduino.h defines
+  LED_BUILTIN/RGB_BUILTIN pointing here (SOC_GPIO_PIN_COUNT+48 sentinel, normally used
+  for onboard WS2812 NeoPixel on many other ESP32-S3 boards). NOT tagged: the official
+  Heltec datasheet explicitly labels this pin "D_SEL" (display select), not an LED.
+  This is a case where the pins_arduino.h alias is actively wrong/misleading for this
+  specific board (likely inherited boilerplate) - per task rules, GPIO/LED_BUILTIN
+  alias names must never be trusted without vendor confirmation, and here the vendor
+  source directly contradicts it. No guess made; left fully alone (capabilities
+  unchanged).
+
+- GPIO21 (TFT_LED_K) - considered because "LED" appears in the label, but this is the
+  TFT-LCD's backlight cathode control line (a dedicated display peripheral pin), not a
+  general-purpose/user-visible status LED. Left alone (no change), consistent with the
+  board's existing "OLED/display" pin-exclusion NOTE philosophy already in this file
+  for GPIO39/41/42 (this board's earlier audit did not previously flag GPIO21 for
+  exclusion; I did not touch or add an exclusion for it since that is out of scope for
+  this LED/button-tagging task - only mentioning it here as a pin I evaluated for LED
+  tagging and rejected).
+
+- GPIO18 (U1RXD, ADC2_CH7, CLK_OUT3, "LED Write Ctrl") - considered because of the
+  explicit "LED Write Ctrl" datasheet label. NOT tagged: no schematic or further vendor
+  text was found clarifying whether this drives a discrete user-visible LED or is
+  purely an internal TFT/backlight write-enable/control signal alongside the other TFT
+  pins. Evidence was ambiguous/insufficient to confirm a real onboard status LED, so
+  per task rules (no guessing without solid confirming evidence) this was left
+  untagged. No TX/RX conflict applies (this board's actual Serial TX/RX are GPIO43/44;
+  GPIO18 is a secondary UART1 RX pin, unrelated) but that was not the reason for
+  skipping - the reason is insufficient confirmation of LED identity.
+
+- GPIO47 (Boot_Mode) - a strapping/boot-mode selection pin per the datasheet, not a
+  user-facing button. Not considered a button candidate; left alone.
+
+SUMMARY OF WHAT WAS TAGGED
+
+GPIO0 -> ["digital_input", "button"] in board.json (chipGpios."0".capabilities),
+confirmed as the onboard USER_SW pushbutton via the official Heltec Wireless Tracker
+V1.1 datasheet. Added a "pfodWeb NOTE" comment near the top of board.json, after the
+existing pin-exclusion NOTE, documenting the source. No LED was tagged - no onboard
+single-color, RGB/discrete, or NeoPixel status LED could be confirmed via real vendor
+documentation; the pins_arduino.h LED_BUILTIN/RGB_BUILTIN alias at GPIO48 was found to
+be contradicted by the vendor datasheet (GPIO48 = D_SEL) and was therefore correctly
+NOT trusted or tagged.

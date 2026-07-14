@@ -1,0 +1,64 @@
+Board: adafruit_sparklemotionmini_esp32 (chip: esp32)
+Audit type: dedicated-hardware pin-exclusion audit (pin_arduino.h non-boilerplate declarations)
+
+Flagged declarations reviewed:
+  static const uint8_t PIN_NEOPIXEL = 18;
+  #define RGB_BUILTIN    (PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT)   // not a real GPIO, ignored
+  static const uint8_t BUTTON = 0;
+
+Sources consulted:
+  - https://learn.adafruit.com/adafruit-sparkle-motion-mini/pinouts
+    "This addressable RGB NeoPixel LED, labeled Neo on the board, can be
+    controlled with code." Accessible as board.NEOPIXEL (CircuitPython) /
+    PIN_NEOPIXEL (Arduino). Confirms GPIO18 = onboard single status pixel.
+    Also confirms "GPIO0 (Boot Button) ... board.BUTTON / BUTTON ...
+    Holding this while clicking reset enters ROM bootloader mode."
+    Same page documents the true external-strip driver outputs as GPIO32
+    and GPIO33 (level-shifted to 5V, separate breakout pads) - these are
+    NOT PIN_NEOPIXEL and are left as plain GPIOs (no LED tag needed; they
+    are general-purpose level-shifted outputs, not addressable-protocol
+    dedicated pins in pins_arduino.h).
+  - https://learn.adafruit.com/adafruit-sparkle-motion-mini?view=all
+    Board overview: "a small built-in NeoPixel on pin 18" (status LED,
+    distinct from the "two output signals plus 5V power and ground" used
+    to drive external NeoPixel strips). Also: "user button on GPIO 0"
+    plus a separate hardware reset button.
+
+Reasoning:
+  - GPIO18 (PIN_NEOPIXEL): KEEP. This is the onboard status NeoPixel
+    ("Neo" on silkscreen), not the external-strip-driving output (that
+    role belongs to GPIO32/33, which are unrelated to this flagged
+    symbol and already carry plain GPIO capabilities). Tagged
+    ["digital_output", "led_neopixel"] in board.json chipGpios["18"],
+    dropping digital_input/pwm_output since it's a dedicated single-wire
+    addressable LED data pin, matching this repo's established
+    led_neopixel tagging convention (e.g. axiometa_genesis_mini,
+    esp8266_wifinfo).
+  - GPIO0 (BUTTON): KEEP. Onboard user/boot button, vendor-confirmed.
+    Tagged ["digital_input", "button"] in board.json chipGpios["0"],
+    dropping digital_output/pwm_output/analog_input_serial, matching
+    this repo's established button tagging convention (e.g.
+    heltec_ht_de01, wiolink, wifiduino).
+  - RGB_BUILTIN / RGB_BRIGHTNESS: not real GPIOs (RGB_BUILTIN is an
+    encoded macro >= SOC_GPIO_PIN_COUNT for the new Arduino
+    rgbLedWrite() API; RGB_BRIGHTNESS is a plain brightness constant).
+    Correctly ignored per task instructions.
+  - TX1/RX1: aliases of existing TX/RX (both = GPIO25/26), not new
+    GPIOs. Ignored per task instructions.
+
+Alias-collision check (build_boards.js bus-capability contamination bug):
+  Checked this board's pins_arduino.h for SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+  values: SDA=19, SCL=22, SS=14, MOSI=25, MISO=26, SCK=27, TX=25, RX=26.
+  None of these equal GPIO18 or GPIO0. No collision found; no alias
+  lines needed deletion.
+
+Mechanism:
+  Created board.json as a full copy of the chip-level default
+  (variants/esp32/esp32/board.json), then edited only chipGpios["0"]
+  and chipGpios["18"] as described above, with a leading pfodWeb NOTE
+  comment citing sources and the alias-check result.
+
+Summary: GPIO18 (PIN_NEOPIXEL) kept and tagged led_neopixel (onboard
+status pixel, not the external-strip driver on GPIO32/33); GPIO0
+(BUTTON) kept and tagged button; no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+alias collisions found on either pin.

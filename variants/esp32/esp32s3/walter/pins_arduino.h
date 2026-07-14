@@ -44,7 +44,8 @@ static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
 static const uint8_t A16 = 17;
 static const uint8_t A17 = 18;
-static const uint8_t A18 = 19;
+// pfodWeb NOTE: A18 (GPIO19) deliberately NOT declared - same GPIO as
+// the dedicated onboard cellular modem's MODEM_RTS pin above.
 static const uint8_t A19 = 20;
 
 static const uint8_t T1 = 1;

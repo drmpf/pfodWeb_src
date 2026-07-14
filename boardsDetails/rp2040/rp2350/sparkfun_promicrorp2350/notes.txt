@@ -1,0 +1,88 @@
+Board audit notes: sparkfun_promicrorp2350 (SparkFun Pro Micro - RP2350)
+Family: rp2040 / chip bucket: rp2350
+Audit date: 2026-07-13
+Part of the RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion audit (never done for this board before this session).
+
+FILES READ
+- variants/rp2040/rp2350/sparkfun_promicrorp2350/pins_arduino.h (this board, full file)
+- variants/rp2040/rp2350/board.json (chip-level defaults, chipGpios: {} deliberately empty)
+- variants/rp2040/rp2040/sparkfun_promicrorp2040/board.json (RP2040 sibling precedent,
+  already confirmed/tagged in an earlier audit session)
+- variants/rp2040/rp2040/sparkfun_promicrorp2040/pins_arduino.h (RP2040 sibling pins file,
+  for pin-number comparison)
+- variants/rp2040/boards.txt (confirmed sparkfun_promicrorp2350.name=SparkFun ProMicro RP2350
+  entry exists, build.variant=sparkfun_promicrorp2350)
+
+SOURCES CONSULTED (web)
+- https://docs.sparkfun.com/SparkFun_Pro_Micro_RP2350/single_page/ (official Hookup Guide)
+- https://docs.sparkfun.com/SparkFun_Pro_Micro_RP2350/introduction/
+- https://docs.sparkfun.com/SparkFun_Pro_Micro_RP2350/basic_assembly/
+- https://github.com/sparkfun/SparkFun_Pro_Micro_RP2350/blob/main/docs/hardware_overview.md
+  (GitHub-hosted source of the Hookup Guide's hardware overview page)
+- https://www.sparkfun.com/sparkfun-pro-micro-rp2350.html (product page)
+
+FINDINGS
+
+1. pins_arduino.h for this board declares:
+     #define PIN_LED        (25u)
+     #define PIN_NEOPIXEL   (25)
+     #define NUM_NEOPIXEL   (1)
+   i.e. GPIO25 is simultaneously the "status LED" pin and the single WS2812
+   NeoPixel data pin — same dual-role single-LED pattern as the RP2040 sibling
+   board (sparkfun_promicrorp2040), which was already confirmed and tagged
+   "led_neopixel" in an earlier audit session.
+
+2. Web sources confirm this independently for the RP2350 variant specifically
+   (not just inherited/copy-pasted from the RP2040 sibling):
+   - "a WS2812 RGB LED connected to pin 25 on the RP2350" (Hookup Guide /
+     hardware_overview.md)
+   - A separate red Power LED is described as "tied to the 3.3V line" and
+     disableable via a PWR solder jumper to reduce current draw — this is a
+     passive hardware power indicator, NOT wired to any RP2350 GPIO, so it is
+     out of scope for GPIO capability tagging (matches the RP2040 sibling's
+     equivalent red power LED).
+   - A solder pad labeled "D0" on the underside of the board allows
+     daisy-chaining additional WS2812 LEDs from the onboard one — does not
+     change the GPIO25 tagging (still a single onboard pixel by default,
+     NUM_NEOPIXEL=1 in pins_arduino.h).
+
+3. Buttons: BOOT and RESET buttons are present, both confirmed hardware-only
+   control lines (BOOT forces USB bootloader mode, RESET restarts the MCU) —
+   NOT wired to a normal GPIO. Same as every other RP2040/RP2350 board's
+   BOOTSEL/RESET pair. Out of scope for GPIO button tagging.
+
+4. Bus-collision check (per the known build_boards.js bug class where a
+   confirmed button/LED/NeoPixel pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK
+   gets an unwanted auto-appended bus capability): GPIO25 does NOT appear in
+   any of this board's SPI0/SPI1/Wire0/Wire1 #defines.
+     SPI0: MISO=20, MOSI=23, SCK=22, SS=21
+     SPI1: MISO=MOSI=SCK=SS=31 (not pinned out)
+     Wire0: SDA=16, SCL=17
+     Wire1: SDA=SCL=31 (not pinned out)
+   No collision found — no #define removal needed (contrast with the
+   adafruit_feather_scorpio precedent, which is not applicable here).
+
+PER-PIN REASONING
+- GPIO25 (PIN_LED / PIN_NEOPIXEL, NUM_NEOPIXEL=1): tagged in the new
+  per-board board.json chipGpios as
+    ["digital_output", "led_neopixel", "pwm_output"]
+  pwm_output retained (not omitted) because arduino-pico's analogWrite()
+  functions on any RP2040/RP2350 GPIO regardless of NeoPixel usage — matches
+  the sparkfun_promicrorp2040 and sparkfun_thingplusrp2350 precedents exactly.
+- All other GPIOs on this board: left at chip-level defaults (full
+  digital_input/digital_output/pwm_output per variants/rp2040/rp2350/board.json)
+  — no dedicated hardware or onboard button/LED found for any other pin.
+
+ACTION TAKEN
+Created variants/rp2040/rp2350/sparkfun_promicrorp2350/board.json — a full
+per-board override file (chip-level fields copied verbatim from
+variants/rp2040/rp2350/board.json) plus a chipGpios entry for GPIO25 as above.
+Verified valid JSON via a plain-string "//"-comment-stripping pass + JSON.parse
+(no build_boards.js require(), no build commands run, per task instructions).
+
+SUMMARY (one line)
+GPIO25 (PIN_LED/PIN_NEOPIXEL) confirmed via SparkFun's official RP2350 Hookup
+Guide as a single onboard WS2812 pixel doubling as the status LED — tagged
+led_neopixel; no bus collision found; no onboard GPIO-wired button found;
+per-board board.json created.

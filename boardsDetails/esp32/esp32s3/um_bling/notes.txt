@@ -1,0 +1,71 @@
+um_bling (Unexpected Maker "BLING!") - button/LED capability tagging research notes
+=====================================================================================
+
+Sources consulted
+------------------
+https://raw.githubusercontent.com/UnexpectedMaker/arduino-esp32/master/variants/um_bling/pins_arduino.h
+  Vendor's own arduino-esp32 fork (UnexpectedMaker's official Arduino board-support
+  package). Confirms exact pin definitions matching this repo's local pins_arduino.h:
+  RGB_DATA=18, BUTTON_A=11, BUTTON_B=10, BUTTON_C=33, BUTTON_D=34, TX=43, RX=44,
+  RGB_PWR=6. This is the authoritative vendor GPIO-to-function mapping (not an
+  inferred alias name - it is the vendor's own published variant file).
+
+https://github.com/UnexpectedMaker/arduino-esp32/blob/master/variants/um_bling/pins_arduino.h
+  Same file via the GitHub web UI, used as a cross-check of the raw fetch above -
+  contents match.
+
+https://help.unexpectedmaker.com/index.php/knowledge-base/what-is-bling/
+  (Retrieved via search snippet; direct WebFetch of this URL returned HTTP 404 at
+  fetch time, so relied on the search-engine's cached snippet/summary.) Describes
+  BLING! as having a 40x8 (320 LED) matrix of 1x1mm addressable RGB LEDs on the
+  front, plus 4 user-programmable buttons and a user-programmable power switch for
+  the LED matrix. Confirms the RGB LED is an addressable/NeoPixel-style matrix (not
+  a simple single-color or discrete-RGB LED) and confirms 4 physical buttons exist
+  on the board.
+
+https://github.com/UnexpectedMaker/bling
+  Official "Support files for Unexpected Maker BLING!" repo (pinout cards,
+  schematics PDFs Bling_P5_Schematic.pdf / TinyBLING_P5_Schematic.pdf, case files).
+  Confirms this is the correct/only current BLING! product repo. Did not extract
+  pin numbers from the schematic PDFs themselves (not needed - the arduino-esp32
+  fork's pins_arduino.h already gives an authoritative vendor-published mapping).
+
+WebSearch: "Unexpected Maker BLING ESP32-S3 board pinout NeoPixel buttons",
+"BLING Unexpected Maker board GPIO18 RGB_DATA button GPIO10 GPIO11",
+"unexpectedmaker.com BLING product page 40x8 LED matrix buttons"
+  General search queries used to locate the above sources and confirm BLING! is a
+  real Unexpected Maker product (ESP32-S3, 8MB flash, 2MB PSRAM) with the 40x8
+  addressable RGB matrix and 4 buttons.
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO33 (BUTTON_C) and GPIO34 (BUTTON_D): These are confirmed by the same vendor
+  source (arduino-esp32 um_bling pins_arduino.h) to be two more of the board's 4
+  physical user buttons - same confidence level as BUTTON_A/BUTTON_B which WERE
+  tagged. However, GPIO33 and GPIO34 have NO existing entry in this board's
+  chipGpios - they fall inside the ESP32-S3 chip-level default board.json's
+  GPIO33-37 octal-flash/PSRAM exclusion range (see
+  variants/esp32/esp32s3/board.json line 49-52: "GPIOs ... 33-37 (octal
+  flash/PSRAM) ... are excluded"). Per task instructions, re-adding a GPIO that a
+  prior chip-level exclusion pass deliberately removed is out of scope for this
+  task, so BUTTON_C/BUTTON_D were left untagged. This was NOT a guess/judgment
+  call on my part - I am confident these are real physical buttons - the reason
+  for not tagging is purely the pre-existing chip-level pin exclusion, not any
+  doubt about their identity. Flagging for human review in case the exclusion
+  should be reconsidered for boards (like this one) that don't actually use octal
+  PSRAM/flash on those specific pins.
+- RGB_PWR (GPIO6): vendor pins_arduino.h documents this as the power-gate FET
+  enable for the onboard RGB LED matrix, not a general-purpose GPIO and not itself
+  an LED or button. Already excluded from chipGpios by the pre-existing board-level
+  NOTE (line 1-4 of board.json, predating this task). Not reconsidered here.
+- VBAT_SENSE (GPIO17) / VBUS_SENSE (GPIO16): analog sense inputs, not buttons or
+  LEDs - not relevant to this task, left as-is.
+
+Tags applied
+-------------
+GPIO18 -> ["digital_output","pwm_output","led_neopixel"] (RGB_DATA, addressable
+  40x8 RGB LED matrix data line; pwm_output retained because it was already present
+  on this pin before this change).
+GPIO10 -> ["digital_input","button"] (BUTTON_B).
+GPIO11 -> ["digital_input","button"] (BUTTON_A).
+No TX/RX conflicts: this board's TX=43, RX=44, neither of which overlaps GPIO18/10/11.

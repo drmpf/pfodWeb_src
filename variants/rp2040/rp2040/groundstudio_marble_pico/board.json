@@ -1,0 +1,115 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — confirmed here via
+  // ../../boards.txt: "groundstudio_marble_pico.name=GroundStudio Marble
+  // Pico".
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases (no PIN_BUTTON-style macro), and neither of the
+  // board's two physical pushbuttons is a normal user-readable GPIO: the
+  // BOOTSEL button forces ROM bootloader mode (same out-of-scope
+  // rationale as ../rpipico/board.json — arduino-pico exposes it via the
+  // BOOTSEL boolean object, not digitalRead()), and the RESET button is a
+  // hardware reset line wired to RUN, not a GPIO. Confirmed via the
+  // official schematic (Board Circuit Schematic page, "RESET button" /
+  // "Boot selection" blocks) — see notes.txt for sources.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is a plain "rp2040" chip
+  // bucket board (no onboard WiFi/BLE radio).
+  "connections": ["serial"],
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel + dedicated-
+  // hardware pin-exclusion audit, 2026-07-13): GPIO15 is explicitly
+  // called out by the vendor as reset-time-sensitive and NOT to be used
+  // for user projects — confirmed verbatim via the official GroundStudio
+  // Marble Pico Datasheet (REV 1.1): the pinout diagram's own callout box
+  // states "GP15 has a special purpose during the device reset and
+  // should not be used for your projects", and the "Pins general
+  // function" section repeats: "GP15 has a special function during the
+  // reset of the board and for this reason we do not recommend its use."
+  // No further technical detail on what that reset-time role is was
+  // published, so — matching the ESP32 family's boot-strapping-pin
+  // convention (e.g. esp32s2/um_tinys2 GPIO0 "Must be HIGH for normal
+  // boot") — this is surfaced as an informational pinNotes warning only;
+  // full digital_input/digital_output/pwm_output capability is left in
+  // place (the vendor does not claim the pin is unusable, only that it's
+  // risky), so no chipGpios override is added for it.
+  "pinNotes": {
+    "15": "Vendor-documented special purpose during device reset — GroundStudio's own datasheet recommends against using GP15 in your projects (no further technical detail published)."
+  },
+
+  // Sources consulted / full findings trail:
+  // boardsDetails/rp2040/rp2040/groundstudio_marble_pico/notes.txt
+  //
+  // Board: GroundStudio "Marble Pico" (Ardushop SRL, Romania) — a
+  // Raspberry Pi Pico-pinout-compatible RP2040 board (RLJDMV_GS
+  // REV0.0.3) adding USB-C, a STEMMA QT/Qwiic I2C0 connector, a
+  // dedicated ADC_VREF LDO, an 8MB QSPI flash, an onboard microSD
+  // adapter wired to SPI0 by default, and 1-cell LiPo charging support.
+  // Confirmed via the official GroundStudio Marble Pico Datasheet REV
+  // 1.1 (github.com/GroundStudio/GroundStudio_Marble_Pico, also mirrored
+  // at mm.digikey.com/Volume0/opasdata/d220001/medias/docus/5562/Marble
+  // Pico.pdf) — quotes verbatim:
+  //   "There is a built-in LED controlled by the GP25 pin. When the pin
+  //   is HIGH or LOW, the LED is on and off, respectively." — CONFIRMS
+  //   GP25/PIN_LED is active-high, matching this board's pins_arduino.h
+  //   `#define PIN_LED (25u)`.
+  //   "The board also has two other LEDs to indicate the charging status
+  //   'CG' and the power supply 'ON'." — these two LEDs are wired
+  //   directly to the charging IC / power rail per the schematic's "On
+  //   LED" / "Charge LED" blocks, NOT to any RP2040 GPIO, so there is no
+  //   pin to tag for them (out of scope, not a missed tag).
+  //   "adapter for micro-SD type memory cards connected to the SPI0 port
+  //   (default) ... To use the SPI0 port for another purpose, the
+  //   adapter can be disconnected using the solder jumpers on the back
+  //   of the pcb." — CONFIRMS GPIO16/17/18/19 (this board's
+  //   PIN_SPI0_MISO/SS/SCK/MOSI) are dedicated, in the board's default
+  //   (as-shipped) configuration, to the onboard microSD adapter — not
+  //   general-purpose — matching this board's own pins_arduino.h comment
+  //   ("D16-D19 deliberately NOT declared").
+  //   The pins_arduino.h's own inline comments (`#define PIN_VBAT (24u)
+  //   // J17 Default Connection` / `#define PIN_SD_SWITCH (24u) // J17
+  //   Alternative Connection`) — read together with the schematic's "1
+  //   cell 3.7-4.2V battery charging circuit" block — confirm GPIO24 is
+  //   a solder-jumper-selected internal-hardware line (either a
+  //   battery-charge-circuit signal or the microSD adapter's
+  //   card-presence switch, depending on J17's position), never a plain
+  //   header-broken-out user GPIO on this board — matching the SD-card
+  //   dedicated-pin exclusion pattern above rather than a normal button.
+  // "chipGpios" below only overrides the confirmed onboard LED and the
+  // pins that are dedicated, in the board's shipped default state, to
+  // onboard peripherals rather than general I/O.
+  "chipGpios": {
+    "16": { "capabilities": [], "note": "PIN_SPI0_MISO — onboard microSD card adapter's SPI0 data-in line, connected by default. Not general-purpose in the board's as-shipped configuration. Confirmed via the official GroundStudio Marble Pico Datasheet ('adapter for micro-SD type memory cards connected to the SPI0 port (default)... the adapter can be disconnected using the solder jumpers on the back of the pcb'). No spi_miso auto-tag applies (this board's pins_arduino.h declares no bare `static const uint8_t MISO` alias for build_boards.js's bus-role auto-append to key off)." },
+    "17": { "capabilities": [], "note": "PIN_SPI0_SS — onboard microSD card adapter's SPI0 chip-select line, connected by default. Not general-purpose in the board's as-shipped configuration. Confirmed via the official GroundStudio Marble Pico Datasheet (see GPIO16 note above for the full quote)." },
+    "18": { "capabilities": [], "note": "PIN_SPI0_SCK — onboard microSD card adapter's SPI0 clock line, connected by default. Not general-purpose in the board's as-shipped configuration. Confirmed via the official GroundStudio Marble Pico Datasheet (see GPIO16 note above for the full quote)." },
+    "19": { "capabilities": [], "note": "PIN_SPI0_MOSI — onboard microSD card adapter's SPI0 data-out line, connected by default. Not general-purpose in the board's as-shipped configuration. Confirmed via the official GroundStudio Marble Pico Datasheet (see GPIO16 note above for the full quote)." },
+    "24": { "capabilities": [], "note": "PIN_VBAT / PIN_SD_SWITCH — solder-jumper (J17) selected internal-hardware line: either the onboard 1-cell LiPo charging circuit's default connection, or (J17 alternative position) the microSD adapter's card-presence switch. Not a general-purpose header-broken-out GPIO in either jumper position. Confirmed via this board's own pins_arduino.h inline comments ('J17 Default Connection' / 'J17 Alternative Connection') read together with the official datasheet's schematic ('1 cell 3.7-4.2V battery charging circuit' block); exact active-high/low polarity for either mode is not published, so no capability is asserted beyond exclusion from general GPIO use." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard user LED, active-high. Confirmed verbatim via the official GroundStudio Marble Pico Datasheet: 'There is a built-in LED controlled by the GP25 pin. When the pin is HIGH or LOW, the LED is on and off, respectively.' digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins (rpipico, adafruit_feather_adalogger); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC, with a dedicated
+  // onboard LDO feeding ADC_VREF for extra accuracy — matches the
+  // chip-level default and this board's own pins_arduino.h (PIN_A0=26,
+  // PIN_A1=27, PIN_A2=28); the datasheet's separate ADC_VREF regulator
+  // does not change the nominal 3.3V/12-bit/4095 figures used here.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

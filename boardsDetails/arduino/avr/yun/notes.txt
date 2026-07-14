@@ -1,0 +1,209 @@
+Arduino AVR "yun" variant directory — audit notes (2026-07-14)
+================================================================
+
+Scope: variants/arduino/avr/yun/ — shared by 4 boards.txt entries:
+  - yun      (Arduino Yún)
+  - yunmini  (Arduino Yún Mini)
+  - chiwawa  (Arduino Industrial 101)
+  - one      (Linino One)
+All 4 are atmega32u4 @ 16MHz (confirmed via boards.txt grep before this
+session started). yun/pins_arduino.h is a thin wrapper that #includes
+../leonardo/pins_arduino.h unmodified, plus SERIAL_PORT_LINUXBRIDGE=Serial1
+and an #undef of SERIAL_PORT_HARDWARE_OPEN. Before this session there was
+NO board.json in this directory at all — it fell back to
+../leonardo/board.json via the ancestor-include-fallback mechanism in
+build_boards.js (_findBoardJsonViaInclude).
+
+Architecture background: all 4 boards pair an ATmega32U4 (the AVR side —
+what pfodWeb's generated sketch actually runs on) with an Atheros AR9331
+MIPS SoC running Linino/LininoOS (an OpenWRT-derived Linux distribution),
+bridged over the AVR's Serial1 hardware UART using the Bridge/Ciao
+library. WiFi, Ethernet, USB host, and microSD are all on the AR9331 side,
+not AVR GPIOs — out of scope for this pins_arduino.h-level audit.
+
+Sources consulted
+------------------
+1. https://docs.arduino.cc/retired/boards/arduino-yun (official Arduino
+   Yún docs page) — could not be fetched directly via WebFetch (renders
+   as an empty/JS-driven page to the fetch tool), but its exact text is
+   quoted verbatim by multiple independent mirrors below, so treated as
+   confirmed official content, not a guess.
+2. https://wiki.geeetech.com/index.php/Arduino_YUN — full mirror of the
+   official Yún docs text. Confirmed: D13 LED "built-in LED connected to
+   digital pin 13... HIGH...on...LOW...off"; "several other status LEDs
+   on the Yún, indicating power, WLAN connection, WAN connection and
+   USB"; 3 reset buttons — "Yún RST" (resets AR9331/Linux), "32U4 RST"
+   (resets ATmega32U4 — the chip's hardware reset pin, not a GPIO),
+   "WLAN RST" (5s = WiFi factory reset, 30s = Linux factory reset).
+3. https://www.divilabs.com/2013/11/arduino-board-yun.html — another full
+   mirror of the same official text. Additionally confirmed the SPI/ICSP
+   fact: "The SPI pins are also connected to the AR9331 gpio pins, where
+   it has been implemented in software the SPI interface. This means
+   that the ATMega32u4 and the AR9331 can also communicate using the SPI
+   protocol." Also confirmed: "Digital pins 0 and 1 are used for serial
+   communication between the 32U4 and the AR9331" (matches the parser's
+   existing automatic serial_rx/serial_tx exclusion for D0/D1 — no extra
+   action needed, this is standard behavior already correct).
+4. https://github.com/arduino/docs-content/blob/main/content/retired/06.getting-started-guides/ArduinoYunLin/ArduinoYunLin.md
+   — official docs-content repo markdown source. Confirmed: "The SD,
+   Ethernet, and USB-A connectors are not physically connected to the
+   32U4 processor, they are connected to the AR9331" — direct proof the
+   status LEDs / peripherals tied to those connectors are AR9331-side,
+   not AVR pins. Also gave precise reset-button locations/press patterns
+   (YÚN RST near analog pins, 32U4 reset via double-tap near Ethernet
+   port on some hardware revisions, WLAN RST near USB-A).
+5. https://forum.arduino.cc/t/arduinoyun-leds-wlan-and-usb-indicator/209090
+   — forum thread confirming WLAN/USB status LEDs are driven by AR9331
+   GPIOs configured via OpenWRT/LuCI LED triggers (kmod-ledtrig-usbdev
+   etc.), not accessible/relevant to the ATmega32U4 sketch side at all.
+6. https://wiki.geeetech.com/index.php/Arduino_Yun_Mini — confirmed Yún
+   Mini's D13 LED is present and behaves identically ("When the pin is
+   HIGH value, the LED is on..."), confirming the compact form factor did
+   NOT omit the D13 indicator LED. Confirmed the same 3-reset-button
+   pattern (Yún Mini RST/32U4 RST/WLAN RST) and that "SPI pins are not
+   connected to any of the digital I/O pins as they are on the Uno" (ICSP
+   header only, matching Leonardo's D14-D17 mapping).
+7. Official Arduino Industrial 101 datasheet, Arduino part A000126,
+   downloaded directly from
+   https://media.digikey.com/pdf/Data%20Sheets/Arduino%20PDFs/Industrial_101_Web.pdf
+   and read as a PDF (this is the single most informative source found —
+   a genuine vendor datasheet with a labeled photo and header pinout
+   diagram, not a marketing blurb). Key confirmed facts:
+     - D13 LED present, active-high, identical wording to Yún/Yún Mini.
+     - Status LEDs "PWR, WLAN, WAN, TX, RX" all AR9331/USB-CDC side, not
+       user AVR GPIOs (see reasoning below).
+     - "It is not possible to access the I/O pins of the Atheros AR9331.
+       All I/O lines are tied to the 32U4" for the pins this board DOES
+       expose (confirms no separate/parallel AR9331 GPIO header exists
+       for general use — the AR9331's only user-facing I/O on this board
+       is the two dedicated reset/user buttons below).
+     - 4 reset/user buttons, each explicitly labeled by side:
+         "101 RST" / "Yún RST"-equivalent — resets AR9331 (Linux side).
+         "32U4 RST" — resets ATmega32U4 (hardware reset pin, not a GPIO).
+         "USER1" — "connected to GP20 MIPS side and used to reset Wlan"
+           (double function: 5s WiFi factory reset / 30s Linux factory
+           reset) — explicitly confirmed AR9331/MIPS-side, not AVR.
+         "USER2" — "connected GP23 MIPS side and available to the user"
+           — also explicitly AR9331/MIPS-side, not an AVR pin. (Industrial
+           101 is the only one of the 4 boards with this extra free
+           button; Yún/Yún Mini/Linino One have no equivalent.)
+     - SPI/ICSP: identical wording to the general Yún docs confirming the
+       ICSP SPI bus is also wired to AR9331 GPIOs for a software-SPI
+       inter-processor link, in addition to normal ICSP/shield SPI use.
+     - TWI/I2C (D2 SDA / D3 SCL): "it is reserved for Oled slot" — this
+       board has an optional "dogOLED" plug-in module connector (J5/J6)
+       that uses the I2C bus. Evaluated against this audit's established
+       KEEP-vs-EXCLUDE policy: an *optional* plug-in accessory (not a
+       permanently-populated onboard chip) sharing a multi-drop I2C bus
+       is KEEP-available, same reasoning as any other I2C bus with one
+       reference-design device attached — NOT excluded. (If a future
+       audit confirms the dogOLED module is soldered/always-present on
+       some specific chiwawa hardware revision, this reasoning would need
+       to be revisited — no evidence of that found this session.)
+     - CRITICAL FINDING — physically reduced pinout on Industrial 101
+       ("chiwawa") specifically, NOT shared by yun/yunmini/one: the
+       datasheet's own spec table states "Digital I/O Pins: 20 (7
+       exported on header)" and "Analog I/O Pins: 12 (4 exported on
+       header)", and the header pinout diagram (connector J7, the only
+       general-purpose header on this board) lists exactly: GND, 5V, 5V,
+       GND, 13, 6, 5, A0, A1, A2, A3 — i.e. only D5, D6, D13, A0, A1, A2,
+       A3 (7 pins) are physically broken out to a usable header on this
+       specific compact "product integration" board. D0-D7 are instead
+       routed to a separate OLED-expansion-only connector (J6, marked
+       "for dogOLED"), not general-purpose. By contrast, the official
+       Yún, Yún Mini, and Linino One product descriptions all state the
+       full "20 digital input/output pins (of which 7 can be used as PWM
+       outputs and 12 as analog inputs)" with NO "(N exported on header)"
+       qualifier — i.e. those 3 boards genuinely do expose the complete
+       pin set electrically, unlike chiwawa.
+8. Official Linino One datasheet, model D000101, downloaded from
+   https://media.digikey.com/pdf/Data%20Sheets/Arduino%20PDFs/D000101_Web.pdf
+   and read as a PDF. Confirms: "20 digital input/output pins (of which 7
+   can be used as PWM outputs and 12 as analog inputs)" — same full-pinout
+   wording as Yún/Yún Mini, no "(N exported on header)" restriction.
+   Product photo shows a long, narrow board with header rows along both
+   long edges (Leonardo/Micro-like form factor), consistent with a full
+   pinout being physically present, unlike Industrial 101's compact
+   product-integration form factor. Datasheet is otherwise thin (a single
+   description paragraph, no separate LED/reset-button section) — no
+   direct quote found confirming D13 LED specifically for Linino One by
+   name, but the board is described identically to Yún/Yún Mini in every
+   other respect (same chips, same 20-pin claim, same reset-button count
+   "2 reset buttons and 1 user button" matching Yún's 3-button pattern of
+   Yún-RST + 32U4-RST + WLAN-RST), and no source anywhere suggests any
+   hardware difference on this specific point. Treated as inherited
+   correctly via the shared pins_arduino.h + Leonardo-derived D13 LED
+   convention, consistent with every other board in this family — NOT an
+   independent per-pin guess, since the D13 LED behavior comes from the
+   ATmega32U4's own pin map (shared identically across all 4 boards'
+   pins_arduino.h), not from board-specific wiring that could plausibly
+   differ.
+
+Per-pin reasoning summary
+--------------------------
+- D0 (RX1), D1 (TX1): already automatically excluded by the parser as
+  serial_rx/serial_tx (Serial1 bridges to the AR9331 Linux console via
+  Bridge/Ciao — confirmed by multiple sources above). No board.json
+  action needed — this is correct, standard behavior, not a new finding.
+- D13: KEPT, tagged led_high (inherited from Leonardo, independently
+  reconfirmed via official docs for Yún, Yún Mini, and Industrial 101
+  specifically — see sources above). Applies to all 4 boards.
+- D14 (MISO)/D15 (SCK)/D16 (MOSI)/D17 (SS), the ICSP SPI bus: KEPT,
+  untagged (matches Leonardo default) — documented in board.json comments
+  that this bus is additionally wired to AR9331 GPIOs for an optional
+  software-SPI inter-processor channel, per official docs (applies to all
+  4 boards) — not excluded, since it is not a fixed/always-active onboard
+  peripheral consumer (same reasoning as general-purpose I2C staying
+  available per this audit's established policy).
+- D2 (SDA)/D3 (SCL): KEPT, untagged. "Reserved for Oled slot" per the
+  Industrial 101 datasheet refers to an *optional* plug-in accessory
+  connector, not a permanently-populated onboard chip — does not meet
+  this audit's EXCLUDE bar. Applies at minimum to chiwawa; no evidence
+  found of an equivalent dedicated OLED connector on yun/yunmini/one, so
+  this is a non-issue for those 3 either way.
+- WLAN RST / USER1 / USER2 / Yún-RST / 32U4-RST: none are AVR GPIOs.
+  Confirmed via explicit "MIPS side" / "AR9331" wording in official docs
+  (Industrial 101 datasheet is the most explicit: "connected to GP20 MIPS
+  side", "connected GP23 MIPS side"). No chipGpios button tag added or
+  needed — there is no AVR pin to tag.
+- Power/WLAN/WAN/ETH/USB/PWR/TX/RX status LEDs: none are AVR GPIOs.
+  Confirmed AR9331-side (OpenWRT LED-trigger driven) or fixed USB-CDC
+  RX/TX indicators inherent to the 32U4's own USB hardware (already
+  covered by Leonardo's existing LED_BUILTIN_RX/LED_BUILTIN_TX pin map,
+  not something Yún-specific to newly tag).
+
+KNOWN UNRESOLVED ISSUE — flagged, not fixed, this session
+-----------------------------------------------------------
+Industrial 101 ("chiwawa") physically breaks out only 7 pins (D5, D6,
+D13, A0, A1, A2, A3) versus the full 20-pin set that yun/yunmini/one
+genuinely expose. Because this shared directory's board.json applies
+identically to all 4 boards.txt entries (build_boards.js resolves
+board.json strictly per-directory — confirmed by reading the resolution
+code directly; there is no per-boardId override mechanism for the AVR
+family), it is currently NOT POSSIBLE to give chiwawa a narrower pin list
+without also incorrectly restricting yun/yunmini/one. Per this audit's
+established multi-vendor-shared-file policy (documented precedent: ESP8266
+"generic"/"thing" directories backing genuinely different products — fix
+is to leave the shared file alone and document the divergence, not guess
+a compromise), this was deliberately left UNCHANGED rather than narrowing
+chipGpios for all 4 boards. The board.json's own comments carry the same
+flag inline. Recommended future fix: split `chiwawa` into its own variant
+directory with a self-contained `pins_arduino.h` (not `#include`-based)
+declaring only D5, D6, D13, A0-A3, plus its own `board.json` — this needs
+an explicit decision/session of its own, not something to action
+unilaterally as part of a "no genuine findings" pass.
+
+One-line summary
+------------------
+Created variants/arduino/avr/yun/board.json (previously absent — this
+directory fell back to leonardo/board.json) as a documented, intentional
+copy of Leonardo's D13-LED chipGpios entry, confirmed correct for all 4
+boards.txt entries (yun/yunmini/chiwawa/one) via official Arduino
+documentation; no new AVR pin exclusions/tags were warranted (Serial1's
+Linux-bridge role and the SPI-bus/AR9331-GPIO sharing were documented but
+not excluded, since both are already-correct or non-exclusive-use cases);
+one significant divergence was found and documented but deliberately NOT
+acted on — Arduino Industrial 101 ("chiwawa") physically exposes only 7
+of the 20 AVR digital pins on its compact header, unlike the other 3
+boards, and needs its own variant directory in a future session to be
+represented accurately.

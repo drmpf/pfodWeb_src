@@ -13,10 +13,9 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 45;
 static const uint8_t SCL = 46;
 
-static const uint8_t SS = 34;
-static const uint8_t MOSI = 35;
-static const uint8_t MISO = 37;
-static const uint8_t SCK = 36;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK not declared — this is the onboard
+// microSD card's SDMMC/SPI bus (see SDMMC_* below), not general-purpose
+// (see this board's own board.json chipGpios override).
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;

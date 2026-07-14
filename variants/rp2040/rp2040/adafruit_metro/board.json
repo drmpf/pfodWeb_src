@@ -1,0 +1,97 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — confirmed here via
+  // ../../boards.txt: "adafruit_metro.name=Adafruit Metro RP2040".
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's pins_arduino.h declares no button alias, and Adafruit's
+  // own documentation only lists a RESET button and a BOOT button (used
+  // to enter the bootloader), neither of which is a normal application-
+  // readable GPIO — same as the classic Raspberry Pi Pico's BOOTSEL (see
+  // ../rpipico/board.json). No gpio_keys node exists in the official
+  // Zephyr devicetree for this board either. No pin to attach a "button"
+  // capability to — out of scope, not a missed tag.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Adafruit "Metro RP2040" (product 5786) — an Arduino-Uno-form-
+  // factor board with a plain red status LED (D13/GPIO13), an onboard
+  // single status NeoPixel (GPIO14), a microSD card slot wired to
+  // GPIO15/18-23 (SPI-style pins, already reflected in this board's
+  // bespoke pins_arduino.h SPI0/SD aliases), and RESET/BOOT hardware
+  // buttons that are not GPIO-readable (same as the classic Pico's
+  // BOOTSEL — out of scope for GPIO tagging).
+  //
+  // Sources consulted:
+  // 1. learn.adafruit.com/adafruit-metro-rp2040/pinouts (official
+  //    Adafruit guide) — quotes verbatim: "This red LED on 13 is user
+  //    controllable for blinky needs" (PIN_LED); "This addressable RGB
+  //    NeoPixel LED is both a status LED and user controllable on 14"
+  //    (PIN_NEOPIXEL); SD slot pins SD_CS=GPIO23, SCK=GPIO18, MOSI=
+  //    GPIO19, MISO=GPIO20, SD_CD=GPIO15, plus GPIO21/22 for SDIO — this
+  //    exactly matches this board's own pins_arduino.h PIN_SD_* / PIN_SPI0_*
+  //    aliases, confirming those GPIOs are correctly dedicated to the
+  //    onboard SD card slot (no board.json fix needed there — the SPI0
+  //    bus aliases on those pins ARE the SD card's own interface, unlike
+  //    the adafruit_feather_scorpio false-positive precedent).
+  // 2. learn.adafruit.com/adafruit-metro-rp2040/neopixel-led (official
+  //    Adafruit guide) — confirms a single built-in RGB NeoPixel status
+  //    LED (not a chain), located next to the "14" pin silkscreen label.
+  // 3. raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+  //    boards/adafruit/metro_rp2040/adafruit_metro_rp2040.dts — official
+  //    upstream Zephyr board port. Quotes:
+  //      leds { red_led: red_led { gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>; label = "Red LED"; }; }
+  //      ws2812: ws2812 { gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>; chain-length = <1>; ... }
+  //    This independently CONFIRMS: D13 LED is active-high; the onboard
+  //    NeoPixel is GPIO14 with chain-length 1 (single pixel). No
+  //    gpio_keys/button node exists in this devicetree, confirming no
+  //    GPIO-readable onboard button.
+  // 4. raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/adafruit_metro_rp2040/mpconfigboard.h —
+  //    `#define MICROPY_HW_NEOPIXEL (&pin_GPIO14)`, no MICROPY_HW_LED or
+  //    MICROPY_HW_APA102 defined — independently confirms the onboard
+  //    NeoPixel is GPIO14 and there is no separate discrete/APA102 LED
+  //    beyond the plain GPIO13 red LED already covered by source #3.
+  //
+  // Bus-alias-contamination check (per this audit's playbook): GPIO13
+  // and GPIO14 carry no SPI/Wire/Serial alias anywhere in this board's
+  // pins_arduino.h, so no spurious bus capability would be auto-appended
+  // to either confirmed LED/NeoPixel tag — no pins_arduino.h edit needed
+  // (unlike the adafruit_feather_scorpio PIN_SPI0_SS/GPIO13 collision).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_metro/notes.txt
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / D13 — onboard plain red status LED, active-high. Confirmed via Zephyr's adafruit_metro_rp2040.dts leds node (gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>) and Adafruit's own learn.adafruit.com pinouts guide (\"This red LED on 13 is user controllable for blinky needs\"). digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins (rpipico, adafruit_feather_scorpio); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming. No SPI/Wire/Serial alias exists on this GPIO in this board's pins_arduino.h, so no bus-alias-contamination fix was needed (contrast adafruit_feather_scorpio)." },
+    "14": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard single status NeoPixel (WS2812), output-only data line. Confirmed via Adafruit's own learn.adafruit.com pinouts and neopixel-led guides (\"This addressable RGB NeoPixel LED is both a status LED and user controllable on 14\"; single built-in NeoPixel, not a chain), Zephyr's adafruit_metro_rp2040.dts ws2812 node (gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>, chain-length = <1>), and CircuitPython mpconfigboard.h (MICROPY_HW_NEOPIXEL -> pin_GPIO14). No SPI/Wire/Serial alias exists on this GPIO in this board's pins_arduino.h." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares its own
+  // A0-A3 (GPIO26-29) analog aliases but no different ADC width/reference,
+  // so the chip-level default applies unchanged.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

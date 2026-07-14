@@ -1,0 +1,73 @@
+m5stack_dial - button/LED capability tagging research notes
+=============================================================
+
+Sources consulted:
+
+1. https://community.m5stack.com/topic/6324/what-s-the-pin-for-m5dial-btna
+   - Community thread confirms the M5Dial's front physical push button
+     ("main button", accessed as M5Dial.BtnA / M5Unified Button_Class) is
+     wired to ESP-G42 (GPIO42), routed via the wake signal. Also notes the
+     underlying M5StampS3 module's own BOOT/download button is on ESP-G0,
+     used for entering programming mode (not a general user button in
+     M5Dial's own hardware design).
+
+2. https://docs.m5stack.com/en/arduino/m5dial/button
+   - Official M5Dial docs: describes a physical button "located at the
+     bottom of the product, below the M5 logo. Pressing down on the gray
+     border will trigger it." Read via M5Dial.update() + M5Dial.BtnA
+     .wasPressed()/.wasReleased(). Confirms this is a real physical
+     pushbutton, not merely a software alias. Does not itself state the
+     GPIO number (abstracted via M5Unified), corroborated by source #1.
+
+3. https://docs.m5stack.com/en/core/M5Dial
+   - Official product/pinout page. Lists GPIO table: G4-G9 LCD, G11/G12
+     internal I2C (RTC8563 + WS1850S RFID), G14 touch interrupt, G40/G41
+     rotary encoder A/B, G46 power HOLD, G3 buzzer, G0 "download mode
+     button" (M5StampS3 boot button, held during power-on to flash).
+     No onboard status LED, RGB LED, or NeoPixel is listed anywhere on
+     this page.
+
+4. WebSearch query "M5Stack Dial pinout schematic RGB LED GPIO" (aggregated
+   snippet, sources include devices.esphome.io/devices/m5stack-dial/ and
+   docs.m5stack.com/en/arduino/m5core/gpio) - corroborates the same GPIO
+   table (encoder G40/G41, front button G42, buzzer G3, backlight G9,
+   power hold G46) and turned up no mention of any onboard LED.
+
+5. https://shop.m5stack.com/products/m5stack-dial-v1-1
+   - Official product page/spec sheet for M5Stack Dial v1.1. Feature list
+     (rotary encoder, RFID, buzzer, round touchscreen, expansion ports)
+     contains no mention of any onboard status LED, RGB LED, or NeoPixel.
+
+6. WebSearch query "M5Stack Dial GPIO encoder button pin M5Dial.h BtnA"
+   (aggregated snippet covering docs.m5stack.com/en/arduino/m5dial/encoder
+   and community.m5stack.com/topic/5855) - consistent confirmation of
+   G40/G41 = encoder A/B (quadrature, out of scope per task instructions)
+   and G42 = front button, separate from the encoder.
+
+Pins considered and NOT tagged:
+- GPIO0: This is the M5StampS3 module's BOOT/download button (per source
+  #1), a genuine physical pushbutton, but it is the standard ESP32
+  flashing-mode button, not documented as a general user-app input by
+  M5Stack for the Dial, and GPIO0 also carries a "must be HIGH for normal
+  boot" pinNote already in board.json. Decision: made NO guess - left
+  untagged since its role is a flashing/boot-mode button rather than a
+  confirmed user-facing app button, and tagging it risks conflicting with
+  its boot-strapping requirement. Flagged here for human review in case
+  a reviewer judges it should be tagged as "button" anyway (it is a real
+  physical switch, wired similarly to typical ESP32 dev-board BOOT
+  buttons).
+- GPIO40/GPIO41 (rotary encoder A/B quadrature lines): explicitly out of
+  scope per task instructions (not a "button"), and also already excluded
+  from chipGpios in this board's board.json from the earlier pin-audit
+  pass (dedicated rotary encoder pins) - not re-added, no change needed.
+- No LED candidate was found at all (no onboard single-color LED, no
+  NeoPixel/RGB LED documented for M5Stack Dial in any source checked), so
+  no LED tagging was attempted.
+
+Summary of what was tagged:
+- GPIO42 tagged as button (capabilities set to exactly
+  ["digital_input", "button"]) in
+  variants/esp32/esp32s3/m5stack_dial/board.json, confirmed as the
+  M5Dial's physical front push button via official M5Stack docs and
+  community-forum wiring confirmation. GPIO42 does not conflict with this
+  board's TX(43)/RX(44) pins.

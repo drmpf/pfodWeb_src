@@ -11,8 +11,13 @@ static const uint8_t BUTTON_BUILTIN = 22;
 static const uint8_t TX = 16;
 static const uint8_t RX = 17;
 
-static const uint8_t SDA = 23;
-static const uint8_t SCL = 22;
+// pfodWeb NOTE: the vendor's default Wire-bus alias pair was deleted here.
+// Both of its pin assignments were simple duplicates of the RGB LED and
+// button pin numbers declared above, not a distinct, vendor-confirmed
+// onboard I2C device. Left in place, build_boards.js would have
+// unconditionally tagged those same two GPIOs with I2C bus capabilities,
+// contaminating the confirmed LED/button capability tags set in
+// board.json. See board.json and boardsDetails notes.txt for sources.
 
 static const uint8_t SS = 18;
 static const uint8_t MOSI = 19;

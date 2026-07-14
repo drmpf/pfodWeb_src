@@ -1,0 +1,295 @@
+Board: SparkFun XRP Controller Board (full/non-beta) — chip bucket rp2040w
+Audit date: 2026-07-13
+Directory: variants/rp2040/rp2040w/sparkfun_xrp_controller/
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040w/sparkfun_xrp_controller/board.json (did not
+exist before this audit — this variant previously had a pins_arduino.h but
+no board.json, which would make build_boards.js fail with "no board.json in
+this directory or any ancestor" once the chip-level rp2040w/board.json's
+chipGpios:{} default is relied on). Added 32 chipGpios entries: 30 dedicated-
+hardware GPIOs documented with capabilities:[] (no general-purpose role),
+plus 2 confirmed user-facing pins given real capability tags — GPIO36
+(BOARD_USER_BUTTON) tagged ["digital_input","button"] and GPIO37
+(BOARD_NEOPIXEL / PIN_NEOPIXEL) tagged
+["digital_output","led_neopixel","pwm_output"].
+
+BACKGROUND / WHY THIS BOARD NEEDED LESS WORK THAN A TYPICAL FIRST-PASS AUDIT
+-----------------------------------------------------------------------------
+This board's own pins_arduino.h already carries a "pfodWeb NOTE" comment
+(above its D<n>/A<n> declarations) recording an EARLIER pass of this same
+ongoing audit: it is self-contained (does NOT #include the shared
+variants/rp2040/rp2040w/generic/common.h fallback) and deliberately declares
+`static const uint8_t D<n>` aliases for ONLY:
+  - GPIO0/1   (distance sensor trigger/echo)
+  - GPIO4/5   (Qwiic 0 I2C — SDA/SCL)
+  - GPIO12-15 (Serial1/SPI1 header)
+  - GPIO16-19 (SPI0 header)
+  - GPIO26-28 (A0/A1/A2, genuinely spare ADC pins)
+Every motor/servo/encoder/current-sense GPIO is intentionally left with NO
+static-const alias at all. build_boards.js's parseEsp32Consts() only harvests
+`static const uint8_t NAME = n;` declarations (never `#define`s), so those
+un-aliased GPIOs were already invisible to the pin picker before this
+board.json existed — the "ANY alias = full digital_input/digital_output/
+pwm_output" bug described in the audit task brief simply never triggered for
+them, because they carry no alias in the first place.
+
+What was still missing, and what this pass supplies:
+ 1. The board.json file itself (required for build_boards.js to process this
+    variant at all — was previously entirely absent, meaning the build would
+    have errored on this directory).
+ 2. Explicit chipGpios `capabilities: []` documentation entries for every
+    confirmed dedicated GPIO, so the Designer's pin picker shows *why* each
+    one is unavailable instead of a silent gap — matching the established
+    bigtreetech_SKR_Pico/board.json precedent (a board in the same
+    "almost every GPIO is fixed-function" category).
+ 3. Two GPIOs pins_arduino.h's own earlier pass correctly left OUT of the
+    D-alias set (because they need special capability tags, not plain
+    digital I/O) needed to be surfaced here instead: GPIO36 (button) and
+    GPIO37 (NeoPixel).
+
+SOURCES CONSULTED
+-----------------
+1. variants/rp2040/rp2040w/sparkfun_xrp_controller/pins_arduino.h (this
+   board's own file) — authoritative arduino-pico board-support source the
+   generated sketches compile against. Confirms `#define PICO_RP2350A 0 //
+   RP2350B` (this is a genuine 48-GPIO RP2350B, not the 30-GPIO RP2350A),
+   `#include <cyw43_wrappers.h>` (onboard WiFi/BLE radio), the full XRP
+   default/alternate pin-name #define block (motor phase/enable, encoder
+   A/B, current-sense, servo, I2C x2, distance trigger/echo, line-follower,
+   battery-voltage monitor, user button, NeoPixel), `#define PIN_LED (64u)`
+   (a sentinel outside the real GPIO0-47 range — no simple GPIO LED exists
+   on this board), `RP2350_PSRAM_CS (47u)` / `RP2350_PSRAM_MAX_SCK_HZ`
+   (onboard PSRAM chip-select), and its own pre-existing "pfodWeb NOTE"
+   documenting the earlier D-alias-exclusion pass.
+2. variants/rp2040/rp2040w/sparkfun_xrp_controller_beta/pins_arduino.h —
+   sibling beta-board file, read for cross-comparison. Confirms the beta
+   controller uses a different (lower, RP2350A-range 0-28) GPIO layout for
+   the same functions, and independently documents the same category
+   boundaries (motor/encoder/servo excluded, sensor/button/I2C kept) that
+   the non-beta file's own note also follows.
+3. variants/rp2040/rp2040w/board.json (chip-level bucket) — confirms
+   chipGpios:{} is deliberately empty at this level and that
+   sparkfun_xrp_controller/sparkfun_xrp_controller_beta/
+   sparkfun_thingplusrp2350 are the three WiFi-bucket boards that would
+   otherwise rely on generic/common.h (this board in fact opted out of that
+   shared fallback with its own self-contained file, per note above).
+4. variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json +
+   notes.txt — sibling WiFi-bucket precedent already audited this session
+   (SD/PSRAM chip-select exclusion, GPIO14 NeoPixel tagging). Used as the
+   schema/style template for this board.json.
+5. variants/rp2040/rp2040/bigtreetech_SKR_Pico/board.json + pins_arduino.h
+   — precedent for a board where almost every GPIO is fixed-function and
+   pins_arduino.h itself already excludes them from the D-alias set: this
+   board's board.json documents EVERY such GPIO via a chipGpios
+   `capabilities: []` + note entry (not just ones that would otherwise leak
+   through aliasing) purely so the pin picker explains each gap. Followed
+   the same full-coverage style here.
+6. https://docs.sparkfun.com/SparkFun_XRP_Controller/hardware_overview/ —
+   Official SparkFun hookup guide (fetched via WebFetch, 2026-07-13).
+   Authoritative vendor documentation. Confirms, verbatim or near-verbatim:
+     - "The USER button connects to GPIO36 ... allows it to be programmed
+       for various purposes."
+     - "The RGB LED connects to GPIO37 ... WS2812 Data In Pin ... can be
+       programmed to change to any color based on whatever behavior you'd
+       like."
+     - Left Motor: GPIO34 (phase), GPIO35 (enable), GPIO30 (encoder A),
+       GPIO31 (encoder B).
+     - Right Motor: GPIO32 (phase), GPIO33 (enable), GPIO24 (encoder A),
+       GPIO25 (encoder B).
+     - Motor 3 & Motor 4 follow the same pattern using GPIO20-23 and
+       GPIO2/3+GPIO10/11 respectively (cross-checked exactly against this
+       board's own pins_arduino.h #defines — see per-pin table below).
+     - Distance sensor: GPIO0 (trigger), GPIO1 (echo).
+     - Line follower: GPIO44 (left), GPIO45 (right).
+     - Battery voltage monitor ("VIN MEAS"): GPIO46.
+     - Qwiic 0: GPIO4 (SDA), GPIO5 (SCL); Qwiic 1: GPIO38 (SDA), GPIO39
+       (SCL).
+     - Servo outputs: GPIO6 (Servo 1), GPIO9 (Servo 2), GPIO7 (Servo 3),
+       GPIO8 (Servo 4).
+     - Onboard LSM6DSO 6-DoF IMU (STMicroelectronics), reached over the
+       Qwiic 0 I2C bus (address 0x6B, or 0x6A via the ADR solder jumper) —
+       not a separate GPIO.
+     - GPIO47 explicitly called out as "PSRAM Chip Select".
+     - Two hardwired (non-GPIO) status LEDs: "MOT" (lit when motor power is
+       available) and "SYS" (lit when the 3.3V/system rail is powered) —
+       no MCU pin connection, no capability tag applies.
+     - A separate BOOT button "on the RP2350 itself, distinct from the USER
+       button" — standard BOOTSEL-style button read via the boot ROM, not a
+       normal digitalRead()-capable GPIO; matches this repo's existing
+       convention of never tagging Pico-family BOOTSEL buttons as a
+       general-purpose "button" pin (see sparkfun_thingplusrp2350,
+       rpipicow, rpipico2w notes).
+
+PER-PIN REASONING
+-----------------
+GPIO0/1 (DISTANCE_TRIGGER/ECHO): KEPT general purpose — already a D0/D1
+  alias in pins_arduino.h. Matches this repo's "onboard sensor exposed for
+  pfodWeb's data-display use case" policy (same treatment the beta
+  controller gives its own distance-sensor pins). No chipGpios entry added
+  (default full capability from the alias stands).
+
+GPIO2 (MOTOR_4_ENCODER_A) / GPIO3 (MOTOR_4_ENCODER_B): CONFIRMED dedicated
+  motor-4 quadrature encoder inputs (pins_arduino.h #define + vendor
+  hookup-guide "Motor 4" section). No static-const alias exists — added
+  chipGpios capabilities:[] documentation entries.
+
+GPIO4 (I2C_SDA_0) / GPIO5 (I2C_SCL_0): KEPT general purpose — already
+  D4/D5 + SDA/SCL aliases. This is the Qwiic 0 bus, which also carries the
+  onboard LSM6DSO IMU (a shared-bus, not an exclusive-consumer situation,
+  matching this repo's existing I2C-bus KEEP policy, e.g.
+  sparkfun_thingplusrp2350 GPIO6/7). No chipGpios entry added.
+
+GPIO6 (SERVO_1), GPIO7 (SERVO_3): CONFIRMED dedicated servo PWM headers
+  (pins_arduino.h #define + vendor "Servo outputs" section). No
+  static-const alias — added capabilities:[] entries.
+
+GPIO8 (SERVO_4, also PIN_SERIAL2_TX) / GPIO9 (SERVO_2, also
+  PIN_SERIAL2_RX): CONFIRMED dedicated servo PWM headers; the PIN_SERIAL2_*
+  #defines are a secondary/unused alias for the same physical pins on this
+  board (Serial2 is not otherwise referenced by any static-const alias) —
+  no conflict, servo function is the dominant/confirmed role. Added
+  capabilities:[] entries.
+
+GPIO10 (MOTOR_4_IN_1) / GPIO11 (MOTOR_4_IN_2): CONFIRMED dedicated motor-4
+  driver phase/enable outputs. Added capabilities:[] entries.
+
+GPIO12-15 (PIN_SERIAL1_TX/RX, PIN_SPI1_MISO/SS/SCK/MOSI): KEPT general
+  purpose — already D12-D15 aliases. This board's pins_arduino.h treats
+  the Serial1/SPI1 pins as a general expansion header (not committed
+  onboard hardware), matching this repo's "genuine multi-purpose expansion
+  header" KEEP policy (e.g. bigtreetech_SKR_Pico GPIO0/1 aux header). No
+  static-const TX/RX/SS/MOSI/MISO/SCK alias is declared for these pins
+  (only #defines), so no automatic serial_tx/serial_rx/spi_* bus-role tag
+  gets attached by build_boards.js's parseEsp32Consts() either way — this
+  is a pre-existing characteristic of the file, not something this
+  board.json-only pass could or should change.
+
+GPIO16-19 (PIN_SPI0_MISO/SS/SCK/MOSI): KEPT general purpose — already
+  D16-D19 aliases, same reasoning as GPIO12-15.
+
+GPIO20 (MOTOR_3_IN_1) / GPIO21 (MOTOR_3_IN_2): CONFIRMED dedicated motor-3
+  driver phase/enable outputs. Added capabilities:[] entries.
+
+GPIO22 (MOTOR_3_ENCODER_A) / GPIO23 (MOTOR_3_ENCODER_B): CONFIRMED
+  dedicated motor-3 quadrature encoder inputs. Added capabilities:[]
+  entries.
+
+GPIO24 (MOTOR_R_ENCODER_A) / GPIO25 (MOTOR_R_ENCODER_B): CONFIRMED
+  dedicated right-motor quadrature encoder inputs (vendor "Right Motor"
+  section). Added capabilities:[] entries.
+
+GPIO26/27/28 (A0/A1/A2): KEPT general purpose — already aliased, and no
+  XRP pin name is assigned to any of these three anywhere in
+  pins_arduino.h — genuinely spare ADC-capable pins. No chipGpios entry
+  added.
+
+GPIO29: No XRP pin name and no static-const alias anywhere in
+  pins_arduino.h — unconfirmed/unreferenced by any source consulted.
+  Deliberately left with NO chipGpios entry (conservative: stays
+  unexposed rather than guessing at a role), per the task's "report NO
+  CHANGE rather than guess" instruction.
+
+GPIO30 (MOTOR_L_ENCODER_A) / GPIO31 (MOTOR_L_ENCODER_B): CONFIRMED
+  dedicated left-motor quadrature encoder inputs (vendor "Left Motor"
+  section). Added capabilities:[] entries.
+
+GPIO32 (MOTOR_R_IN_1) / GPIO33 (MOTOR_R_IN_2): CONFIRMED dedicated
+  right-motor driver phase/enable outputs. Added capabilities:[] entries.
+
+GPIO34 (MOTOR_L_IN_1) / GPIO35 (MOTOR_L_IN_2): CONFIRMED dedicated
+  left-motor driver phase/enable outputs. Added capabilities:[] entries.
+
+GPIO36 (BOARD_USER_BUTTON): CONFIRMED onboard USER pushbutton —
+  docs.sparkfun.com: "The USER button connects to GPIO36 ... allows it to
+  be programmed for various purposes." Tagged
+  ["digital_input","button"], matching this repo's existing button-tagging
+  precedent (adafruit_fruitjam GPIO4/5, wiolink GPIO0, wifi_kit_8 GPIO0).
+  This is the one GPIO in the 30-47 range that genuinely needed a
+  chipGpios entry with REAL capabilities (not just documentation) — it
+  was correctly left out of the D-alias set by the earlier pass because a
+  plain digital_input/digital_output/pwm_output pin would be the wrong
+  capability set for a button (no digital_output/pwm_output implied).
+
+GPIO37 (BOARD_NEOPIXEL / PIN_NEOPIXEL, NUM_NEOPIXEL=1): CONFIRMED onboard
+  WS2812 addressable RGB LED data line — docs.sparkfun.com: "The RGB LED
+  connects to GPIO37 ... WS2812 Data In Pin ... can be programmed to
+  change to any color." Tagged
+  ["digital_output","led_neopixel","pwm_output"], matching this repo's
+  existing led_neopixel precedent (sparkfun_thingplusrp2350 GPIO14,
+  bigtreetech_SKR_Pico GPIO24). digital_input dropped — the pin is
+  committed to driving the LED, not general-purpose input. This is the
+  other GPIO that genuinely needed a real (non-empty) capability entry.
+
+GPIO38 (I2C_SDA_1) / GPIO39 (I2C_SCL_1): CONFIRMED second Qwiic (I2C1)
+  connector (vendor "Qwiic 1" section). Unlike Qwiic 0 (GPIO4/5), this
+  board's pins_arduino.h does NOT declare a static-const SDA/SCL alias
+  pointing at 38/39 — its own earlier D-alias pass left this connector
+  unexposed. Whether that omission is intentional or an oversight is
+  outside the scope of a board.json-only pass (changing which pins get a
+  general-purpose role is a pins_arduino.h decision, not a chipGpios
+  decision, and the task brief scopes this pass to dedicated-hardware
+  exclusion + confirmed LED/NeoPixel/button, not to re-deciding which
+  connectors count as "general purpose"). Documented with capabilities:[]
+  so the pin picker explains the gap rather than a silent omission,
+  matching the bigtreetech_SKR_Pico full-coverage documentation style.
+  Flagged here for a possible future dedicated fix (parallel to the
+  TX/RX-alias gap already flagged in sparkfun_thingplusrp2350's own
+  notes.txt) — NOT touched in this pass.
+
+GPIO40 (MOTOR_L_CURRENT), GPIO41 (MOTOR_3_CURRENT), GPIO42
+  (MOTOR_4_CURRENT), GPIO43 (MOTOR_R_CURRENT): CONFIRMED dedicated
+  current-sense ADC inputs for each motor channel (pins_arduino.h
+  #defines; not individually itemized in the hookup-guide GPIO list
+  fetched but the #define names are unambiguous and the pin numbers do
+  not collide with any other confirmed function). Added capabilities:[]
+  entries.
+
+GPIO44 (LINE_L) / GPIO45 (LINE_R): CONFIRMED dedicated line-follower IR
+  reflectance sensor inputs (vendor "Line follower" section: "GPIO44 (Left
+  signal), GPIO45 (Right signal)"). Added capabilities:[] entries.
+
+GPIO46 (BOARD_VIN_MEASURE): CONFIRMED dedicated battery-voltage monitor
+  ADC input (vendor "Battery Voltage Monitor (VIN MEAS): GPIO46"). Added
+  capabilities:[] entry.
+
+GPIO47 (RP2350_PSRAM_CS): CONFIRMED onboard PSRAM chip-select —
+  pins_arduino.h's RP2350_PSRAM_CS/RP2350_PSRAM_MAX_SCK_HZ define pair
+  (the same arduino-pico PSRAM scaffolding used by the already-audited
+  sparkfun_thingplusrp2350, which has independently confirmed onboard
+  PSRAM) plus docs.sparkfun.com explicitly labeling GPIO47 "PSRAM Chip
+  Select." Not broken out to any header, never meant to be user-toggled.
+  Added capabilities:[] entry.
+
+BOARD_LED / PIN_LED = (64u): This resolves to a sentinel value outside the
+  real RP2350B GPIO0-47 address space — i.e. this board has no simple
+  GPIO-driven onboard LED at all; the NeoPixel (GPIO37) is the only
+  user-controllable LED. No chipGpios entry needed/possible (64 is not a
+  real GPIO number).
+
+Hardwired "MOT" and "SYS" indicator LEDs (vendor hookup guide): tied
+  directly to the motor-power and 3.3V/system rails respectively, not to
+  any RP2350 GPIO — no capability tag applies, no chipGpios entry
+  possible (no associated GPIO number).
+
+BOOT button (RP2350 BOOTSEL): standard Pico-family BOOTSEL-style button,
+  read via the boot ROM, not a normal digitalRead()-capable GPIO — no
+  "button" capability tag applies, matching this repo's existing
+  convention (sparkfun_thingplusrp2350, rpipicow, rpipico2w).
+
+VALIDATION
+----------
+Verified the written board.json is syntactically valid JSON after manually
+stripping `//` line comments (no node require()/build_boards.js run, per
+task instructions) — parsed cleanly, all 10 REQUIRED_BOARD_FIELDS present
+with no extras, chipGpios contains exactly the 32 keys listed above.
+
+ONE-LINE SUMMARY
+----------------
+Created board.json for sparkfun_xrp_controller (previously missing
+entirely) documenting all 30 confirmed dedicated motor/servo/encoder/
+current-sense/PSRAM/second-Qwiic GPIOs as capabilities:[] and tagging the
+2 confirmed user-facing GPIOs — GPIO36 (USER button) and GPIO37 (NeoPixel)
+— with real button/led_neopixel capabilities, per docs.sparkfun.com's
+official XRP Controller hardware overview.

@@ -1,0 +1,104 @@
+Board: heltec_wireless_bridge (esp32/esp32/heltec_wireless_bridge)
+Task: section 7a button/LED capability-tagging retrofit (board already had a
+board.json from an earlier dedicated-hardware-exclusion pass; that pass never
+applied button/LED tagging).
+
+Sources consulted
+------------------
+1. https://heltec.org/project/wireless-bridge/ - product page, links to
+   downloadable resources. Confirms product name "Wireless Bridge" and that
+   the front enclosure has three LEDs labelled BLE/WIFI/LoRa (matches the
+   physical-dimensions drawing in the datasheet, see below).
+2. https://resource.heltec.cn/download/Wireless_Bridge/bridge.pdf - official
+   vendor datasheet (Rev 1.0, Jan 2022). Page 9 "Typical hardware connections
+   / Physical dimensions" shows the front panel silkscreen with three LED
+   holes labelled "BLE WIFI LoRa" left-to-right, and the underside of the
+   enclosure with two small recessed button holes. Confirms 3 onboard LEDs
+   and 2 onboard buttons (reset + one other) exist as physical hardware, but
+   this document alone does not give GPIO numbers or polarity.
+3. https://resource.heltec.cn/download/Wireless_Bridge/Schematic_Diagram_HTIT-WB_V0.2.pdf
+   - official Altium-exported schematic PDF, fetched and read as an image/PDF
+   (not just text-extracted, since the vendor PDF is mostly vector/image
+   content). This was the decisive source:
+     - LED section: resistors R4 (330R), R6 (1K), R22 (4.7K) each run from
+       GND up to a labelled LED (LoRa/GREEN, WIFI/YELLOW, BLE/BLUE
+       respectively), with the LED's other side driven from GPIO22, GPIO23,
+       GPIO25 respectively (net labels "22", "23", "25" appear directly at
+       the LED-driver junctions). GPIO -> LED -> R -> GND, i.e. the GPIO
+       must go HIGH to source current through the LED to light it:
+       active-high. This directly confirms GPIO25 = BLE_LED, active-high,
+       matching this board's own pins_arduino.h `BLE_LED = 25` / `LED = 25`
+       aliases.
+     - Button section ("Boot Mode Configuration" block): two separate
+       buttons are drawn - "RST1" silkscreen-labelled "RESET" (drives the
+       ESP32 EN/CHIP_PU line via a 2N7002 mosfet + DTR/RTS auto-reset
+       circuit, standard CP2102 auto-program circuit), and a second,
+       physically distinct button "USR1" silkscreen-labelled "BTN-0",
+       wired directly to net "0" (ESP3212/GPIO0). Heltec's own schematic
+       therefore labels this pin's button "USR1" (user button 1) as a
+       named, separate control from the reset button, not merely
+       documented as "BOOT"/"PRG" or left unlabelled - this is the
+       strongest available evidence it's meant to be a genuine
+       user-accessible button and not just the bare universal ESP32
+       boot-strap pin repurposed informally. (Physically it is still a
+       small recessed pinhole button on the enclosure underside, same as
+       the reset button - not a large front-panel push-button - but the
+       task's confirmation bar is "distinct named button in vendor's own
+       docs", which this clears.)
+4. https://docs.heltec.org/en/node/esp32/wireless_bridge/wifi_lora_user_manual.html
+   - software/upload user manual; no button/LED hardware content, checked
+     and ruled out (dead end for this purpose).
+5. https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wireless-bridge/
+   - product overview page; no GPIO/LED/button detail beyond linking to the
+     same datasheet/schematic above (dead end, confirmed no additional info).
+6. Community forum thread "LED Definitions for Wireless bridge"
+   (community.heltec.cn) - found via search but could not be fetched
+   (connection refused to community.heltec.cn); not used as evidence, listed
+   here only so a future reviewer doesn't waste time on the same dead end
+   unless connectivity changes.
+
+Reasoning / decisions applied
+------------------------------
+- GPIO25 (LED_BUILTIN / LED / BLE_LED in pins_arduino.h): CONFIRMED onboard
+  BLE-status LED, active-high, via direct read of the vendor schematic
+  (GPIO -> LED -> resistor -> GND topology, LED lights when GPIO driven
+  HIGH). Tagged `["digital_output", "led_high", "pwm_output"]` in
+  board.json's chipGpios["25"] (pwm_output kept since GPIO25 is a normal
+  ESP32 LEDC-capable pin). High confidence.
+- GPIO0 (KEY_BUILTIN in pins_arduino.h): CONFIRMED genuine, distinctly
+  labelled user button ("USR1"/"BTN-0" in the vendor's own schematic,
+  separate from the "RST1" reset button) - not just the bare
+  boot-strap-pin-reused-as-button pattern seen on generic dev boards.
+  Tagged `["digital_input", "button"]` in board.json's chipGpios["0"]
+  (existing analog_input_serial/digital_output/pwm_output capabilities
+  removed per the section 7a policy: a button pin's capability list must
+  be exactly these two entries and nothing else). High confidence.
+- GPIO22 (SCL/LoRa_LED, shared) and GPIO23 (WIFI_LED) were NOT tagged this
+  pass even though the same schematic confirms they are also active-high
+  LEDs (LoRa/green and WiFi/yellow respectively) - out of scope for this
+  task, which was specifically GPIO25/GPIO0 only. Flagging here so a future
+  pass can pick these up using the same schematic evidence already gathered
+  above (GPIO22 -> R6 1K -> LoRa/GREEN LED -> GND; GPIO23 -> R22 4.7K ->
+  WIFI/YELLOW LED -> GND; both active-high, same topology as GPIO25). Note
+  GPIO22 is also the board's SCL alias (shared with LoRa_LED per the
+  existing pfodWeb NOTE) - if tagged in future, check for the
+  bus-capability-contamination bug (section 12 of the playbook) since
+  GPIO22 = SCL would otherwise get a spurious i2c_scl capability appended
+  alongside any led_high tag.
+- Bus-alias collision check (per playbook section 12): neither GPIO0 nor
+  GPIO25 is aliased anywhere in this board's pins_arduino.h as
+  SDA/SCL/SS/MOSI/MISO/SCK (SDA=21, SCL=22 are the only I2C aliases; the
+  SPI bus lines were already deleted entirely in the earlier
+  dedicated-hardware pass, per this file's existing top-of-file NOTE). No
+  deletion needed for this pass.
+- TX/RX collision check: this board does not alias TX/RX to any custom
+  GPIO in pins_arduino.h (uses the standard UART0 GPIO1/GPIO3 default, not
+  explicitly declared here), so no conflict with GPIO0/GPIO25.
+
+Summary
+-------
+GPIO25 tagged led_high (confirmed BLE-status LED, active-high, vendor
+schematic). GPIO0 tagged button (confirmed distinct "USR1" user button per
+vendor schematic, not just the bare boot pin). board.json edited in place
+(existing content/comments preserved, only chipGpios["0"]/["25"] capability
+arrays changed and a new pfodWeb NOTE appended). No build commands run.

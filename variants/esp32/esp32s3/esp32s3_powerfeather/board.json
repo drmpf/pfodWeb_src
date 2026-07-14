@@ -1,0 +1,118 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit (2026-07-12). This
+// is the real "PowerFeather ESP32-S3" (Feather-format, LiFePO4/Li-ion/LiPo
+// solar power-management board, USB_MANUFACTURER "PowerFeather"). Sources
+// consulted: official docs source
+// https://raw.githubusercontent.com/PowerFeather/powerfeather-docs/main/docs/hardware/esp32s3.md
+// ("Pins & Signals" tables: User-Managed Fixed IO / Free IO / SDK-Managed
+// Fixed IO / Special Function) and the vendor Arduino/IDF SDK source
+// https://raw.githubusercontent.com/PowerFeather/powerfeather-sdk/main/src/Mainboard/Mainboard.h
+// (authoritative `Pin` struct, lines ~109-114) plus Mainboard.cpp (confirms
+// `_i2cPort = 1` = Wire1 dedicated to onboard PMIC comms). Findings per
+// flagged pin:
+//   - GPIO21 (ALARM) - Mainboard.h: `ALARM = GPIO_NUM_21; // Battery fuel
+//     gauge alarm`. Docs: "Battery Fuel Gauge Alarm Input", and
+//     Mainboard.h's alarm-setter comments state "the ALARM pin is pulled
+//     low" by the onboard fuel gauge IC (LC709204F on V1 / MAX17260 on
+//     V2). Dedicated PMIC alarm line - EXCLUDED. High confidence.
+//   - GPIO5 (INT) - Mainboard.h: `INT = GPIO_NUM_5; // Battery charge
+//     interrupt`. Docs: "Battery Charger Interrupt Input" from the onboard
+//     charger IC (BQ25628E on V2). Dedicated PMIC interrupt line -
+//     EXCLUDED. High confidence.
+//   - GPIO7 (EN) - Mainboard.h: `EN = GPIO_NUM_7; // FeatherWings
+//     enable/disable (read)`. Docs list it under "Special Function":
+//     "Feather Wing Enable Output" - used by user code to detect/emulate
+//     the Feather-standard EN pin behavior (disabling `3V3`/`VSQT` load
+//     switches, entering deep-sleep) rather than as a free digital I/O.
+//     Dedicated board-power-control line - EXCLUDED. High confidence.
+//   - GPIO46 (LED) - Mainboard.h: `LED = GPIO_NUM_46; // User LED`. Docs:
+//     "Green User LED Output", RTCIO7. Confirmed dedicated onboard status
+//     LED - KEPT. Polarity (active-high vs active-low drive) is NOT
+//     stated in the docs source, the SDK header/source (no LED gpio_set_
+//     level call - the SDK never drives this pin, it's left for user
+//     sketch code), the demo repo (github.com/PowerFeather/powerfeather-
+//     demo - no LED usage), or the ESPHome external component. Per this
+//     repo's policy (see e.g. esp8266/wifiduino GPIO2), left WITHOUT a
+//     led_high/led_low tag rather than guessing - capabilities unchanged
+//     from chip-level default, single explanatory note added.
+//   - GPIO0 (BTN) - Mainboard.h: `BTN = GPIO_NUM_0; // User button`.
+//     Docs: "User Button Input", RTCIO0. Confirmed onboard user button -
+//     KEPT, tagged with the restricted ["digital_input","button"] set
+//     (matching this repo's convention, e.g. esp32c6-evb GPIO9), dropping
+//     digital_output/pwm_output since it's a dedicated button input line.
+//     GPIO0's existing chip-level strapping pinNote ("Must be HIGH for
+//     normal boot") is unrelated/unchanged.
+//   - GPIO43 (TX0) - Docs explicitly place TX0 in the "Free IO" table
+//     (not User-Managed or SDK-Managed Fixed IO): "IO signals not
+//     connected to anything on-board; user code is free to configure and
+//     use these for any purpose". It is a genuinely distinct physical pin
+//     from this board's TX=GPIO44/RX=GPIO42 (not an alias of them) - it
+//     happens to be the ESP32-S3's default hardware UART0 pin, used only
+//     as the SDK's default boot/log console, but the vendor explicitly
+//     documents it as user-repurposable. KEPT unchanged (chip-level
+//     default capabilities already cover it) - no exclusion warranted.
+//   - GPIO48 (SCL1) / GPIO47 (SDA1) - Docs place these under "SDK-Managed
+//     Fixed IO": "STEMMA QT I2C SCL"/"SDA", explicitly warning "User code
+//     should not configure and use these IO, as doing so can cause faulty
+//     behavior." Mainboard.cpp confirms this is `Wire1` (`_i2cPort = 1`),
+//     used internally by the SDK to talk to the onboard fuel gauge and
+//     charger ICs (shared with the physical STEMMA QT connector). This
+//     matches this repo's precedent for a dedicated internal-PMIC/sensor
+//     I2C bus (Nebula_S3's SDA1/SCL1 IMU-bus exclusion; Alfredo-NoU3's
+//     Wire1 IMU-bus exclusion) - EXCLUDED. Medium-high confidence (vendor
+//     explicitly warns against direct use, even though the connector is
+//     physically STEMMA-QT-shaped).
+// Alias-collision check (per playbook): none of ALARM(21)/INT(5)/EN(7)/
+// LED(46)/BTN(0)/SCL1(48)/SDA1(47) collide with this board's primary-bus
+// aliases SS(-1,invalid)/MOSI(40)/MISO(41)/SCK(39)/SCL(36)/SDA(35)/
+// TX(44)/RX(42) - no build_boards.js bus-capability contamination risk.
+// pins_arduino.h was edited to delete the `ALARM`, `INT`, `EN`, `SCL1`/
+// `SDA1` (+ `WIRE1_PIN_DEFINED`) static const aliases for the excluded
+// GPIOs, per the parser-union gotcha (an alias left in place re-adds the
+// GPIO to the generated pin list even with the chipGpios entry removed).
+// See boardsDetails/esp32/esp32s3/esp32s3_powerfeather/notes.txt for the
+// full source list and per-pin reasoning.
+{
+  "boardName": "ESP32S3",
+  "displayName": "ESP32-S3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH for normal boot",
+    "3":  "Must be LOW or floating on reboot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "38": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "39": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "40": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "41": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "42": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "43": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "44": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "45": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "46": { "capabilities": ["digital_input", "digital_output", "pwm_output"],
+            "note": "Green User LED (confirmed onboard, vendor SDK Mainboard.h: LED = GPIO_NUM_46). Active-high/low drive not documented in any available vendor source - not tagged led_high/led_low." }
+  }
+}

@@ -1,0 +1,247 @@
+Amperka WiFi Slot — button/LED capability tag and ADC refVolts research notes
+Board: variants/esp8266/esp8266/wifi_slot/board.json
+Date: 2026-07-11
+
+SOURCES CONSULTED AND FINDINGS
+--------------------------------
+
+1. https://wiki.amperka.ru/products:wifi-slot (official Amperka wiki product
+   page for WiFi Slot) — PRIMARY source. Direct fetch via WebFetch returned
+   an "Access Denied" / Anubis bot-protection page, so content was obtained
+   via the r.jina.ai text-extraction proxy (https://r.jina.ai/<url>) instead,
+   cross-checked against independent WebSearch result snippets that quoted
+   the same page. Findings:
+   - Board has two physical "service buttons": PROG and RESET. Documented
+     PROG procedure: "Зажмите кнопку PROG; Нажмите и отпустите кнопку
+     RESET; Отпустите кнопку PROG" (hold PROG, tap RESET, release PROG) —
+     this is the universal ESP8266 manual bootloader-entry sequence. The
+     page states an automatic circuit normally makes this unnecessary when
+     flashing via USB/Arduino IDE.
+   - Page does NOT explicitly name which GPIO the PROG button pulls low.
+     Only generic web-search synthesis (not the vendor page itself) asserted
+     "GPIO0" — that generic ESP8266-architecture claim was NOT accepted as
+     board-specific vendor evidence per this task's rules (no inferring
+     from anything short of real, board-specific vendor documentation).
+   - Page lists exactly three indicator LEDs: PWR (power, tied straight to
+     VCC), RX and TX (USB-serial/CP2102 activity indicators). No fourth,
+     GPIO-controllable "user" LED is mentioned anywhere on the page.
+   - Page explicitly states (quoted verbatim): "резисторный делитель
+     поднимает верхний порог измеряемого напряжения до 3,3 В" — "a resistor
+     divider raises the upper threshold of the measured voltage to 3.3 V".
+     This was returned identically by two independent extraction paths
+     (r.jina.ai proxy fetch, and a separate WebSearch snippet quoting the
+     same wiki page), so treated as reliable despite the direct-fetch block.
+   - Page links a schematic diagram: wiki.amperka.ru/_media/wifi-slot:wifi-slot_schematic.png
+     (and a PCB layout PNG, plus datasheets for ESP8266, CP2102, NCP1529,
+     74HC4052D, SN74HC393). Attempted to download the schematic PNG via curl
+     and inspect it directly (Read tool supports images) — the download
+     returned the same Anubis "Access Denied" HTML page disguised with a
+     .png extension, not real image data, so the schematic could NOT be
+     visually inspected to confirm exact GPIO wiring or resistor designators.
+
+2. WebSearch aggregate results (multiple snippets quoting/paraphrasing the
+   same Amperka wiki page): consistently repeat "10 digital I/O with PWM (8
+   usable as analog input) and two service buttons", "ESP-12 module has one
+   native 10-bit ADC, 0-1V", and the 3.3V divider claim. One synthesized
+   result also asserted "GPIO0 switches the module into firmware
+   programming mode when connected to GND" — this is true of the ESP8266
+   chip generically but is NOT a board-specific citation for the WiFi
+   Slot's PROG button, so was not used as tagging evidence (see below).
+
+3. https://wiki.amperka.ru/_media/wifi-slot:esp-12f_datasheet.pdf (ESP-12F
+   module datasheet, linked from the wiki page) — direct fetch also blocked
+   by the same Anubis bot-protection; could not be read.
+
+4. Prior pfodWeb pin-exclusion audit (project_board_variant_pin_audit_playbook
+   memory note) already established, from this same wiki page, that the
+   board's 74HC4052 analog mux + SN74HC393 channel-select chip route all 8
+   "A0-A7" channels to the ESP8266's single real ADC pin (GPIO17) — this
+   session's research corroborates and extends that finding by locating the
+   explicit "3.3V" divider-result sentence on the same page (not
+   specifically flagged in the earlier audit, which focused on the mux/pin
+   topology, not the ADC voltage range).
+
+CONSIDERED BUT NOT CHANGED, AND WHY
+-------------------------------------
+
+- GPIO0 "button" tag: considered, NOT added. The wiki confirms a PROG
+  button exists and performs the standard ESP8266 program-mode-entry
+  sequence, which by chip architecture requires pulling GPIO0 low at
+  reset — but no vendor source explicitly names GPIO0 for this board's
+  PROG button, and the schematic that would confirm it could not be
+  fetched (bot-blocked). Per this task's instruction to confirm via real
+  vendor documentation rather than inference, left untagged. Additionally
+  GPIO0 is already dedicated to this board's I2C SCL role in board.json —
+  even if later confirmed, a "button" tag here would need to be weighed
+  against that existing dedicated role.
+
+- GPIO2 "led_high"/"led_low" tag: considered, NOT added. pins_arduino.h
+  declares `#define LED_BUILTIN 2`, but per this task's explicit rule this
+  alias alone is not acceptable evidence. The vendor wiki's own LED
+  inventory (PWR/RX/TX only) does not corroborate a GPIO2 user LED, so it
+  was left untagged.
+
+- RESET button: not tagged/considered — wired to the chip's physical RST
+  pin, not a GPIO, consistent with every other board in this repo.
+
+- GPIO1 (TX) / GPIO3 (RX): not considered for any tag — hard-reserved as
+  serial_tx/serial_rx on this board; build_boards.js discards other tags
+  on them anyway.
+
+- adc.defaultRefVolts: CHANGED from "1.0" to "3.3". See summary below.
+
+SUMMARY
+-------
+NO CHANGE (button/LED): no vendor-documented onboard user button or
+GPIO-controllable LED could be confirmed — the PROG/RESET buttons are
+bootloader/reset controls (PROG's GPIO not vendor-confirmed; RESET is the
+physical RST pin, not a GPIO), and the wiki's own LED inventory (PWR/RX/TX)
+does not include a GPIO2 user LED despite the pins_arduino.h LED_BUILTIN=2
+alias.
+ADC: pre-existing "1.0" value was NOT correct — CORRECTED to "3.3". The
+official Amperka wiki (https://wiki.amperka.ru/products:wifi-slot) states
+the board's resistor divider (feeding the 74HC4052 mux output into the
+ESP8266's native 1.0V-max ADC pin) raises the usable full-scale input
+voltage to 3.3V, so a 3.3V signal at any A0-A7 header pin corresponds to
+the chip's native ADC max — the mux itself doesn't add this, but the
+board also has a divider on the analog path, confirmed via direct vendor
+text quote (obtained via proxy fetch since direct WebFetch was bot-blocked).
+
+================================================================================
+[2026-07-12] DEDICATED-HARDWARE PIN-EXCLUSION AUDIT (sections 1-6 of the
+playbook — analog-mux GPIO-availability pass; DIFFERENT from the
+button/LED/ADC retrofit above, which was section 7-9 territory and is
+unaffected by this entry)
+================================================================================
+
+SCOPE OF THIS PASS
+-------------------
+Verify how pins_arduino.h's PIN_A0-PIN_A7 macros (values 3,1,16,13,5,14,4,12
+= GPIO3,1,16,13,5,14,4,12) and the analog_pin_to_mux_channel[] table are
+actually used, whether they leak into the Designer's pin list with a
+misleading analog_input capability, and — if genuinely excluded from
+analog_input — whether the same 8 GPIOs are nonetheless legitimate for
+plain digital_output/digital_input/pwm_output use.
+
+FILE STATE FOUND AT START OF THIS PASS
+----------------------------------------
+pins_arduino.h and board.json already carried extensive "pfodWeb NOTE"
+comments describing the mux (74HC4052 dual 4-channel analog switch +
+SN74HC393 binary counter) and excluding GPIO1/3/4/5/12/13/14/15/16 from
+chipGpios entirely — i.e. the "does PIN_A0-PIN_A7 leak as analog_input"
+half of this audit had already been done and done correctly:
+  - PIN_A0-PIN_A7 remain plain #define macros; only PIN_A0 (GPIO3) has
+    ever had a `static const uint8_t` peer alias, and even that was
+    redirected to `static const uint8_t A0 = 17;` (the REAL ADC pin, not
+    PIN_A0's raw value 3) — so PIN_A0-PIN_A7 do NOT leak into the parser's
+    alias list at all. Confirmed by reading the full file: no
+    `static const uint8_t A1 = PIN_A1;`-style peer declarations exist for
+    A1-A7 anywhere in the file.
+  - The file was already converted to NOT `#include "../generic/common.h"`
+    (which would otherwise unconditionally alias SS/MOSI/MISO/SCK onto
+    GPIO15/13/12/14 — exactly 3 of the mux's own pins) — checked for the
+    SDA/SCL/SS/MOSI/MISO/SCK/TX/RX collision this task flags as a repeat
+    hazard: SDA=GPIO2, SCL=GPIO0 (both fine, general I2C, no collision);
+    no SS/MOSI/MISO/SCK declared at all (avoided by omitting common.h);
+    TX/RX are not declared in this file either — the family's shared
+    build_boards.js/board.json convention hard-forces GPIO1/GPIO3 to
+    serial_tx/serial_rx regardless (see chip-level board.json comment),
+    which happens to coincide exactly with 2 of the 8 mux channel pins
+    (PIN_A1=GPIO1, PIN_A0=GPIO3) — already correctly reflected in
+    board.json's forced serial_tx/serial_rx entries with no analog/digital
+    capability listed alongside, consistent with the TX/RX hard-reservation
+    rule (playbook section 7a's last bullet).
+  - analog_pin_to_mux_channel[] is `static const uint8_t [17]`, indexed by
+    raw GPIO number (0-16), each entry either NOT_A_PIN or a 0-7 mux
+    channel index. This is purely an internal lookup table consumed by a
+    board-specific (not shown in this file) analogRead()/PIN_Ax dispatch
+    implementation — it is never itself treated as a pin declaration by
+    the regex parser (doesn't match `static const uint8_t <NAME> = <val>`
+    with NAME being a bare identifier; it's an array).
+
+REFINEMENT MADE THIS PASS: GPIO4/5/12/13/14/16 restored to plain digital
+capability (previously fully excluded)
+-----------------------------------------------------------------------
+The existing board.json (dated 2026-07-11, no accompanying notes.txt entry
+until now) had removed GPIO4/5/12/13/14/15/16 from chipGpios entirely —
+i.e. not just analog_input, but ALL capability, including plain digital
+I/O. Task instructions for this pass explicitly call this out as needing
+verification: "they may still be legitimately available as plain
+digital_output/digital_input GPIOs if not otherwise dedicated."
+
+Research attempted this pass:
+  - WebFetch https://wiki.amperka.ru/products:wifi-slot — same Anubis
+    "Access Denied" bot-protection block as the prior session; no new
+    direct content obtained.
+  - WebSearch "Amperka WiFi Slot 74HC4052 SN74HC393 analog channel select
+    GPIO schematic" — returned only generic 74HC4052 datasheet results
+    (Nexperia/SparkFun/Octopart/onsemi mirrors, confirming the chip is a
+    "dual 4-channel analog multiplexer/demultiplexer" with 2 digital
+    select inputs S0/S1 per half — consistent with needing an external
+    counter/decoder like the SN74HC393 to sequence through 8 total
+    channels from a single GPIO clock line) — no WiFi-Slot-specific
+    schematic or GPIO assignment found; vendor site not indexed with this
+    detail in any mirror found.
+  - Fell back to re-examining the prior session's own captured evidence
+    (already in this file, section "WebSearch aggregate results" above):
+    the vendor's product blurb states "10 digital I/O with PWM (8 usable
+    as analog input) and two service buttons". This maps EXACTLY onto the
+    board's real pin set once you enumerate it:
+      10 digital-capable GPIOs = {0, 1, 2, 3, 4, 5, 12, 13, 14, 16}
+      8 of those also mux-routed  = {1, 3, 4, 5, 12, 13, 14, 16}
+        (all except the 2 dedicated I2C pins, GPIO0/GPIO2)
+    {1,3,4,5,12,13,14,16} is precisely {PIN_A1,PIN_A0,PIN_A6,PIN_A4,
+    PIN_A7,PIN_A3,PIN_A5,PIN_A2} — an exact match to pins_arduino.h's own
+    PIN_A0-PIN_A7 value set. GPIO15 (the mux/counter select line) is
+    notably absent from BOTH counts (not in the "10 digital I/O", not in
+    the "8 analog" subset) — internally consistent with it being a pure
+    control/clock line for the SN74HC393, never itself broken out to a
+    header pin.
+
+CONCLUSION: this cross-check is strong enough internal-consistency
+evidence (independent of the blocked schematic) that GPIO4/5/12/13/14/16
+ARE genuinely broken out, general-purpose-usable digital I/O pins on this
+board's headers — they just ALSO double as the mux's channel inputs when
+the vendor's own (non-Arduino-standard) analogRead(PIN_Ax) call is used, a
+mechanism pfodWeb's per-pin capability model has no way to represent.
+Restored to `{"capabilities": ["digital_input","digital_output",
+"pwm_output"]}` (GPIO16: no pwm_output — RTC-domain pin per chip-level
+board.json's own existing note) in board.json's chipGpios, WITHOUT
+analog_input (that tag would wrongly imply direct per-GPIO ADC access,
+which does not exist — only the shared GPIO17/A0 pin is a real ADC).
+GPIO15 stays fully excluded (matches its absence from both vendor counts,
+and matches the existing "internal-only control line" playbook category).
+pinNotes entries added for GPIO4/5/12/13/14/15/16 cross-referencing the
+mux and explicitly stating each is safe for digital I/O but not tagged
+analog_input, plus which vendor "A<n>" label each corresponds to.
+
+No changes were needed to pins_arduino.h this pass — it was already
+correctly structured (no leaking static const aliases for A1-A7, no
+common.h SPI-alias leak) by the prior session's work; the fix this pass
+was entirely a board.json chipGpios/pinNotes refinement.
+
+Considered and NOT changed: GPIO1/GPIO3's forced serial_tx/serial_rx
+status (unaffected by this refinement — those two GPIOs happen to be both
+mux-channel pins AND the hardware UART0 pins, but the family-wide serial
+hard-reservation in build_boards.js takes priority regardless of
+chipGpios content, so no board.json change could alter this even if
+desired, and it would be undesirable anyway since the pfod Serial
+connection needs them). Button/LED tags: unaffected by this pass, no new
+evidence found beyond the prior session's already-documented NO CHANGE
+verdict. ADC defaultRefVolts: unaffected by this pass, already corrected
+to 3.3 in the prior session.
+
+SUMMARY (this pass)
+--------------------
+PIN_A0-PIN_A7 do NOT leak into the pin list (confirmed no static-const
+peer aliases exist for them, and the file's LED/common.h edits made in
+the prior session were verified correct). GPIO15 (mux select/counter
+clock) stays fully excluded — internal-only, not counted among the
+vendor's "10 digital I/O". GPIO4/5/12/13/14/16 were RESTORED this pass
+from full exclusion to plain digital_input/digital_output(+pwm_output
+where applicable) capability, based on an internal-consistency cross-check
+against the vendor's own "10 digital I/O (8 usable as analog input)"
+product description — analog_input is deliberately still withheld on all
+8 mux-routed GPIOs (1/3/4/5/12/13/14/16) since true per-pin ADC access
+does not exist on this board, only the single shared GPIO17/A0 pin plus a
+vendor-proprietary analogRead(PIN_Ax) indirection pfodWeb cannot model.

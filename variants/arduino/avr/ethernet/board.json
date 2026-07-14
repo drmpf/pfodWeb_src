@@ -7,12 +7,6 @@
   // ATmega328P — same AVR header layout as the Uno.
   "family": "avr",
 
-  "defaultBaud": 115200,
-  "supportedBauds": [
-    300, 600, 1200, 2400, 4800, 9600, 14400, 19200,
-    28800, 38400, 57600, 115200
-  ],
-
   "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
   "dac": {},
   // ADC: ATmega328P has a 10-bit ADC (0–1023).  Default reference is
@@ -25,5 +19,30 @@
   "connections": ["serial", "tcp"],
 
   "pinNotes": {},
-  "chipGpios": {}
+  // Confirmed via official Arduino Ethernet Rev3 documentation
+  // (arduino/docs-content GitHub repo, content/retired/01.boards/
+  // arduino-ethernet-rev3-without-poe/content.md — mirrors
+  // https://docs.arduino.cc/retired/boards/arduino-ethernet-rev3-without-poe/):
+  //   "There is a built-in LED connected to digital pin 9. When the pin
+  //   is HIGH value, the LED is on, when the pin is LOW, it's off...
+  //   It is on pin 9 on the Ethernet board because pin 13 is used as
+  //   part of the SPI connection."
+  //   "Pin 10 is reserved for the Wiznet interface, SS for the SD card
+  //   is on Pin 4."
+  //   "Pins 10, 11, 12 and 13 are reserved for interfacing with the
+  //   Ethernet module and should not be used otherwise."
+  // Per pin-audit playbook policy (section 3): only the dedicated,
+  // exclusively-onboard-device CS lines (D10 for the W5100, D4 for the
+  // onboard microSD slot) are excluded outright. D11/D12/D13
+  // (MOSI/MISO/SCK) are a shared SPI bus also usable by other
+  // user-attached SPI peripherals on the same bus, so they are left
+  // with their normal auto-derived capabilities (unlike D10/D4, which
+  // are single-purpose CS lines with no other use). D9 has PWM per this
+  // board's own digitalPinHasPWM macro (includes 9), so pwm_output is
+  // kept alongside the LED tag.
+  "chipGpios": {
+    "9": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED (LED_BUILTIN), active-high. Moved here from D13 specifically because D13 is used as the SPI SCK line for the onboard W5100 Ethernet controller/microSD slot." },
+    "10": { "capabilities": [], "note": "Dedicated chip-select for the onboard WIZnet W5100 Ethernet controller (this board's pfodWeb TCP transport) — reserved, not general purpose." },
+    "4": { "capabilities": [], "note": "Dedicated chip-select for the onboard microSD card slot (fixed, always-present hardware on this standalone board, not an optional shield) — reserved, not general purpose." }
+  }
 }

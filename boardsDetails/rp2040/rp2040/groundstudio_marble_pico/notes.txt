@@ -1,0 +1,160 @@
+Board: GroundStudio "Marble Pico" (RLJDMV_GS REV0.0.3), chip: rp2040
+Audit date: 2026-07-13
+Directory: variants/rp2040/rp2040/groundstudio_marble_pico/
+
+SUMMARY: NOT a NO-CHANGE. Created board.json with a confirmed onboard LED
+(GPIO25, active-high), an informational pinNotes warning for GPIO15 (vendor-
+documented reset-time restriction), and dedicated-hardware exclusions
+(capabilities: []) for the onboard microSD adapter's default SPI0 pins
+(GPIO16/17/18/19) and the solder-jumper-selected VBAT/SD-switch pin
+(GPIO24). No button/NeoPixel found on this board. No #define / static
+const bus-alias collision bug found (see "Bug-class check" below).
+
+SOURCES CONSULTED
+1. This board's own pins_arduino.h (variants/rp2040/rp2040/
+   groundstudio_marble_pico/pins_arduino.h) — vendor-authored, cites its
+   own reference pinout/schematic PDFs at the top of the file.
+2. Official GroundStudio Marble Pico Datasheet REV 1.1, obtained via two
+   mirrors of the same PDF:
+   - github.com/GroundStudio/GroundStudio_Marble_Pico (Documentation/
+     REV0.0.3/RLJDMV_GS%20REV0.0.3%20GroundStudio%20Marble%20Pico%20
+     Pinout%20REV%201.1.pdf and the "Datasheet GroundStudio Marble Pico
+     REV 1.1.pdf" in the same folder)
+   - mm.digikey.com/Volume0/opasdata/d220001/medias/docus/5562/Marble%20
+     Pico.pdf (DigiKey's mirror of the identical datasheet PDF — fetched
+     and read directly, since GitHub's raw PDF didn't render text via
+     WebFetch).
+   This datasheet includes: a labelled board pinout diagram (Revision
+   1.1), the full schematic (Revision 0.0.3), an "Overview" section, a
+   "Pins general function" section, and technical specifications.
+3. github.com/GroundStudio/GroundStudio_Marble_Pico README.md (checked,
+   contained only a high-level feature summary, no pin-level detail
+   beyond what the datasheet already covers).
+4. This repo's own precedents: variants/rp2040/rp2040/rpipico/board.json
+   (simple onboard-LED tagging pattern), variants/rp2040/rp2040/
+   waveshare_rp2040_zero/board.json (NeoPixel-only precedent, for
+   contrast — this board has neither a NeoPixel nor a second confirmed
+   button), and variants/rp2040/rp2040/adafruit_feather_adalogger/
+   board.json + pins_arduino.h (the closest structural precedent: a
+   Pico-pinout board with an onboard LED, a button, AND a dedicated SD
+   card SPI bus — used as the template for how to exclude SD-card pins
+   via `"capabilities": []` while still allowing build_boards.js's
+   automatic bus-role auto-append to apply where relevant).
+5. pfodWeb_src/build_boards.js — read (not executed) to confirm exactly
+   how chipGpios capabilities interact with the automatic SDA/SCL/SS/
+   MOSI/MISO/SCK bus-role auto-append (parseEsp32Consts() only resolves
+   a BARE `static const uint8_t SDA/SCL/SS/MOSI/MISO/SCK = ...;` alias —
+   see lines 439-492, 543-548, 698-703 — it does NOT scan `PIN_SPI0_*` /
+   `PIN_SPI1_*` prefixed macros directly). This board's pins_arduino.h
+   declares only bare SDA/SCL (pointing at WIRE0 = GPIO4/5); it declares
+   NO bare SS/MOSI/MISO/SCK alias at all. Consequence: none of this
+   board's SPI0 pins (16/17/18/19, the SD-card adapter) or SPI1 pins
+   (10/11/12/13) receive any automatic spi_* bus-role tag from
+   build_boards.js, regardless of chipGpios overrides — so the
+   `"capabilities": []` set on GPIO16/17/18/19 below results in a clean
+   empty capability list in the Designer, with no risk of a stray
+   spi_ss/spi_sck/etc. tag leaking through afterward.
+
+PER-PIN REASONING
+
+GPIO25 (PIN_LED) — TAGGED "led_high"
+  Datasheet's Overview section, quoted verbatim: "There is a built-in
+  LED controlled by the GP25 pin. When the pin is HIGH or LOW, the LED
+  is on and off, respectively." This directly confirms GPIO25 is the
+  onboard user LED and that it is active-high. Tagged
+  digital_output + pwm_output + led_high (digital_input dropped),
+  matching this repo's rpipico/adafruit_feather_adalogger led_high
+  precedent for dedicated onboard LED pins; pwm_output kept since
+  arduino-pico's analogWrite() works on any RP2040 GPIO (enables
+  brightness dimming).
+
+GPIO16 / GPIO17 / GPIO18 / GPIO19 (PIN_SPI0_MISO / SS / SCK / MOSI) —
+TAGGED capabilities: [] (excluded, dedicated hardware)
+  This board's pins_arduino.h already excludes these four GPIOs from its
+  D<n> alias list, with its own comment: "D16-D19 deliberately NOT
+  declared — GPIO16-19 are the built-in SD card reader's SPI0 bus, not
+  general-purpose." The datasheet's Overview section confirms this is
+  the board's DEFAULT (as-shipped) wiring: "adapter for micro-SD type
+  memory cards connected to the SPI0 port (default) allows, for
+  example, the quick saving of data received from a sensor. To use the
+  SPI0 port for another purpose, the adapter can be disconnected using
+  the solder jumpers on the back of the pcb." Because these GPIOs still
+  carry PIN_SPI0_* #define aliases (even without a D<n> const), the
+  chip-level default mechanism (empty chipGpios at the chip level) would
+  otherwise grant them full digital_input/digital_output/pwm_output
+  capability — hence the explicit "capabilities": [] override here,
+  matching the adafruit_feather_adalogger SD-card-pin exclusion
+  precedent. Note: the microSD adapter CAN be desoldered by the user
+  (solder jumpers on the back), at which point these pins would become
+  free general GPIO again — but this audit tags the board's shipped
+  default state, consistent with how every other dedicated-hardware
+  exclusion in this repo is handled (e.g. card-detect/SD-bus lines on
+  adafruit_feather_adalogger).
+
+GPIO24 (PIN_VBAT / PIN_SD_SWITCH, jumper J17) — TAGGED
+capabilities: [] (excluded, dedicated hardware)
+  This board's own pins_arduino.h documents GPIO24 as dual-purpose via a
+  physical jumper: `#define PIN_VBAT (24u) // J17 Default Connection`
+  and `#define PIN_SD_SWITCH (24u) // J17 Alternative Connection`. Read
+  together with the datasheet's schematic, which shows a "1 cell
+  3.7-4.2V battery charging circuit" block, this confirms GPIO24 is
+  wired, in either jumper position, to an internal-hardware signal (a
+  battery-charging-circuit line by default, or the microSD adapter's
+  card-presence switch in the alternative jumper position) — never a
+  plain header-broken-out user GPIO. The datasheet does not publish the
+  exact active-high/low polarity or digital-vs-analog nature of either
+  signal (and GPIO24 is not one of the RP2040's ADC-capable GPIOs
+  26-29, so an analog "battery voltage" reading is not the likely
+  mechanism — more likely a digital charge-status or card-detect line,
+  but this is not confirmed), so rather than guess a specific
+  capability, this pin is excluded from general GPIO use entirely
+  (capabilities: []), matching the "confirm via real vendor
+  documentation — never guess" instruction.
+
+GPIO15 — NOT excluded, informational pinNotes warning only
+  The datasheet's own pinout diagram (page 3) has a callout box stating:
+  "GP15 has a special purpose during the device reset and should not be
+  used for your projects", and the "Pins general function" section
+  (page 6) repeats: "GPIO pins 25 pins for input and output. There are
+  26 GPIO pins in total, but GP15 has a special function during the
+  reset of the board and for this reason we do not recommend its use."
+  This is a genuine vendor-documented reset-time restriction, but no
+  further technical detail (what the special function actually is) was
+  published. Matching this repo's ESP32-family convention for boot-
+  strapping-pin warnings (e.g. esp32s2/um_tinys2 GPIO0 "Must be HIGH for
+  normal boot", which keeps full chipGpios capability and surfaces the
+  risk only via pinNotes), GPIO15 keeps its full default
+  digital_input/digital_output/pwm_output capability (no chipGpios
+  override) and gets a pinNotes entry instead, since the vendor does not
+  claim the pin is unusable — only that using it is risky/discouraged.
+
+NOT FOUND / OUT OF SCOPE
+  - No onboard NeoPixel/WS2812 exists on this board (datasheet lists
+    only the GP25 user LED plus two non-GPIO "CG"/"ON" indicator LEDs
+    wired directly to the charging IC and power rail — schematic's "On
+    LED" / "Charge LED" blocks, confirmed to have no RP2040 GPIO
+    connection).
+  - No onboard general-purpose pushbutton exists with a pins_arduino.h
+    alias. The board has BOOTSEL (forces ROM bootloader — not a normal
+    GPIO digitalRead(), same as rpipico) and RESET (hardware reset line
+    tied to RUN, not a GPIO) per the schematic's "Boot selection" /
+    "RESET button" blocks — neither is tagged "button", matching the
+    rpipico/waveshare_rp2040_zero precedent for these two universal
+    RP2040 buttons.
+  - GPIO26/GPIO27 are aliased as BOTH A0/A1 (analog) AND WIRE1_SDA/SCL
+    (a secondary/optional I2C1 bus) in this board's pins_arduino.h. This
+    is NOT the "confirmed button/LED pin colliding with a bus alias" bug
+    class this audit specifically watches for — it's an intentional
+    dual-purpose GPIO mux option (common Pico-family convention: A0/A1
+    header pins doubling as an optional second I2C bus), and per the
+    build_boards.js trace above, this repo's parser only auto-appends
+    i2c_sda/i2c_scl from a BARE `static const uint8_t SDA/SCL` alias
+    (which this file points at WIRE0/GPIO4-5, not WIRE1/GPIO26-27), so
+    there is no actual capability collision to fix here. No change made.
+
+BUG-CLASS CHECK (button/LED pin colliding with an SDA/SCL/SS/MOSI/MISO/
+SCK alias, requiring a #define removal): NONE FOUND. The only confirmed
+hardware pin (GPIO25, the LED) carries no SPI/I2C alias of any kind in
+this file. GPIO24 (VBAT/SD_SWITCH) likewise carries no bus alias. No
+`#define PIN_SPIx_SS`/`static const uint8_t SS` removal was needed or
+performed.

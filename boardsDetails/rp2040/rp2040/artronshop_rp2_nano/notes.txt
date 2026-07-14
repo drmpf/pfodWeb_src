@@ -1,0 +1,123 @@
+Board audit notes: artronshop_rp2_nano (chip: rp2040)
+"ArtronShop RP2 Nano" — ArtronShop Co.,Ltd. (Thailand, www.artronshop.co.th)
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+One change applied: added variants/rp2040/rp2040/artronshop_rp2_nano/board.json
+tagging GPIO13 (PIN_LED) as the onboard LED (digital_output, pwm_output,
+led_high). No other onboard button/LED/NeoPixel GPIOs found. No pins_arduino.h
+edit was needed/made (the GPIO13/PIN_SPI1_SS collision is a genuine,
+vendor-documented dual-purpose header pin, not a spare/unused alias — see
+reasoning below).
+
+SOURCES CONSULTED
+-----------------
+1. This board's own pins_arduino.h
+   (variants/rp2040/rp2040/artronshop_rp2_nano/pins_arduino.h) — declares
+   PIN_LED=13, PIN_SPI1_MISO=12, PIN_SPI1_MOSI=11, PIN_SPI1_SCK=10,
+   PIN_SPI1_SS=13, PIN_WIRE0_SDA=16, PIN_WIRE0_SCL=17, PIN_SERIAL1_TX=0,
+   PIN_SERIAL1_RX=1. Global SS/MOSI/MISO/SCK aliases point at SPI1;
+   global SDA/SCL point at WIRE0.
+
+2. Chip-level defaults: variants/rp2040/rp2040/board.json (chipGpios
+   deliberately empty at chip level for the RP2040 family — every board
+   is audited individually).
+
+3. Precedent files read before writing this board's board.json:
+   - variants/rp2040/rp2040/rpipico/board.json (simple single-LED tag,
+     led_high pattern, digital_input dropped / pwm_output kept)
+   - variants/rp2040/rp2040/vccgnd_yd_rp2040/board.json (LED+button+
+     NeoPixel combo board, similarly obscure/community vendor —
+     confirms the expected sourcing rigor and note format)
+   - variants/rp2040/rp2040/adafruit_feather_scorpio/board.json and
+     pins_arduino.h — the repo's precedent for the "confirmed LED pin
+     also aliased as a bus SS/SDA/SCL pin" bug class. In that board the
+     colliding PIN_SPI0_SS was a *vendor-unused* default that was
+     removed from pins_arduino.h to stop build_boards.js's automatic
+     SS-alias capability append from contaminating the LED tag.
+
+4. ArtronShop's own official RP2 Nano documentation, found via their
+   public download server (dl.artronshop.co.th), linked from the
+   product page www.artronshop.co.th/p/517:
+   - "RP2 Nano schematic.pdf" — official schematic, REV 1.0, dated
+     23/7/2022, drawn by Sonthaya Nongnuch, ArtronShop Co.,Ltd.
+     (https://dl.artronshop.co.th/RP2-Nano/RP2 Nano schematic.pdf)
+   - "RP2 Nano pinout.png" — official pinout diagram matching the
+     Arduino Nano header layout, colour-coded by pin function
+     (https://dl.artronshop.co.th/RP2-Nano/RP2 Nano pinout.png)
+
+5. CNX Software: "RP2 Nano is a $6.6 Raspberry Pi RP2040 board with
+   Arduino Nano form factor" (2023-07-26,
+   https://www.cnx-software.com/2023/07/26/rp2-nano-raspberry-pi-rp2040-board-arduino-nano/)
+   — independent secondary source, confirms board features list
+   "Built-in LED, Boot & Reset buttons" and no NeoPixel/RGB LED.
+
+   Also checked but not directly useful: github.com/artronshop (no
+   pins_arduino.h/board-definition repo found on the profile; vendor's
+   own hardware docs live on their download server instead, not GitHub).
+
+PER-PIN FINDINGS
+-----------------
+GPIO0 (PIN_SERIAL1_TX) — official pinout diagram labels this D0/"TX1"
+  only (Serial/UART colour). No button/LED association anywhere. Not
+  the BOOT button (see below). NO CHANGE.
+
+GPIO13 (PIN_LED) — schematic shows LED1 (part "19-213/Y2C-CQ2R2L/3T(CY)")
+  wired RP2040 GPIO13 -> R8 (330 ohm series resistor) -> LED1 -> GND:
+  a standard active-high LED-to-GND circuit (GPIO driven HIGH lights the
+  LED). This matches PIN_LED=13 in pins_arduino.h exactly.
+  This same GPIO13 is also broken out to the Nano header as pin D13,
+  labelled "CS" in the SPI colour category on ArtronShop's own official
+  pinout diagram — i.e. it is simultaneously PIN_SPI1_SS (and the
+  global "SS" alias). The full SPI1 bus is genuinely broken out to the
+  header: D10=SCK, D11=MOSI, D12=MISO, D13=CS, all labelled/coloured as
+  SPI pins on the vendor's own diagram — this is not a spare/unused
+  bus, so (unlike adafruit_feather_scorpio's PIN_SPI0_SS) the
+  PIN_SPI1_SS #define was left untouched in pins_arduino.h. This
+  mirrors the classic Arduino Uno/Nano tradition of D13 doing double
+  duty as both the onboard LED and an SPI signal (SCK there, SS/CS
+  here) — a deliberate, vendor-documented design choice, not a defect.
+  Applied: chipGpios["13"] = {"digital_output","pwm_output","led_high"}
+  (digital_input dropped per this repo's established led_high
+  precedent for dedicated onboard LED pins; pwm_output kept since
+  arduino-pico's analogWrite() works on any RP2040 GPIO).
+
+BOOT button (SW1, schematic) — wired via a 1K pull-up resistor (R10)
+  across the QSPI flash chip-select net (schematic label "FLASH_SS",
+  RP2040 pin 56 / QSPI_SS, shared with the external ZD25WQ16 SPI flash
+  chip's CS# pin) — the same resistor value and circuit topology as the
+  official Raspberry Pi Pico's BOOTSEL button. This is NOT a numbered
+  GPIO; it is the same QSPI_SS-based BOOTSEL mechanism documented in
+  this repo's rpipico/board.json note ("not connected to a standard
+  GPIO, so it cannot be read using the usual digitalRead function").
+  Out of scope for this repo's GPIO-keyed capability tagging — not a
+  missed tag. Consistent with the pinout diagram showing no button
+  annotation on any GPIO.
+
+RESET button (SW2, schematic) — wired directly across the RP2040's RUN
+  pin (pin 26) to GND, with a 10K pull-up resistor (R1) to +3V3 and a
+  100nF debounce capacitor (C1) — the standard external reset circuit
+  present on virtually every RP2040 board. RUN is not a GPIO-numbered
+  pin. Out of scope.
+
+NeoPixel / addressable RGB LED — none present. Confirmed absent from
+  both the schematic (only the single plain LED1 described above) and
+  the CNX Software feature summary, which lists no RGB/NeoPixel
+  feature for this board.
+
+Grove I2C connector (CN17, schematic) — a 4-pin external I2C Grove
+  header wired to SDA/SCL/+3V3/GND (SDA=GPIO16, SCL=GPIO17, matching
+  PIN_WIRE0_SDA/SCL already declared in pins_arduino.h). Not an onboard
+  peripheral needing its own capability tag — SDA/SCL already receive
+  the standard I2C bus capability via build_boards.js's normal alias
+  handling.
+
+RESULT
+------
+board.json created: chipGpios["13"] tags the onboard LED (led_high).
+No pins_arduino.h changes (the GPIO13/SS collision is genuine/intended,
+confirmed via official vendor schematic + pinout diagram, not a
+spare-bus contamination bug). No other button/LED/NeoPixel pins found.
+JSON validity confirmed via plain JSON.parse() after manually stripping
+"//" line comments (no build_boards.js invocation, per instructions).

@@ -1,0 +1,80 @@
+lolin_s3_pro button/LED research notes
+=======================================
+
+Sources consulted:
+- https://www.wemos.cc/en/latest/s3/s3_pro.html
+  Official WEMOS S3 PRO product page. Confirms board has a "Boot Button"
+  (download button, held with Reset to enter firmware download mode) and
+  a separate "Reset Button". Page text alone did not give GPIO numbers for
+  buttons; links to the schematic PDF for full detail.
+
+- https://www.wemos.cc/en/latest/_static/files/sch_s3_pro_v1.0.0.pdf
+  Official WEMOS S3 PRO schematic (KiCad export, sheet 1/1), downloaded and
+  read directly as an image. Shows:
+    * U3 = "WS2812B-0807" (addressable RGB LED) with DI pin wired to net
+      "IO38" - confirms the onboard NeoPixel/WS2812 RGB LED data line is
+      GPIO38.
+    * SW1 "SW_3x4x2.6" wired to net EN via 10k pull-up (R3) and 1uF cap
+      (C3) - this is the EN/Reset button.
+    * SW2 "SW_3x4x2.6", same footprint, placed immediately next to SW1,
+      wired to GND on one side. The net label on the other side of SW2
+      was not cleanly legible at the rendered resolution (small KiCad
+      global-label flag glyph) so the schematic alone was not 100%
+      conclusive on which GPIO SW2 pulls low. Cross-checked against the
+      Adafruit CircuitPython board definition (see below) which
+      independently confirms this second button is GPIO0/BOOT.
+
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/lolin_s3_pro/pins_arduino.h
+  Official Espressif arduino-esp32 variant file for this exact board.
+  Identical to the pins_arduino.h already in this repo's variant
+  directory: `static const uint8_t LED_BUILTIN = 38 + SOC_GPIO_PIN_COUNT;`
+  plus `#define RGB_BUILTIN LED_BUILTIN` and `#define RGB_BRIGHTNESS 64`.
+  The "+SOC_GPIO_PIN_COUNT" offset is the Arduino-ESP32 core convention
+  for flagging a NeoPixel-type built-in RGB LED (not a plain digital
+  pin); the real GPIO is 38. Confirms GPIO38 = onboard addressable RGB
+  LED (matches schematic).
+
+- https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/espressif/boards/lolin_s3_pro/pins.c
+  https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/espressif/boards/lolin_s3_pro/mpconfigboard.h
+  Adafruit CircuitPython's board definition for lolin_s3_pro (independently
+  vendor-verified, since CircuitPython requires exact hardware pin mapping
+  to boot). Explicitly lists: BUTTON = GPIO0, NEOPIXEL = GPIO38,
+  TFT_LED = GPIO14, TFT_RST = GPIO21, TFT_DC = GPIO47, TFT_CS = GPIO48,
+  TS_CS = GPIO45, TF_CS = GPIO46. This independently corroborates both
+  GPIO0 (button) and GPIO38 (NeoPixel LED), and also confirms the
+  existing pin-exclusion set (14/21/45-48) already recorded in this
+  board's board.json NOTE from the earlier audit pass is correct/complete
+  (TS_CS/TF_CS map to 45/46, TFT_DC/TFT_CS to 47/48, TFT_RST to 21,
+  TFT_LED to 14 - all already excluded from chipGpios, none re-added).
+
+- https://mischianti.org/wemos-lolin-s3-pro-esp32-s3-high-resolution-pinout-datasheet-and-specs/
+  Third-party pinout reference. States "Addressable RGB LED, driven by
+  GPIO48" and "normal LED... LED_BUILTIN (38)" - this appears to be an
+  ERROR/typo on that page (GPIO48 is the TFT_CS pin per every other
+  source, and there is no second discrete LED anywhere else in the
+  schematic or pins_arduino.h). This page's GPIO38 vs GPIO48 claims were
+  NOT relied upon; the primary vendor schematic + Espressif source file +
+  CircuitPython board file were treated as authoritative instead, and all
+  three agree GPIO38 is the (single) addressable RGB LED pin.
+
+Pins considered but NOT tagged:
+- None left as an uncertain guess. GPIO0 (button) and GPIO38 (NeoPixel
+  LED) were both corroborated by at least two independent sources beyond
+  the schematic (Espressif pins_arduino.h + Adafruit CircuitPython board
+  file), so both were tagged with confidence.
+- Checked for TX/RX conflicts: this board's TX=43, RX=44 (see
+  pins_arduino.h). Neither GPIO0 nor GPIO38 coincides with TX/RX, so no
+  conflict with build_boards.js's hard TX/RX reservation.
+- GPIO14 (TFT_LED / TFT backlight) was NOT tagged as a "led" capability -
+  it is a dedicated TFT peripheral pin (backlight control), already
+  excluded from chipGpios per the pre-existing pin-exclusion audit note
+  at the top of board.json, and is not a general-purpose user LED. Left
+  as-is (out of scope / not re-added), matching task instructions.
+
+Summary of changes made:
+- board.json: GPIO0 capabilities -> ["digital_input","button"].
+- board.json: GPIO38 capabilities -> ["digital_output","led_neopixel","pwm_output"]
+  (pwm_output retained because it was already present on GPIO38 before
+  this change).
+- Two one-line NOTE comments added near the top of board.json (after the
+  existing pin-exclusion NOTE), documenting each tag and its source.

@@ -50,12 +50,9 @@
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
 
-static const uint8_t SDA = WF2_BM8563_I2C_SDA;
-static const uint8_t SCL = WF2_BM8563_I2C_SCL;
-
-static const uint8_t SS = 10;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
+// pfodWeb NOTE: SDA/SCL and SS/MOSI/MISO/SCK deliberately NOT declared -
+// SDA/SCL would be the dedicated onboard BM8563 RTC I2C bus, and
+// SS/MOSI/MISO/SCK (10/11/13/12) are the same GPIOs as the X1/X2 HUB75
+// matrix data lines above - not general-purpose (see board.json).
 
 #endif /* Pins_Arduino_h */

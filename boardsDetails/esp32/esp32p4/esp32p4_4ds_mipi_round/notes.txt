@@ -1,0 +1,85 @@
+Board: 4D Systems ESP32-P4 Round MIPI Displays (esp32p4_4ds_mipi_round), chip esp32p4
+Date: 2026-07-14 — REAL independent verification pass (batch C), superseding
+the 2026-07-14 "documentation backfill" entry below, which only cited
+"vendor pins_arduino.h" generically with no external URL.
+
+=== Independent verification (2026-07-14) ===
+
+Byte-identity re-check: re-ran `diff` between this board's board.json and its
+rectangular sibling `variants/esp32/esp32p4/esp32p4_4ds_mipi/board.json` -
+CONFIRMED still byte-identical before this pass's edits (both files carried
+the exact same chipGpios/pinNotes/header comment). Also re-diffed the two
+boards' pins_arduino.h files directly this pass (not done as rigorously in
+the earlier backfill entry): the ONLY difference between the two files is a
+single comment line - `/* 4D Systems ESP32-P4 board specific definitions */`
+vs `/* 4D Systems ESP32-P4 round board specific definitions */` - every
+#define/static const value (I2C_SDA/SCL, CTP_RST/INT, LCD_BL_IO/RST_IO,
+AMP_CTRL, I2S_*, BOARD_SDMMC_*, TX/RX/SDA/SCL/SCK/MOSI/MISO/SS/A0-A9/T0-T4)
+is identical. This confirms the round-display carrier board uses the
+identical GPIO wiring to its rectangular sibling, so the same per-pin
+research and findings apply verbatim - re-deriving them from scratch would
+add no new information.
+
+Per the task's own guidance ("if genuinely identical, verify rather than
+re-derive from scratch"), this pass ADDS the round-specific vendor detail
+(different touch controller IC) on top of the identical wiring, rather than
+re-running the whole research pass independently:
+
+Sources consulted:
+- https://resources.4dsystems.com.au/datasheets/esp32p4/esp32-p4-round-series/
+  (vendor's own resource-centre page for the round-display variant) — 403'd
+  on direct WebFetch (bot protection), same as the rectangular sibling's
+  page; accessed only via search-snippet extraction. Confirms this variant
+  uses a Goodix GT967 capacitive touch controller (vs GT928 on the
+  rectangular esp32p4_4ds_mipi sibling) - the only hardware difference found
+  between the two boards, and it's a touch-IC substitution behind the same
+  I2C bus (GPIO7/8), not a GPIO/wiring difference.
+- All other sources are identical to, and were already fully documented in,
+  the rectangular sibling's boardsDetails/esp32/esp32p4/esp32p4_4ds_mipi/notes.txt
+  2026-07-14 entry (LCD JD9365 driver + Silergy SY7023 backlight on GPIO22/
+  reset on GPIO23; ES8311 I2S codec on GPIO9-13 + I2C7/8; NS4150B amp
+  downstream of the codec) - not re-quoted in full here to avoid duplicating
+  a large block of identical citation text; see that file for the complete
+  source list and per-source notes, all of which apply equally to this
+  board given the confirmed byte-identical pinout.
+
+Per-pin findings: identical conclusions to esp32p4_4ds_mipi (see that
+board's notes.txt for the full per-pin breakdown) -
+- GPIO7, GPIO8 (I2C/touch bus): CONFIRMED, now known to carry a GT967
+  (not GT928) touch controller on this round variant - same GPIO exclusion
+  either way.
+- GPIO22, GPIO23 (LCD backlight/reset): CONFIRMED, same JD9365/SY7023 setup.
+- GPIO9-13 (I2S audio): CONFIRMED, same ES8311 codec setup.
+- GPIO53 (AMP_CTRL): PARTIALLY CONFIRMED, same NS4150B-downstream-of-codec
+  evidence as the rectangular sibling; exact GPIO number not independently
+  restated by an external source.
+- GPIO4, GPIO5 (CTP_RST/CTP_INT): NOT INDEPENDENTLY CONFIRMED, same gap as
+  the rectangular sibling - only this board's own pins_arduino.h names them.
+  Left excluded (no change), same conservative reasoning.
+- GPIO45 (SDMMC power): NOT INDEPENDENTLY CONFIRMED for this specific board,
+  same gap as the rectangular sibling (inferred by the same shared
+  Espressif macro-naming convention confirmed on the plain esp32p4 EV
+  board). Left excluded (no change).
+- All remaining present pins: no change, kept at chip-default capabilities,
+  identical to the rectangular sibling.
+
+Result: MOSTLY CONFIRMED, matching the rectangular sibling board.json
+exactly (re-verified byte-identical this pass, both before and after this
+pass's edits, which were applied in parallel to both files with equivalent
+content). The only substantive difference between the two boards is the
+touch-controller silicon (GT967 here vs GT928 on the sibling), which does
+not change any GPIO assignment. GPIO4/5 and the board-specific role of
+GPIO45 remain honestly flagged as not independently confirmable beyond the
+vendor's own pins_arduino.h, exactly as on the sibling board.
+
+=== 2026-07-14 (earlier, documentation-backfill entry — cited only "vendor
+pins_arduino.h" generically, no external URL; restated here for history) ===
+
+Summary as originally written: excluded GPIO4/5 (touch RST/INT), GPIO7/8
+(dedicated onboard I2C), GPIO9-13 (I2S audio), GPIO22/23 (LCD backlight/
+reset), GPIO45 (SDMMC power), and GPIO53 (audio amp control), identically to
+the rectangular sibling esp32p4_4ds_mipi (confirmed byte-identical
+board.json at that time too). The 2026-07-14 independent-verification pass
+above re-confirms the byte-identity and adds the round-specific GT967 touch
+controller detail plus the honest confirmation/gap breakdown from the
+sibling's own verification pass.

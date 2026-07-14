@@ -1,0 +1,147 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32" -> designer/boards/ESP32/ESP32.json -> const ESP32Data = {...}
+  "boardName": "ESP32",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).  boards.txt has
+  // `esp32-devkitlipo.name=OLIMEX ESP32-DevKit-LiPo`, so this fallback
+  // is rarely shown, but set it to match anyway.
+  "displayName": "OLIMEX ESP32-DevKit-LiPo",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32 has two 8-bit DAC channels on GPIO 25 and GPIO 26.
+  // dacWrite(pin, value): value 0–255 maps to 0.0–3.3 V output.
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+
+  // ADC: ESP32 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation can be set via analogSetAttenuation()
+  // for full 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers, plus two
+  // pfodWeb-researched informational notes (see pfodWeb NOTE below) for
+  // this board's optional battery/power-sense circuit.  Both are still
+  // full-capability GPIOs (not excluded) since the sense function is
+  // OFF by default and only engages if the user solders the jumper.
+  // Reference: ESP32 Technical Reference Manual — Strapping Pins section.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot",
+    "35": "Optional battery-voltage sense (BAT_SENS_E1 jumper) - not connected unless that jumper pad is soldered closed; open by default",
+    "39": "Optional external-power-present sense (PWR_SENS_E1 jumper) - not connected unless that jumper pad is soldered closed; open by default"
+  },
+
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board confirmed as Olimex "ESP32-DevKit-LiPo" (WROOM variant, no
+  // PSRAM) via:
+  //  - https://github.com/OLIMEX/ESP32-DevKit-LiPo (OSHW repo, matches
+  //    this variant's ESP32-WROOM-32E module and LiPo-charger feature set)
+  //  - https://raw.githubusercontent.com/OLIMEX/ESP32-DevKit-LiPo/master/DOCS/ESP32-DevKit-LiPo-user-manual.pdf
+  //    (official User's Manual rev 1.0, Dec 2024) - board-layout photo on
+  //    p.6 labels the two full GPIO pin columns "EXT1" and "EXT2", which
+  //    is exactly what the pins_arduino.h comments ("Ext1 pin 8" etc.)
+  //    refer to. Section 7.2.2 (p.9) confirms the Arduino board-manager
+  //    entry name "OLIMEX ESP32-DevKit-LiPo" maps to this exact variant.
+  //  - Confirmed byte-identical against upstream
+  //    https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32-devkit-lipo/pins_arduino.h
+  //  - GPIO18/19 (RX2/TX2) also double as the default VSPI SCK/MISO
+  //    pins (SCK=18, MISO=19 already declared as static const in this
+  //    board's own pins_arduino.h) - checked for the "hidden bus alias"
+  //    parser gotcha (build_boards.js appends spi_sck/spi_miso for any
+  //    GPIO equal to the SCK/MISO consts, regardless of chipGpios).  No
+  //    onboard SPI device found in the schematic/manual (no SD card,
+  //    display, or radio module besides the ESP32 module itself), so
+  //    this is just the chip's default/unused VSPI pin choice, not a
+  //    conflict - no exclusion needed, chipGpios left at chip default.
+  //
+  // FINDING - TX1/RX1/TX2/RX2 (GPIO33/25/19/18): general-purpose
+  // expansion-header pins, NOT dedicated onboard hardware.  KEEP.  The
+  // "Ext1 pin 8/9" / "Ext2 pin 8/9" comments in pins_arduino.h are
+  // literally the physical pin numbers on the board's own EXT1/EXT2
+  // header columns (visible in the manual's board-layout photo) - the
+  // #define'd TX1/RX1/TX2/RX2 names are just a convenience for wiring
+  // up Serial1/Serial2 to an external UART device on those headers, not
+  // a sign of onboard-fixed hardware.  No board.json change needed for
+  // these GPIOs; chipGpios entries are unchanged from the chip default.
+  //
+  // FINDING - Reset button (RST1, silkscreened on the board / manual
+  // p.6): wired to hard-reset the module via EN, not a software-
+  // readable GPIO - confirmed no GPIO number is associated with it
+  // anywhere in the schematic docs or pins_arduino.h.  No button
+  // capability tag applies (section 7a n/a - not a GPIO pin at all).
+  //
+  // FINDING - Battery-charger LED (silkscreened "CHARGING", manual
+  // p.6): driven directly by the LiPo charger IC's status output, not
+  // software-controllable - no LED_BUILTIN or similar alias exists
+  // anywhere in this board's pins_arduino.h.  No LED capability tag
+  // applies (section 7a n/a).
+  //
+  // FINDING - Battery/power sense (GPIO35/GPIO39): manual p.8 confirms
+  // "Battery power sense and battery power measurement optional
+  // feature...enabled by modifying the state of jumpers BAT_PWR_E1,
+  // PWR_SENS_E1, and BAT_SENS_E1. Close them (solder the pads together)
+  // to enable both functions, on pins GPI35 and GPI39."  These jumpers
+  // are OPEN by default, so out-of-the-box both pins behave as plain
+  // ADC-only GPIOs (input-only, per chip-level inputOnlyGpios) - KEEP,
+  // per playbook policy for battery/voltage-monitor analog pins.  Added
+  // informational pinNotes entries only; no capability change.
+  //
+  // No exclusions were warranted anywhere on this board - chipGpios is
+  // therefore an unmodified copy of the chip-level default.  This file
+  // exists solely to carry the two informational pinNotes above and
+  // this research trail (a bare board.json with no functional diff
+  // from the chip default is the established way to record "examined,
+  // nothing to exclude" per the audit playbook).
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "27": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

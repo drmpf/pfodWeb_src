@@ -40,7 +40,8 @@ static const uint8_t A12 = 13;
 static const uint8_t A13 = 14;
 static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
-static const uint8_t A16 = 17;
+// pfodWeb NOTE: A16 (GPIO17) deliberately NOT declared - same GPIO as
+// the dedicated onboard OLED SDA_OLED pin below.
 static const uint8_t A17 = 18;
 static const uint8_t A18 = 19;
 static const uint8_t A19 = 20;
@@ -60,10 +61,10 @@ static const uint8_t T12 = 12;
 static const uint8_t T13 = 13;
 static const uint8_t T14 = 14;
 
-static const uint8_t Vext = 45;
 static const uint8_t LED = 18;
-static const uint8_t RST_OLED = 21;
-static const uint8_t SCL_OLED = 18;
-static const uint8_t SDA_OLED = 17;
+// pfodWeb NOTE: Vext (power-gate) and RST_OLED/SDA_OLED deliberately NOT
+// declared - internal control line and dedicated onboard OLED pins.
+// SCL_OLED (GPIO18) stays kept via the LED alias above (same GPIO,
+// simple LED indicator takes priority per policy).
 
 #endif /* Pins_Arduino_h */

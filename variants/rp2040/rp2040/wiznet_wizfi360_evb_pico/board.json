@@ -1,0 +1,117 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "WizFi360-EVB-Pico" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — the
+  // WizFi360-dedicated GPIOs excluded below are handled entirely via the
+  // chipGpios capability overrides instead (two forced serial_tx/serial_rx
+  // roles plus three empty-capability/note-only chip-driven lines), since
+  // they're module-link roles, not ordinary user pins that merely lack an
+  // output driver.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. The onboard WizFi360 is a
+  // serial-AT-command WiFi module (communicates with the RP2040 over a
+  // dedicated UART, GPIO4-7/20 below) rather than a native-silicon radio,
+  // so unlike Pico W/Pico 2 W (which live in the separate "rp2040w" chip
+  // bucket) this board does not get a tcp/http "connections" entry —
+  // WiFi here would require an AT-command library shim over Serial2, not
+  // a pfodWeb transport in its own right. Matches how the sibling
+  // wiznet_5500_evb_pico (onboard W5500 Ethernet chip over SPI) also
+  // stays "serial"-only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-12):
+  //
+  // Board: WIZnet "WizFi360-EVB-Pico" — official WIZnet product, a
+  // Raspberry Pi Pico-form-factor RP2040 board with an onboard WizFi360
+  // serial-AT WiFi module wired to the RP2040's UART1 (arduino-pico
+  // Serial2). This board's own pins_arduino.h already customizes
+  // PIN_SERIAL2_TX=4/PIN_SERIAL2_RX=5 (and moves I2C0 SDA/SCL to
+  // GPIO8/9 to make room), but without this override the Designer
+  // would still expose GPIO4-7 as four general-purpose pins (Serial2
+  // TX/RX are aliased but not force-tagged as dedicated serial_tx/
+  // serial_rx without a chipGpios entry — see build_boards.js
+  // ~line 654-675) and GPIO20 as a fifth, even though all five are
+  // physically dedicated to the onboard WiFi module link and cannot be
+  // repurposed while WiFi is in use.
+  //
+  // Source: WIZnet's own official documentation
+  // (docs.wiznet.io/Product/Chip/Chip_Related_modules/wizfi360-evb-pico),
+  // which states verbatim that "GPIO4, GPIO5, GPIO6, GPIO7, GPIO20 are
+  // connected to WizFi360 inside the board" for UART1 communication and
+  // module reset, and "If you are using the Wi-Fi function, these pins
+  // cannot be used for any other purpose." Cross-referenced directly
+  // against WIZnet's own published schematic (github.com/Wiznet/
+  // Hardware-Files-of-WIZnet, 08_OSHW/WizFi360-EVB-Pico/
+  // WizFi360-EVB-Pico_V100/Schematic/WizFi360-EVB-Pico_SCH_V100.pdf),
+  // which confirms the exact net names and shows all five nets routed
+  // only to the onboard WizFi360 module (M1) — none are brought out to
+  // the 40-pin header for general use.
+  //
+  // Per-pin mapping (schematic net names in parentheses):
+  //   GPIO4  - RP2040 UART1 TX -> WizFi360 RXD1 (net UART1_TX)
+  //   GPIO5  - RP2040 UART1 RX <- WizFi360 TXD1 (net UART1_RX)
+  //   GPIO6  - RP2040 UART1 CTS <- WizFi360 RTS1 (net UART1_CTS)
+  //   GPIO7  - RP2040 UART1 RTS -> WizFi360 CTS1 (net UART1_RTS)
+  //   GPIO20 - RP2040 -> WizFi360 RSTn (module reset, net RSTn)
+  // GPIO4/5 already carry this board's own PIN_SERIAL2_TX/PIN_SERIAL2_RX
+  // aliases, so forcing capabilities: ["serial_tx"]/["serial_rx"] here
+  // routes them through build_boards.js's existing dedicated-USART-line
+  // branch (matches the ESP8266 UART0 precedent in
+  // variants/esp8266/esp8266/board.json). GPIO6/7 (hardware RTS/CTS flow
+  // control) and GPIO20 (module reset) have no bus-role vocabulary of
+  // their own to auto-append (unlike SPI/I2C pins), so their
+  // capabilities are left fully empty (note only, matching the
+  // "no legitimate general-purpose role" precedent already used for
+  // adafruit_trinkeyrp2040qt and for wiznet_5500_evb_pico's W5500
+  // RSTn/INTn lines).
+  //
+  // Onboard LED/button: GPIO25 drives a green LED (confirmed active-high
+  // from the same schematic: 3V3 rail -> R11 470R -> GPIO25 direct to
+  // the LED cathode side... i.e. GPIO25 sinks/sources through R11 to
+  // LD2/GND, standard active-high). Tagged below (2026-07-12 consistency
+  // pass) — this schematic-level confirmation is at least as strong as
+  // the evidence already used to tag GPIO25 on the sibling rpipico/
+  // board.json, so there's no reason to leave it deferred here. The only
+  // other buttons on the board — SW1 (BOOTSEL, wired to the QSPI flash CS
+  // line per the schematic, standard Pico reference design) and SW2
+  // (RESET, wired to the RUN pin) — are not addressable GPIO0-29 pins at
+  // all, so there is nothing to tag.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/wiznet_wizfi360_evb_pico/notes.txt
+  "chipGpios": {
+    "4":  { "capabilities": ["serial_tx"], "note": "WizFi360 UART1 link (RP2040 TX -> WizFi360 RXD1) - dedicated onboard WiFi module connection, not general-purpose. Matches this board's own PIN_SERIAL2_TX alias." },
+    "5":  { "capabilities": ["serial_rx"], "note": "WizFi360 UART1 link (RP2040 RX <- WizFi360 TXD1) - dedicated onboard WiFi module connection, not general-purpose. Matches this board's own PIN_SERIAL2_RX alias." },
+    "6":  { "capabilities": [], "note": "WizFi360 UART1 CTS (RP2040 CTS <- WizFi360 RTS1) - dedicated onboard WiFi module hardware flow-control line, not general-purpose." },
+    "7":  { "capabilities": [], "note": "WizFi360 UART1 RTS (RP2040 RTS -> WizFi360 CTS1) - dedicated onboard WiFi module hardware flow-control line, not general-purpose." },
+    "20": { "capabilities": [], "note": "WizFi360 RSTn - onboard WiFi module's reset control line, driven by the WiFi AT-command library during init. Not general-purpose." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard green user LED, confirmed active-high directly from the vendor schematic (3V3 -> R11 470R -> GPIO25 -> LD2 -> GND)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Not affected by this WiFi-module-pin audit (none
+  // of GPIO4-7/20 carry an analog_input alias in the first place).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

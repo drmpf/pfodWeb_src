@@ -1,0 +1,88 @@
+um_feathers2neo (Unexpected Maker FeatherS2 Neo) - button/LED research notes
+============================================================================
+
+Sources consulted:
+
+https://www.adafruit.com/product/5629
+  - Adafruit's resale product page for the FeatherS2 Neo. Confirms an
+    "on-board RGB LED that can be shut down to reduce deep sleep current",
+    with "RGB LED (PWR 39, DATA IO40)" - i.e. NeoPixel data=GPIO40,
+    power-gate=GPIO39. Also states board "comes with a 5x5 RGB LED Matrix
+    that includes its own user-controlled LDO", worded as built into the
+    board. Also lists "Power (red), Charge (orange) & IO13 (blue) LEDs".
+
+https://circuitpython.org/board/unexpectedmaker_feathers2_neo/
+  - Official CircuitPython board listing/description for this exact board.
+    Confirms same three LED groups: 5x5 RGB LED matrix (IO4 power enable),
+    RGB LED (PWR 39, DATA IO40), and "Power (red), Charge (orange) & IO13
+    (blue) LEDs". No mention of any onboard user button.
+
+https://www.espboards.dev/esp32/feathers2neo/
+  - Third-party pinout aggregator. Confirms pin names/numbers matching this
+    repo's pins_arduino.h: NEOPIXEL_MATRIX_DATA=GPIO21,
+    NEOPIXEL_MATRIX_PWR=GPIO4, NEOPIXEL_DATA=GPIO40, NEOPIXEL_PWR=GPIO39.
+    Explicitly states no onboard user button with a GPIO assignment is
+    documented.
+
+https://unexpectedmaker.com/feathers2-neo
+  - Redirects to an unrelated "W.O.P.R. Display Kit" product page on the
+    vendor's current site (product page appears to have been retired/
+    redirected) - did not yield usable FeatherS2 Neo specific content.
+
+https://shop.pimoroni.com/en-us/products/feathers2-neo-esp32-s2
+  - Reseller product page. Repeats the same "5x5 RGB LED Matrix... own
+    user controlled LDO" and "RGB LED (PWR 39, DATA IO40)" text, plus the
+    "Power (red), Charge (orange) & IO13 (blue) LEDs" line. Mentions BOOT
+    and RESET buttons only in the context of entering bootloader/firmware
+    update mode, not as general user-accessible buttons.
+
+https://help.unexpectedmaker.com/docs/boards/rgb-led-not-working/
+  - Vendor help article about RGB LED troubleshooting across UM boards in
+    general (APA102 vs WS2812 types). Did not mention GPIO13, GPIO40, or
+    GPIO21 specifically for this board - not useful for pin confirmation.
+
+WebSearch: "FeatherS2" OR "TinyPICO" "IO13" LED digitalWrite HIGH blue example
+  - Found that on the TinyPICO (a related/earlier UnexpectedMaker board),
+    "GPIO13 controls the power to the APA102 [RGB LED] using a P-Channel
+    MOSFET via a high-side switch" - i.e. on that board GPIO13 is a
+    power-gate for the RGB LED, not itself a separate blue indicator LED.
+    This casts doubt on whether the "IO13 (blue) LED" phrase repeated
+    verbatim across UM's FeatherS2/FeatherS2 Neo/TinyPICO product-page
+    copy is accurate/board-specific, or is reused boilerplate marketing
+    text that may not correctly describe this specific board's actual
+    GPIO13 function.
+
+Pins considered but NOT tagged:
+
+- GPIO13 ("IO13 blue LED" per Adafruit/circuitpython.org/Pimoroni copy):
+  NOT TAGGED. This board's own pins_arduino.h has no LED alias for GPIO13
+  (no LED13/LED_BLUE definition), and the identical "IO13 (blue) LED"
+  wording is reused verbatim across multiple different UM boards'
+  marketing copy (FeatherS2, FeatherS2 Neo, TinyPICO). On TinyPICO,
+  independent evidence shows GPIO13 actually functions as a power-gate
+  MOSFET control for the addressable RGB LED, not a standalone LED
+  itself - so the copy may be inaccurate/generic rather than a literal,
+  board-specific hardware fact for the Neo variant. Given the explicit
+  instruction not to guess without solid confirming evidence, this was
+  left untagged. This is a judgment call to defer to human review, not a
+  best-guess tag.
+
+- BOOT and RESET buttons: NOT TAGGED. Multiple reseller pages (Pimoroni,
+  general TinyUF2 install instructions) reference these only in the
+  context of entering UF2 bootloader / firmware-flash mode, not as
+  general-purpose user-accessible buttons intended for application use.
+  BOOT is also on GPIO0, which this board.json's existing pinNotes already
+  flags ("Must be HIGH for normal boot") - a strapping pin, not a
+  candidate for a "button" capability tag. No guess made; explicitly out
+  of scope per typical strapping-pin handling in this repo's prior audits.
+
+Tagged (applied to board.json in this same session):
+
+- GPIO21 (NEOPIXEL_MATRIX_DATA) -> ["digital_output","led_neopixel","pwm_output"]
+  Confirmed onboard 5x5 RGB NeoPixel/WS2812-type LED matrix data pin.
+- GPIO40 (NEOPIXEL_DATA) -> ["digital_output","led_neopixel","pwm_output"]
+  Confirmed onboard single NeoPixel/WS2812-type RGB LED data pin
+  (power-gated by GPIO39, which remains excluded/untagged per the prior
+  audit pass - not re-added).
+
+Neither GPIO21 nor GPIO40 conflicts with this board's TX(43)/RX(44) pins.

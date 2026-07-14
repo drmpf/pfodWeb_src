@@ -1,0 +1,107 @@
+lilygo_twatch_s3 - button/LED capability research notes
+=========================================================
+
+Sources consulted (URL — what it told me):
+
+1. https://docs.zephyrproject.org/latest/boards/lilygo/twatch_s3/doc/index.html
+   Zephyr T-Watch-S3 board page. States: "It does not have any GPIO that
+   can easily be connected to something external. There is only 1
+   physical button which is connected to the PMU and it's used to
+   turn on/off the device." Also mentions a "BOOT button" used only to
+   enter download mode (for flashing), with no GPIO number given.
+   Also contains an "ESP32-S3 Features" section claiming "Addressable
+   RGB LED, driven by GPIO38" — see item 2 below, this turned out to
+   be generic chip boilerplate, not board-specific wiring.
+
+2. https://docs.zephyrproject.org/latest/boards/espressif/common/soc-esp32s3-features.html
+   and cross-check search: the exact phrase "Addressable RGB LED,
+   driven by GPIO38" appears verbatim on many unrelated ESP32-S3 board
+   doc pages (XIAO ESP32S3, ESP32-S3-DevKitC, ESP32-S3-EYE,
+   ESP32-S3-BOX-3, ESP32-S3-GEEK, ESP32-S3-Matrix, ESP32-S3-Mini,
+   ESP32-S3-RLCD-4.2). This confirms it is shared generic-SoC
+   boilerplate text (soc-esp32s3-features.rst) describing what the
+   ESP32-S3 chip *supports*, not what is actually populated/wired on
+   the T-Watch-S3 PCB. It also directly conflicts with this board's
+   own pins_arduino.h, where GPIO38 is DISP_DC (display data/command
+   pin), already excluded from chipGpios in this board's board.json.
+   Treated as NOT credible evidence of an onboard LED.
+
+3. https://raw.githubusercontent.com/Xinyuan-LilyGO/TTGO_TWatch_Library/t-watch-s3/src/utilities.h
+   Vendor's own authoritative hardware-definition header for the
+   T-Watch-S3 (this is the actual board support source, more
+   authoritative than any third-party doc). Contains defines for
+   display, touch, I2C, RTC/PMU/BMA423 interrupts, audio DAC, IR,
+   MOTOR_PIN (haptic motor), mic, and (S3-only) radio pins. Contains
+   NO #define for any BUTTON, LED, or NeoPixel/addressable-RGB pin.
+   Strong confirmation there is no GPIO-wired button or LED on this
+   board.
+
+4. https://github.com/Xinyuan-LilyGO/TTGO_TWatch_Library/issues/257
+   "T-Watch S3 Hardware feedback" issue thread. No mention of any
+   onboard LED. Confirms currently-used GPIOs (39/40 touch I2C,
+   10/11 main I2C, 15/16 XTAL32K/speaker/touch-int) matching this
+   board's existing exclusions. No button/LED info.
+
+5. https://www.espboards.dev/esp32/lilygo-t-watch-s3/
+   Third-party (non-vendor) pinout aggregator. Its pinout table claims
+   "IO27" is labelled "BUTTON" / "GPIO, User Button". This directly
+   contradicts the vendor's own utilities.h (source 3) and the Zephyr
+   vendor-board doc (source 1), both of which state the only physical
+   button is wired to the PMU, not a GPIO. Also, GPIO27 does not
+   appear anywhere in this board's own pins_arduino.h, and does not
+   appear in the chip-level default board.json's chipGpios map either
+   (grepped variants/esp32/esp32s3/board.json for "27" — no match),
+   consistent with GPIO27 being chip-reserved (commonly used for
+   octal SPI PSRAM/flash on ESP32-S3 modules with 8MB+ PSRAM, which
+   this board has). Given it conflicts with two independent
+   vendor-authored sources and the pin isn't even exposed in this
+   board's own chipGpios, this claim was treated as unreliable /
+   rejected — NOT used as grounds to tag anything.
+
+6. https://lilygo.cc/products/t-watch-s3
+   Official vendor product page. Lists RTC, microphone, MAX98357A
+   audio amp, BMA423 accel, DRV2605 haptic motor, AXP2101 PMU, SX1262
+   LoRa. No mention of any onboard LED or GPIO-wired button.
+
+7. https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/master/docs/lilygo-t-watch-s3.md
+   Vendor's newer LilyGoLib setup doc. Board settings / setup
+   instructions only (partition scheme, upload mode). References a
+   "BOOT button" (used for entering download/flash mode only, not a
+   general-purpose input) with no GPIO number given and no LED
+   mentioned.
+
+Pins considered but NOT tagged:
+--------------------------------
+- GPIO21 (PMU_INT / AXP2101 interrupt line): this is the closest thing
+  to a "button signal" reaching the ESP32-S3 (the PMU reports
+  power-button press/hold events via its IRQ line), but GPIO21 is
+  already excluded from this board's chipGpios (grouped under
+  "RTC/PMU/sensor interrupts (14,17,21)" in the existing NOTE at the
+  top of board.json) from the earlier pin-exclusion audit pass. Per
+  task rules, out-of-scope pin-exclusion reversal was not attempted.
+  Even if it were available, PMU_INT is an interrupt/status line, not
+  a direct button GPIO — tagging it "button" would misrepresent it, so
+  no guess was made either way.
+- GPIO27 ("BUTTON" per espboards.dev only): rejected as unreliable —
+  see source 5 above. No guess made; this is a clear "did not tag,
+  made no guess" case, flagged here explicitly for human review in
+  case a more authoritative schematic later surfaces showing GPIO27 is
+  real on some board revision.
+- GPIO38 ("Addressable RGB LED" per Zephyr generic SoC boilerplate
+  only): rejected as unreliable — see source 2 above; this pin is
+  already excluded from chipGpios as DISP_DC (display, part of the
+  earlier display-pin exclusion group 12,13,18,38,45). Even if the
+  claim had been credible, GPIO38 falls inside an existing chip
+  pin-exclusion and would not have been re-added per task rules.
+- No other candidate GPIOs found in any source for LED or button use.
+
+Summary of what was tagged:
+----------------------------
+NOTHING WAS TAGGED. No credible vendor-confirmed onboard user button
+or onboard LED (single-color or NeoPixel/RGB) GPIO could be
+established for lilygo_twatch_s3. The board's one physical button is
+vendor-documented as wired directly to the AXP2101 PMU (power on/off
+control), not to any ESP32-S3 GPIO, and the vendor's own
+utilities.h/hardware docs list no LED of any kind. board.json was left
+unmodified aside from this notes.txt being written (no NOTE comment
+was added to board.json since no capability array was changed).

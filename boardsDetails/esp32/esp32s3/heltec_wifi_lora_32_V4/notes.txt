@@ -1,0 +1,105 @@
+Board: heltec_wifi_lora_32_V4 (variants/esp32/esp32s3/heltec_wifi_lora_32_V4)
+Researched: 2026-07-11
+
+1. Sources consulted
+---------------------
+https://heltec.org/project/wifi-lora-32-v4/
+  - Product page for WiFi LoRa 32 (V4.3.1), ESP32S3 + SX1262 LoRa Node.
+    Confirms board has physical PRG and RST buttons near the USB-C
+    connector (bare dev board), plus (on the boxed/expansion-housing
+    product) a USER button, White LED, RST button, and Orange LED on
+    the front panel.
+
+https://docs.heltec.org/en/node/esp32/wifi_lora_32/index.html
+  - General WiFi LoRa 32 docs landing page, no specific GPIO numbers
+    found in the fetched excerpt.
+
+https://wiki.heltec.org/docs/devices/open-source-hardware/esp32-series/lora-32/wifi-lora-32-v4/
+  - Product overview page. Did not contain GPIO numbers directly but
+    linked to the official Pin Map image and datasheet/schematic
+    downloads used below.
+
+https://resource.heltec.cn/download/WiFi_LoRa_32_V4/Pinmap/V4_pinmap.png
+  - OFFICIAL HELTEC PIN MAP IMAGE (downloaded and visually inspected).
+    This is the key confirming source. It shows, on Header J2:
+      * Pin 8: GPIO0 <-> "USER_SW" (pull-up/down arrow marked) - i.e.
+        GPIO0 is wired to the board's user/program switch.
+      * Pin 7: RST <-> "RST_SW" - the reset button, not a GPIO.
+      * Pin 10: GPIO35 <-> "SPIIO6" / "FSPID" / "SUBSPID" / "LED_Write"
+        - GPIO35 is labelled "LED_Write" on the schematic, i.e. it
+          drives an onboard LED (consistent with pins_arduino.h's
+          `LED_BUILTIN = 35` / `LED = 35` aliases).
+    This directly corroborates the vendor pins_arduino.h aliases with
+    an independent schematic/pinmap source (not just alias names).
+
+https://meshtastic.org/docs/hardware/devices/heltec-automation/lora32/buttons/
+  - Meshtastic hardware docs describing Heltec LoRa32 button behaviour
+    (Reset button = single press reset; User/Program button = long
+    press shutdown, single press change display, etc.) Confirms
+    functional role of the PRG/USER button but does not give GPIO
+    numbers itself.
+
+https://community.heltec.cn (search result only, not fetched in detail)
+  - Community forum thread title referencing "PRG Button 0" on a
+    related Heltec board (WiFi Kit 32), consistent with GPIO0 being
+    the PRG/user button pin convention Heltec uses across their ESP32
+    boards.
+
+Local files also read (not web sources, for cross-checking only):
+  variants/esp32/esp32s3/heltec_wifi_lora_32_V4/pins_arduino.h
+  variants/esp32/esp32s3/heltec_wifi_lora_32_V4/board.json
+  variants/esp32/esp32s3/board.json  (chip-level default, for comparison)
+  variants/esp32/esp32s3/heltec_wifi_lora_32_V3/board.json + pins_arduino.h
+    (sibling board, NOT modified, viewed only to check whether this
+    button/LED pair had already been tagged there - it had not, so no
+    established repo precedent to follow for this exact pair).
+
+2. Pins considered but NOT tagged
+----------------------------------
+GPIO35 (LED, LED_BUILTIN/LED alias in pins_arduino.h, "LED_Write" on
+the official pin map) - NOT TAGGED.
+  Reason: GPIO35 does not exist as a key in this board's chipGpios at
+  all, and it is likewise absent from the shared esp32s3 chip-level
+  default board.json (variants/esp32/esp32s3/board.json), which only
+  defines GPIO0-18,21,38-48. The whole 19-37 band (which includes
+  GPIO35) is excluded across the entire esp32s3 chip family by
+  default, presumably because many ESP32-S3 modules use that band for
+  octal SPI PSRAM/flash IO. This board's own top-of-file NOTE comment
+  documents specific board-level exclusions (LoRa SPI, OLED I2C, Vext)
+  but does NOT mention 33/34/35/37 - those were already absent from
+  the base file before this board's audit, i.e. this is a systemic/
+  chip-wide exclusion policy, not a board-specific decision I am
+  positioned to reverse.
+  This is a genuine, well-evidenced LED (vendor pinmap explicitly
+  labels GPIO35 "LED_Write"), and it is plausible this specific module
+  variant (ESP32-S3FN8, flash-only, no PSRAM) does not actually need
+  GPIO35 for octal PSRAM and so GPIO35 could safely be re-added to
+  chipGpios in a future pass - but per the task instructions ("do NOT
+  touch existing pin-exclusions"), I made NO guess and left this
+  entirely alone for human review. A human reviewer should decide
+  whether to add GPIO35 back into chipGpios (with capabilities
+  ["digital_output","led_high"] or ["digital_output","led_low"] -
+  polarity not yet determined/verified - possibly also "pwm_output")
+  as a deliberate, documented board-specific override of the chip-wide
+  band exclusion.
+
+  Note: polarity (active-high vs active-low) of the LED_Write signal
+  was NOT determined from the sources found - would need the
+  schematic PDF (not just the pinmap image) to confirm. This is an
+  additional reason no LED tag was applied even setting aside the
+  chipGpios-absence issue.
+
+TX (GPIO43) / RX (GPIO44) - not candidates for either button or LED;
+  checked pins_arduino.h `static const uint8_t TX = 43;` and
+  `RX = 44;` purely to rule out any coincidence with the button/LED
+  pins found. No conflict: GPIO0 (button) is not TX/RX.
+
+3. Summary of what was tagged
+-------------------------------
+GPIO0 tagged ["digital_input","button"] in board.json - confirmed as
+the onboard USER/PRG button via Heltec's official V4 pin map (labelled
+"USER_SW"). No LED was tagged (see section 2 above for GPIO35 - left
+untouched for human review, not due to lack of evidence for the LED's
+existence, but because it falls inside an existing, systemic
+chip-family pin exclusion band that this task does not authorize
+reversing).

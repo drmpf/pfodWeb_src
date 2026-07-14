@@ -1,0 +1,115 @@
+// Output filename and BoardLoader data-variable name:
+//   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+//
+// pfodWeb NOTE (button/LED/NeoPixel tagging audit, 2026-07-12):
+//
+// Board: Solder Party "RP2040 Stamp" — a hand-solderable, castellated-edge
+// RP2040 module (~1 inch square) created by arturo182 / Solder Party
+// (solder.party). This board's own pins_arduino.h declares only two
+// onboard-hardware aliases: PIN_LED (20u) and PIN_NEOPIXEL (21u); its
+// header comment cites https://rp2040-stamp.solder.party/carrier as the
+// pin-definition source (the "RP2040 Stamp Carrier" is a separate,
+// Arduino-Uno-footprint breakout PCB the bare Stamp module plugs into —
+// solder.party/docs/rp2040-stamp/carrier lists the Carrier's OWN features
+// as "USR LED", a separate "Power (3.3V) LED", and a "Bootsel button",
+// distinct from the bare Stamp module's own onboard NeoPixel + charge LED).
+//
+// GPIO21 / PIN_NEOPIXEL — CONFIRMED onboard WS2812 addressable RGB LED on
+// the Stamp module itself. Corroborated by FOUR independent sources beyond
+// this board's own pins_arduino.h:
+//   1. Official vendor docs (solder.party/docs/rp2040-stamp/) list
+//      "A Neopixel" as a headline feature of the bare module.
+//   2. Adafruit CircuitPython's own board definition for this exact board
+//      id (github.com/adafruit/circuitpython ports/raspberrypi/boards/
+//      solderparty_rp2040_stamp/pins.c) aliases GPIO21 as "NEOPIXEL" (no
+//      alias at all is given to GPIO20).
+//   3. The rp-rs community's Rust BSP crate `solderparty-rp2040-stamp`
+//      (github.com/rp-rs/rp-hal-boards, boards/solderparty-rp2040-stamp/
+//      src/lib.rs) names Gpio21 "neopixel" in its bsp_pins! table (again,
+//      no name given to Gpio20).
+//   4. The module's own official KiCad hardware source
+//      (github.com/solderparty/rp2040_stamp_hw, rp2040_stamp.kicad_sch)
+//      instantiates a WS2812B-2020 (LED_Extra:WS2812B-2020) symbol with
+//      its DIN pin routed to the GPIO21 net.
+// Tagged "led_neopixel" (not led_high/led_low, since it is one addressable
+// WS2812 pixel, not a simple on/off LED) with digital_output only —
+// pwm_output omitted because a WS2812 is a bit-serial-protocol data line,
+// not a PWM-dimmable pin — matches this repo's established
+// ../waveshare_rp2040_zero/board.json GPIO16 precedent exactly (same
+// capability list and rationale).
+//
+// GPIO20 / PIN_LED — NOT independently confirmed as a genuine onboard LED
+// on the bare Stamp module, so left as NO CHANGE (default auto-derived
+// digital_input/digital_output/pwm_output capabilities, no chipGpios
+// override). Evidence is conflicting/insufficient to tag it:
+//   - Neither CircuitPython's pins.c NOR the Rust BSP's bsp_pins! table
+//     (both listed above, both otherwise thorough) give GPIO20 any LED-
+//     related (or any) custom name — only GPIO21 (NeoPixel) is named.
+//   - The module's own KiCad schematic (rp2040_stamp_hw, source #4 above)
+//     traces the GPIO20 net from the RP2040 (U1 pin 31) directly to the
+//     castellated-edge header/connector only — no LED component instance
+//     is attached to that net anywhere in the file.
+//   - The Carrier board's own KiCad schematic
+//     (github.com/solderparty/rp2040_stamp_carrier_hw,
+//     rp2040_stamp_carrier.kicad_sch) contains no LED symbol instance
+//     either, despite the Carrier's own doc page listing a "USR LED"
+//     feature — so even the Carrier-side candidate explanation for
+//     PIN_LED=20 could not be corroborated in that board's own hardware
+//     source.
+//   - This board's own pins_arduino.h PIN_LED=20 macro is a real signal
+//     (it was contributed directly by arturo182, the Stamp's own
+//     designer/vendor, in arduino-pico PR #407), but its header comment
+//     explicitly sources the definitions from the CARRIER's pinout page
+//     rather than the bare module's — and independent schematic/firmware
+//     sources for neither board could confirm a physically attached LED
+//     or its polarity. Per this audit's rule to report NO CHANGE rather
+//     than guess existence/polarity from an alias name alone, GPIO20 is
+//     left untagged.
+//
+// No onboard general-purpose button exists: this board's only button is a
+// reset button, and the module's own KiCad schematic (source #4 above)
+// shows it (SW1, Switch:SW_SPST) wired directly to the RP2040's RUN
+// (hardware reset) pin — not to any GPIO — matching the same out-of-scope
+// rationale as every other RP2040 board's BOOTSEL/RESET buttons in this
+// repo (e.g. ../rpipico/board.json, ../waveshare_rp2040_zero/board.json).
+// There is no separate GPIO-readable "boot"/"user" button documented for
+// this board anywhere in the sources consulted.
+//
+// Full findings/sources trail:
+// boardsDetails/rp2040/rp2040/solderparty_rp2040_stamp/notes.txt
+{
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "boardName": "RP2040",
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This is the plain (non-WiFi)
+  // "rp2040" chip bucket; the Solder Party RP2040 Stamp has no onboard
+  // WiFi radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  "chipGpios": {
+    "21": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard WS2812 addressable RGB LED on the Stamp module itself, output-only. Confirmed via official Solder Party docs, Adafruit CircuitPython's board pins.c, the rp-rs Rust BSP's bsp_pins! table, and the module's own KiCad schematic (WS2812B-2020 symbol on this net) — see pfodWeb NOTE above." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

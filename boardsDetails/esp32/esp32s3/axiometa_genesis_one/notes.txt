@@ -1,0 +1,167 @@
+Board: axiometa_genesis_one (chip: esp32s3)
+Audit date: 2026-07-12
+Reason flagged: highest hit-count (28) in the ESP32 dedicated-hardware
+pin-exclusion re-audit sweep (see project_board_variant_pin_audit_playbook,
+section 11). Never previously reviewed -- no prior board.json/NOTE.
+
+=== Sources consulted ===
+
+- WebSearch "\"Axiometa Genesis One\" ESP32-S3 board" and "\"Axiometa\"
+  \"Genesis One\" microcontroller" -- found this is a real, currently
+  crowdfunding product: Axiometa's "Genesis IoT Discovery Lab", an
+  ESP32-S3-based modular wire-free prototyping platform. Confirmed via:
+    * https://www.axiometa.io/ (vendor site)
+    * https://www.axiometa.io/pages/how-to-use-axiometa-genesis-with-arduino
+    * https://www.crowdsupply.com/axiometa/genesis-iot-discovery-lab
+    * https://www.cnx-software.com/2025/08/22/genesis-iot-discovery-lab-modular-wire-free-prototyping-platform-for-esp32-s3/
+    * https://developer.espressif.com/blog/2025/06/modular-esp32s3-prototyping-platform-genesis/ (Espressif's own dev blog)
+    * https://www.hackster.io/news/povilas-dumcius-axiometa-genesis-kit-delivers-a-modular-approach-to-rapid-prototyping-a7abf28bcb28
+
+- WebFetch attempts:
+    * crowdsupply.com product page -- 403 Forbidden, could not fetch directly.
+    * cnx-software.com article -- fetched OK. Confirmed: 8x universal AX22
+      ports supporting "I2C, SPI, UART, GPIO, analog"; totals across all
+      ports "12-bit ADC, up to 20 ADC channels; 31 PWM, 45 GPIO, 15 touch
+      pins"; USB Type-C; STEMMA QT/Qwiic connector; battery socket for 1S
+      Li-Po/Li-Ion with short-circuit protection. Did NOT provide a full
+      GPIO-by-GPIO pinout table or confirm/deny any port-to-fixed-peripheral
+      wiring -- dead end for that specific detail.
+    * axiometa.io "how to use with Arduino" page -- fetched OK. Confirmed
+      the P<n>_IO<m> naming convention is genuine vendor naming (not
+      invented for this repo) -- page demonstrates P7_IO0/P7_IO1/P7_IO2
+      driving an RGB LED plugged into port 7. Did not provide a full pin
+      table or mention TX/RX/SDA/SCL/SS/MOSI/MISO/SCK explicitly.
+
+- WebSearch "Axiometa Genesis AX22 connector pinout UART I2C SPI shared
+  pins" -- found the key architectural fact: the AX22 standard is an
+  open (CERN-OHL-S-2.0) 22x22mm module standard with a *standardized
+  10-pin connector* carrying power, ground, analog, 3x GPIO, and support
+  for I2C/SPI/UART all sharing those same physical port pins ("fitting
+  UART, I2C, SPI, analog, and digital into 10 pins took some trial and
+  error" -- vendor's own description). This is only possible because the
+  ESP32-S3's peripheral GPIO matrix lets any UART/SPI/I2C signal be
+  routed to any GPIO pin in firmware -- confirms the ports are genuinely
+  software-configurable/general-purpose, not hard-wired to one function.
+
+- WebSearch "Axiometa Genesis One GitHub pins_arduino.h esp32s3" --
+  confirmed GENESIS One board support exists in the espressif/arduino-esp32
+  core repo ("pinout name fixes also applied in later updates" per a
+  search snippet) -- did not locate the exact upstream file to diff
+  against verbatim (would require repo browsing beyond WebSearch/WebFetch
+  scope), but corroborates this is a real, maintained Arduino core variant
+  rather than fabricated data.
+
+=== Reasoning per pin group ===
+
+1. VBAT_SENSE (GPIO10) + getBatteryVoltage() macro
+   KEEP (matches playbook's battery-monitor KEEP precedent). The macro
+   `((analogRead(VBAT_SENSE)/4095.0)*3.3*2.0)` multiplies the ADC reading
+   by 2x -- strong internal evidence of a real onboard 1:1 voltage divider
+   ahead of this pin, consistent with the vendor's own confirmed "battery
+   socket... with short-circuit protection" (implies charge/sense
+   circuitry). No change to chipGpios capabilities needed (analog_input
+   already present in the chip-level default); added an informational
+   "note" field on GPIO10 in board.json documenting the divider so future
+   reviewers don't have to re-derive it.
+
+2. P1_IO0 .. P8_IO2 (24 GPIOs, the 8 "AX22" expansion ports)
+   KEEP ALL -- confirmed general-purpose, not dedicated hardware. The
+   AX22 standard is explicitly designed so any of the 8 ports can accept
+   any of "50+ sensors and peripherals" (buttons, LEDs, motor drivers,
+   relays, displays, etc. per CNX Software) -- there is no fixed onboard
+   consumer soldered to a specific port; the consumer is whichever
+   module the end user plugs in. This matches the playbook's explicit
+   "general-purpose bus without a documented exclusive onboard consumer"
+   KEEP precedent. No vendor schematic/doc found showing any port
+   hard-wired to a fixed onboard peripheral (as opposed to a standard,
+   swappable AX22 module) -- if a future source contradicts this for one
+   specific port, only that port's pin(s) should be excluded, not the
+   whole set.
+
+   Two exceptions found within these 24, both already handled correctly:
+
+   a) GPIO43 (TX / P8_IO1) and GPIO44 (RX / P8_IO2): the board's own
+      pins_arduino.h explicitly comments these as "Fixed communication
+      pins (shared across all ports)" directly above the TX/RX
+      declarations -- vendor-confirmed as deliberate, not boilerplate
+      (also matches ESP32-S3's conventional default UART0 pin pair,
+      typically routed to the onboard USB-UART bridge for flashing/
+      logging). build_boards.js's own TX/RX precedence logic (forces any
+      GPIO matching the parsed TX/RX consts to capabilities:
+      ['serial_tx']/['serial_rx'] only, discarding any other role) already
+      produces the correct outcome automatically -- no board.json change
+      required for these two GPIOs specifically.
+
+   b) GPIO1 (P1_IO0), collision with a separate "SS" alias: unlike TX/RX,
+      the vendor file had NO comment/confirmation marking GPIO1 as a real
+      dedicated SPI slave-select -- it was declared as plain boilerplate
+      (`static const uint8_t SS = 1;`) with no supporting evidence found
+      in any of the sources above. Checked the display-label mechanism
+      specifically (build_boards.js's `_displayAliases`/`_primaryAlias`):
+      GPIO1's boilerplate A0/T1 identity-block aliases already win the
+      display label over any TX/RX/SDA/SCL/SS/MOSI/MISO/SCK alias, so the
+      SS alias was never actually going to change GPIO1's displayed name.
+      The real, confirmed risk was capability contamination: left in
+      place, `if (g === ss) caps.push('spi_ss')` in build_boards.js would
+      unconditionally add a spurious spi_ss capability to GPIO1's
+      capability list regardless of chipGpios -- exactly the failure
+      mode this session's new alias-collision check was added to catch.
+      FIXED: deleted the `static const uint8_t SS = 1;` line from
+      pins_arduino.h entirely (not commented out -- build_boards.js's
+      regex parser matches `static const ...;` text regardless of a
+      leading `//`, per the playbook's documented parser gotcha #2).
+      MOSI=11/MISO=12/SCK=13 were checked too and do NOT collide with any
+      port pin (ports only span GPIO1-9,14-18,21,38-46) -- left unchanged.
+
+3. SDA=47 / SCL=48 (STEMMA QT / Qwiic connector)
+   KEEP, no change. CNX Software confirms a dedicated STEMMA QT/Qwiic
+   connector on the board. GPIO47/48 are outside all 8 ports' pin sets,
+   so no P<n>_IO<m> naming collision exists. I2C is inherently multi-drop
+   and Qwiic/STEMMA QT is itself a general-purpose plug-in-sensor
+   standard -- matches the playbook's "general-purpose I2C/SPI bus...
+   even if only one device happens to be attached in the reference
+   design" KEEP precedent (here, potentially many different plug-in
+   Qwiic sensors, not even a single fixed one). i2c_sda/i2c_scl
+   capability tagging still applies automatically via build_boards.js's
+   alias matching, unaffected by this audit.
+
+4. MOSI=11 / MISO=12 / SCK=13
+   KEEP, no change. Not part of any port's pin set, no collision, no
+   vendor doc/schematic found showing a fixed onboard SPI peripheral
+   (flash/PSRAM chip-select pins are the already chip-level-excluded
+   26-37 range). Treated as default/general SPI convenience pins per
+   playbook's general-purpose-bus KEEP precedent.
+
+=== What was NOT confirmed (open questions for a future reviewer) ===
+
+- Could not obtain a full pin-by-pin schematic or datasheet (Crowd Supply
+  product page returned 403; no GitHub pinout table located via search).
+  All conclusions rest on: (a) the vendor's own descriptive marketing/
+  support copy (AX22 standard description, product feature lists), (b)
+  internal evidence within this repo's own pins_arduino.h (explicit
+  vendor comments distinguishing "fixed/shared" TX/RX from the
+  unconfirmed SS alias), and (c) general ESP32-S3 GPIO-matrix
+  architecture knowledge explaining why a shared 10-pin/multi-protocol
+  port design is technically plausible. No source directly confirmed or
+  denied per-port hardware wiring beyond the general "any port, any
+  module" design claim.
+- If a genuine per-port schematic surfaces later showing one port
+  hard-wired to a fixed onboard peripheral, revisit and exclude only
+  that port's pin(s) -- do not assume the other 7 ports are affected.
+
+=== Summary ===
+
+KEEP all 24 P<n>_IO<m> expansion-port GPIOs (confirmed general-purpose
+AX22 ports, no fixed onboard consumer) and VBAT_SENSE/GPIO10 (confirmed
+battery monitor via internal divider-math evidence) with chipGpios left
+identical to the chip-level default (informational "note" added on
+GPIO10 only). Found and fixed one real alias collision: deleted a
+vendor-boilerplate, never-confirmed `SS = GPIO1` alias from
+pins_arduino.h that collided with the confirmed P1_IO0 port pin and
+would have added a spurious spi_ss capability to it (display label was
+unaffected, since GPIO1's A0/T1 identity-block aliases already took
+precedence). TX(GPIO43)/RX(GPIO44) collide with
+P8_IO1/P8_IO2 too but are vendor-confirmed as a real shared UART and are
+already handled correctly by build_boards.js's existing TX/RX precedence
+logic with no board.json change needed. board.json created (full
+chip-level-default copy plus documentation) since none existed before.

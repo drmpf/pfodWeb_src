@@ -1,0 +1,47 @@
+lilygo_t3_s3_sx1262 - button/LED confirmation research notes
+==============================================================
+
+Sources consulted:
+
+https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/docs/en/t3_s3_sx1262/t3_s3_sx1262_hw.md
+  Vendor hardware doc for this exact SX1262 variant. States the onboard LED
+  is connected to ESP32 GPIO37 and is turned on/off by writing a high or low
+  level (active state not explicitly stated). Also documents a BOOT mode
+  button on GPIO0, described as customizable.
+
+https://wiki.lilygo.cc/products/t3-series/t3-s3/
+  Vendor wiki pin-mapping table for the T3-S3 family. Lists "Onboard LED" at
+  GPIO37 and "BOOT Button" at GPIO0, matching the GitHub hw doc. Also notes a
+  separate CHG (battery charge) LED, which is a charger-controlled indicator,
+  not GPIO-driven, and out of scope for tagging.
+
+Local repo files checked (not web sources, but part of the confirmation
+chain):
+  variants/esp32/esp32s3/lilygo_t3_s3_sx1262/pins_arduino.h
+    - LED_BUILTIN = 37, BUTTON_1 = 0, TX = 43, RX = 44 (aliases only used as
+      a lead, not as sole evidence - cross-checked against vendor docs above).
+  variants/esp32/esp32s3/board.json (chip-level default for esp32s3)
+    - Confirmed GPIO37 (and the whole GPIO26-37 octal flash/PSRAM range) has
+      NO chipGpios entry at the chip-level default, i.e. the exclusion is
+      chip-wide, not something removed specifically for this board variant.
+
+Pins considered but NOT tagged:
+  GPIO37 (onboard LED, confirmed via both vendor sources above) - NOT tagged.
+  Reason: GPIO37 falls inside the ESP32-S3 chip-level octal-flash/PSRAM pin
+  exclusion range and therefore has no chipGpios entry in either this
+  board's board.json or the chip-level default board.json. Per task rules,
+  re-adding an excluded pin is out of scope for this task even though the
+  LED identity itself is solidly confirmed. This is a clean case, not a
+  guess - flagging for human review only because the exclusion may warrant
+  reconsideration if GPIO37 is genuinely safe to expose as an LED on this
+  specific board (human judgement call, not made here).
+
+Pin tagged:
+  GPIO0 (BUTTON_1 / BOOT button, confirmed via both vendor sources above) -
+  tagged ["digital_input", "button"] in board.json. Not TX/RX (TX=43,
+  RX=44), and already had a chipGpios entry, so no conflict.
+
+Summary of changes made:
+  board.json: GPIO0 capabilities changed to ["digital_input", "button"];
+  added a pfodWeb NOTE comment documenting the GPIO0 tag and explaining why
+  GPIO37 was left untagged (chip-level octal-flash/PSRAM exclusion range).

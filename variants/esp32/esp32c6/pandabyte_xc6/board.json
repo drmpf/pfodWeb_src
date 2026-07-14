@@ -1,0 +1,114 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: PandaByte xC6 (ESP32-C6-WROOM-1 based). No board.json override
+  // existed before this audit (used the chip-level esp32c6/board.json
+  // default). Flagged by the discovery sweep for RGB_BUILTIN=23,
+  // BUTTON_BUILTIN=22, and WIRE1_PIN_DEFINED SDA1=6/SCL1=7 declared in
+  // pins_arduino.h but never individually reviewed.
+  //
+  // Sources consulted:
+  //  - https://github.com/espressif/arduino-esp32/pull/12220
+  //    "PandaByte Board Support" - the PR that added this exact
+  //    variants/pandabyte_xc6/pins_arduino.h to the official Espressif
+  //    arduino-esp32 core, alongside 4 sibling PandaByte boards. Includes
+  //    a vendor hardware test-results table run on real PandaByte
+  //    hardware for every board including the xC6 column specifically:
+  //    "Blink (digitalWrite)" PASS, "Blink RGB (FastLED)" PASS,
+  //    "Digital Input (Switch)" PASS, "Serial CDC (USB)" PASS,
+  //    "WiFi (WiFiClient)" PASS, "I2C (BMP280, ADXL345)" PASS,
+  //    "SPI (BMP280, ADXL345)" PASS. This is real vendor-submitted,
+  //    hardware-verified confirmation (not just an alias name in
+  //    pins_arduino.h).
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/pandabyte_xc6/pins_arduino.h
+  //    Confirms the merged upstream file matches the local
+  //    pins_arduino.h byte-for-byte (before this audit's edit):
+  //    LED_BUILTIN=3, RGB_BUILTIN=23, BUTTON_BUILTIN=22, TX=16, RX=17,
+  //    SDA=23, SCL=22, SS=18, MOSI=19, MISO=20, SCK=21, SDA1=6, SCL1=7.
+  //  - https://www.pandabyte.in/product-page/pandabyte-xc6-esp32-c6-microcontroller-board-arduino-compatible
+  //    Official PandaByte product page. Confirms peripherals list: "a
+  //    programmable single-color LED, an onboard push button, and an RGB
+  //    LED" - no GPIO numbers or wiring detail given, but corroborates
+  //    that a real onboard button and RGB LED physically exist.
+  //  - https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c6/esp32-c6-devkitc-1/user_guide.html
+  //    and the ESP32-C6 datasheet - same reasoning already applied to the
+  //    sibling generic esp32c6/esp32c6 board.json: the LP_I2C controller's
+  //    pins are fixed by the chip's own silicon pin-mux (not board wiring),
+  //    so SDA1=6/SCL1=7 being present in pins_arduino.h is expected on
+  //    every ESP32-C6 board and is not, by itself, evidence of a
+  //    dedicated onboard I2C peripheral on this specific board.
+  //
+  // GPIO23 (RGB_BUILTIN): CONFIRMED onboard WS2812/addressable RGB LED -
+  // vendor hardware test "Blink RGB (FastLED)" PASS specifically on the
+  // xC6 column of PR #12220's test table, matching this repo's
+  // led_neopixel precedent (e.g. sibling pandabyte_xs3 GPIO12, generic
+  // esp32c6/esp32c6 GPIO8). High confidence.
+  // Alias-collision check: this variant's pins_arduino.h also declared
+  // SDA=23 (same GPIO as RGB_BUILTIN) before this audit. That SDA alias
+  // was a boilerplate default-Wire-pin duplicate of the RGB LED pin, not
+  // an independently vendor-confirmed I2C device on GPIO23, so it was
+  // deleted from pins_arduino.h (see that file's own NOTE) to stop
+  // build_boards.js from unconditionally appending an "i2c_sda"
+  // capability onto this pin alongside "led_neopixel".
+  // Tagged capabilities: ["digital_output","led_neopixel","pwm_output"].
+  //
+  // GPIO22 (BUTTON_BUILTIN): CONFIRMED onboard user push button - vendor
+  // hardware test "Digital Input (Switch)" PASS specifically on the xC6
+  // column of PR #12220's test table, corroborated by the PandaByte
+  // product page listing "an onboard push button". High confidence.
+  // Alias-collision check: pins_arduino.h also declared SCL=22 (same
+  // GPIO as BUTTON_BUILTIN) before this audit - same boilerplate
+  // default-Wire-pin pattern as GPIO23/SDA above, deleted for the same
+  // reason (would otherwise get an unconditional "i2c_scl" capability
+  // appended alongside "button").
+  // Tagged capabilities: ["digital_input","button"].
+  //
+  // GPIO6/GPIO7 (SDA1/SCL1, LP/second I2C bus): KEEP as general-purpose -
+  // no onboard peripheral documented at either pin on this board; the
+  // "I2C (BMP280, ADXL345)" PR test used external breakout sensors wired
+  // by the tester, not an onboard I2C device at a fixed pin. Same
+  // fixed-by-silicon LP_I2C pin-mux reasoning already applied to sibling
+  // esp32c6/esp32c6. Left unchanged from chip-level defaults (GPIO6:
+  // analog_input+digital_input+digital_output+pwm_output; GPIO7:
+  // digital_input+digital_output+pwm_output).
+  //
+  // See boardsDetails/esp32/esp32c6/pandabyte_xc6/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "button"] },
+    "23": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] }
+  }
+}

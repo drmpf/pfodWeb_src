@@ -1,0 +1,100 @@
+Board: esp32s2/esp32s2 ("ESP32S2 Dev Module" - boards.txt id "esp32s2", build.variant=esp32s2)
+Chip: ESP32-S2
+Audit type: dedicated-hardware pin-exclusion audit (PIN_RGB_LED / GPIO18 flagged by discovery
+            sweep), plus the SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias-collision check added this
+            session.
+
+FLAGGED CONTENT (variants/esp32/esp32s2/esp32s2/pins_arduino.h):
+  // GPIO pin for Saola-1 & DevKitM-1 = 18
+  #define PIN_RGB_LED 18
+  // GPIO pin for Kaluga = 45
+  //#define PIN_RGB_LED 45
+  static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
+  #define RGB_BUILTIN    LED_BUILTIN
+  #define RGB_BRIGHTNESS 64
+  ...
+  static const uint8_t A17 = 18;   (analog alias on same GPIO)
+  static const uint8_t DAC2 = 18;  (DAC alias on same GPIO)
+
+QUESTION: does GPIO18 have a real, populated onboard NeoPixel on the actual physical board(s)
+this generic Arduino IDE entry represents, or is this defensive/unverified boilerplate? ESP32-S2
+is a materially different/older chip generation than the C-series chips (C3/C6/C5/C61) already
+confirmed elsewhere in this audit, so the same pattern was NOT assumed - it was independently
+verified against this chip's own reference boards.
+
+SOURCES CONSULTED:
+1. This board's own pins_arduino.h source comment: "// GPIO pin for Saola-1 & DevKitM-1 = 18"
+   (with a second, commented-out alternative "// GPIO pin for Kaluga = 45" for a different official
+   ESP32-S2 board that does NOT use this generic variant's GPIO18 default). This is the strongest
+   signal in the file itself: the upstream Arduino core author explicitly named which two official
+   Espressif boards this GPIO18 default is sourced from.
+2. docs.espressif.com esp-dev-kits official user guide, ESP32-S2-Saola-1 v1.2
+   (esp32s2/esp32-s2-saola-1/user_guide_v1.2.html) - fetched directly. Quote: "Addressable RGB LED
+   (WS2812), driven by GPIO18." Direct, unambiguous vendor confirmation.
+3. docs.espressif.com esp-dev-kits official user guide, ESP32-S2-DevKitM-1
+   (esp32s2/esp32-s2-devkitm-1/user_guide.html) - fetched directly. Quote: "Addressable RGB LED,
+   driven by GPIO18". The J3 pin-header table also lists GPIO18's row as: "RTC_GPIO18, GPIO18,
+   U1RXD, ADC2_CH7, DAC_2, CLK_OUT3, RGB LED" - confirming the LED shares the pin with the chip's
+   genuine ADC2_CH7/DAC_2 silicon functions (consistent with this board's own A17=18/DAC2=18
+   aliases), but the LED is the physically populated component on the reference hardware.
+4. variants/esp32/boards.txt (this repo's copy): "esp32s2.name=ESP32S2 Dev Module",
+   "esp32s2.build.variant=esp32s2". No separate "Saola-1"/"DevKitM-1"-named board entry exists
+   anywhere in boards.txt for this chip - "ESP32S2 Dev Module" is the ONLY Arduino IDE entry that
+   maps to this variant directory, matching the esp32c3/esp32s3 precedent pattern in this audit.
+
+REASONING / DECISION:
+- Both of Espressif's own official ESP32-S2 reference boards named directly in this variant's own
+  source comment (Saola-1 and DevKitM-1) are vendor-confirmed, via Espressif's own current
+  esp-dev-kits user guides, to have a real, populated addressable WS2812 RGB LED at GPIO18. This
+  is direct, first-party evidence, not inference from a different chip family's pattern.
+- Unlike the C-series chips audited elsewhere, ESP32-S2 GPIO18 is genuinely dual-purpose in
+  silicon (ADC2_CH7 + DAC_2 + RGB LED all on the same physical pin per Espressif's own pin table)
+  - the LED is simply the component actually soldered onto both official reference boards, making
+  the ADC/DAC functions physically unusable on this specific dev-board's GPIO18 (though DAC_2's
+  sibling channel on GPIO17 remains free and unaffected).
+- Applied the same "LED-tag exclusivity policy" already established by this audit's esp32c3
+  (GPIO8) and esp32s3 (GPIO48) precedents: a pin physically committed to driving an onboard
+  addressable LED keeps only digital_output/pwm_output/led_neopixel, dropping every other
+  capability (here: analog_input_serial, digital_input, and dac_output that the chip-level
+  default otherwise assigns to GPIO18). Verified via grep across every existing led_neopixel-
+  tagged board.json in this repo that none ever retain analog_input*/dac_output alongside
+  led_neopixel - confirms this is the repo's consistent convention, not a one-off choice.
+- CONFIDENCE CAVEAT (same shape as the esp32c3/esp32s3 precedents): this generic "ESP32S2 Dev
+  Module" entry can also be selected as a catch-all for third-party/no-name ESP32-S2 boards with
+  no dedicated variant of their own, where the GPIO18 LED assumption would not hold. Documented
+  explicitly in board.json's pfodWeb NOTE.
+- ALIAS-COLLISION CHECK (new this session): confirmed GPIO18 is NOT aliased as SDA (=8), SCL (=9),
+  SS (=34), MOSI (=35), MISO (=37), SCK (=36), TX (=43), or RX (=44) anywhere in this file - all
+  eight bus/serial aliases point at different GPIOs. build_boards.js's unconditional bus-alias
+  capability append (see pfodWeb_src/build_boards.js lines ~698-703: i2c_sda/i2c_scl/spi_ss/
+  spi_mosi/spi_miso/spi_sck are appended purely by GPIO-number match against these consts,
+  regardless of what chipGpios specifies) therefore CANNOT contaminate GPIO18's capability list on
+  this board. No pins_arduino.h edit was required for this check (unlike the esp32c3 precedent,
+  where SDA=8 genuinely collided with PIN_RGB_LED=8 and had to be changed to SDA=-1).
+  Also confirmed (reading build_boards.js lines 677-695) that when a board.json chipGpios entry
+  exists for a GPIO, its capabilities list is taken EXCLUSIVELY from that entry (CAP_ORDER filtered
+  against the chipGpios set) - the alias-derived hasAdc/dac1/dac2 fallback logic only runs when no
+  chipGpios entry exists for that GPIO. So setting chipGpios["18"] to
+  ["digital_output","pwm_output","led_neopixel"] fully overrides the A17/DAC2 alias-derived
+  analog/DAC capabilities; they will not silently reappear.
+- No onboard button found anywhere in this file (no BUTTON/BOOT-style alias declared) - nothing to
+  tag there.
+- inputOnlyGpios ([46]), pinNotes (GPIO0/45/46 strapping warnings), adc/dac chip specs, and the
+  rest of chipGpios were already correct at the chip-level default (variants/esp32/esp32s2/
+  board.json) and were carried through unchanged into this new board-level override, aside from
+  the GPIO18 capability change and its DAC comment annotation.
+
+CONFIDENCE: High for the LED tag - direct, current, first-party Espressif documentation for BOTH
+reference boards explicitly named in this variant's own upstream source comment, with no
+conflicting evidence found (contrast with the esp32c3 GitHub issue #7914 counter-example - no
+equivalent counter-example was found for ESP32-S2 GPIO18 during this research, though the generic-
+catch-all caveat is still documented since it is a structural property of every "Dev Module" entry
+in this tree, not something that can be individually falsified per board.json). High confidence
+also for the alias-collision check (verified directly by comparing the eight bus-alias constant
+values against 18; all differ).
+
+SUMMARY: Created board.json (full copy of chip-level esp32s2 default) tagging GPIO18
+["digital_output","pwm_output","led_neopixel"], confirmed via Espressif's own current Saola-1 and
+DevKitM-1 esp-dev-kits user guides (both explicitly named in this variant's own pins_arduino.h
+comment). Confirmed no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias collision exists on GPIO18, so no
+pins_arduino.h edit was needed. No other files changed.

@@ -1,0 +1,190 @@
+Board audit notes: viyalab_mizu ("Viyalab Mizu RP2040", chip: rp2040)
+Date: 2026-07-13
+
+SUMMARY (one line): NO CHANGE — this board's sole identity pin (GPIO25 /
+PIN_LED) is confirmed by official Viyalab docs to be a real onboard
+"Programmable LED", but no authoritative source could be found for its
+polarity (active-high/low) or its exact type (simple LED vs NeoPixel)
+on THIS specific PCB, so per the audit's "report NO CHANGE rather than
+guess" rule, GPIO25 was left at chip-level defaults (no led_high/
+led_low/led_neopixel tag applied); the board's unusual SPI0 pin split
+was investigated and found to be genuine, confirmed board-specific
+microSD-card wiring (not boilerplate/typo), and required no chipGpios
+action since it doesn't collide with GPIO25 or any other identity pin.
+
+FILES READ
+----------
+- variants/rp2040/rp2040/viyalab_mizu/pins_arduino.h (full file, 17
+  #define lines + `#include "../generic/common.h"`). Header comment
+  cites https://datasheets.raspberrypi.org/pico/pico-datasheet.pdf as
+  its nominal pin source (boilerplate template header, shared verbatim
+  with rpipico and degz_suibo's own pins_arduino.h headers) — but see
+  SPI0 findings below showing this board's actual values deviate from
+  that boilerplate in one important place.
+- variants/rp2040/rp2040/board.json (chip-level defaults: chipGpios: {}
+  deliberately empty; every aliased GPIO gets full digital_input/
+  digital_output/pwm_output by default).
+- variants/rp2040/rp2040/rpipico/board.json (precedent: single onboard
+  LED at GPIO25, confirmed active-high via official RPi documentation +
+  consistent secondary sources — the structure/style followed here,
+  though the confirmation itself does NOT carry over to this board).
+- variants/rp2040/rp2040/rpipico/pins_arduino.h and
+  variants/rp2040/rp2040/degz_suibo/pins_arduino.h (comparison boards —
+  both use the STANDARD Pico SPI0 pinout MISO=16/MOSI=19/SCK=18/SS=17,
+  unlike viyalab_mizu's MISO=16/MOSI=7/SCK=6/SS=17).
+- variants/rp2040/boards.txt (grepped "viyalab_mizu" — confirmed a full,
+  real boards.txt stanza exists: viyalab_mizu.name=Viyalab Mizu RP2040,
+  viyalab_mizu.build.variant=viyalab_mizu (matches this directory name),
+  viyalab_mizu.build.usb_manufacturer="Viyalab",
+  viyalab_mizu.build.usb_product="Mizu RP2040". This is a real,
+  selectable board in the Designer's board picker, not an orphan
+  directory.)
+
+PINS_ARDUINO.H CONTENTS (for reference)
+----------------------------------------
+  PIN_LED        (25u)
+  PIN_SERIAL1_TX (0u),  PIN_SERIAL1_RX (1u)
+  PIN_SERIAL2_TX (8u),  PIN_SERIAL2_RX (9u)
+  PIN_SPI0_MISO  (16u), PIN_SPI0_MOSI (7u), PIN_SPI0_SCK (6u), PIN_SPI0_SS (17u)
+  PIN_SPI1_MISO  (12u), PIN_SPI1_MOSI (11u), PIN_SPI1_SCK (10u), PIN_SPI1_SS (13u)
+  PIN_WIRE0_SDA  (4u),  PIN_WIRE0_SCL (5u)
+  PIN_WIRE1_SDA  (2u),  PIN_WIRE1_SCL (3u)
+No PIN_NEOPIXEL, PIN_BUTTON, PIN_USRKEY, or any other button/RGB alias
+is declared anywhere in this file.
+
+WEB RESEARCH
+------------
+1. https://docs.viyalab.com/docs/category/mizu and
+   https://docs.viyalab.com/docs/category/rp2040 (WebFetch succeeded) —
+   confirmed this board's documentation lives at
+   /docs/Mizu/RP2040/intro, described in the nav as "Pin Diagram".
+2. https://docs.viyalab.com/docs/Mizu/RP2040/intro (WebFetch succeeded)
+   — official Viyalab overview page. Confirmed onboard peripherals:
+     - IMU sensor (LSM6DS3)
+     - Compass (QMC6310)
+     - BMP280 Barometer
+     - Programmable LED
+     - Micro SD card slot
+     - 4x ADC, 2x UART, 2x I2C, 2x SPI, 16x PWM outputs
+     - Supply 3.3-5V, pin voltage 3.3V, 36x36mm form factor
+   The page references a pin-diagram image but the fetch tool's
+   markdown conversion did not surface per-pin GPIO numbers/polarity
+   from that image — text-only sections did not state LED polarity or
+   confirm addressable-vs-simple LED type.
+3. https://wiki.degzrobotics.com/... (Mizu's original vendor, Degz
+   Robotics, before the Viyalab rebrand/handover) — ALL WebFetch
+   attempts to this domain returned HTTP 403 (Forbidden, likely bot
+   protection), for both the Mizu usage page and the Suibo ("Mizu"
+   successor board, since Mizu itself is now discontinued/EOL per
+   arduinolearning.com and search snippets: "removed from production,
+   with Degz Suibo suggested as an alternative") about-the-product page.
+4. WebSearch snippets (page content not directly fetchable, but search
+   engine indexed text excerpts) corroborated:
+   - Mizu is "a development board designed for unmanned underwater
+     vehicles and other robotic systems... equipped with various
+     sensors (gyroscope, accelerometer, compass and barometer)... can
+     provide simultaneous control of 16 motors" — matches Viyalab's own
+     "16x PWM outputs" spec, confirms this is a Turkish underwater-ROV
+     ("Mizu Su Altı Kontrol Kartı" = "Mizu Underwater Control Board")
+     hobbyist/robotics board, not a generic Pico clone.
+   - Setup procedure: bridge BOOT+GND with a jumper, power via USB-C,
+     remove jumper 3+ seconds after LED lights, board enumerates as
+     RPI-RP2 mass storage — standard RP2040 BOOTSEL bootloader flow,
+     no board-specific button/LED info revealed by this.
+   - Suibo (successor board) search snippet mentioned "GPIO 0 represents
+     the Tx LED, and GPIO 1 represents the Rx LED" — this refers to the
+     arduino-pico core's standard Serial activity LED feature (not a
+     dedicated onboard status LED, and not GPIO25/PIN_LED), so not
+     applicable to the PIN_LED/GPIO25 question either way.
+   - No search result stated GPIO25's drive polarity or confirmed it as
+     a WS2812/NeoPixel vs a simple LED for either Mizu or Suibo.
+5. Product page https://degzrobotics.com/product/mizu-su-alti-kontrol-karti/
+   also returned HTTP 403 via WebFetch (same domain-level block as the
+   wiki subdomain).
+
+SPI0 PIN-SPLIT INVESTIGATION (per task brief's flagged concern)
+-----------------------------------------------------------------
+Confirmed genuine, board-specific customization, NOT a boilerplate
+copy-paste artifact:
+  - rpipico and degz_suibo (both templated from the same generic
+    Pico-clone pins_arduino.h header/comment) use the STANDARD RP2040
+    Pico SPI0 pinout: MISO=16, MOSI=19, SCK=18, SS=17 (GPIO16-19 block).
+  - viyalab_mizu instead declares MISO=16, MOSI=7, SCK=6, SS=17 —
+    MOSI/SCK moved to GPIO7/GPIO6, a DIFFERENT (but individually valid)
+    RP2040 SPI0 alternate-function pin group (per the RP2040 datasheet,
+    SPI0 SCK is available on GPIO2/6/18, TX/MOSI on GPIO3/7/19,
+    RX/MISO on GPIO0/4/16, CSn on GPIO1/5/17 — GPIO6/7 is a legitimate,
+    documented SPI0 alt-function location, just an unusual one to mix
+    with GPIO16/17 for the other two signals).
+  - This is consistent with Viyalab's own documented "Micro SD card
+    slot" peripheral — a real onboard SD card needs its own dedicated
+    SPI wiring, which plausibly explains why this board deviates from
+    the generic template on exactly these two SPI0 pins while leaving
+    everything else (Serial1/2, SPI1, Wire0/1) at the standard Pico
+    values.
+  - Checked for GPIO25 (PIN_LED) collision against all six bus alias
+    values in this board's own pins_arduino.h: SS=17, MOSI=7, MISO=16,
+    SCK=6, SDA=4, SCL=5 — none equal 25. No
+    adafruit_feather_scorpio-style bus-capability contamination bug
+    exists here; no pins_arduino.h edit was needed.
+  - No chipGpios action was taken for the SPI0 pins themselves (GPIO6/
+    7/16/17) — they are ordinary bus pins serving their declared SPI0
+    role (auto-handled by build_boards.js's own spi_* boilerplate-alias
+    logic), not a case of a button/LED pin doubling as a bus pin.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED):
+  - Confirmed via official Viyalab documentation to correspond to a
+    real onboard "Programmable LED" feature — not leftover boilerplate,
+    the vendor's own docs explicitly list it as a hardware peripheral.
+  - However: polarity (active-high vs active-low) could NOT be
+    confirmed for this specific board's own PCB design. Unlike the
+    rpipico precedent (official Raspberry Pi documentation + numerous
+    independent secondary sources explicitly stating "GP25 LED is
+    active-high"), no equivalent source exists for viyalab_mizu — the
+    wiki.degzrobotics.com pages that might contain this detail are
+    blocked from WebFetch (HTTP 403), and no cached/indexed search
+    snippet surfaced polarity information.
+  - Type (simple digital LED vs WS2812/addressable NeoPixel) also could
+    not be positively confirmed. The absence of any PIN_NEOPIXEL alias
+    in this board's own pins_arduino.h (contrast with
+    waveshare_rp2040_zero/matrix and vccgnd_yd_rp2040, which all give
+    their onboard WS2812 a distinct PIN_NEOPIXEL define) is suggestive
+    that it's a simple LED, but this is inference from an absence, not
+    a positive vendor statement, so it was not treated as sufficient to
+    apply a led_neopixel (or led_high/led_low) tag.
+  - Given this board is independently confirmed to deviate from the
+    generic Pico-clone boilerplate on its SPI0 pins (see above), the
+    usual "it's just the same LED circuit as the reference Pico" leap
+    of faith is specifically less safe to make here than it would be
+    for a board that matches the template everywhere.
+  - DECISION: left at chip-level auto-derived default (full
+    digital_input/digital_output/pwm_output, no led_high/led_low/
+    led_neopixel tag) — NO CHANGE, per the audit's explicit instruction
+    to report NO CHANGE rather than guess polarity from the alias name
+    alone.
+
+GPIO0-24, 26-29 (Serial1/2, SPI0/SPI1, Wire0/1, remaining GPIOs):
+  - No vendor documentation found suggesting any dedicated onboard
+    button, second LED, or NeoPixel exists on any of these pins beyond
+    their declared bus roles (already auto-handled by build_boards.js's
+    boilerplate spi_*/i2c_*/serial_* alias logic). No override applied.
+
+No onboard button of any kind (BOOTSEL-style or ordinary GPIO
+pushbutton) is documented for this board beyond the standard BOOT+GND
+jumper-bridge bootloader-entry procedure mentioned in the setup guide
+(which is the same non-GPIO QSPI-CS-line BOOTSEL mechanism as the
+classic Pico — see rpipico/board.json's precedent note — not a normal
+digitalRead()-able pin in any case).
+
+FILE WRITTEN
+------------
+variants/rp2040/rp2040/viyalab_mizu/board.json — full file (chip-level
+defaults copied verbatim, chipGpios left as an empty object {} to
+formally record that this board was audited and no override was
+confirmed). Validated as syntactically correct JSON-with-comments via a
+manual comment-stripping JSON.parse (scratchpad validate_mizu.js) — no
+build_boards.js require() was used, per task instructions.
+
+No pins_arduino.h edit was made (no confirmed bus-collision bug found).

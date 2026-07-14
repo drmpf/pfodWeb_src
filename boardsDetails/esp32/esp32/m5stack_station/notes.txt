@@ -1,0 +1,70 @@
+m5stack_station - button/LED capability tagging research notes
+================================================================
+
+Sources consulted
+------------------
+1. https://raw.githubusercontent.com/espressif/arduino-esp32/master/boards.txt
+   Confirmed board id "m5stack_station" has .name=M5Station and
+   .build.variant=m5stack_station, matching this variant directory. This is
+   the only Arduino board target using this variant folder.
+
+2. https://docs.m5stack.com/en/arduino/m5station/button
+   Confirms Station has physical buttons A/B/C accessed via M5.BtnA/B/C
+   (Button_Class from M5Unified library). Page breadcrumb/category shown as
+   "Station Bat/485", i.e. this Arduino "Station" documentation section
+   covers both the Station-Bat and Station-485 physical products, which
+   share the same MCU board / Arduino build target. Does not itself give
+   GPIO numbers.
+
+3. https://docs.m5stack.com/en/arduino/m5station/display
+   Confirms Station uses M5GFX for its onboard color TFT. No GPIO/button/LED
+   info on this page; used only to confirm this is the same product family.
+
+4. https://docs.m5stack.com/en/core/station_bat (Station-Bat hardware page)
+   Explicit pinmap: BUTTON A = G37, BUTTON B = G38, BUTTON C = G39, plus a
+   separate central power button (not GPIO-exposed, handled by power IC/
+   AXP - click to power on, 4s long-press to power off). Also explicitly
+   states "7 programmable RGB LEDs" using SK6812 (NeoPixel-compatible)
+   chips, single data pin on GPIO 4.
+
+5. https://docs.m5stack.com/en/core/station_485 (Station-485 hardware page)
+   Full pinmap table confirms BUTTON A/B/C = G37/G38/G39 (matches
+   station_bat). Also documents TFT (ST7789v2) on G5/G15/G18/G19/G23 (SPI,
+   already excluded from chipGpios in the chip-level default - not touched
+   here), RTC (BM8563) on G21/G22 (I2C, likewise not touched), PWR485 on
+   G1/G2/G3, and HY2.0-4P expansion ports on G13/G14/G16/G17/G25/G26/G32/
+   G33/G35/G36. Confirms the "7 programmable RGB LEDs" (SK6812) exist on
+   this variant too, consistent with station_bat's explicit GPIO4 pinout
+   (this page's own pinmap table doesn't restate the LED GPIO number, but
+   the device description elsewhere on the page confirms the same SK6812
+   RGB LED bank as Station-Bat).
+
+6. https://docs.m5stack.com/en/core/m5station - HTTP 404, no such standalone
+   page; confirms the product is documented as Station-Bat / Station-485
+   sub-pages rather than a single generic "M5Station" hardware page.
+
+Pins considered but NOT tagged
+-------------------------------
+- Central power button: mentioned in station_bat docs ("1 power button",
+  click to power on / 4s long-press to power off) but no GPIO number is
+  given anywhere - this is handled by the board's power-management IC, not
+  a plain sketch-readable GPIO. No guess made; left untagged (no digital
+  button candidate exists for it).
+- TFT SPI pins (G5 CS, G15 RESET, G18 SCK, G19 RS, G23 MOSI), RTC I2C pins
+  (G21 SDA, G22 SCL), PWR485 pins (G1/G2/G3): these are dedicated-peripheral
+  pins already covered by the prior pin-exclusion audit pass for this board
+  (per pins_arduino.h's existing pfodWeb NOTE re: MISO/SPI bus handling) -
+  out of scope for this task, not touched.
+- No separate single-color status LED was found documented anywhere for
+  this board family - only the SK6812 RGB LED bank on GPIO4 is confirmed.
+
+What was tagged
+-----------------
+GPIO4 -> ["digital_output","led_neopixel","pwm_output"] (7x onboard SK6812
+addressable RGB LED bank, single data pin; pwm_output retained because it
+was already present on GPIO4 in the chip-level default capability set).
+GPIO37 -> ["digital_input","button"] (Button A).
+GPIO38 -> ["digital_input","button"] (Button B).
+GPIO39 -> ["digital_input","button"] (Button C).
+None of GPIO4/37/38/39 coincide with this board's TX(1)/RX(3) pins, so no
+TX/RX silent-discard conflict applies.

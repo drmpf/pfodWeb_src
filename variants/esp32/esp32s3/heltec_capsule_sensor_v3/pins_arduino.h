@@ -24,25 +24,16 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 41;
 static const uint8_t SCL = 42;
 
-static const uint8_t SS = 8;
-static const uint8_t MOSI = 10;
-static const uint8_t MISO = 11;
-static const uint8_t SCK = 9;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard LoRa radio SPI bus (no other SPI peripheral on this board;
+// see RST_LoRa/BUSY_LoRa/DIO0 below).
 
-static const uint8_t A0 = 1;
+// pfodWeb NOTE: A0/A2-A4/A7-A13 and T1/T3-T5/T8-T14 deliberately NOT
+// declared - dedicated onboard GPS module, LoRa radio SPI bus, and
+// LoRa RST/BUSY/DIO0 pins (see below).
 static const uint8_t A1 = 2;
-static const uint8_t A2 = 3;
-static const uint8_t A3 = 4;
-static const uint8_t A4 = 5;
 static const uint8_t A5 = 6;
 static const uint8_t A6 = 7;
-static const uint8_t A7 = 8;
-static const uint8_t A8 = 9;
-static const uint8_t A9 = 10;
-static const uint8_t A10 = 11;
-static const uint8_t A11 = 12;
-static const uint8_t A12 = 13;
-static const uint8_t A13 = 14;
 static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
 static const uint8_t A16 = 17;
@@ -50,37 +41,21 @@ static const uint8_t A17 = 18;
 static const uint8_t A18 = 19;
 static const uint8_t A19 = 20;
 
-static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
-static const uint8_t T3 = 3;
-static const uint8_t T4 = 4;
-static const uint8_t T5 = 5;
 static const uint8_t T6 = 6;
 static const uint8_t T7 = 7;
-static const uint8_t T8 = 8;
-static const uint8_t T9 = 9;
-static const uint8_t T10 = 10;
-static const uint8_t T11 = 11;
-static const uint8_t T12 = 12;
-static const uint8_t T13 = 13;
-static const uint8_t T14 = 14;
 
-static const uint8_t Vext = 21;
 static const uint8_t LED0 = 33;
 static const uint8_t LED1 = 34;
 static const uint8_t USER_BUTTON = 18;
 
-static const uint8_t GPS_RX_PIN = 5;
-static const uint8_t GPS_TX_PIN = 4;
-static const uint8_t GPS_RESET_PIN = 3;
-static const uint8_t GPS_PPS_PIN = 1;
-
+// pfodWeb NOTE: Vext (power-gate for onboard peripherals), GPS_*, and
+// ADC_BATTERY_CTRL_PIN (battery-ADC enable FET) deliberately NOT declared
+// - internal-only control lines, not general-purpose (see board.json).
 static const uint8_t ADC_BATTERY_PIN = 7;
 #define BAT_VOLT_PIN ADC_BATTERY_PIN
-static const uint8_t ADC_BATTERY_CTRL_PIN = 36;
 
-static const uint8_t RST_LoRa = 12;
-static const uint8_t BUSY_LoRa = 13;
-static const uint8_t DIO0 = 14;
+// pfodWeb NOTE: RST_LoRa/BUSY_LoRa/DIO0 deliberately NOT declared -
+// dedicated onboard LoRa radio control lines.
 
 #endif /* Pins_Arduino_h */

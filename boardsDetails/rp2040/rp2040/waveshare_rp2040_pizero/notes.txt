@@ -1,0 +1,276 @@
+Board: waveshare_rp2040_pizero (chip: rp2040) — Waveshare RP2040-PiZero
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+NO CHANGE. No board.json was created. This board has NO onboard
+software-controllable LED, NO NeoPixel/WS2812, and NO onboard
+GPIO-readable user button beyond the standard out-of-scope BOOT/RESET
+pair. The board's single onboard LED (LED1, red 0603) is wired directly
+from the regulated 3V3 rail (through current-limit resistor R13, 2.2K)
+to GND — it is a fixed hardware power-indicator with NO connection to
+any RP2040 GPIO, so there is no pin to tag as led_high/led_low. This was
+confirmed by directly reading Waveshare's own official schematic PDF
+(see SOURCES below) — not inferred or guessed.
+
+This is the RP2040 sibling of waveshare_rp2350_pizero (already audited
+this session, also NO CHANGE). The two boards are electrically very
+similar (same "PiZero" form factor: DVI/HDMI-out via bit-banged PIO,
+onboard microSD slot, PIO-USB host port, Key1/Key2 BOOT+RESET buttons,
+power-only LED) but are NOT identical — see "DIFFERENCES VS RP2350
+SIBLING" below for a material distinction that does not change this
+audit's outcome but is worth recording.
+
+SOURCES CONSULTED
+------------------
+1. Local pins_arduino.h (variants/rp2040/rp2040/waveshare_rp2040_pizero/
+   pins_arduino.h) — full file read. Declares Serial1 (TX=0,RX=1),
+   Serial2 (TX=8,RX=9), SPI0 (MISO=20,MOSI=19,SCK=18,SS=21), SPI1
+   (MISO=12,MOSI=15,SCK=14,SS=13), Wire0 (SDA=4,SCL=5), Wire1 (SDA=26,
+   SCL=27). NO PIN_LED, NO PIN_NEOPIXEL, NO button alias of any kind.
+   Includes ../generic_full/common.h. Header comment cites
+   https://www.waveshare.com/wiki/RP2040-PiZero and
+   https://files.waveshare.com/wiki/RP2040-PiZero/RP2040-PiZero-Schematic.pdf
+   directly — both consulted below.
+2. variants/rp2040/rp2040/generic_full/common.h — confirms LED_BUILTIN
+   is only defined `#ifdef PIN_LED`, which this board's pins_arduino.h
+   never defines. Confirms D0-D29 are unconditionally declared (no
+   `__PIN_Dn` overrides here), so all of GPIO0-29 already receive default
+   digital_input/digital_output/pwm_output capability via the chip-level
+   empty chipGpios:{} fallback — matches the chip-level board.json's
+   documented rationale. Also confirms SS/MOSI/MISO/SCK statics point at
+   PIN_SPI0_* and SDA/SCL statics point at PIN_WIRE0_* (no dangling
+   references to check, since no #define was removed this audit).
+3. variants/rp2040/rp2040/board.json (chip-level defaults, re-read to
+   confirm chipGpios:{} baseline and what a per-board override would
+   need to add — concluded: nothing).
+4. **files.waveshare.com/wiki/RP2040-PiZero/RP2040-PiZero.pdf** (the
+   OFFICIAL schematic, fetched and read directly via the Read tool as
+   the primary, authoritative source — same PDF cited in this board's
+   own pins_arduino.h header comment; note the header comment's other
+   cited URL, .../RP2040-PiZero-Schematic.pdf, returned only opaque
+   binary stream data via WebFetch — the .pdf URL without "-Schematic"
+   is the one that rendered readable schematic content). Key findings,
+   read directly off the schematic:
+     - "Power & LED" block: VSYS -> U1 (RT9193-33PB 3.3V LDO) -> 3V3.
+       LED1 (red 0603 SMD LED): anode -> R13 (2.2K) -> 3V3 rail; cathode
+       -> GND. NOT connected to any RP2040 GPIO — a simple
+       always-on-when-powered indicator (fed from the regulated 3V3 rail
+       here, vs VBUS directly on the RP2350 sibling — a minor layout
+       difference, same functional role).
+     - "Key" block: Key1 wired across GND and the QSPI_SS_N net (via
+       R21, 1K) — the standard BOOTSEL button (pulls the flash
+       chip-select line low during boot to enter the ROM bootloader).
+       Key2 wired across GND and the RUN net (via R22, 1K) — the
+       standard hardware RESET button. Neither is a normal GPIO
+       digitalRead() pin — same out-of-scope rationale already
+       established in ../../rp2040/rpipico/board.json,
+       ../../rp2040/waveshare_rp2040_plus/board.json, and
+       ../../rp2350/waveshare_rp2350_pizero (no board.json, same
+       Key1/Key2 pattern).
+     - No WS2812/SK6812/NeoPixel driver IC, no PIO-driven addressable
+       LED, and no third button of any kind found anywhere on the
+       schematic (USB, Power & LED, PIO-USB, ESD, DVI, Flash, XTAL,
+       Micro SD, BAT, Key, SWD, RP2040 chip, and 40-pin-header sections
+       all reviewed).
+     - DVI/HDMI output block: GPIO22=DVI_D2_P, GPIO23=DVI_D2_N,
+       GPIO24=DVI_D1_P, GPIO25=DVI_D1_N, GPIO26=DVI_D0_P,
+       GPIO27=DVI_D0_N, GPIO28=DVI_CLK_P, GPIO29=DVI_CLK_N (each via a
+       200 ohm series resistor to the HDMI connector), plus
+       GPIO16=DVI_CEC, GPIO3=DVI_SCL, GPIO2=DVI_SDA. This is the
+       well-known RP2040 "PicoDVI"-style bit-banged-via-PIO DVI/TMDS-like
+       video output technique.
+     - Micro SD block: GPIO18=SD_SCK, GPIO19=SD_MOSI, GPIO20=SD_MISO,
+       GPIO21=SD_CS, wired to an onboard TF-110 microSD socket (J3) —
+       these are EXACTLY this board's pins_arduino.h SPI0 pins
+       (SCK=18,MOSI=19,MISO=20,SS=21). I.e. on this board, arduino-pico's
+       "SPI0" bus IS the onboard microSD interface, not a free/general
+       SPI0 header bus.
+     - PIO-USB block: GPIO6/GPIO7 drive USB D+/D- (via R27/R28, 22R)
+       into a dedicated USB-C receptacle (J2) — a bit-banged USB host
+       port using RP2040 PIO, entirely separate from the boot/programming
+       USB-C port (J1).
+     - Net effect: GPIO2,3,6,7,16,18,19,20,21,22,23,24,25,26,27,28,29 —
+       17 of this chip's 30 total GPIOs — are wired to onboard dedicated
+       hardware (DVI output, microSD slot, PIO-USB host port). See
+       "DIFFERENCES VS RP2350 SIBLING" and "FLAGGED FINDING (out of
+       scope)" below for why this was NOT acted on this audit.
+5. WebSearch "Waveshare RP2040-PiZero LED GPIO schematic" — confirmed
+   the two candidate schematic PDF URLs cited in pins_arduino.h and
+   surfaced the product wiki/store pages (both blocked direct WebFetch,
+   consistent with this family's other Waveshare wiki pages this
+   session — same 403 pattern noted in the RP2350 sibling's own notes).
+6. Precedent read in full: variants/rp2040/rp2350/waveshare_rp2350_pizero/
+   board.json (does not exist — confirmed NO CHANGE precedent) and its
+   notes.txt (boardsDetails/rp2040/rp2350/waveshare_rp2350_pizero/
+   notes.txt) — the directly relevant sibling audit from earlier this
+   session; read in full before starting this audit, per task
+   instructions.
+7. Precedent read in full: variants/rp2040/rp2040/rpipico/board.json
+   (BOOTSEL out-of-scope rationale, GPIO25-LED tagging pattern for
+   comparison/contrast — this board has no equivalent onboard GPIO LED).
+8. variants/rp2040/rp2350/waveshare_rp2350_pizero/pins_arduino.h — read
+   for direct pin-numbering comparison against this RP2040 sibling (see
+   DIFFERENCES below).
+
+DIFFERENCES VS RP2350 SIBLING (informational, does not change outcome)
+-----------------------------------------------------------------------
+- SPI0 pin numbers differ: this RP2040 board uses
+  MISO=20,MOSI=19,SCK=18,SS=21; the RP2350 sibling uses
+  MISO=16,MOSI=19,SCK=18,SS=17. Everything else (Serial1, Serial2, SPI1,
+  Wire0, Wire1) is numerically identical between the two boards. This is
+  a genuine hardware/PCB-routing difference between the two chip
+  variants of this form factor, not a bug.
+- LED1 is fed from the regulated 3V3 rail here vs directly from VBUS on
+  the RP2350 sibling — cosmetic wiring difference only; functionally
+  identical (always-on-when-powered indicator, no GPIO tie) on both
+  boards.
+- Materially different pin-budget situation: the RP2350 sibling's DVI/
+  SD/PIO-USB signals route through GPIO30-47 — a range entirely outside
+  the GPIO0-29 window its own pins_arduino.h/D-alias set exposes, so
+  those dedicated-hardware pins are automatically unreachable via the
+  Designer's pin picker with zero chipGpios effort. This RP2040 board's
+  chip has only 30 GPIOs total (no GPIO30-47 to offload to), so its DVI/
+  SD/PIO-USB signals are wired onto the SAME GPIO0-29 range that
+  pins_arduino.h/generic_full/common.h fully exposes as plain D-aliases
+  with default digital_input/digital_output/pwm_output capability. This
+  is a real, board-specific consequence of the smaller RP2040 GPIO
+  budget, not something to "fix" by copying the sibling's board.json
+  (there is nothing to copy — the sibling has no board.json).
+
+FLAGGED FINDING (out of scope for this audit, not acted on)
+-------------------------------------------------------------
+17 of this board's 30 GPIOs (2,3,6,7,16,18,19,20,21,22,23,24,25,26,27,
+28,29) are wired to onboard dedicated hardware (DVI/HDMI video output,
+microSD card slot, PIO-USB host port) rather than being free
+general-purpose header pins. Two notable consequences:
+  - PIN_WIRE1_SDA/PIN_WIRE1_SCL (GPIO26/27) are electrically the same
+    pins as DVI_D0_P/DVI_D0_N. Using arduino-pico's "Wire1" I2C bus on
+    this board would contend with the DVI output hardware.
+  - PIN_SPI0_* (GPIO18-21) is electrically the same bus as the onboard
+    microSD slot's SPI wiring (SD_SCK/MOSI/MISO/CS) — i.e. "SPI0" on
+    this board IS the microSD interface, not a free/general SPI bus.
+This is NOT a button/LED/NeoPixel capability question, and it is NOT the
+specific "confirmed button/LED pin also aliased onto a bus" bug class
+this audit's task description asks to check for (no button or LED
+exists on any GPIO on this board at all, so there is no button/LED pin
+to collide with a bus alias). Whether to introduce a new
+"dedicated-hardware bus/DVI pin exclusion" policy for pins that are
+electrically shared with onboard fixed-function hardware (as opposed to
+merely being unreachable, like the RP2350 sibling's GPIO30-47) is a
+policy question with no established precedent anywhere in this family's
+board.json files reviewed so far (ESP32/ESP8266 exclusions are all
+about boot-strapping safety, which this rp2040/board.json explicitly
+states does not apply to this chip family at all). Per this audit's own
+stated principle ("Report NO CHANGE rather than guess"), this is
+reported here as a flagged finding for a future dedicated policy
+decision, rather than acted on unilaterally.
+
+PER-PIN REASONING
+------------------
+GPIO0 (PIN_SERIAL1_TX), GPIO1 (PIN_SERIAL1_RX): standard UART0 header
+  pins. No LED/button/NeoPixel role. No chipGpios entry needed.
+
+GPIO2 (DVI_SDA), GPIO3 (DVI_SCL): dedicated to the onboard DVI/HDMI
+  EDID/DDC I2C line per the schematic. No LED/button/NeoPixel role — out
+  of scope for this audit's capability tagging (see FLAGGED FINDING).
+
+GPIO4 (PIN_WIRE0_SDA), GPIO5 (PIN_WIRE0_SCL): main I2C bus header
+  position, no schematic conflict found. No chipGpios entry needed.
+
+GPIO6, GPIO7: dedicated to the onboard PIO-USB host port (USB-C
+  connector J2) per the schematic. No LED/button/NeoPixel role — out of
+  scope (see FLAGGED FINDING).
+
+GPIO8 (PIN_SERIAL2_TX), GPIO9 (PIN_SERIAL2_RX): secondary UART header
+  position. No LED/button/NeoPixel role. No chipGpios entry needed.
+
+GPIO12/13/14/15 (PIN_SPI1_MISO/SS/SCK/MOSI): SPI1 header position, no
+  schematic conflict found. No chipGpios entry needed.
+
+GPIO16: dedicated to DVI_CEC per the schematic. No LED/button/NeoPixel
+  role — out of scope (see FLAGGED FINDING).
+
+GPIO18/19/20/21 (PIN_SPI0_SCK/MOSI/MISO/SS): electrically the onboard
+  microSD card slot (J3) interface per the schematic. No LED/button/
+  NeoPixel role — out of scope (see FLAGGED FINDING).
+
+GPIO22-29 (includes PIN_WIRE1_SDA=26, PIN_WIRE1_SCL=27): dedicated to
+  the onboard DVI/HDMI differential video output (D2/D1/D0/CLK pairs)
+  per the schematic. No LED/button/NeoPixel role — out of scope (see
+  FLAGGED FINDING). GPIO25 in particular is NOT wired to an LED here
+  (unlike the classic Raspberry Pi Pico, where GPIO25/PIN_LED is a
+  dedicated onboard LED) — confirmed via the schematic showing GPIO25
+  routed only to DVI_D1_N, with LED1 wired only to 3V3/GND with no GPIO
+  net connection to it at all.
+
+All remaining GPIOs not listed above: no pins_arduino.h alias beyond the
+  blanket D-alias fallback; no dedicated onboard peripheral found in the
+  schematic for them.
+
+LED1 (fixed hardware power indicator): wired directly 3V3 -> R13 (2.2K)
+  -> LED1 anode; LED1 cathode -> GND. NOT connected to any RP2040 GPIO.
+  Confirmed via the official schematic PDF. No chipGpios tag possible or
+  needed (no pin to attach one to).
+
+Key1 (BOOTSEL button, on QSPI_SS_N net via R21 1K): standard
+  ROM-bootloader-entry button, not a normal GPIO digitalRead() pin. Out
+  of scope per this audit's established BOOTSEL convention (rpipico,
+  waveshare_rp2040_plus, waveshare_rp2350_pizero precedents).
+
+Key2 (RESET button, on RUN net via R22 1K): standard hardware reset
+  line, not a GPIO. Out of scope, same convention as above.
+
+No WS2812/NeoPixel found anywhere in the official schematic.
+
+No third/additional user button found in any source consulted.
+
+inputOnlyGpios / pinNotes / pwm / dac / adc: left at chip-level defaults
+  (12-bit ADC, 8-bit analogWrite, no DAC) — this board's pins_arduino.h
+  declares no board-specific analog aliases beyond ../generic_full/
+  common.h's defaults (A0-A3 = GPIO26-29).
+
+BUG-CLASS CHECK (button/LED aliased onto a bus pin)
+-------------------------------------------------------
+Not applicable — no button or LED exists on any GPIO to collide with a
+bus alias in the first place (LED1 has no GPIO connection at all; Key1/
+Key2 are non-GPIO chip-reset/bootloader lines). No pins_arduino.h edit
+was made. (Note: GPIO26/27 = PIN_WIRE1_SDA/SCL do collide with the
+onboard DVI_D0_P/N video signal per the FLAGGED FINDING above, but that
+is a bus-vs-dedicated-video-hardware collision, not a button/LED
+collision, so it falls outside the specific bug class this audit's task
+description calls out.)
+
+WHY NO board.json IS CREATED
+------------------------------
+Because (a) there is no LED, button, or NeoPixel connected to any GPIO
+to tag, and (b) the one confirmed bus/dedicated-hardware overlap found
+(Wire1 vs DVI, SPI0 vs microSD) is outside this audit's button/LED/
+NeoPixel-tagging and button-LED/bus-collision scope and has no
+established policy precedent in this family to apply, there is nothing
+for a per-board board.json to override within this audit's mandate.
+Creating one would be a byte-for-byte duplicate of the chip-level
+variants/rp2040/rp2040/board.json with an empty chipGpios:{} — i.e. a
+functional no-op. Per this audit's own stated principle ("Report NO
+CHANGE rather than guess") and the established
+waveshare_rp2350_pizero/rakwireless_rak11300 precedent, no board.json
+was created for this board.
+
+VALIDATION
+----------
+- No board.json was created for this board, so there is nothing to
+  JSON.parse()-validate for this audit.
+- No pins_arduino.h edit was made (nothing needed changing).
+- No build script was executed and build_boards.js was never
+  require()'d, per task instructions.
+
+FILES CHANGED
+-------------
+- variants/rp2040/rp2040/waveshare_rp2040_pizero/board.json: NOT created
+  (would be a no-op duplicate of chip-level defaults — see "WHY NO
+  board.json IS CREATED" above).
+- variants/rp2040/rp2040/waveshare_rp2040_pizero/pins_arduino.h: NOT
+  modified (no button/LED bus-alias collision found; nothing to
+  exclude).
+- Created: boardsDetails/rp2040/rp2040/waveshare_rp2040_pizero/
+  notes.txt (this file).

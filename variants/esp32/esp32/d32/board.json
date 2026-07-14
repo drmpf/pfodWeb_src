@@ -1,0 +1,172 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Wemos/LOLIN D32 (plain, ESP32-WROOM-32 + 4MB flash + LiPo
+  // charger). No board.json override existed before this audit (used the
+  // chip-level esp32/esp32/board.json default). Flagged by the discovery
+  // sweep for declaring "static const uint8_t _VBAT = 35;" / "#define
+  // BAT_VOLT_PIN _VBAT" - a battery-voltage-sense pin. Sibling board
+  // d1_mini32 declares the identical _VBAT=35 alias but is a separate
+  // physical product audited independently this same wave - NOT assumed
+  // identical hardware; this board's own vendor schematic was checked
+  // directly (see below).
+  //
+  // Sources consulted:
+  //  - https://www.wemos.cc/en/latest/d32/d32.html - official WEMOS/LOLIN
+  //    documentation page for the plain "D32" board (distinct from the
+  //    "D32 Pro" page at https://www.wemos.cc/en/latest/d32/d32_pro.html,
+  //    which this repo already covers separately as
+  //    variants/esp32/esp32/d32_pro). Confirms ESP32-WROOM-32 module
+  //    (latest Rev1), 4MB flash, LiPo battery interface with charge
+  //    management, 500mA max charge current. No TFT/touch/microSD
+  //    hardware listed (unlike D32 Pro), consistent with this variant's
+  //    minimal pins_arduino.h (only LED_BUILTIN + _VBAT, no
+  //    display-controller pin aliases).
+  //  - https://www.wemos.cc/en/latest/_static/files/sch_d32_v1.0.0.pdf -
+  //    official schematic, rev 1.0.0, dated 2018-04-08, title block reads
+  //    "LOLIN LOLIN / TITLE: D32" - fetched and read directly (not just
+  //    text-scraped). Confirms:
+  //     * "Battery" block: LiPo charger U5 (TP4054) with a CHRG-status
+  //       LED1 (via R6 2k) that is driven directly by the charger IC's
+  //       own STAT pin, not by any GPIO. The charger's BAT output net
+  //       "VBAT" feeds a two-resistor divider straight to GND: R12 (100k,
+  //       battery side) in series with R17 (100k, ground side), tapped at
+  //       their junction by net "IO35" - i.e. GPIO35 is wired permanently
+  //       (no jumper/switch) to a 100k/100k (1:1) resistive divider off
+  //       the battery rail. This directly confirms _VBAT=35/BAT_VOLT_PIN
+  //       is a genuine hardware battery-voltage-sense pin, not just an
+  //       unverified alias name.
+  //     * "LED" block: LED2 wired from +3V3 through R9 (2k) to net "IO05"
+  //       (LED cathode on the GPIO5 side) - confirms this board's own
+  //       LED_BUILTIN=GPIO5 is a genuine onboard single-colour LED,
+  //       active-LOW (GPIO5 sinks current to light it; consistent with
+  //       the chip's boot-strapping requirement that GPIO5 be HIGH/
+  //       floating at reset, which correctly leaves the LED off by
+  //       default at boot).
+  //     * No physical BOOT/flash button is present - auto-program is
+  //       handled by U4 (UMH3N dual-transistor auto-reset circuit driven
+  //       from the CH340C USB-UART's DTR/RTS lines), and the only
+  //       physical switch (K1, silkscreened "RESET") is wired directly to
+  //       EN, not to any GPIO. So no onboard user-button GPIO exists on
+  //       this board.
+  //     * pins_arduino.h declares no SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+  //       aliases at all (only LED_BUILTIN and _VBAT) - confirmed by
+  //       direct inspection of the file - so no "hidden bus alias" parser
+  //       collision risk exists on this board; nothing to delete.
+  //  - Independent cross-check (community sources, e.g. ESP32 Forum "Lipo
+  //    voltage Lolin D32" thread): describes this exact board's battery-
+  //    sense circuit as "a voltage divider bridge of 100 KOhms - 100
+  //    KOhms, with the battery voltage therefore halved" - matches the
+  //    schematic's R12/R17 values exactly.
+  //
+  // GPIO35 (_VBAT / BAT_VOLT_PIN): KEEP as a plain analog-input-only GPIO
+  // (already correctly restricted via the chip-level inputOnlyGpios
+  // 34-39 range). This board exposes many other general-purpose analog
+  // pins, so the board-wide "adc.defaultRefVolts" is left at the chip
+  // default (3.3V) rather than corrected board-wide (that would mis-scale
+  // every other analog pin on the board); instead a per-pin note on
+  // GPIO35 documents the confirmed 100k/100k divider and its corrected
+  // effective reference: 3.3V * (100000+100000)/100000 = 6.6V. This
+  // matches this repo's precedent on other confirmed 1:1-divider battery
+  // pins (uPesy ESP32-C3 Mini/Basic, LilyGO TTGO T-OI Plus).
+  //
+  // GPIO5 (LED_BUILTIN): CONFIRMED onboard LED, active-low, per the
+  // official schematic above. Tagged ["digital_output","led_low",
+  // "pwm_output"], matching this repo's led_low precedent (node32s,
+  // oroca_edubot).
+  //
+  // No button GPIO found on this board (see schematic finding above) -
+  // section 7a n/a for a button tag.
+  //
+  // See boardsDetails/esp32/esp32/d32/notes.txt for the full research
+  // trail.
+
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32" -> designer/boards/ESP32/ESP32.json -> const ESP32Data = {...}
+  "boardName": "ESP32",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32 has two 8-bit DAC channels on GPIO 25 and GPIO 26.
+  // dacWrite(pin, value): value 0–255 maps to 0.0–3.3 V output.
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+
+  // ADC: ESP32 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation can be set via analogSetAttenuation()
+  // for full 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  // Left at the chip default here - GPIO35's 100k/100k divider is
+  // documented per-pin instead of board-wide (see pfodWeb NOTE above).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Keys are GPIO numbers as strings; values are plain text shown
+  // under the pin label in the pin picker (use \n for line breaks).
+  // Reference: ESP32 Technical Reference Manual — Strapping Pins section.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32 chip.  GPIOs 6-11 (flash)
+  // and 16-17 (PSRAM) are excluded — not user-accessible on modules with
+  // integrated flash/PSRAM.  GPIOs 34-39 are input-only (no output driver).
+  // GPIOs 20, 24, 28-31 do not exist in this chip's silicon.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  //
+  // Board-specific: GPIO5 (LED_BUILTIN) retagged with a confirmed
+  // led_low capability; GPIO35 (_VBAT) carries a confirmed battery-
+  // voltage-divider note - see the pfodWeb NOTE above.
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_output", "led_low", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "27": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"], "note": "_VBAT / BAT_VOLT_PIN - onboard battery-voltage sense via a permanently-wired 100K/100K (1:1) resistive divider off the battery rail (confirmed via official Wemos/LOLIN D32 schematic, R12+R17). Effective corrected reference: 3.3V * (100000+100000)/100000 = 6.6V. Only meaningful when a LiPo battery is connected." },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

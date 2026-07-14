@@ -28,9 +28,6 @@ REM ── Clear the output dir ────────────────
 if exist "%OUT%" rd /s /q "%OUT%"
 mkdir "%OUT%"
 
-REM ── Sync version from pfodWeb_src/version.js into Cargo.toml ─────────
-node -e "var fs=require('fs');var m=fs.readFileSync('pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('pfodProxy_rs/Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('pfodProxy_rs/Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
-
 REM ── Build pfodWeb.html ────────────────────────────────────────────────
 echo.
 echo Building pfodWeb.html ...

@@ -1,0 +1,59 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases. The board has BOOT and RESET buttons (confirmed via
+  // Waveshare wiki / thepihut.com tutorial), but BOOT enters ROM
+  // bootloader mode (not a normal GPIO digitalRead(), same out-of-scope
+  // rationale as ../rpipico/board.json) and RESET is a hardware reset
+  // line, not a user-readable GPIO — neither has a pins_arduino.h alias
+  // to attach a "button" capability to.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO16 (PIN_NEOPIXEL) is the board's only onboard visual indicator —
+  // this "Matrix" board has NO separate plain LED, only a 5x5 (25-pixel)
+  // WS2812 NeoPixel array (confirmed via multiple sources below). Output-only
+  // capabilities here bypass the default input/output derivation, which
+  // would otherwise also offer digital_input for it. pwm_output omitted
+  // per this repo's NeoPixel-tagging convention (WS2812 is a
+  // bit-serial-protocol data line, not a PWM-dimmable pin) — matches
+  // ../waveshare_rp2040_zero/board.json GPIO16 precedent (same vendor,
+  // same "sole indicator is a NeoPixel" pattern, different pixel count).
+  //
+  // No bus-collision contamination: GPIO16 is not aliased as any
+  // SDA/SCL/SS/MOSI/MISO/SCK pin in this board's pins_arduino.h (SPI0:
+  // 2-5, SPI1: 12-15, Wire0: 4-5, Wire1: 26-27 — none overlap GPIO16), so
+  // no pins_arduino.h edit is needed to prevent build_boards.js from
+  // auto-appending a bus capability here.
+  "chipGpios": {
+    "16": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard 5x5 (25-pixel) WS2812 addressable RGB LED matrix, output-only, board's sole visual indicator (no separate plain LED exists on this board). Confirmed via Waveshare's own RP2040-Matrix wiki/product page (www.waveshare.com/wiki/RP2040-Matrix, www.waveshare.com/rp2040-matrix.htm — 'Onboard 5x5 RGB LED Matrix'), thepihut.com/blogs/raspberry-pi-tutorials/coding-the-waveshare-rp2040-matrix ('25 RGB LEDs (WS2812) in a 5x5 array' controlled via GPIO16, 'no mention of any standalone LED beyond the RGB matrix'), and this board's own pins_arduino.h header comment (PIN_NEOPIXEL=16, NUM_NEOPIXEL=25). Only BOOT and RESET buttons exist on this board (both out of scope — see pfodWeb NOTE above); no other onboard buttons are documented (a tutorial-added external button on GPIO14 for a game project is not onboard hardware)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as every other RP2040/RP2350 board (this board's
+  // pins_arduino.h declares no board-specific analog aliases beyond the
+  // shared generic_full/common.h defaults).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

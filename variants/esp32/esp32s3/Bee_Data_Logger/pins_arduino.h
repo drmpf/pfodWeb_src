@@ -62,9 +62,9 @@ static const uint8_t BOOT_BTN = 0;
 static const uint8_t VBAT_VOLTAGE = 1;
 #define BAT_VOLT_PIN VBAT_VOLTAGE
 static const uint8_t VBUS_SENSE = 2;
-static const uint8_t LDO2 = 34;
+// pfodWeb NOTE: LDO2/RGB_PWR (GPIO34) deliberately NOT declared -
+// internal power-control line, not general-purpose.
 static const uint8_t RGB_DATA = 40;
-static const uint8_t RGB_PWR = 34;
 
 #define PIN_RGB_LED RGB_DATA
 // BUILTIN_LED can be used in new Arduino API digitalWrite() like in Blink.ino

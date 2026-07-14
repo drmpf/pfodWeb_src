@@ -1,0 +1,97 @@
+Board: nologo_esp32s3_pico (chip: esp32s3)
+Audit date: 2026-07-12
+
+WHY FLAGGED
+-----------
+A discovery sweep noticed this pins_arduino.h declares SCK/MISO/MOSI/SS as
+`int8_t` (not `uint8_t`) and SDA/SCL as `uint8_t = -1`, suspecting these
+might be parsed by build_boards.js's regex-based alias parser and leak a
+bogus GPIO alias or silently attach an SPI/I2C capability to an unrelated
+pin.
+
+FILE READ
+---------
+variants/esp32/esp32s3/nologo_esp32s3_pico/pins_arduino.h (37 lines, full
+file read). Declares:
+  - LED_BUILTIN = 21 (uint8_t, positive literal - IS parsed)
+  - RGB_BUILTIN macro = SOC_GPIO_PIN_COUNT + LED_BUILTIN, plus
+    RGB_BRIGHTNESS 64 (both #define, not parsed by the alias regex, but
+    together with LED_BUILTIN this is the standard Arduino-ESP32 core
+    marker for an onboard single-wire addressable RGB LED, i.e. GPIO21
+    hosts a NeoPixel/WS2812, not a plain on/off LED)
+  - SCK/MISO/MOSI/SS = -1 (declared `int8_t`, not `uint8_t` - regex
+    requires the literal token "uint8_t", so these never match at all)
+  - SDA/SCL = -1 (declared `uint8_t`, but assigned a negative literal -
+    the regex's numeric branch only accepts `\d+` with no minus sign, so
+    these also never match)
+  - A0..A9 = GPIO 1..10 (uint8_t, positive literals - parsed normally,
+    already reflected in the chip-level default board.json's analog_input
+    tags)
+
+VERIFICATION OF THE PARSER-COLLISION CONCERN (step 4 of the audit brief)
+-------------------------------------------------------------------------
+Ran build_boards.js's exact alias-parsing regex
+(`parseEsp32Consts` in pfodWeb_src/build_boards.js) against this file
+directly with a throwaway Node script. Result: only LED_BUILTIN (->21) and
+A0..A9 (->1..10) produced matches. None of SCK/MISO/MOSI/SS/SDA/SCL
+resolved to a pin number, for the two independent reasons above (wrong
+type keyword for the SPI four; negative literal for the I2C two). So there
+is no live bus-alias contamination on this board - the flagged lines are
+inert as far as the parser is concerned. No deletion of pins_arduino.h
+boilerplate was necessary or performed.
+
+RESEARCH ON THE REAL BOARD
+---------------------------
+"nologo_esp32s3_pico" is not a guess-only clone - it is a real, documented
+product: the "ESP32S3 Pico" from nologo.tech (also called "WMNologo"), a
+small Chinese hobbyist-board maker. Sources consulted:
+  - https://www.nologo.tech/en/product/esp32/esp32s3Pico/esp32S3Pico.html
+    (Arduino getting-started guide)
+  - https://www.nologo.tech/product/esp32/esp32s3/esp32s3Pico/esp32s3pico_micropython/esp32s3pico_micropython.html
+    (MicroPython getting-started guide, Chinese)
+
+Both pages independently state that "the RGB and blue LED share GPIO pin
+21" and give a WS2812 example using pin 21 with 8 LEDs in GRB order. This
+exactly matches this board's own pins_arduino.h, which routes
+LED_BUILTIN/RGB_BUILTIN to GPIO21. Confidence: HIGH - both the in-file
+evidence and independent vendor documentation agree on the same GPIO.
+
+Both pages also mention the board has a physical BOOT button (used with
+RESET to enter download mode), but neither page states its GPIO number
+explicitly. On ESP32-S3 silicon, the ROM bootloader's download-mode strap
+pin is fixed at GPIO0 by the chip itself, not a board design choice, so
+any board with a working BOOT button must have it wired there - this is
+also consistent with the chip-level board.json's existing pinNotes entry
+for GPIO0 ("Must be HIGH for normal boot"). Confidence: MODERATE-HIGH -
+inferred from ESP32-S3 architecture plus the vendor's confirmation that a
+BOOT button physically exists, but not a directly-labelled schematic
+reference the way the RGB LED pin is.
+
+No independent third-party (non-vendor) source (e.g. a review site,
+espboards.dev-style listing, or GitHub repo) was found for this specific
+board; nologo.tech's own two getting-started pages were the only sources
+located. This is expected for a low-volume/"nologo" (unbranded) clone
+board and is noted here for confidence-tracking purposes.
+
+CHANGES APPLIED
+----------------
+Created variants/esp32/esp32s3/nologo_esp32s3_pico/board.json (previously
+absent - board used the bare chip-level default). Copied the chip-level
+default and applied two capability tags:
+  - GPIO0: added "button" (BOOT button, see confidence note above)
+  - GPIO21: capabilities changed from
+    [digital_input, digital_output, pwm_output] to
+    [digital_output, led_neopixel, pwm_output] (RGB LED / NeoPixel, not a
+    plain LED or a readable input; digital_input dropped to match how the
+    same pin is handled on the sibling board that shares this exact
+    RGB_BUILTIN/GPIO21 pattern - waveshare_esp32_s3_zero)
+No changes made to pins_arduino.h - the flagged lines are already inert to
+the parser, confirmed above.
+
+SUMMARY
+-------
+GPIO21 tagged led_neopixel (high confidence, vendor + in-file confirmed);
+GPIO0 tagged button (moderate-high confidence, inferred from ESP32-S3
+strap architecture + vendor-confirmed BOOT button); the int8_t/negative-
+literal SPI+I2C declarations that triggered this audit are confirmed
+harmless no-ops for the parser, no cleanup needed.

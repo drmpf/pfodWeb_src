@@ -1,0 +1,70 @@
+Board: Aventen S3 Sync (ESP32-S3 Dev Module variant)
+Date: 2026-07-14 (independent verification pass - real vendor source found and
+consulted; the earlier documentation-backfill pass had explicitly flagged
+this board as having no external citation - that gap is now closed)
+
+Sources consulted (real, independently fetched):
+1. The vendor's own official Arduino support repository:
+   https://github.com/avencan/Aventen-S3-Sync_ArduinoSupport
+   variants/Aventen_S3_Sync/pins_arduino.h:
+   https://github.com/avencan/Aventen-S3-Sync_ArduinoSupport/blob/master/variants/Aventen_S3_Sync/pins_arduino.h
+   Relevant definitions (verbatim):
+     static const uint8_t RF_SW  = 37;
+     static const uint8_t ALS    = 17;
+     static const uint8_t RGB_DI = 38;
+   Identity of the source verified: the GitHub account "avencan" (Ramazan
+   Fidanci) is identified on GitHub as a HW Engineer at Aventen, and this
+   repository is a fork of espressif/arduino-esp32 that adds exactly one
+   new board variant folder - "Aventen_S3_Sync" - i.e. this is the
+   vendor's own board-support submission, not an unrelated third party.
+2. PlatformIO's board database entry (corroborates board identity/specs,
+   ESP32-S3, 16MB flash, 240MHz):
+   https://docs.platformio.org/en/latest/boards/espressif32/aventen_s3_sync.html
+3. No independent product page, schematic PDF, or datasheet for this
+   specific board could be found via web search (searches for "Aventen
+   S3 Sync" mostly surface a different, more prominent Aventen product,
+   the "Aventen Formosa Sync" i.e. a different, RT1060-based board sold on
+   Crowd Supply - not this ESP32-S3 board). No forum discussion or
+   independent teardown of the "S3 Sync" was found either.
+
+Per-pin findings:
+- GPIO0: capabilities [digital_input, digital_output, pwm_output] - generic,
+  no tag. pinNotes: "Must be HIGH for normal boot" (standard ESP32-S3
+  strapping pin note, unrelated to this audit).
+- GPIO1-GPIO10: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag.
+- GPIO11-GPIO18: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag. Note: the vendor's own
+  pins_arduino.h defines GPIO17 as "ALS" (likely an ambient-light-sensor
+  pin) - this is a new observation not previously flagged in board.json.
+  It is NOT acted on in this pass (out of scope - this audit item was
+  specifically the GPIO37 exclusion), but is recorded here for a future
+  audit pass to investigate further.
+- GPIO21: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag.
+- GPIO37: excluded (no chipGpios entry). CONFIRMED - the vendor's own
+  pins_arduino.h literally names this pin "RF_SW" (static const uint8_t
+  RF_SW = 37;), directly corroborating the existing claim of "dedicated
+  onboard RF antenna switch, not general-purpose". This is a strong,
+  vendor-sourced confirmation (the naming leaves little ambiguity), even
+  though no separate schematic/datasheet could be located.
+- GPIO38-GPIO48: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag. pinNotes on GPIO3/45/46: "Must be LOW or floating on
+  reboot" (standard strapping-pin notes, unrelated to this audit). Note:
+  the vendor's own pins_arduino.h defines GPIO38 as "RGB_DI" (likely an
+  onboard addressable RGB LED data-in pin) - another new observation not
+  previously flagged in board.json. Also NOT acted on in this pass for
+  the same reason (out of scope; flagged for a future audit pass rather
+  than guessed at here).
+
+Summary: The GPIO37 exclusion (claimed as "dedicated onboard RF antenna
+switch") is now CONFIRMED via a real, independently-fetched vendor source
+- the board designer's own Arduino support repository, which names the
+pin "RF_SW" in its pins_arduino.h. No correction was needed. This closes
+the citation gap flagged in the prior pass. Two additional pins (GPIO17
+"ALS", GPIO38 "RGB_DI") were noticed in the same vendor source suggesting
+further onboard hardware (light sensor, RGB LED) that isn't currently
+reflected in board.json - these are out of scope for this specific audit
+item and are left untouched, following the "never guess" policy; they are
+recorded here as leads for a future audit pass rather than acted on
+without a scoped review.

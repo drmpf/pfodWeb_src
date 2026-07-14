@@ -1,0 +1,140 @@
+Board: Adafruit Metro RP2040 (Adafruit product 5786)
+Chip bucket: variants\rp2040\rp2040\adafruit_metro
+Audit date: 2026-07-13
+Part of: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion audit (see project_board_variant_pin_audit_playbook memory).
+
+SUMMARY (one line): Tagged GPIO13 as the onboard active-high status LED
+(led_high) and GPIO14 as the onboard single WS2812 status NeoPixel
+(led_neopixel). No button found (RESET/BOOT are not GPIO-readable). No
+bus-alias contamination and no pins_arduino.h edit was needed — the SD-card
+SPI pins already correctly carry their SPI aliases.
+
+FILES READ
+- variants\rp2040\rp2040\adafruit_metro\pins_arduino.h (full file, bespoke —
+  does NOT include ../generic_full/common.h; header comment already notes
+  "GPIO15,18,19,20,21,22,23 are dedicated to an onboard peripheral on this
+  board ... not general-purpose", which this audit confirms below refers to
+  the microSD card slot).
+- variants\rp2040\rp2040\board.json (chip-level defaults; chipGpios: {}).
+- variants\rp2040\rp2040\rpipico\board.json (LED-only precedent).
+- variants\rp2040\rp2040\adafruit_feather_scorpio\board.json and
+  pins_arduino.h (sibling Adafruit board precedent; also the source of the
+  bus-alias-contamination bug-fix pattern this audit checked for).
+- variants\rp2040\boards.txt (confirmed adafruit_metro.name=
+  "Adafruit Metro RP2040", adafruit_metro.build.variant=adafruit_metro,
+  adafruit_metro.build.led= (empty, no effect on this audit)).
+
+PINS_ARDUINO.H INVENTORY (for adafruit_metro)
+- PIN_LED = 13
+- PIN_NEOPIXEL = 14
+- Serial1: TX=0, RX=1
+- SPI0: MISO=20, MOSI=19, SCK=18, SS=23
+- SD: CLK=18, CMD/MOSI=19, DAT0/MISO=20, DAT1=21, DAT2=22, DAT3/CS=23,
+  DETECT=15
+- Wire0: SDA=16, SCL=17 (i2c0)
+- Wire1: SDA=2, SCL=3 (i2c1)
+- D-pin aliases: D0-D12, D14, D16, D17, D24-D29 (note: D13 is ALSO declared,
+  same physical GPIO as PIN_LED, matching the Arduino Uno layout where the
+  built-in LED pin doubles as a normal header digital pin). D15, D18-D23 are
+  deliberately absent from the D-list (SD-card-dedicated), per the file's
+  own header comment.
+- A0-A3 = GPIO26-29.
+
+SOURCES CONSULTED (web research, 2026-07-13)
+1. https://learn.adafruit.com/adafruit-metro-rp2040/pinouts (official
+   Adafruit guide). Quotes verbatim:
+     "This red LED on 13 is user controllable for blinky needs." (PIN_LED,
+     board.LED in CircuitPython)
+     "This addressable RGB NeoPixel LED is both a status LED and user
+     controllable on 14." (PIN_NEOPIXEL, board.NEOPIXEL in CircuitPython)
+     Also lists a green "On LED" power indicator (fixed, not user
+     controllable / not a GPIO — out of scope).
+     microSD slot: SD_CS=GPIO23, SCK=GPIO18, MOSI=GPIO19, MISO=GPIO20,
+     SD_CD=GPIO15, plus GPIO21/22 used for SDIO — this exactly matches this
+     board's own PIN_SD_*/PIN_SPI0_* aliases in pins_arduino.h, confirming
+     GPIO15,18-23 are genuinely dedicated to the onboard SD card slot (as
+     the file's own header comment already states) and that the SPI0 bus
+     aliases on those same pins are correct/intentional (the SD card IS
+     the SPI0 device on this board) — NOT a false-positive bus-alias
+     contamination case like adafruit_feather_scorpio's GPIO13/SPI0_SS.
+     Buttons: only RESET ("restarts the board and helps enter the
+     bootloader") and BOOT ("used to enter the bootloader") are listed —
+     neither is a normal application-readable GPIO.
+2. https://learn.adafruit.com/adafruit-metro-rp2040/neopixel-led (official
+   Adafruit guide) — confirms a SINGLE built-in RGB NeoPixel status LED
+   (not a chain/strip), located next to the "14" pin silkscreen label, used
+   both for bootloader/CircuitPython-error status indication and as a
+   user-controllable addressable pixel.
+3. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/adafruit/metro_rp2040/adafruit_metro_rp2040.dts
+   (official upstream Zephyr board port). Quotes:
+     leds { red_led: red_led { gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+       label = "Red LED"; }; }
+     ws2812: ws2812 { gpios = <&gpio0 14 GPIO_ACTIVE_HIGH>;
+       chain-length = <1>; color-mapping = <LED_COLOR_ID_GREEN
+       LED_COLOR_ID_RED LED_COLOR_ID_BLUE>; reset-delay = <280>;
+       frequency = <800000>; }
+   This independently CONFIRMS: D13 LED is active-high; the onboard
+   NeoPixel is GPIO14 with chain-length 1 (single pixel, WS2812 protocol,
+   800kHz). No gpio_keys/button devicetree node exists anywhere in this
+   file, confirming there is no GPIO-readable onboard button (consistent
+   with source #1's RESET/BOOT description and this repo's existing
+   rpipico BOOTSEL precedent for "not a numbered GPIO pin").
+4. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/raspberrypi/boards/adafruit_metro_rp2040/mpconfigboard.h
+   — `#define MICROPY_HW_NEOPIXEL (&pin_GPIO14)`; no MICROPY_HW_LED or
+   MICROPY_HW_APA102 defined. Independently confirms the onboard NeoPixel
+   is GPIO14, and there is no separate discrete/APA102 LED beyond the
+   plain GPIO13 red LED already covered by source #3 (CircuitPython
+   exposes GPIO13 as board.LED per source #1's prose but mpconfigboard.h
+   doesn't need a separate #define for a plain digitalio LED the way it
+   does for the NeoPixel driver).
+
+PER-PIN REASONING
+- GPIO13 (PIN_LED / D13): onboard plain red status LED, active-high
+  (sources #1, #3). Tagged capabilities: digital_output, pwm_output,
+  led_high. digital_input dropped per this audit's established
+  led_high/led_low convention for dedicated onboard LED pins (rpipico,
+  adafruit_feather_scorpio precedents already in this codebase).
+  pwm_output kept since arduino-pico's analogWrite() works on any RP2040
+  GPIO (enables brightness dimming). Checked for bus-alias contamination:
+  GPIO13 carries no SPI/Wire/Serial alias anywhere in this board's
+  pins_arduino.h (SPI0_SS here is GPIO23, not 13, unlike the
+  adafruit_feather_scorpio case) — so build_boards.js's auto-append logic
+  cannot add a spurious bus capability to this pin. No pins_arduino.h edit
+  needed.
+- GPIO14 (PIN_NEOPIXEL): onboard single WS2812 status NeoPixel, output-only
+  data line (sources #1, #2, #3, #4 all agree). Tagged capabilities:
+  digital_output, led_neopixel — matches this repo's adafruit_feather_scorpio
+  led_neopixel precedent exactly (no pwm_output; a NeoPixel data line is not
+  driven via analogWrite()). Checked for bus-alias contamination: GPIO14
+  carries no SPI/Wire/Serial alias in this board's pins_arduino.h. No
+  pins_arduino.h edit needed.
+- GPIO15, 18, 19, 20, 21, 22, 23 (SD card slot: DETECT, CLK, MOSI, MISO,
+  DAT1, DAT2, CS): left untouched / NO CHANGE. These are genuinely
+  dedicated to the onboard microSD slot, exactly as this board's own
+  pins_arduino.h header comment already states, and source #1 independently
+  confirms the same GPIO-to-SD-function mapping. Their SPI0 bus aliases
+  (MISO/MOSI/SCK/SS) are correct and intentional (the SD card IS the SPI0
+  device), so build_boards.js's automatic SPI-capability append on these
+  pins is the DESIRED behavior here, not a contamination bug — no board.json
+  chipGpios override and no pins_arduino.h edit applied. (Contrast: on
+  adafruit_feather_scorpio, GPIO13 was BOTH the confirmed LED pin AND the
+  vendor-default PIN_SPI0_SS alias with no onboard SPI device actually using
+  that SS pin, which WAS a genuine contamination bug fixed by removing the
+  alias — that situation does not apply here since this board's SD card
+  genuinely owns SPI0.)
+- No button was found or tagged. Adafruit's own documentation lists only
+  RESET and BOOT hardware buttons, neither exposed as an application-
+  readable GPIO (same category as the classic Raspberry Pi Pico's BOOTSEL,
+  per this repo's existing rpipico/board.json precedent) — confirmed absent
+  from the official Zephyr devicetree's button/gpio_keys nodes (source #3).
+- No pins_arduino.h changes were made for this board (no bus-alias
+  contamination found).
+
+OUTPUT
+- Created variants\rp2040\rp2040\adafruit_metro\board.json (full file: chip-
+  level defaults copied verbatim from variants\rp2040\rp2040\board.json,
+  plus a chipGpios object with GPIO13 (led_high) and GPIO14 (led_neopixel)
+  entries as described above).
+- JSON validity confirmed via a standalone comment-stripping JSON.parse
+  script (no build_boards.js require(), per task instructions).

@@ -34,20 +34,15 @@ static const uint8_t A11 = 52;
 static const uint8_t A12 = 53;
 static const uint8_t A13 = 54;
 
+// pfodWeb NOTE: T6-T11/T13 deliberately NOT declared - same dedicated
+// onboard ESP32-C6 WiFi companion SDIO pins as the BOARD_SDIO_* lines
+// below (see board.json chipGpios override).
 static const uint8_t T0 = 2;
 static const uint8_t T1 = 3;
 static const uint8_t T2 = 4;
 static const uint8_t T3 = 5;
 static const uint8_t T4 = 6;
 static const uint8_t T5 = 7;
-static const uint8_t T6 = 8;
-static const uint8_t T7 = 9;
-static const uint8_t T8 = 10;
-static const uint8_t T9 = 11;
-static const uint8_t T10 = 12;
-static const uint8_t T11 = 13;
-static const uint8_t T12 = 14;
-static const uint8_t T13 = 15;
 
 //SDMMC
 #define BOARD_HAS_SDMMC

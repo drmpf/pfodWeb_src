@@ -34,16 +34,16 @@ static const uint8_t RX = 8;
 /*
  * Wire Interfaces
  */
-static const uint8_t SDA = 14;
-static const uint8_t SCL = 13;
+// pfodWeb NOTE: SDA/SCL deliberately NOT declared - dedicated onboard
+// OLED display I2C bus (see PIN_OLED_SDA/SCL below, same GPIO14/13, and
+// PIN_OLED_EN - no other I2C peripheral on this board).
 
 /*
  * SPI interfaces
  */
-static const uint8_t SS = 45;
-static const uint8_t MOSI = 39;
-static const uint8_t SCK = 40;
-static const uint8_t MISO = 41;
+// pfodWeb NOTE: SS/MOSI/SCK/MISO deliberately NOT declared - dedicated
+// onboard SX126x LoRa radio SPI bus (SS shares the same GPIO45 as
+// PIN_SX126X_NSS below).
 
 /*
  * Screen
@@ -75,7 +75,8 @@ static const uint8_t MISO = 41;
 /*
  * Power
  */
-#define PIN_PERI_EN (1)
+// pfodWeb NOTE: PIN_PERI_EN (GPIO1) - internal peripheral-power-enable
+// line, not general-purpose (see board.json).
 
 /*
  * PINs
@@ -100,9 +101,7 @@ static const uint8_t D10 = 48;
 static const uint8_t D11 = 21;
 static const uint8_t D12 = 18;
 static const uint8_t D13 = 17;
-static const uint8_t MTCK = 39;
-static const uint8_t MTDO = 40;
-static const uint8_t MTDI = 41;
-static const uint8_t MTMS = 42;
+// pfodWeb NOTE: MTCK/MTDO/MTDI/MTMS deliberately NOT declared - same
+// dedicated onboard LoRa radio SPI/control pins as above.
 
 #endif /* Pins_Arduino_h */

@@ -1,0 +1,94 @@
+Board: vccgnd_yd_rp2040 ("YD-RP2040" by VCC-GND Studio, also resold under
+several other brand names) — chip family: rp2040
+Audit date: 2026-07-12 (RP2040/RP2350 family button/LED/NeoPixel audit)
+
+pins_arduino.h identity pins:
+  #define PIN_NEOPIXEL   (23u)
+  #define PIN_USRKEY     (24u)
+  #define PIN_LED        (25u)
+(rest of file includes ../generic/common.h for the blanket D0-D29 fallback;
+Serial1/Serial2/SPI0/SPI1/Wire0/Wire1 pins are ordinary breakout pins with
+no dedicated onboard hardware, so no chipGpios override needed for those.)
+
+Sources consulted:
+1. probonopd YD-RP2040 gist (community pinout reference, widely cited):
+   https://gist.github.com/probonopd/2a1e8ce64142fdefe20a89d0d540ab0d
+   - "Added RGB lights (GPIO23)"
+   - "Added the USRkey user button (GPIO24)"
+   - "Added PWR power LED" (GPIO25)
+   - Notes the RGB silkscreen pad ("RGB", sometimes misread "R68") must be
+     bridged/soldered on some board revisions for GPIO23 to reach the LED.
+2. vcc-gnd-yd-rp2040 Rust HAL crate docs (docs.rs / lib.rs):
+   "WS2812 RGB LED on GPIO23 ... user key on GPIO24 ... built-in blue LED"
+   (GPIO25 per the crate's pin map).
+3. MicroPython PR #12281 (micropython/micropython, "Added support for
+   YD-RP2040 by VCC-GND studio"):
+   pins.csv: led,GPIO25 / key,GPIO24 / neopixel,GPIO23
+   board.py:
+     led = Pin(25, Pin.OUT, value=0)        -> driven HIGH to light (active-high)
+     key = Pin(24, Pin.IN, Pin.PULL_UP)     -> reads LOW when pressed (active-low,
+                                                internal pull-up, no external one)
+     neopixel = Pin(23, Pin.OUT, value=0)
+4. en.neonhero.dev YD-RP2040 writeup:
+   - `gpio_put(LED, true)` lights GPIO25 -> confirms active-high.
+   - GPIO24 read via GPIO_IRQ_EDGE_FALL interrupt; explicitly states the
+     board "lacks an external pull-up resistor to VCC ... the
+     microcontroller's internal pull-up resistor must be enabled in
+     software" -> confirms active-low + internal-pull-up requirement.
+   - Confirms the R68 NeoPixel jumper must be soldered by default on some
+     units for GPIO23 to reach the RGB LED.
+
+No single official VCC-GND Studio datasheet was found (this is a
+widely-cloned/resold reference design, not sold under one canonical
+vendor site), but four independent community/vendor-adjacent sources
+(a widely-cited community pinout gist, a published Rust HAL crate, an
+accepted upstream MicroPython board-support PR, and an independent blog
+writeup) all agree on the exact same three GPIO assignments and polarities,
+which is treated as sufficient confirmation per the audit's "multiple
+community sources" allowance for popular boards without a single
+authoritative vendor page.
+
+Per-pin reasoning:
+
+GPIO23 (PIN_NEOPIXEL):
+  Onboard WS2812 addressable RGB LED, output-only data line.
+  capabilities: ["digital_output", "led_neopixel"]
+  (digital_input/pwm_output omitted, matching this repo's established
+  NeoPixel-tagging vocabulary — pwm_output is not meaningful for a WS2812
+  data line, which uses PIO/bit-banged timing, not analogWrite()/PWM.)
+  Note: some board revisions require the R68 solder jumper to be bridged
+  for the LED to actually respond — flagged in the chipGpios note, but not
+  treated as grounds to withhold the tag, since the alias and its intended
+  hardware role are unambiguous and consistent across every source above.
+
+GPIO24 (PIN_USRKEY):
+  Onboard user pushbutton, active-low, using the RP2040's internal pull-up
+  (board has no external pull-up resistor on this line).
+  capabilities: ["digital_input", "digital_output", "pwm_output", "button"]
+  Full GPIO capability retained (not marked input-only) — this is an
+  ordinary GPIO merely wired to a switch to GND, not a dedicated/capacitive-
+  only pin (unlike adafruit_trinkeyrp2040qt's capacitive touch GPIO12).
+  Matches this repo's existing ESP8266 FLASH/PRG-button precedent
+  (nodemcu, espino, wifi_kit_8 board.json), which keeps full
+  digital_input/digital_output/pwm_output plus "button" on ordinary
+  GPIO-wired pushbuttons.
+
+GPIO25 (PIN_LED):
+  Onboard status LED, active-high — standard, unmodified Pico LED circuit.
+  capabilities: ["digital_output", "pwm_output", "led_high"]
+  digital_input dropped to match this repo's established led_high/led_low
+  precedent for dedicated onboard LED pins (rpipico/board.json,
+  wiznet_5500_evb_pico/board.json); pwm_output kept since arduino-pico's
+  analogWrite() works on any RP2040 GPIO, enabling brightness dimming.
+
+Result: board.json created at
+  variants/rp2040/rp2040/vccgnd_yd_rp2040/board.json
+with chipGpios overrides for GPIO23 (NeoPixel, output-only),
+GPIO24 (user button, active-low, full GPIO + button tag), and
+GPIO25 (status LED, active-high). No other pins on this board carry
+dedicated onboard hardware, so no further exclusions were needed.
+
+Summary: Confirmed and tagged all three identity pins (NeoPixel GPIO23,
+user button GPIO24 active-low, status LED GPIO25 active-high) via four
+independent corroborating community/vendor-adjacent sources; no changes
+needed to any other pin on this board.

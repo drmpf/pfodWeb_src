@@ -8,19 +8,6 @@ REM extra args to cargo (e.g.  build-pfodProxy.bat --verbose).
 
 cd /d "%~dp0"
 
-REM Check if Node.js is installed
-where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo ERROR: Node.js is not installed or not in PATH
-    echo Please install Node.js from https://nodejs.org/
-    echo.
-    pause
-    exit /b 1
-)
-
-REM Sync version from pfodWeb_src/version.js into Cargo.toml before building.
-node -e "var fs=require('fs');var m=fs.readFileSync('../pfodWeb_src/version.js','utf8').match(/V(\d+\.\d+\.\d+)/);if(!m){console.log('WARNING: version not found');}else{var v=m[1];var c=fs.readFileSync('Cargo.toml','utf8').replace(/^version = \".*\"/m,'version = \"'+v+'\"');fs.writeFileSync('Cargo.toml',c,'utf8');console.log('Synced version '+v+' into Cargo.toml');}"
-
 echo Building pfodProxy (release) ...
 echo.
 cargo build --release %*

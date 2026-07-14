@@ -1,0 +1,80 @@
+hornbill32dev - onboard button/LED research notes
+====================================================
+
+Sources consulted:
+
+1. https://github.com/ExploreEmbedded/Hornbill-ESP32-DEV
+   Official vendor (ExploreEmbedded) GitHub repo for the Hornbill ESP32 Dev
+   board. Root listing showed "Design Files/Schematic" (KiCad-exported PDF)
+   and "pinout/v1.0" (vendor pinout diagram image) directories, used below.
+
+2. https://raw.githubusercontent.com/ExploreEmbedded/Hornbill-ESP32-DEV/master/Design%20Files/Schematic/Hornbill%20Devboard%20Schematic%20v1.0.pdf
+   PRIMARY SOURCE. Official KiCad schematic (dated 31 May 2015, sheet
+   "Hornbill Devboard.sch"). Shows two switches and three LEDs:
+     - SW1 "Enable Switch" wired to the ESP-WROOM-32 EN (reset) pin only -
+       this is a hardware reset button, not a GPIO-readable user button.
+     - SW2 "Boot Switch" wired between GND and IO0 - this is the GPIO0
+       BOOT/flash-mode button, readable as a normal digital input by user
+       sketches after boot. CONFIRMED onboard button on GPIO0.
+     - D3 "LED" wired directly from +3.3V through R3 (1K) - this is a
+       fixed power-on indicator LED with no GPIO connection. NOT taggable.
+     - D2 "Yellow" LED wired to the MCP73831 LiPo charger IC's STAT pin
+       (charge-status indicator) - not a GPIO, controlled by the charger IC.
+       NOT taggable.
+     - D4 "Blue" LED wired: IO5 -> R13 (330 ohm current-limit resistor) ->
+       D4 (LED) -> GND. GPIO sources current through the LED to ground,
+       i.e. active-high (GPIO5 HIGH = LED on). CONFIRMED onboard
+       GPIO-controlled LED on GPIO5, active-high polarity.
+
+3. https://raw.githubusercontent.com/ExploreEmbedded/Hornbill-ESP32-DEV/master/pinout/v1.0/pinout_horbil_v1.0l.jpg
+   Official vendor pinout diagram ("Hornbill ESP32 Pinout v1.0"). Shows two
+   physical buttons on the board silkscreened "BOOT" and "RST", consistent
+   with SW2 (GPIO0) and SW1 (EN/reset) from the schematic. Does not depict
+   onboard fixed LEDs (D2/D3/D4) since those aren't broken out to header
+   pins - schematic remains the authoritative source for the LED.
+
+4. https://www.espboards.dev/esp32/hornbill32dev/
+   Third-party aggregator site. Listed "LED_BUILTIN" = GPIO13 and
+   "KEY_BUILTIN" = GPIO0 purely by echoing pins_arduino.h alias names -
+   did NOT independently confirm any physical LED wiring. Per task rules
+   this is NOT treated as confirming evidence on its own; used only as a
+   pointer, superseded by the schematic (source #2) which shows GPIO13 has
+   no LED connection at all - LED_BUILTIN=13 in pins_arduino.h is a
+   template default that does not correspond to real hardware here.
+
+5. https://www.cnx-software.com/2017/04/07/hornbill-esp32-development-boards-come-with-an-optional-ip67-rated-enclosure-crowdfunding/
+   CNX Software crowdfunding announcement article. Describes the header
+   pinout (GPIO/I2C/UART/SPI/ADC/DAC/touch) but does not mention onboard
+   LEDs or buttons on the base Dev board (an "RGB LED" is mentioned only
+   for a separate "Proto board" product, not this hornbill32dev variant).
+   No new information; not used as confirming evidence.
+
+6. https://www.crowdsupply.com/explore-embedded/hornbill
+   Crowd Supply campaign page. Fetch returned HTTP 403 (blocked); could
+   not retrieve content. Not used.
+
+Pins considered but NOT tagged:
+- EN (reset pin, SW1 "Enable Switch"): this is the module's hardware
+  reset, not a numbered GPIO in chipGpios, so it is not eligible for any
+  pfodWeb capability tag regardless. No judgment call needed - it simply
+  isn't a GPIO.
+- GPIO13 (pins_arduino.h LED_BUILTIN alias): explicitly checked against
+  the schematic and found to have NO LED or other indicator wired to it.
+  This is exactly the "misleading alias name" case the task warned about.
+  Deliberately NOT tagged - no guess made, hard evidence of no connection.
+- GPIO0: also carries KEY_BUILTIN alias, but this one WAS independently
+  confirmed by the schematic (SW2 tied to GND/IO0) and the vendor pinout
+  diagram (silkscreened "BOOT" button), so it was tagged with confidence,
+  not merely inferred from the alias.
+
+TX/RX check: pins_arduino.h defines TX=1, RX=3. Neither GPIO0 nor GPIO5
+conflicts with these, so both tags are safe from the build_boards.js
+TX/RX hard-reservation issue.
+
+Summary of what was tagged:
+- board.json created for hornbill32dev/board.json (did not previously exist,
+  copied in full from the esp32 chip-level default board.json).
+- GPIO0 -> ["digital_input", "button"] (confirmed BOOT button, SW2).
+- GPIO5 -> ["digital_output", "pwm_output", "led_high"] (confirmed onboard
+  Blue LED D4, active-high; pwm_output kept because GPIO5 already had it
+  in the chip-level default capability set).

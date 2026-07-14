@@ -29,7 +29,8 @@ static const uint8_t SCK = 9;
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;
-static const uint8_t A2 = 3;
+// pfodWeb NOTE: A2 (GPIO3) deliberately NOT declared - same GPIO as the
+// Vext power-gate below.
 static const uint8_t A3 = 4;
 static const uint8_t A4 = 5;
 static const uint8_t A5 = 6;
@@ -50,7 +51,7 @@ static const uint8_t A19 = 20;
 
 static const uint8_t T1 = 1;
 static const uint8_t T2 = 2;
-static const uint8_t T3 = 3;
+// pfodWeb NOTE: T3 (GPIO3) deliberately NOT declared - same as A2 above.
 static const uint8_t T4 = 4;
 static const uint8_t T5 = 5;
 static const uint8_t T6 = 6;
@@ -63,9 +64,8 @@ static const uint8_t T12 = 12;
 static const uint8_t T13 = 13;
 static const uint8_t T14 = 14;
 
-static const uint8_t Vext = 3;
 static const uint8_t LED = 18;
-static const uint8_t RST_OLED = 39;
-static const uint8_t SCL_OLED = 41;
-static const uint8_t SDA_OLED = 42;
+// pfodWeb NOTE: Vext (power-gate) and RST_OLED/SCL_OLED/SDA_OLED
+// deliberately NOT declared - internal control line and dedicated
+// onboard OLED display pins.
 #endif /* Pins_Arduino_h */

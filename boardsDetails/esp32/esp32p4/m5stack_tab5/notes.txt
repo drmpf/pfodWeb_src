@@ -1,0 +1,74 @@
+m5stack_tab5 (ESP32-P4) - button/LED capability research notes
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\m5stack_tab5
+Existing board.json: full copy of chip-level esp32p4/board.json with GPIO8-13/15 excluded
+  (ESP32-C6 WiFi companion SDIO pins). TX=37, RX=38 (from pins_arduino.h).
+
+Sources consulted:
+1. https://docs.m5stack.com/en/core/Tab5
+   - Describes "Reset/Boot buttons" and power button (single press = power on,
+     double-press = shutdown) but gives NO GPIO numbers for either.
+   - Schematics section references a separate "Interrupt Wakeup (PMS150G-U06)"
+     controller handling wake inputs (BMI270, RX8130CE) - implies power/wake
+     button logic is NOT a plain ESP32-P4 GPIO.
+   - Pinmap references "CHG_STAT_LED" wired to the IP2326 charging management
+     chip (hardware charge indicator), not a directly ESP32-P4-GPIO-driven LED.
+
+2. https://devices.esphome.io/devices/m5stack-tab5/
+   - ESPHome device config lists many GPIOs (antenna select, speaker enable,
+     ext 5V enable, LCD/TP/camera reset, GT911 touch IRQ = GPIO23, backlight
+     PWM = GPIO22, I2S GPIO26) but NO GPIO assigned to a power button or any
+     status/user LED.
+
+3. https://community.m5stack.com/topic/7702/tab5-power-up-sequence
+   - Confirms power-off/reset is done by pulsing a "power-off pulse" pin that
+     is itself exposed via the IO-expander (PI4IOE5V6408), not a bare ESP32-P4
+     GPIO number.
+
+4. https://community.m5stack.com/topic/7990/my-tab5-extended-gpio-and-power-management-library
+   - Describes a library wrapping the PI4IOE5V6408 I2C IO-expander(s) (E1/E2,
+     also called U6/U7) for power control, antenna switch, speaker enable,
+     USB/ext power rails, headphone sense, LCD/TP/camera reset. Does not
+     state a native GPIO number for the physical power button or any LED.
+
+5. https://www.cnx-software.com/2025/05/14/m5stack-tab5-review-part-1-unboxing-teardown-and-first-try-of-the-esp32-p4-and-esp32-c6-5-inch-iot-devkit/
+   - Confirms physical existence of a power button on the case edge but gives
+     no GPIO/schematic detail (unboxing/teardown piece, not a pin reference).
+
+6. https://raw.githubusercontent.com/XueshiQiao/M5Dashboard/main/docs/M5Stack-Tab5-Reference.md
+   - Community-compiled reference explicitly states pinout for buttons/LEDs is
+     incomplete: "(Fill in as we measure / confirm. Schematic PDF is the
+     authoritative source.)" Mentions the internal green LED that blinks
+     rapidly during download-mode entry (holding Reset ~2s) but gives no GPIO
+     number for it, and does not mention the PI4IOE5V6408 IO-expander at all in
+     this doc.
+
+7. https://components.espressif.com/components/espp/m5stack-tab5/versions/1.0.35/readme
+   - Lists Tab5 hardware components (MP4560 buck-boost, IP2326 charge mgmt)
+     without specifying GPIO numbers for any button/LED, nor whether they are
+     native ESP32-P4 GPIOs vs IO-expander/PMU pins.
+
+Pins considered and NOT tagged:
+- Power/reset button: physically exists, but every source that discusses its
+  control path places it behind the PMS150G interrupt-wakeup controller
+  and/or the PI4IOE5V6408 I2C IO-expander(s), i.e. NOT a bare ESP32-P4 GPIO
+  with a confirmed number. No source gives a specific GPIO integer for it.
+  Made NO guess - did not tag any GPIO as "button".
+- Status/download-mode "internal green LED": confirmed to exist and blink
+  during download-mode entry, but no source gives its GPIO number, and it is
+  plausibly wired to the USB/UART bridge or boot-strap circuitry rather than
+  a general-purpose, sketch-controllable ESP32-P4 GPIO. Made NO guess - did
+  not tag any GPIO as an LED.
+- CHG_STAT_LED (charge indicator): explicitly documented as driven by the
+  IP2326 charging-management chip's own STAT pin, not any ESP32-P4 GPIO -
+  correctly out of scope for GPIO tagging even if a GPIO number had been
+  found, since it is a dedicated hardware indicator, not a general-purpose
+  pin. No guess made.
+- No NeoPixel/addressable RGB LED was found mentioned anywhere in the
+  consulted sources for this board.
+
+Summary of action taken: NO CHANGE. No GPIO on this board could be confirmed,
+via real vendor/community documentation, to directly drive an onboard user
+LED or button on a native ESP32-P4 GPIO (all such controls are behind the
+PI4IOE5V6408 IO-expander(s) and/or PMS150G wake controller and/or IP2326
+charge-management chip). board.json was left untouched aside from this
+research; no capability tags were applied.

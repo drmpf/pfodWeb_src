@@ -12,10 +12,11 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 32;
 static const uint8_t SCL = 33;
 
-static const uint8_t SS = 9;
-static const uint8_t MOSI = 23;
+// pfodWeb NOTE: SS/MOSI/SCK deliberately NOT declared - dedicated
+// onboard E-ink display SPI bus (confirmed via M5Core-Ink library
+// source: CS=9/SCK=18/MOSI=23 exact match). MISO (GPIO34) stays kept -
+// no confirmed dedicated use found for this pin.
 static const uint8_t MISO = 34;
-static const uint8_t SCK = 18;
 
 static const uint8_t G26 = 26;
 static const uint8_t G36 = 36;
@@ -24,18 +25,18 @@ static const uint8_t G25 = 25;
 static const uint8_t G32 = 32;
 static const uint8_t G33 = 33;
 
-static const uint8_t G21 = 21;
-static const uint8_t G22 = 22;
-
+// pfodWeb NOTE: G21/G22 deliberately NOT declared - internal RTC I2C
+// bus. G2 deliberately NOT declared - dedicated onboard speaker. G12
+// deliberately NOT declared - dedicated power-hold pin (see board.json
+// chipGpios override). G5/G10/G37/G38/G39 stay kept - confirmed buttons
+// (UP/DOWN/MID/EXT) and status LED, kept per policy.
 static const uint8_t G13 = 13;
 static const uint8_t G14 = 14;
 
-static const uint8_t G12 = 12;
 static const uint8_t G19 = 19;
 
 static const uint8_t G5 = 5;
 static const uint8_t G10 = 10;
-static const uint8_t G2 = 2;
 static const uint8_t G37 = 37;
 static const uint8_t G38 = 38;
 static const uint8_t G39 = 39;

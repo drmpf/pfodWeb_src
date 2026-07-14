@@ -1,0 +1,158 @@
+// pfodWeb NOTE: GPIO33/GPIO34 (RX1/TX1, #define aliases in pins_arduino.h)
+// left as plain digital pins - NO CHANGE from chip-level default. Confirmed
+// via SparkFun's own ESP32-S2 Thing Plus Hookup Guide
+// (learn.sparkfun.com/tutorials/esp32-s2-thing-plus-hookup-guide/all),
+// which lists "RX1/TX1 Pins: Serial1" as a genuine second hardware UART
+// broken out to the board's header pins (distinct from the primary
+// Serial/USB UART on TX=43/RX=44) - not an internal-only or dedicated
+// peripheral pin. Independently cross-checked against
+// espboards.dev/esp32/sparkfun-esp32s2-thing-plus/, whose structured
+// pinout table matches this repo's pins_arduino.h exactly (RX1=GPIO33,
+// TX1=GPIO34, SDA=GPIO1, SCL=GPIO2, MOSI=35, MISO=37, SCK=36, SS=42,
+// TX=43, RX=44, DAC1=17, DAC2=18) - strong confirmation the .h file is
+// accurate. Also confirmed neither GPIO33 nor GPIO34 collides with any
+// SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias in pins_arduino.h (those are 1,
+// 2, 42, 35, 37, 36, 43, 44 respectively - no overlap), and build_boards.js
+// intentionally does NOT parse `#define`-form macros (TX1/RX1) into its
+// alias table at all (see parseEsp32Consts() comment), so there is no
+// bus-capability contamination risk from these pins either way.
+//
+// pfodWeb NOTE: GPIO0 tagged "button" - confirmed onboard general-purpose
+// user button. SparkFun ESP32-S2 Thing Plus Hookup Guide: "The user (0)
+// button allows users to short IO 0 to ground (GND)... configured as an
+// input with an internal pullup (INPUT_PULLUP)", with example code
+// `const int BUTTON_PIN = 0;` / `if (digitalRead(BUTTON_PIN) == LOW)`
+// showing genuine application-level use (not merely a bootloader-entry
+// button). digital_output/pwm_output dropped from this pin's capability
+// set, matching this repo's established convention for GPIO0-as-button
+// on sibling boards (esp32/esp32/esp32thing_plus, esp32s2/micro_s2) -
+// GPIO0 is also the ESP32-S2 boot-strapping pin (must be HIGH at reset,
+// see pinNotes below), inherited unchanged from the chip-level default.
+//
+// pfodWeb NOTE: GPIO13 tagged "led_high" - confirmed onboard status LED,
+// active-high. SparkFun ESP32-S2 Thing Plus Hookup Guide: "The blue,
+// status (13) LED is typically used as a test or status LED", with Blink
+// example code `int ledPin = 13;` ... `digitalWrite(ledPin, HIGH)` to
+// turn it on. Matches this repo's LED_BUILTIN=13 alias already present in
+// pins_arduino.h. This is a plain single-color LED, not an addressable
+// NeoPixel/WS2812 (see NO-NeoPixel note below), so "led_high" (not
+// "led_neopixel") is the correct tag, matching the pattern already used
+// on sibling board esp32/esp32/esp32thing_plus (same vendor, same
+// LED_BUILTIN=13 GPIO number, same active-high Blink-example evidence).
+//
+// pfodWeb NOTE: no onboard NeoPixel/addressable RGB LED found on this
+// board. pins_arduino.h has no NEOPIXEL/WS2812/PIXEL alias anywhere
+// (unlike confirmed-NeoPixel sibling boards micro_s2 and
+// um_feathers2neo, which declare an explicit alias). The GitHub hardware
+// repo (github.com/sparkfun/ESP32-S2_Thing_Plus/tree/master/Hardware)
+// lists only ESP32-S2_Thing_Plus.sch/.brd/esp32-s2-wroom.lbr - no
+// NeoPixel-related filenames. The Hookup Guide describes only the single
+// "blue, status (13) LED" (see led_high note above) plus a separate
+// yellow LiPo charge-status LED (fixed function, not a GPIO). A stray
+// WebSearch snippet claiming "WS2812 RGB LED connected to GPIO 02" was
+// traced to unrelated boards (Espressif's ESP32-S2-DevKitM-1 and/or
+// SparkFun's newer non-S2 "Thing Plus - ESP32 WROOM (USB-C)") being
+// conflated in aggregated search results, not this board - GPIO2 is this
+// board's SCL pin, and no vendor source ties a NeoPixel to it on this
+// specific board. No tag applied.
+//
+// pfodWeb NOTE: no battery-voltage-sense ADC pin found/tagged. Confirmed
+// via WebSearch that the SparkFun ESP32-S2 Thing Plus "does not have an
+// inherent built-in capability to measure remaining battery charge" -
+// unlike SparkFun's newer ESP32 WROOM Thing Plus boards, which added an
+// onboard MAX17048 fuel-gauge IC (I2C, not a GPIO analog pin) for this
+// specific purpose. The board does have a 2-pin JST LiPo connector and
+// onboard MCP73831 charge IC, but no voltage-sense line is broken out to
+// a GPIO. No tag applied.
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32S2" -> designer/boards/ESP32S2/ESP32S2.json -> const ESP32S2Data = {...}
+  "boardName": "ESP32S2",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32-S2 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32-S2 has two 8-bit DAC channels on GPIO 17 and GPIO 18.
+  // dacWrite(pin, value): value 0–255 maps to 0.0–3.3 V output.
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+
+  // ADC: ESP32-S2 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation settable via analogSetAttenuation()
+  // for 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  // ESP32-S2: GPIO46 is the only input-only pin on the chip.
+  "inputOnlyGpios": [46],
+
+  // Transports this board can talk pfod over.  ESP32-S2 has WiFi but
+  // NO Bluetooth — BLE is omitted.
+  "connections": ["serial", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Reference: ESP32-S2 Technical Reference Manual — Strapping Pins.
+  "pinNotes": {
+    "0":  "Must be HIGH for normal boot",
+    "45": "Must be LOW or floating on reboot",
+    "46": "Must be LOW or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32-S2 chip.  GPIOs 26-32
+  // (flash/PSRAM) and GPIOs 19-20 (USB) are excluded.  GPIO 46 is
+  // input-only (no output driver).  GPIOs 22-25 do not exist in this
+  // chip's silicon.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  //
+  // Board-specific overrides (see pfodWeb NOTE block above the JSON):
+  //   GPIO0  -> ["digital_input", "button"]        (onboard user button)
+  //   GPIO13 -> ["digital_output", "pwm_output", "led_high"]  (onboard status LED)
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "18": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "35": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "36": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "37": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "38": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "39": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "40": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "41": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "42": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "43": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "44": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "45": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "46": { "capabilities": ["digital_input"] }
+  }
+}

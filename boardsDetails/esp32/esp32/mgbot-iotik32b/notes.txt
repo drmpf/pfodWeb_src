@@ -1,0 +1,118 @@
+mgbot-iotik32b research notes
+==============================
+
+Sources consulted
+------------------
+https://books.mgbot.ru/books/baza.html
+  Official MGBOT "Base programming" documentation page. Confirms (via
+  fetched-page summary) an explicit numbered-component list: item 9
+  "Встроенный светодиод, подключенный к пину №4" (built-in LED on pin 4,
+  32А), item 12 "Кнопка перезагрузки контроллера" (reset button, EN -
+  not GPIO-accessible), item 13 "Кнопка входа в режим программирования"
+  (programming-mode entry button - the standard ESP32 GPIO0 BOOT-style
+  pushbutton, shared/common to both 32А and 32В in this doc), and item
+  15 "Встроенный светодиод, подключенный к пину №18" explicitly marked
+  as ЙоТик 32В-specific. This is the primary vendor confirmation for
+  both the GPIO18 LED and the GPIO0 button on the 32В variant.
+
+http://iotik.ru/iotik32b/
+  Official/vendor product page for ЙоТик 32b. Contains general specs and
+  a pinout diagram image, but the fetched text content had no explicit
+  GPIO-level button/LED callouts (diagram not OCR'd). Not used as a
+  primary citation beyond corroborating general board identity.
+
+https://mgbot.ru/catalog/kontrollery_yotik/kontroller_yotik_32v/
+  Official MGBOT store/product page for ЙоТик 32В. No button/LED/GPIO
+  detail in the fetched text; no PDF datasheet link found on this page.
+  Not used as a citation.
+
+https://kotyara12.ru/iot/iotic32b-review/
+  Independent third-party hobbyist review of "ЙоТик32 v2.0B". Explicitly
+  states a pink LED (LED3) is connected to GPIO18, used for basic
+  blink experiments, and mentions the LED is "very, very bright".
+  Used as independent corroboration for GPIO18 = LED. Also mentions a
+  power-management/external-regulator button (LM2678), which is NOT the
+  same as the GPIO0 programming button - not GPIO-accessible, not
+  tagged.
+
+https://github.com/MAKblC/IoTik32 (raw file:
+GyverPortal/LED.ino, fetched via raw.githubusercontent.com)
+  Official vendor example-code repository (same repo/file already cited
+  when tagging sibling board mgbot-iotik32a this session). Contains:
+    #define LedBord 4 // 18, если ЙоТик 32В
+    pinMode(LedBord, OUTPUT);
+    digitalWrite(LedBord, (valBtn || valSwitch || valCheck));
+  Confirms: (a) GPIO18 is the correct LED pin for the "B" variant
+  (matches this board's pins_arduino.h LED_BUILTIN=18 exactly), and
+  (b) the digitalWrite logic drives the pin HIGH to turn the LED on,
+  i.e. active-high polarity - same polarity already confirmed/used on
+  sibling board mgbot-iotik32a's GPIO4 LED (same code, same logic, only
+  the pin number changes between variants).
+
+https://www.espboards.dev/esp32/mgbot-iotik32b/
+  Third-party auto-generated pinout reference. Confirms "18 - PWM -
+  LED_BUILTIN SCK" and an "LED: Built-in LED" legend entry, consistent
+  with pins_arduino.h. No explicit button/GPIO0 callout found on this
+  page - not used as sole citation for the button, only as corroboration
+  for the LED.
+
+https://docs.platformio.org/en/latest/boards/espressif32/mgbot-iotik32b.html
+  PlatformIO board listing (surfaced in search, not deeply fetched
+  beyond snippet) - generic ESP32 board metadata only, no
+  button/LED-specific detail used.
+
+Pins considered but candidate decisions
+----------------------------------------
+GPIO0 (button) - TAGGED. Confirmed via books.mgbot.ru's shared
+  "programming-mode entry button" component description applying to
+  both 32А/32В, combined with ESP32 architecture where "enter
+  programming mode via button" is definitionally implemented through a
+  GPIO0 pulldown (this is the documented FUNCTION of the button, not an
+  inferred pin-alias-name guess). Not TX/RX (TX=1, RX=3, TX2=17,
+  RX2=16) - no reservation conflict. Existing chipGpios entry for "0"
+  was present (not previously excluded), so safe to retag.
+
+GPIO18 (LED) - TAGGED as led_high. Confirmed via three independent
+  sources: (1) official vendor page books.mgbot.ru explicit statement
+  that the built-in LED for the 32В is on pin 18, (2) independent
+  hobbyist review kotyara12.ru confirming a pink LED3 on GPIO18, (3)
+  vendor's own official example repo (MAKblC/IoTik32) whose LED.ino
+  comment "18, если ЙоТик 32В" and active-high digitalWrite logic
+  directly match this board's pins_arduino.h LED_BUILTIN=18. GPIO18 is
+  not TX/RX (TX=1, RX=3, TX2=17, RX2=16) - no reservation conflict.
+  GPIO18 is also the board's default SPI SCK pin (SCK=18 in
+  pins_arduino.h); this dual-role situation already exists identically
+  on sibling board mgbot-iotik32a (SCK=18 there too, while its LED is on
+  a different pin) and was not treated as a tagging blocker there, so
+  the same precedent was followed here - no exclusion applied.
+
+Pin 4 (GPIO4) - NOT considered/tagged. This is the LED pin on sibling
+  board mgbot-iotik32a, but on mgbot-iotik32b's own pins_arduino.h,
+  GPIO4 is only ever aliased as A10/T0 (analog/touch) - LED_BUILTIN is
+  explicitly 18, not 4, on this board. The ambiguous "item 9: LED on
+  pin 4" line item that appeared in the combined books.mgbot.ru
+  component-list summary appears to be a leftover/shared list entry
+  describing the 32А variant's LED position within a page that covers
+  both boards' common+variant-specific components; it was NOT treated
+  as applicable to this "B" board given the unambiguous
+  pins_arduino.h/LedBord/kotyara12.ru evidence all pointing to GPIO18
+  instead. No guess was made on GPIO4 - it was left untouched.
+
+Reset button (EN pin) - NOT tagged. Per books.mgbot.ru item 12, this is
+  a separate "Кнопка перезагрузки контроллера" (reset button) which
+  resets via the EN pin, not a user-accessible GPIO - consistent with
+  how the sibling mgbot-iotik32a notes already describe P1 as "EN reset
+  button, not GPIO-accessible". No candidate GPIO exists for it, so
+  nothing to tag or record as a judgment call.
+
+Power on/off button (32В-exclusive item 16, "Кнопка
+  включения/выключения внешнего питания") - NOT tagged. This switches
+  the external power regulator, not a signal-level GPIO input read by
+  the microcontroller; no evidence found that it is wired to any
+  chip GPIO at all. Left untouched, no guess made.
+
+Summary of what was tagged
+----------------------------
+GPIO0  -> ["digital_input", "button"]
+GPIO18 -> ["digital_output", "led_high", "pwm_output"] (pwm_output kept
+          because it was already present on this pin before tagging)

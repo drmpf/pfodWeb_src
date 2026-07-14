@@ -1,0 +1,226 @@
+Board: Solder Party "RP2350 Stamp" (chip bucket: rp2040/rp2350)
+Directory: variants/rp2040/rp2350/solderparty_rp2350_stamp/
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel tagging +
+dedicated-hardware pin exclusion audit)
+
+SOURCES CONSULTED
+------------------
+1. This board's own pins_arduino.h (local file, before edit) — a bespoke
+   pin set (NOT ../generic_full/common.h), declaring PIN_LED (3u),
+   Serial1/Serial2, SPI0, SPI1, an SD-card connector (PIN_CARD_DETECT=2,
+   PIN_SD_CLK=10, PIN_SD_CMD_MOSI=11, PIN_SD_DAT0_MISO=8, PIN_SD_DAT3_CS=9),
+   Wire0 (SDA=4, SCL=5), and — before this session's fix — a second Wire1
+   (SDA=2, SCL=3) that directly collided with PIN_CARD_DETECT and PIN_LED.
+   Header comment: "Pin definitions taken from:
+   https://rp2xxx-stamp-carrier-xl.solder.party/" — the "RP2xxx Stamp
+   Carrier XL", a separate full-size dev-board breakout, NOT the plainer
+   non-XL "Carrier" that the RP2040 Stamp sibling's own pins_arduino.h
+   cites. No PIN_NEOPIXEL define anywhere in this file (unlike the RP2040
+   Stamp sibling).
+2. variants/rp2040/rp2350/board.json (chip-level defaults, local file,
+   chipGpios: {} deliberately empty).
+3. Precedent read: variants/rp2040/rp2040/solderparty_rp2040_stamp/
+   board.json + this repo's boardsDetails notes.txt for that board
+   (2026-07-12 audit) — read for methodology/precedent only; every finding
+   below was independently re-verified for THIS RP2350 board via its own
+   sources, since the task instructions explicitly warned the two Solder
+   Party "Stamp" boards (RP2040 vs RP2350 "Stamp"/"Stamp XL" variants) can
+   differ. They do differ significantly: this RP2350 Stamp's pins_arduino.h
+   has no NeoPixel at all, and cites the Carrier XL (not the plain Carrier)
+   as its pin-definition source.
+4. Also noted (not edited, out of scope): a sibling directory
+   variants/rp2040/rp2350/solderparty_rp2350_stamp_xl/ exists for the
+   genuine RP2350B ("Stamp XL", 48-pin) module — confirmed via its own
+   `#define PICO_RP2350A 0 // RP2350B`. Its pins_arduino.h independently
+   reproduces the SAME PIN_LED=3 / PIN_WIRE1_SDA=2 / PIN_WIRE1_SCL=3
+   collision bug and cites the same Carrier XL page. Not in scope for this
+   task (only solderparty_rp2350_stamp was assigned) and has no board.json
+   of its own yet — flagged here for whoever audits it next.
+5. Official vendor docs (WebFetch): solder.party/docs/rp2350-stamp/ (bare
+   module product page) — describes "LiPo supply and charging circuit
+   (with charging LED)", a reset button, and a BOOTSEL button; does NOT
+   mention a NeoPixel or a discrete user LED/button for the bare module.
+6. Module's own official KiCad hardware source, fetched and grepped
+   directly (not summarized by an intermediary model, after an initial
+   WebFetch-summarized pass produced an internally-inconsistent/fabricated
+   reference-designator claim that a second raw fetch + grep contradicted —
+   the raw-file grep method was used for every finding below):
+   github.com/solderparty/rp2350_stamp_hw, rp2350_stamp.kicad_sch.
+     - Exactly ONE `Device:LED_Small` instance in the whole file: D2,
+       Value "LED_CHR", Description "Orange", footprint LED_0603 — the
+       LiPo charge-status LED. A "SJ_STAT_LED" solder jumper (JP1) sits in
+       series with it. Neither component references any RP2350 GPIO net
+       (this circuit is driven by the battery-charger IC's STAT pin, not
+       the MCU) — same as the sensebox_eye/other-board precedent for
+       passive charge-status LEDs being out of GPIO-capability scope.
+     - No `WS2812`/`NeoPixel` symbol anywhere in the file.
+     - The "GPIO3" net (this board's own PIN_LED alias) was traced via its
+       two `(label "GPIO3" ...)` occurrences in the file — both route only
+       to the castellated-edge header/connector, with no LED (or any)
+       component instance attached anywhere on that net in this schematic.
+   CONCLUSION: the bare Stamp module by itself has no confirmable
+   GPIO-driven LED, button, or NeoPixel beyond the passive charge LED.
+7. Carrier XL's own official KiCad hardware source, fetched and grepped
+   directly: github.com/solderparty/rp2xxx_stamp_carrier_xl_hw,
+   rp2xxx_stamp_carrier.kicad_sch (15,429 lines).
+     - Contains a genuine `Device:D_Small` labeled "LED_USR" (D2, red,
+       footprint LED_0603), plus a "JP_LED_USR" solder jumper (JP2) in
+       series with it, and a 1K resistor (R10) to +3.3V.
+     - Contains a genuine `Switch:SW_SPST` labeled "BTN_USR1" (SW4, part
+       TS-3025-A-A-B), in the same vertical, evenly-pitched (6.35mm)
+       switch ladder as SW1 (BTN_RESET) and SW2 (BTN_BOOTSEL) — same
+       part, same momentary-to-a-common-GND-rail topology as those two
+       already-standard buttons.
+     - GPIO-row/alt-name pairing method: this schematic lays out the
+       RP2350 breakout header as two parallel, evenly-pitched (2.54mm)
+       columns of `(label ...)` text — one column giving the plain
+       "GPIOxx" name, the other giving that same physical pin's
+       alternate/bus-role name (e.g. "TX0", "SDA0", "CIPO1"). Every row
+       was extracted (awk, sorted by y-coordinate) and matched against the
+       19 pin roles THIS BOARD'S OWN pins_arduino.h already independently
+       declares — ALL 19 matched perfectly with zero exceptions:
+         GPIO0/TX0, GPIO1/RX0, GPIO4/SDA0, GPIO5/SCL0, GPIO8/CIPO1,
+         GPIO9/CS1, GPIO10/SCK1, GPIO11/COPI1, GPIO20/CIPO0, GPIO21/CS0,
+         GPIO22/SCK0, GPIO23/COPI0, GPIO24/TX1, GPIO25/RX1, GPIO26/A0_{A},
+         GPIO27/A1_{A}, GPIO28/A2_{A}, GPIO29/A3_{A}, GPIO2/CARD_DET.
+       (CIPO/COPI = "Controller In Peripheral Out"/"Controller Out
+       Peripheral In", the modern SPI MISO/MOSI renaming.) This 100%
+       cross-validated hit rate gives high confidence in the SAME method's
+       two NEW findings: GPIO3 pairs with "LED_USR", and GPIO6 pairs with
+       "BTN_USR1". No "SDA1"/"SCL1" label exists anywhere in this
+       schematic's header listing — confirming Wire1 (SDA=GPIO2, SCL=
+       GPIO3, as vendor-defined in this board's own pins_arduino.h before
+       this session's fix) has no genuine, independently-broken-out
+       physical I2C connector on this hardware; it silently reused the
+       already-committed CARD_DETECT/LED_USR pins instead.
+     - LED_USR polarity trace: +3.3V -> R10 (1K) -> D2 (LED_USR,
+       `Sim.Pins "1=K 2=A"`, symbol instantiated with `(mirror y)`) -> JP2
+       (bridged by default) -> GPIO3. The `mirror y` transform flips the
+       D_Small symbol's default left-right pin order, putting the anode
+       (pin 2) on the resistor/+3.3V side and the cathode (pin 1) on the
+       jumper/GPIO3 side. For the diode to conduct, GPIO3 must be pulled
+       LOW (sinking current from +3.3V through the resistor and LED) —
+       i.e. the LED is ACTIVE-LOW.
+8. arduino-pico upstream (WebFetch of the raw pins_arduino.h at
+   github.com/earlephilhower/arduino-pico, variants/solderparty_rp2350_stamp/
+   pins_arduino.h) — confirmed byte-for-byte identical pin assignments to
+   this repo's local copy (PIN_LED=3, same SPI0/SPI1/SD/Wire0/Wire1
+   assignments), i.e. the Wire1/LED collision is a genuine upstream vendor
+   quirk, not something introduced by this repo.
+9. CircuitPython's own board definition for this exact board id
+   (github.com/adafruit/circuitpython, ports/raspberrypi/boards/
+   solderparty_rp2350_stamp/pins.c) — gives GPIO3 only its plain "GP3"
+   name, no LED-related alias — consistent with the bare module (which
+   CircuitPython board ids target) not having a confirmable LED there
+   either; this does not contradict the Carrier XL finding above, since
+   CircuitPython's own board id for this MCU targets the bare module, same
+   as this repo's Arduino "solderparty_rp2350_stamp" id nominally does —
+   see CAVEAT below.
+
+PER-PIN FINDINGS
+------------------
+GPIO2 (PIN_CARD_DETECT) — CHANGED. Onboard SD card connector's
+card-presence-detect switch; Carrier XL hardware (bare module has no SD
+slot). Tagged chipGpios["2"] = {"capabilities":["digital_input"]} —
+digital_output/pwm_output dropped (driving this pin as an output could
+short against the mechanical detect switch when a card is inserted;
+matches this repo's "not general-purpose" precedent for dedicated pins),
+digital_input retained since reading card presence is safe and useful.
+This GPIO was ALSO the vendor's PIN_WIRE1_SDA alias (a second, unused I2C
+bus definition) before this session's fix — see BUG FIX below.
+
+GPIO3 (PIN_LED) — CHANGED. Onboard Carrier XL "LED_USR" (D2), confirmed
+via the Carrier XL's own official KiCad schematic using the GPIO-row/
+alt-name pairing method (cross-validated against 19 other already-known
+pin roles, 100% hit rate) plus a component-level net-trace confirming
+active-low polarity (see sources #7 above). Tagged chipGpios["3"] =
+{"capabilities":["digital_output","pwm_output","led_low"]} — digital_input
+dropped per this repo's established led_high/led_low precedent for
+dedicated onboard LED pins, pwm_output kept since arduino-pico's
+analogWrite() works on any RP2350 GPIO. This GPIO was ALSO the vendor's
+PIN_WIRE1_SCL alias before this session's fix — see BUG FIX below. NOT
+confirmed present on the bare Stamp module by itself (that module's own
+KiCad schematic shows the GPIO3 net going only to the castellated header,
+no LED) — see CAVEAT below.
+
+GPIO6 — CHANGED. Onboard Carrier XL "BTN_USR1" pushbutton (SW4), confirmed
+via the same Carrier XL schematic GPIO-row/alt-name pairing method, in the
+same switch-ladder pattern as the board's own RESET/BOOTSEL buttons. Not
+aliased in this board's pins_arduino.h at all (no PIN_BUTTON define
+shipped by arduino-pico for this board) — added directly as a chipGpios
+entry, matching this repo's adafruit_itsybitsy GPIO13 BOOT-button
+precedent for an unaliased-but-confirmed button pin. Tagged
+chipGpios["6"] = {"capabilities":["digital_input","digital_output",
+"pwm_output","button"]} — full capability retained (ordinary GPIO wired to
+a switch to GND, not dedicated/capacitive-only), active-low with internal
+pull-up assumed by convention (not independently confirmed via a
+devicetree/firmware source — none was found for this exact board). NOT
+confirmed present on the bare Stamp module by itself — see CAVEAT below.
+
+GPIO8/9/10/11 (PIN_SPI1_MISO/SS/SCK/MOSI, doubling as PIN_SD_DAT0_MISO/
+PIN_SD_DAT3_CS/PIN_SD_CLK/PIN_SD_CMD_MOSI) — CHANGED. Onboard SD card
+connector's dedicated SPI1 bus (Carrier XL hardware). Each tagged
+chipGpios["N"] = {"capabilities":[]} — matching this repo's
+wiznet_5500_evb_pico W5500-over-SPI0 exclusion precedent: the correct
+spi_miso/spi_ss/spi_sck/spi_mosi capability is auto-supplied by
+build_boards.js from each GPIO's existing SPI1 alias in pins_arduino.h,
+so the empty base array here only strips the generic digital_input/
+digital_output/pwm_output capabilities that would otherwise let a
+Designer sketch fight the SD card for control of these pins.
+
+NeoPixel — NO CHANGE (confirmed absent). No PIN_NEOPIXEL define in this
+board's pins_arduino.h (unlike the solderparty_rp2040_stamp sibling), no
+WS2812/NeoPixel symbol anywhere in the bare module's own KiCad schematic,
+and the bare module's own vendor doc page (solder.party/docs/rp2350-stamp/)
+does not list one either. This RP2350 Stamp genuinely has no onboard
+NeoPixel, unlike its RP2040 sibling — the two boards differ here exactly
+as the audit task warned they might.
+
+BUG FIX: this board's pins_arduino.h originally also defined
+`PIN_WIRE1_SDA (2u)` / `PIN_WIRE1_SCL (3u)` (with `WIRE_HOWMANY (2u)`) —
+directly colliding with the confirmed PIN_CARD_DETECT (GPIO2) and PIN_LED
+(GPIO3) roles above. Confirmed via the arduino-pico upstream raw file that
+this is a genuine vendor-shipped quirk (not introduced by this repo), and
+via the Carrier XL schematic's own header-pin listing that no genuine,
+independently-broken-out second I2C connector exists on this hardware (the
+two positions are labeled "CARD_DET"/"LED_USR" on the actual connector, not
+"SDA1"/"SCL1") — Wire1 was vestigial/unused, not real hardware. Removed
+both `#define`s and dropped `WIRE_HOWMANY` from 2 to 1 in pins_arduino.h.
+Grepped the whole file afterward for any remaining "WIRE1" reference (only
+the explanatory comment itself remains) — no dangling static-const
+reference existed to begin with (this file's `SDA`/`SCL` statics already
+pointed at Wire0 only). Left unfixed, build_boards.js's unconditional
+i2c_sda/i2c_scl bus-role auto-append would have silently added spurious
+I2C capability on top of the confirmed GPIO2 (card-detect)/GPIO3 (LED)
+chipGpios entries — the same bug class already fixed this session on
+adafruit_feather_can, adafruit_feather_prop_maker, and
+adafruit_feather_thinkink (per this task's own briefing).
+
+CAVEAT (documented in board.json too): GPIO3 (LED) and GPIO6 (button) are
+Carrier-XL-board features, not features of the bare 1-inch Stamp module by
+itself. This board's own pins_arduino.h header comment cites the Carrier
+XL page as its pin-definition source, and independently declares SD-card-
+connector pins that only exist on the Carrier XL (the bare module has no
+SD slot) — establishing that this exact Arduino board id's intended
+reference hardware is "Stamp mounted on/with the Carrier XL", consistent
+with treating the Carrier XL's other features (LED, button) as equally
+in-scope. A user running this Arduino board id with the bare module NOT
+mounted on a Carrier XL will simply have no physical LED/button on GPIO3/
+GPIO6 — a safe no-op (unpopulated net), not a hazard.
+
+SUMMARY
+------------------
+Seven chipGpios changes applied: GPIO2 (card-detect, digital_input only),
+GPIO3 (LED_USR, active-low, led_low), GPIO6 (BTN_USR1, button, full
+capability), GPIO8/9/10/11 (SD-card SPI1 bus, capabilities emptied so only
+the auto-supplied spi_* role remains). One pins_arduino.h bug fixed:
+removed the vestigial/colliding PIN_WIRE1_SDA/PIN_WIRE1_SCL pair (and
+adjusted WIRE_HOWMANY 2->1) that overlapped the confirmed CARD_DETECT/LED
+pins. NeoPixel confirmed absent (no change) — this RP2350 Stamp has no
+onboard NeoPixel, unlike its already-audited RP2040 Stamp sibling. LED and
+button findings are Carrier-XL-specific (not bare-module features) per
+this board's own pins_arduino.h sourcing choice; documented as a CAVEAT
+rather than left unguessed, since positive schematic evidence exists (a
+100%-cross-validated pairing method plus a component-level polarity
+trace) — a stronger evidentiary basis than the RP2040 Stamp sibling's
+GPIO20 NO-CHANGE case, which had no corroboration from any source.

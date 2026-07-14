@@ -1,0 +1,92 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Ai-Thinker NodeMCU-ESP-C3-M1-I-Kit. This file's own header
+  // links the vendor spec PDF (nodemcu-esp-c3-m1-i-kit_v1.2.0). That exact
+  // URL now 404s (Ai-Thinker migrated their docs site to a VitePress SPA);
+  // the same v1.2.0 document was recovered from a working mirror
+  // (supereyes.ru/img/instructions/specification_nodemcu-esp-c3-m1-kit.pdf)
+  // for the sibling "ESP-C3-M1-Kit" (non-I) product, which states in its
+  // own Schematic section: "ESP-C3-M1-Kit and ESP-C3-M1-I-Kit share the
+  // same schematic diagram" - i.e. this document is directly authoritative
+  // for our board too. Cross-checked against independent secondary sources
+  // (espboards.dev pin table, PlatformIO board page) which all agree.
+  //
+  // Two findings, both already visible in this board's own
+  // pins_arduino.h declarations:
+  //
+  // 1) GPIO18/19 (LED_WARM/LED_COLD, "connected to USB D- and D+" per this
+  //    file's own comment): CONFIRMED by the vendor spec's own pin table
+  //    ("25  3V3  GPIO18,USB_D-" / "IO19  GPIO19,USB_D+") - these are the
+  //    ESP32-C3's native USB D-/D+ pins. The chip-level default
+  //    (variants/esp32/esp32c3/board.json) already omits GPIO18/19 from
+  //    chipGpios entirely (its own comment: "GPIOs 18-19 (USB) are
+  //    excluded"), so these two onboard LEDs are wired to pins that were
+  //    already unavailable in the Designer before this audit, for the
+  //    correct reason (offering them would break the board's native USB).
+  //    No board.json change needed or possible for GPIO18/19 - this is a
+  //    rare confirmed case of a real onboard LED that cannot be tagged
+  //    because its pin is already committed to something else.
+  //
+  // 2) GPIO3/4/5 (LED_RED/LED_GREEN/LED_BLUE): CONFIRMED as a genuine
+  //    onboard discrete RGB LED by the vendor spec's "Indicator and button
+  //    description" table: "RGB lights are respectively connected to IO3,
+  //    IO4, IO5 of the development board... correspondingly control the
+  //    three primary colors of red, green and blue." Kept available (no
+  //    exclusion - matches playbook policy for a confirmed simple onboard
+  //    LED). NOT tagged led_r_high/led_g_high/led_b_high (or _low): no
+  //    source found states the LED's drive polarity. The vendor spec's
+  //    only schematic (Figure 7, "ESP-C3-M1-Kit and ESP-C3-M1-I-Kit share
+  //    the same schematic diagram") is a raster image with no
+  //    machine-readable text, and no PDF-to-image rendering tool
+  //    (pdftoppm/pdfimages/ImageMagick/ghostscript) was available in this
+  //    environment to inspect it visually. A secondary example sketch
+  //    found for a different, unrelated Ai-Thinker "Kit"-series board
+  //    (NodeMCU-ESP-S3-12K-Kit) uses active-high digitalWrite for its own
+  //    discrete RGB LED, but that is a different product and not treated
+  //    as evidence for this board's polarity. Per the "never guess
+  //    polarity" policy, left un-tagged with an informational "note"
+  //    instead, same treatment as several other ESP32-family boards in
+  //    this repo with the identical could-not-confirm situation (e.g.
+  //    variants/esp32/esp32c3/sparkfun_pro_micro_esp32c3/board.json).
+  //
+  // GPIO4/GPIO5 were also this board's own SCK/MISO aliases in
+  // pins_arduino.h, colliding with LED_GREEN/LED_BLUE declared earlier in
+  // the same file - a genuine self-collision, not a shared-common.h issue.
+  // Fixed by deleting the SCK/MISO lines from pins_arduino.h (GPIO3 has no
+  // such collision - its only other alias is A3, which is expected/
+  // harmless). No SPI pins are declared as TX/RX so this does not affect
+  // the reserved serial pins.
+  //
+  // See boardsDetails/esp32/esp32c3/esp_c3_m1_i_kit/notes.txt for the full
+  // research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "Onboard discrete RGB LED, red channel (LED_RED) per vendor spec - drive polarity not documented, so not tagged led_r_high/led_r_low." },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "Onboard discrete RGB LED, green channel (LED_GREEN) per vendor spec - drive polarity not documented, so not tagged led_g_high/led_g_low. Previously also aliased SCK in this board's pins_arduino.h; that alias was removed as a self-collision." },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"], "note": "Onboard discrete RGB LED, blue channel (LED_BLUE) per vendor spec - drive polarity not documented, so not tagged led_b_high/led_b_low. Previously also aliased MISO in this board's pins_arduino.h; that alias was removed as a self-collision." },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

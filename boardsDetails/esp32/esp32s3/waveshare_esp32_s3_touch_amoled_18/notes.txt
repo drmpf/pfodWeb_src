@@ -1,0 +1,98 @@
+waveshare_esp32_s3_touch_amoled_18 - button/LED research notes
+================================================================
+
+Sources consulted:
+
+- https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8
+  WebSearch snippet (direct WebFetch returned HTTP 403). States: "The BOOT
+  button uses GPIO0 to detect high and low levels, with low level
+  indicating a press ... The PWR button uses GPIO4 (through the extended
+  IO) to detect button states, with high level indicating a press ...".
+  A follow-up, more specific WebSearch against the same wiki page
+  clarified the PWR button is read via "EXIO4" on an onboard I2C IO
+  expander ("extended IO"), not a bare ESP32 GPIO4.
+
+- https://docs.waveshare.com/ESP32-S3-Touch-AMOLED-1.8
+  Fetched directly (WebFetch). Confirms BOOT button and PWR button exist
+  under "Sensors & Input". BOOT: "Hold during power-on to enter firmware
+  download mode; can be assigned custom functions at runtime." PWR:
+  "Controls power on/off, with support for customizable long-press/
+  short-press behavior." Full component list fetched from this page also
+  explicitly lists NO onboard LED of any kind (no single-color LED, no
+  RGB LED, no WS2812/NeoPixel) among display/touch/sensor/power/audio/
+  connectivity components.
+
+- https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.8
+  Fetched directly (WebFetch). Official Waveshare engineering-sample
+  repo README lists board hardware (ESP32-S3 module, AMOLED+touch, SD,
+  ES8311 audio codec, RTC, AXP2101 PMU, QMI8658 IMU). No mention of any
+  onboard LED, WS2812, RGB LED or NeoPixel, and no button GPIO detail
+  beyond what's already covered above.
+
+- https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8.pdf
+  Attempted fetch — this is a flattened/binary Altium schematic PDF with
+  no extractable text; yielded no usable information.
+
+- https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm
+  Attempted fetch — returned HTTP 403 (blocked), not consulted directly.
+  A generic WebSearch pass turned up a snippet on this general topic
+  claiming "The ESP32-S3-Touch-AMOLED-1.8 features a WS2812 LED" but
+  this claim could NOT be corroborated by either the official
+  docs.waveshare.com component list or the official GitHub README (both
+  fetched directly and both silent on any LED). That search result also
+  mixed in unrelated third-party boards (e.g. Makerfabs "MaTouch"
+  1.8in AMOLED, a different vendor's similar-spec board) in the same
+  result set, so it looks like a probable source-conflation /
+  hallucination rather than a fact about this specific Waveshare board.
+  Per task rules ("if you cannot find solid confirming evidence, do NOT
+  tag anything"), this WS2812 claim was treated as NOT confirmed and NOT
+  acted on.
+
+Local files also checked (not web sources, but load-bearing for the
+TX/RX safety check and existing exclusions):
+- variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_18/pins_arduino.h
+  TX = 43, RX = 44 (UART0). Confirms GPIO0 is not TX/RX, so tagging it is
+  safe from the silent-discard build_boards.js TX/RX reservation bug.
+  File also contains a pre-existing developer comment: "// Onboard
+  Electric buzzer & Custom buttons / GPIO and PSRAM conflict, need to
+  pay attention when using" — no specific GPIO given for this buzzer/
+  button note, and no vendor documentation found corroborating a specific
+  pin, so this was not actioned (see below).
+- variants/esp32/esp32s3/waveshare_esp32_s3_touch_amoled_18/board.json
+  (pre-existing) — confirms GPIO0 already present in chipGpios (not
+  excluded), and confirms the existing display/touch/IMU pin exclusions
+  (4,5,6,7,11,12,14,15,21) which were left untouched.
+
+Pins considered but NOT tagged:
+
+- PWR button (EXIO4 on the onboard I2C IO expander, per Waveshare wiki).
+  NOT tagged. This is a firm, non-guess decision: EXIO4 is a pin on an
+  I2C-attached IO expander chip, not a direct ESP32-S3 GPIO, so it has no
+  representation in chipGpios at all and is out of scope for pin
+  capability tagging in board.json.
+
+- Onboard buzzer / "Custom buttons" mentioned only in the board's own
+  pins_arduino.h comment ("Onboard Electric buzzer & Custom buttons /
+  GPIO and PSRAM conflict, need to pay attention when using"), with no
+  GPIO number given anywhere and no corroboration found in any vendor
+  source (wiki, docs site, or official GitHub repo). NOT tagged - this
+  is a "made no guess at all" case; there is not enough information to
+  even identify a candidate pin, let alone confirm it. Flagged here for
+  human review in case someone has the schematic and can identify the
+  exact GPIO.
+
+- Possible WS2812/RGB LED: see WS2812 discussion above under the
+  waveshare.com/esp32-s3-touch-amoled-1.8.htm source. NOT tagged -
+  contradicted by two directly-fetched official sources (docs site
+  component list, GitHub README) that are silent on any LED. Treated as
+  unconfirmed, not a best-guess judgment call — deliberately not acted
+  on per the "do not tag anything" instruction when evidence is not
+  solid.
+
+Summary of what was tagged:
+
+- GPIO0 tagged ["digital_input", "button"] (was
+  ["digital_input","digital_output","pwm_output"]) — confirmed onboard
+  BOOT button, active-low, directly on an ESP32-S3 GPIO (not TX/RX, not
+  in the board's existing pin-exclusion list). No LED tag applied
+  anywhere on this board.

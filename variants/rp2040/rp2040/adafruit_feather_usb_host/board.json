@@ -1,0 +1,221 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // GPIO7 (BOOT button, see chipGpios below) is a genuine bidirectional
+  // GPIO merely wired to a switch to GND — not a dedicated/capacitive-only
+  // pin — so it is handled entirely via the chipGpios "button" tag (full
+  // capability set retained), not via inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel + dedicated-
+  // hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Adafruit "Feather RP2040 with USB Type A Host" (product #5723)
+  // — a Feather RP2040 with a native USB Type-A HOST connector (D+/D- PIO-
+  // emulated USB host, plus a 5V boost-converter enable line for
+  // peripheral power), a plain red status LED (D13), a single onboard
+  // status NeoPixel with its own power-gate pin (GPIO21 data / GPIO20
+  // power), and a BOOT button also usable as a general input (GPIO7).
+  // This board's own pins_arduino.h is a bespoke (not ../generic_full/
+  // common.h) pin set that already correctly omits D16/D17/D18 (USB host
+  // D+/D-/5V-enable) from its D<n> alias list (pre-existing pfodWeb NOTE
+  // at the top of the static-const block), but had no board.json override
+  // before this audit.
+  //
+  // Sources consulted:
+  // 1. This board's own pins_arduino.h (local file) — declares PIN_LED=13,
+  //    PIN_NEOPIXEL=21, NEOPIXEL_POWER=20, PIN_BUTTON=7 ("'Boot0' button
+  //    also on GPIO #7"), PIN_USB_HOST_DP=16, PIN_USB_HOST_DM=17,
+  //    PIN_5V_EN=18, PIN_SPI0_MISO=8/MOSI=15/SCK=14 (general header SPI,
+  //    device spi1), PIN_WIRE0_SDA=2/SCL=3 (STEMMA QT, device i2c1). D16/
+  //    D17/D18 already deliberately not declared as D-aliases (pre-existing
+  //    comment), but D20/D21 (NeoPixel power/data) ARE declared as plain
+  //    D-aliases with no capability restriction prior to this audit.
+  // 2. learn.adafruit.com/adafruit-feather-rp2040-with-usb-type-a-host/pinouts
+  //    (official Adafruit guide, fetched via WebFetch). Verbatim quotes:
+  //      "This little red LED is controllable in CircuitPython code using
+  //      board.LED, and in Arduino as PIN_LED." (confirms GPIO13 LED)
+  //      "It is connected to GPIO21" (NeoPixel data) and "there is a
+  //      NeoPixel power pin on GPIO20. It needs to be set High for the
+  //      NeoPixel to be powered."
+  //      "The Boot button is the button on the right, located on GPIO7."
+  //      "USB Host Data Plus (D+) - GPIO 16", "USB Host Data Minus (D-) -
+  //      GPIO 17", "USB Host 5V Power - GPIO 18".
+  //      "board.SPI() uses SCK/MO/MI pins (GPIO14, GPIO15 and GPIO8)" and,
+  //      on chip-select: "there is no dedicated CS pin listed for the
+  //      primary SPI connector... SPI1 CS options include: A3, D25, D13,
+  //      D9" — CONFIRMS GPIO13 is merely one of several arbitrary
+  //      software-selectable SS choices, not real dedicated wiring (same
+  //      false-positive bus-alias pattern already fixed this session on
+  //      adafruit_feather_scorpio and adafruit_feather_adalogger). This
+  //      board's arduino-pico-supplied pins_arduino.h had picked that same
+  //      default (PIN_SPI0_SS=13u), directly colliding with the confirmed
+  //      LED pin.
+  //      "This connector uses the SCL and SDA pins for I2C... the RP2040's
+  //      I2C1 peripheral" (STEMMA QT, GPIO2/GPIO3) — ordinary
+  //      general-purpose I2C connector pins, no override needed, matching
+  //      every other audited Feather board's STEMMA QT treatment.
+  //      "The 5V LED is a green LED, located directly below D6/GPIO6 next
+  //      to the USB-A port. It indicates whether the USB host 5V power is
+  //      enabled." — this is merely a physical-location description (the
+  //      LED sits near the D6 silkscreen label); it is NOT wired to GPIO6
+  //      itself (it is driven by the 5V boost converter's own status/
+  //      enable circuitry). GPIO6 remains an ordinary general-purpose pin,
+  //      no chipGpios entry needed.
+  // 3. learn.adafruit.com/adafruit-feather-rp2040-with-usb-type-a-host/power-management
+  //    (official Adafruit guide, fetched via WebFetch). Verbatim quote:
+  //      "The onboard NeoPixel's power is controlled by its own GPIO pin
+  //      at GPIO20. It [is] enabled by default in CircuitPython and
+  //      Arduino." Also confirms no GPIO is connected to the LiPoly
+  //      charge-status ("CHG") LED — that indicator is driven directly by
+  //      the charger IC, not the RP2040.
+  // 4. raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/adafruit_feather_rp2040_usb_host/pins.c
+  //    (fetched via WebFetch) — verbatim alias table: BUTTON/BOOT ->
+  //    GPIO7, LED -> GPIO13, NEOPIXEL -> GPIO21, NEOPIXEL_POWER -> GPIO20,
+  //    USB_HOST_DATA_PLUS -> GPIO16, USB_HOST_DATA_MINUS -> GPIO17.
+  //    Independently corroborates every pin assignment in source #2 above
+  //    (no separate alias found for PIN_5V_EN/GPIO18 in this particular
+  //    file, but it is independently confirmed by source #2's "USB Host
+  //    5V Power - GPIO 18" quote and this board's own pins_arduino.h
+  //    PIN_5V_EN=18u define).
+  // 5. Sibling precedents already in this repo (read for method,
+  //    independently re-verified above, not copied): adafruit_feather_scorpio
+  //    (near-identical PIN_LED=13 vs PIN_SPI0_SS=13 collision bug, same fix
+  //    applied here), adafruit_feather_adalogger (identical collision bug
+  //    AND identical "no dedicated CS pin... A3/D25/D13/D9" Adafruit quote,
+  //    same board family/generation), cytron_motion_2350_pro (USB host
+  //    D+/D- capabilities:[] exclusion precedent for a native USB-A host
+  //    connector), adafruit_qtpy / adafruit_itsybitsy (NEOPIXEL_POWER
+  //    exclusion precedent — on those boards the power-gate GPIO has NO
+  //    D-alias at all, so no chipGpios entry was needed there; on THIS
+  //    board GPIO20 already carries a plain D20 alias, so an explicit
+  //    chipGpios restriction is needed here instead to stop it defaulting
+  //    to full general-purpose capability).
+  //
+  // Per-pin findings and disposition:
+  //   GPIO7 (PIN_BUTTON / BOOT) — TAGGED as button. Ordinary GPIO wired to
+  //     a switch to GND (matches every other Adafruit RP2040 Feather BOOT
+  //     button already audited this session — scorpio/adalogger/itsybitsy/
+  //     qtpy all confirm this same active-low-with-internal-pull-up
+  //     electrical pattern via Zephyr devicetree; no Zephyr board port
+  //     exists yet for this specific USB-host variant to re-confirm
+  //     independently, so this polarity is inferred from the identical
+  //     sibling-board hardware design, not separately vendor-confirmed for
+  //     THIS exact board — flagged here for transparency). Full
+  //     digital_input/digital_output/pwm_output/button capability
+  //     retained, matching the established precedent.
+  //   GPIO13 (PIN_LED) — TAGGED led_high. Confirmed active-high onboard
+  //     status LED via Adafruit's own pinouts guide and CircuitPython's
+  //     pins.c. digital_input dropped to match this repo's established
+  //     led_high precedent; pwm_output kept (analogWrite works on any
+  //     RP2040 GPIO). REAL DEFECT FOUND AND FIXED: this GPIO was also the
+  //     vendor's default (unused) PIN_SPI0_SS alias in pins_arduino.h,
+  //     which would have contaminated this confirmed LED tag with a
+  //     spurious spi_ss capability — fixed by removing `#define
+  //     PIN_SPI0_SS (13u)` and its dependent `static const uint8_t SS =
+  //     PIN_SPI0_SS;` line (whole file grepped afterward to confirm no
+  //     dangling reference to either symbol remains).
+  //   GPIO16 (PIN_USB_HOST_DP) — TAGGED capabilities:[] (excluded). Onboard
+  //     native USB Type-A HOST connector D+ line (PIO-emulated USB host),
+  //     confirmed via Adafruit's pinouts guide and CircuitPython's
+  //     USB_HOST_DATA_PLUS alias. This board's own pins_arduino.h already
+  //     omits a D16 alias, so this GPIO is currently invisible in the
+  //     Designer pin picker; an explicit chipGpios entry is added anyway
+  //     (matching the cytron_motion_2350_pro informativeness precedent for
+  //     un-aliased dedicated-hardware GPIOs) so the exclusion is documented
+  //     and guarded against a future accidental D-alias addition.
+  //   GPIO17 (PIN_USB_HOST_DM) — TAGGED capabilities:[] (excluded). Same
+  //     reasoning as GPIO16 (USB host D- line).
+  //   GPIO18 (PIN_5V_EN) — TAGGED capabilities:[] (excluded). Onboard 5V
+  //     boost-converter (TPS61023) enable line, powering the USB host
+  //     connector's peripheral bus, confirmed via Adafruit's pinouts guide
+  //     ("USB Host 5V Power - GPIO 18") and this board's own PIN_5V_EN
+  //     alias. Same "already un-aliased, entry added for documentation"
+  //     reasoning as GPIO16/17 — driving this pin as generic digital I/O
+  //     would defeat the board's own USB-host power sequencing.
+  //   GPIO20 (NEOPIXEL_POWER) — TAGGED capabilities:["digital_output"]
+  //     only (restricted, not excluded). Onboard NeoPixel power-gate line,
+  //     confirmed via Adafruit's pinouts/power-management guides ("must be
+  //     set High for the NeoPixel to be powered") and CircuitPython's
+  //     NEOPIXEL_POWER alias. Unlike the qtpy/itsybitsy sibling boards
+  //     (where this same functional pin has NO D-alias and is therefore
+  //     already invisible, needing no chipGpios entry), THIS board's
+  //     pins_arduino.h already declares a plain D20 alias — without an
+  //     explicit override it would default to full digital_input/
+  //     digital_output/pwm_output general-purpose capability. Restricted
+  //     to digital_output only: a sketch can legitimately drive this HIGH/
+  //     LOW to enable/disable the onboard NeoPixel's power rail (a genuine,
+  //     documented operation), but digital_input (nothing meaningful to
+  //     read back) and pwm_output (a binary power-enable line, not a
+  //     brightness/dimming line) are dropped.
+  //   GPIO21 (PIN_NEOPIXEL) — TAGGED led_neopixel. Confirmed onboard single
+  //     status NeoPixel (WS2812), output-only data line, via Adafruit's
+  //     pinouts guide and CircuitPython's NEOPIXEL alias.
+  //   GPIO2/GPIO3 (Wire0 SDA/SCL, STEMMA QT connector) — NOT tagged, KEEP
+  //     general purpose. Confirmed ordinary general-purpose I2C connector
+  //     pins via Adafruit's own pinouts guide ("This connector uses the
+  //     SCL and SDA pins for I2C... the RP2040's I2C1 peripheral"),
+  //     matching every other audited Feather board's STEMMA QT precedent
+  //     (adafruit_feather_adalogger, adafruit_feather_scorpio).
+  //   GPIO8/14/15 (general-purpose header SPI MISO/SCK/MOSI) — NOT tagged,
+  //     KEEP general purpose. Confirmed genuine header-broken-out pins via
+  //     Adafruit's own "board.SPI() uses SCK/MO/MI pins" pinout label, not
+  //     dedicated to any onboard peripheral.
+  //   GPIO6 — INVESTIGATED, NOT tagged (NO CHANGE). Adafruit's own docs
+  //     describe a "5V LED" located "directly below D6/GPIO6 next to the
+  //     USB-A port" indicating USB host 5V power status - but this is a
+  //     physical-location description of an LED driven by the 5V boost
+  //     converter's own circuitry, NOT a GPIO6-controlled indicator. No
+  //     vendor source assigns GPIO6 any special role. Left at full
+  //     chip-level default general-purpose capabilities.
+  //   GPIO0/1 (Serial1 TX/RX), GPIO4/5/9-12/19/22-29 (A0-A3) — ordinary
+  //     GPIO/UART/ADC pins, no dedicated onboard consumer confirmed. Left
+  //     at chip-level defaults.
+  //   BOOT/RST hardware straps — not GPIO-readable on this design (the
+  //     BOOT button above is a genuine digitalRead()-able GPIO, distinct
+  //     from the RP2040's QSPI-flash-CS BOOTSEL silicon trick used by the
+  //     plain Raspberry Pi Pico) - out of scope, matching every other
+  //     RP2040 board audited in this repo.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_feather_usb_host/notes.txt
+  "chipGpios": {
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON / BOOT — onboard bootloader-select pushbutton, also usable as a general input when application code is running. Confirmed via Adafruit's own pinouts guide (\"The Boot button is the button on the right, located on GPIO7\") and CircuitPython's pins.c (BUTTON/BOOT -> GPIO7). Full digital_input/digital_output/pwm_output capability retained (ordinary GPIO wired to a switch to GND, not a dedicated/capacitive-only pin), matching this repo's adafruit_feather_scorpio / adafruit_feather_adalogger / adafruit_itsybitsy PIN_BUTTON precedent." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard status LED (D13), active-high. Confirmed via Adafruit's own pinouts guide (\"controllable in CircuitPython code using board.LED, and in Arduino as PIN_LED\") and CircuitPython's pins.c (LED -> GPIO13). digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO. This GPIO was also the vendor's default (unused) PIN_SPI0_SS alias, which would have contaminated this confirmed LED tag with a spurious spi_ss capability — fixed 2026-07-13 by removing that alias (and its dependent `static const uint8_t SS` line) from pins_arduino.h, confirmed via Adafruit's own pinouts guide stating there is no dedicated CS pin on the main SPI header (GPIO13 was merely one of several arbitrary software-selectable SS choices: A3/D25/D13/D9), matching the adafruit_feather_scorpio / adafruit_feather_adalogger bus-alias-contamination fix pattern." },
+    "16": { "capabilities": [], "note": "PIN_USB_HOST_DP — onboard native USB Type-A HOST connector D+ line (PIO-emulated USB host). Dedicated hardware, not general-purpose. Confirmed via Adafruit's own pinouts guide (\"USB Host Data Plus (D+) - GPIO 16\") and CircuitPython's pins.c (USB_HOST_DATA_PLUS -> GPIO16). This board's own pins_arduino.h already omits a D16 alias (pre-existing pfodWeb NOTE), so this GPIO is currently invisible in the Designer pin picker; this explicit entry documents the exclusion and guards against a future accidental D-alias addition, matching the cytron_motion_2350_pro USB-host-pin informativeness precedent." },
+    "17": { "capabilities": [], "note": "PIN_USB_HOST_DM — onboard native USB Type-A HOST connector D- line. Same reasoning as GPIO16. Confirmed via Adafruit's pinouts guide (\"USB Host Data Minus (D-) - GPIO 17\") and CircuitPython's pins.c (USB_HOST_DATA_MINUS -> GPIO17)." },
+    "18": { "capabilities": [], "note": "PIN_5V_EN — onboard 5V boost-converter (TPS61023) enable line powering the USB host connector's peripheral bus. Dedicated hardware, not general-purpose. Confirmed via Adafruit's own pinouts guide (\"USB Host 5V Power - GPIO 18\") and this board's own PIN_5V_EN=18u alias. This board's own pins_arduino.h already omits a D18 alias (pre-existing pfodWeb NOTE); this explicit entry documents the exclusion (same reasoning as GPIO16/17) — driving this pin as generic digital I/O would defeat the board's own USB-host power sequencing." },
+    "20": { "capabilities": ["digital_output"], "note": "NEOPIXEL_POWER — onboard NeoPixel power-gate line, must be driven HIGH to power the onboard NeoPixel (confirmed via Adafruit's pinouts guide: \"there is a NeoPixel power pin on GPIO20. It needs to be set High for the NeoPixel to be powered\"; and power-management guide: \"enabled by default in CircuitPython and Arduino\"). Unlike this repo's adafruit_qtpy/adafruit_itsybitsy NEOPIXEL_POWER precedent (where the equivalent pin has no D-alias at all and is therefore already invisible), this board's pins_arduino.h already carries a plain D20 alias, so digital_input and pwm_output are explicitly dropped here (no meaningful read-back value, and this is a binary power-enable line rather than a brightness/dimming line) while digital_output is kept (legitimate for a sketch to enable/disable NeoPixel power)." },
+    "21": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard single status NeoPixel (WS2812), output-only data line. Power is separately gated by GPIO20 (NEOPIXEL_POWER, must be driven HIGH — see that entry). Confirmed via Adafruit's own pinouts guide (\"It is connected to GPIO21\") and CircuitPython's pins.c (NEOPIXEL -> GPIO21)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares no analog
+  // aliases of its own (falls through to the chip-level 26-29/A0-A3
+  // defaults), and this audit found no reason to override that.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

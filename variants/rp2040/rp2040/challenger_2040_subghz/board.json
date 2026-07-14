@@ -1,0 +1,138 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "iLabs Challenger 2040 SubGHz" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This board's onboard radio is a
+  // point-to-point sub-GHz (RFM69HCW) transceiver, not an IP-capable
+  // WiFi/BLE chip, so it does not qualify for the "rp2040w" bucket's
+  // tcp/http/ble .ino templates (those are written against the native
+  // cyw43 WiFi.h stack). Plain "rp2040" (Serial only) is correct, same
+  // reasoning as the challenger_2040_lora sibling.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/NeoPixel tagging
+  // audit, 2026-07-13):
+  //
+  // Board: iLabs "Challenger RP2040 SubGHz" (Adafruit Feather form
+  // factor) — per iLabs' own product description, "a spin-off from the
+  // Challenger RP2040 LoRa board with the LoRa module replaced by a low
+  // power SubGHz radio module" (RFM69HCW, 315/433/868/915MHz ISM bands).
+  // Same GPIO layout as the challenger_2040_lora sibling for the radio
+  // module and LED — confirmed independently below, not merely assumed
+  // from the "spin-off" description.
+  //
+  // Sources consulted:
+  // 1. ilabs.se/challenger-rp2040-subghz-rfm69hcw-datasheet/ (official
+  //    iLabs datasheet) — states verbatim: "GPIO9 – RFM69HCW_CS",
+  //    "GPIO10 – RFM69HCW_SCK", "GPIO11 – RFM69HCW_MOSI", "GPIO12 –
+  //    RFM69HCW_MISO", "GPIO13 is connected to the reset input of the
+  //    RFM69HCW, and GPIO14, GPIO15 and GPIO18 is connected to DIO0 –
+  //    DIO2 respectively." Also: "GPIO24 is connected to the general
+  //    purpose LED" (active level not stated on this page). No mention
+  //    of a NeoPixel or a discrete user pushbutton anywhere on the page.
+  // 2. ilabs.se/product/challenger-rp2040-subghz-868mhz/ (official iLabs
+  //    product page) — confirms the RFM69HCW radio, Feather form factor,
+  //    LiPo charging circuit, and that "One SPI channel has been routed
+  //    to the header pins (SCK, SDO, SDI) and the other SPI channel is
+  //    connected to the RFM69HCW module. One I2C channel has been routed
+  //    to the header pins (SCL, SDA)." No NeoPixel or pushbutton
+  //    mentioned; no LED active-level spec given on this page either.
+  // 3. github.com/earlephilhower/arduino-pico
+  //    variants/challenger_2040_subghz/pins_arduino.h (upstream source of
+  //    this board's own local pins_arduino.h, fetched directly) —
+  //    confirmed byte-identical pin assignments to the local copy in
+  //    this repo (PIN_LED=24, RFM69HCW SPI1 CS/SCK/MOSI/MISO=9/10/11/12,
+  //    RST=13, DIO0/DIO1/DIO2=14/15/18); no NeoPixel or button define
+  //    present in the upstream file either.
+  // 4. tinygo.org (WebSearch cross-check, "challenger-rp2040" TinyGo
+  //    machine docs / community summary) — independently corroborates
+  //    "GPIO24 is connected to the general purpose LED on the Challenger
+  //    RP2040 SubGHz board" and the same RFM69HCW GPIO9-15,18 mapping.
+  // 5. ilabs.se/challenger-rp2040-wifi-datasheet/ (sibling board in the
+  //    same iLabs Challenger RP2040 product line, already audited in
+  //    this repo — see challenger_2040_wifi/board.json) — explicitly
+  //    states "Active level: High" for its own onboard user LED, the
+  //    same shared reference LED circuit (GPIO -> resistor -> LED ->
+  //    GND) reused across this entire product line. Combined with every
+  //    other RP2040 board audited in this family to date (rpipico,
+  //    wiznet_5500_evb_pico, adafruit_feather_scorpio, challenger_2040_
+  //    lora, challenger_2040_wifi, challenger_2040_nfc — all confirmed
+  //    or cross-reference-inferred active-high, none active-low), GPIO24
+  //    is tagged led_high here on the same cross-referenced basis used
+  //    for the challenger_2040_nfc sibling.
+  // 6. Local codebase: this board's own pins_arduino.h
+  //    (variants/rp2040/rp2040/challenger_2040_subghz/pins_arduino.h) —
+  //    already carries a prior-session "pfodWeb NOTE" (lines 64-66)
+  //    recording that D14-D17 were deliberately NOT declared as aliases
+  //    for GPIO13/14/15/18 (RFM69HCW RST/DIO0/DIO1/DIO2), and GPIO9-12
+  //    (the module's SPI1 bus) were likewise never given D-number
+  //    aliases in the first place. Verified directly: the only
+  //    `static const uint8_t` declarations are D0-D13, D18, and A0-A5,
+  //    resolving to GPIOs {16,17,20,23,22,2,3,0,1,4,5,6,7,8,24,26,27,28,
+  //    29,19,21} — none of {9,10,11,12,13,14,15,18} appear anywhere. This
+  //    already fully excludes all eight RFM69HCW-dedicated GPIOs from
+  //    the Designer's pin list with zero board.json involvement — same
+  //    outcome and same reasoning as the challenger_2040_lora sibling.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/challenger_2040_subghz/notes.txt
+  //
+  // WHY NO chipGpios ENTRIES FOR THE RADIO PINS (GPIO9-15,18):
+  // Identical reasoning to challenger_2040_lora/board.json: adding
+  // chipGpios entries for GPIOs already absent from every
+  // pins_arduino.h alias would re-add each one to build_boards.js's
+  // allGpios set as a bare, visible "GPIO<n>" row carrying an
+  // auto-appended "Check if available on board" note (fires for any
+  // rp2040-family GPIO absent from pins_arduino.h, regardless of a
+  // chipGpios override) — undoing the full concealment the pins_arduino.h
+  // aliasing (or lack thereof) already achieves. Left alone.
+  //
+  // No onboard NeoPixel found — confirmed absent by both the iLabs
+  // datasheet and product page (neither mentions one, unlike
+  // challenger_2040_wifi/challenger_2040_nfc which explicitly describe
+  // one), and confirmed absent from the upstream arduino-pico
+  // pins_arduino.h (no NEOPIXEL/PIN_NEOPIXEL define). No chipGpios tag
+  // applied.
+  //
+  // No onboard user pushbutton found — confirmed absent by both the
+  // iLabs datasheet and product page (neither mentions a discrete
+  // pushbutton beyond standard reset/BOOTSEL, which is not a normal GPIO
+  // on RP2040, out of scope per the rpipico/board.json precedent). No
+  // chipGpios tag applied.
+  //
+  // GPIO24 carries no SPI/I2C/other bus alias on this board (only D18),
+  // so the build_boards.js unconditional bus-capability auto-append
+  // (the "confirmed button/LED pin also aliased as SDA/SCL/SS/MOSI/
+  // MISO/SCK" bug class flagged for this audit) does not apply here —
+  // no pins_arduino.h edit was needed.
+  "chipGpios": {
+    "24": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN (D18 alias) — onboard general-purpose user LED. Presence confirmed via the official iLabs datasheet (\"GPIO24 is connected to the general purpose LED\") and independently corroborated by TinyGo's board docs. Active-high polarity is a cross-referenced inference: this board's own datasheet does not state the active level, but the sibling challenger_2040_wifi board's datasheet explicitly states \"Active level: High\" for the identical shared reference LED circuit reused across this iLabs product line, and every other RP2040 board audited in this family to date has been active-high. digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Matches this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12u).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

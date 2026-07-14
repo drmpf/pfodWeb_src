@@ -1,0 +1,75 @@
+Board audit: upesy_rp2040_devkit (chip: rp2040)
+Date: 2026-07-13
+
+SOURCES CONSULTED
+-----------------
+1. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\upesy_rp2040_devkit\pins_arduino.h (local file)
+2. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\board.json (chip-level defaults, chipGpios: {})
+3. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\rpipico\board.json (precedent — GPIO25 LED tagging pattern)
+4. C:\ai\aicode\pfodWeb\variants\rp2040\rp2040\generic\common.h (included by this board's pins_arduino.h;
+   confirms D0-D22/A0-A2/SS/MOSI/MISO/SCK/SDA/SCL aliases, and documents why GPIO23/24/25/29 are
+   deliberately NOT declared as D-aliases on the stock Pico pinout: GPIO25 = onboard LED)
+5. https://github.com/earlephilhower/arduino-pico/blob/master/variants/upesy_rp2040_devkit/pins_arduino.h
+   — confirmed BYTE-FOR-BYTE IDENTICAL to the local pins_arduino.h, including the unedited "Pin
+   definitions taken from: https://datasheets.raspberrypi.org/pico/pico-datasheet.pdf" header comment.
+   This is the vendor-contributed upstream Arduino core board definition (authoritative for what
+   Arduino IDE/pfodWeb builds against), but it is literally a copy of the stock Pico's file — the
+   uPesy-specific board definition never customized the LED comment.
+6. https://www.upesy.com/products/upesy-rp2040-devkit-board — uPesy's own product page. Confirms:
+   "upgraded Raspberry Pi Pico board" with USB-C, pin numbers on both sides, soldered connectors,
+   30 multifunction GPIOs (4 more than stock Pico), "a button to restart the card" (RESET button,
+   not a GPIO-readable user button), short-circuit power protection. Also explicitly states the
+   board is NOT pin-to-pin compatible with the official Pico (per WebSearch summary of this page).
+7. https://www.upesy.com/blogs/tutorials/upesy-rp2040-devkit-board-documentation-version-latest —
+   uPesy's technical documentation/pinout page (pinout given as images, not machine-readable text).
+   Confirms two pinout diagrams exist (simplified + full) but no textual GPIO-to-LED table was
+   extractable via WebFetch (image-only content).
+8. https://www.upesy.com/blogs/tutorials/upesy-rp2040-devkit-quickstart-installation-programming-guide
+   — uPesy's quickstart guide. States: "There is already a program on the uPesy RP2040 DevKit board
+   that blinks the built-in blue LED" and directs users to Arduino IDE's Files -> Examples -> Basics
+   -> Blink for this exact board, i.e. the standard
+     digitalWrite(LED_BUILTIN, HIGH);  // turn the LED on
+   idiom — confirming active-high polarity convention for this board's LED_BUILTIN.
+9. variants/rp2040/boards.txt lines 35224-35465 (upesy_rp2040_devkit.* entries) — confirms this is a
+   real, fully fleshed-out board entry (USB VID 0x2e8a / multiple PIDs, build.variant=
+   upesy_rp2040_devkit, usb_manufacturer="uPesy", usb_product="RP2040 DevKit"). No build.led override
+   (blank), consistent with pins_arduino.h's own PIN_LED define being authoritative.
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED / LED_BUILTIN):
+  - Declared in this board's pins_arduino.h as PIN_LED (25u), included via generic/common.h's
+    `#ifdef PIN_LED / #define LED_BUILTIN PIN_LED`.
+  - Confirmed onboard LED per uPesy's own quickstart guide (built-in blue LED, pre-flashed blink demo).
+  - Confirmed active-high polarity: uPesy's own quickstart Blink example for this exact board uses
+    digitalWrite(LED_BUILTIN, HIGH) to turn the LED on, matching the standard Arduino Blink idiom and
+    the rpipico precedent (GPIO25, active-high, same physical Pico-style LED-anode-to-GPIO-via-resistor
+    wiring assumption).
+  - No SPI/Wire/SS/MOSI/MISO/SCK/SDA/SCL alias collision on GPIO25 (SPI0: MISO16/MOSI19/SCK18/SS17;
+    SPI1: MISO12/MOSI15/SCK14/SS13; Wire0: SDA4/SCL5; Wire1: SDA22/SCL23) — no build_boards.js
+    bus-capability-collision bug to fix on this board.
+  - Tagged: ["digital_output", "pwm_output", "led_high"] — digital_input dropped per this repo's
+    established led_high/led_low precedent for dedicated onboard LED pins (rpipico GPIO25,
+    esp32/esp32c5/XIAO_ESP32C5 GPIO27, esp8266/esp8266/wiolink GPIO2). pwm_output kept since
+    arduino-pico's analogWrite() works on any RP2040 GPIO (8 PWM slices cover GPIO0-29), enabling
+    LED brightness dimming.
+
+RESET button ("button to restart the card"):
+  - uPesy's product page lists this as a board improvement over the stock Pico. This is a hardware
+    RESET button (wired to the RP2040 RUN pin, pulling it low), not a GPIO-readable digitalRead()
+    button — no numbered GPIO to attach a "button" capability to. Out of scope for this repo's
+    GPIO-keyed capability tagging, consistent with how BOOTSEL is handled on every other RP2040
+    board in this repo (see rpipico/board.json's note).
+  - No additional user/BOOTSEL-equivalent GPIO button found in any consulted source.
+
+NeoPixel: none found/documented — no onboard NeoPixel on this board per any consulted source.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/upesy_rp2040_devkit/board.json (full file, chip-level defaults +
+chipGpios override) tagging GPIO25 (PIN_LED/LED_BUILTIN) as
+["digital_output","pwm_output","led_high"], matching the rpipico precedent and confirmed via uPesy's
+own product/quickstart documentation. No button capability applied (RESET button is not GPIO-readable;
+no other user button documented). No bus-capability collision found on GPIO25 requiring a
+pins_arduino.h fix. JSON validity confirmed via manual `//`-comment-stripping + JSON.parse (no build
+scripts run).

@@ -1,0 +1,67 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Generic RP2350",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // pfodWeb NOTE (generic/template entry): this is NOT a real vendor
+  // product — it is the catch-all "Generic RP2350" board entry for
+  // DIY/custom RP2350 boards that don't match a specific named vendor
+  // product. Its pins_arduino.h (variants/rp2040/rp2350/generic/pins_arduino.h)
+  // is the shared 30-pin RP2350A-compatible template (GPIO0-22, GPIO26-28),
+  // pin-identical to the official Raspberry Pi Pico 2 (rpipico2 variant in
+  // this same chip bucket) other than the added PICO_RP2350A define. Since
+  // there is no single real board here, this file applies the SAME onboard
+  // LED convention already confirmed for rpipico2 (GPIO25, active-high),
+  // because any DIY board built to this generic/stock Pico-2-compatible
+  // pinout inherits the same PIN_LED default from the shared template. A
+  // real custom board that wires GPIO25 differently (or not at all) should
+  // define its own pins_arduino.h/board.json rather than rely on this
+  // fallback. This board's own pins_arduino.h declares no button alias and
+  // no NeoPixel alias — none to tag.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED / LED_BUILTIN) — same reasoning as
+  // variants/rp2040/rp2350/rpipico2/board.json: this generic/template
+  // entry's pins_arduino.h includes the shared generic/common.h, whose
+  // pfodWeb NOTE comment confirms GPIO25 is deliberately excluded from the
+  // D0-D29 blanket fallback because on the real Pico/Pico 2 reference
+  // design (which this template mirrors) GPIO25 is the onboard LED, not a
+  // header pin. Tagged active-high (led_high) to match the official
+  // Raspberry Pi pico-sdk convention for the non-wireless Pico/Pico 2
+  // boards (PICO_DEFAULT_LED_PIN 25, no _INVERTED override) — the same
+  // convention this generic template is built from. digital_input dropped
+  // per this repo's established led_high/led_low precedent for dedicated
+  // onboard LED pins; pwm_output kept since arduino-pico's analogWrite()
+  // works on any RP2040/RP2350 GPIO. No SPI/I2C alias collision on GPIO25
+  // in this board's pins_arduino.h (SPI0/SPI1/Wire0/Wire1 pins are all
+  // GPIO4-5,12-19,26-27 — GPIO25 is untouched).
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — inherited from the shared Pico-2-compatible generic template; tagged active-high to match the confirmed rpipico2/official Raspberry Pi pico-sdk convention this generic entry is based on (see pfodWeb NOTE above). No single real product exists for this generic/template board entry — a custom board wiring GPIO25 differently should supply its own pins_arduino.h/board.json instead." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC — matches the
+  // chip-level default and this board's generic/common.h (NUM_ANALOG_INPUTS
+  // = 3, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

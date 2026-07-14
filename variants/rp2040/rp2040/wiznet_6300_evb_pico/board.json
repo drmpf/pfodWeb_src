@@ -1,0 +1,96 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+// Board: WIZnet W6300-EVB-Pico (RP2040, Pico-form-factor, onboard WIZnet
+// W6300 hardwired TCP/IP Ethernet controller). No board.json override
+// existed before this audit - this board's pins_arduino.h was just
+// `#include "../generic/pins_arduino.h"`, giving it zero differentiation
+// from a plain Raspberry Pi Pico, meaning the W6300's dedicated QSPI bus
+// and reset/interrupt lines were exposed as innocuous general-purpose
+// digital/PWM pins.
+//
+// Sources consulted:
+//  - https://docs.wiznet.io/Product/Chip/Ethernet/W6300/w6300-evb-pico
+//    Official WIZnet Document System pinout table for the W6300-EVB-Pico.
+//    Confirms: GPIO15=INTn, GPIO16=CSn, GPIO17=SCLK, GPIO18=IO0,
+//    GPIO19=IO1, GPIO20=IO2, GPIO21=IO3, GPIO22=RSTn, all "Connected to
+//    ... on W6300". Also confirms GPIO25 is "Connected to user LED" (the
+//    Pico's own standard onboard LED - not a board-specific addition) and
+//    lists no other onboard user LED or button beyond the standard Pico
+//    BOOTSEL button - this board is a bare Ethernet eval board with no
+//    extra user controls.
+//  - https://wiznet.io/products/evaluation-boards/w6300-evb-pico
+//    WIZnet product page. Confirms the board is "basically works the
+//    same as Raspberry Pi Pico board but with additional Ethernet via
+//    W6300", using QSPI (Single/Dual/Quad) via PIO for the Ethernet
+//    interface - not the RP2040's hardware SPI0 peripheral in the
+//    conventional single-SPI sense.
+//  - https://github.com/WIZnet-ioNIC/WIZnet-PICO-C (WIZnet's official
+//    RP2040/RP2350 example repo) - port/ioLibrary_Driver QSPI-over-PIO
+//    driver source confirms the same pin assignment independently:
+//    PIO_IRQ_PIN=15, PIN_CS=16, PIO_SPI_SCK_PIN=17, PIO_SPI_DATA_IO0_PIN=18,
+//    PIO_SPI_DATA_IO1_PIN=19, PIO_SPI_DATA_IO2_PIN=20,
+//    PIO_SPI_DATA_IO3_PIN=21, PIN_RST=22.
+//  - This board's own pins_arduino.h (see pfodWeb NOTE there) - corrected
+//    PIN_SPI0_SS/SCK/MOSI/MISO to the real CSn/SCLK/IO0/IO1 GPIOs (16/17/
+//    18/19) so build_boards.js's unconditional alias-based "spi_ss"/
+//    "spi_sck"/"spi_mosi"/"spi_miso" tagging (which chipGpios entries
+//    below cannot override directly - that vocabulary isn't part of
+//    CAP_ORDER, it's only ever emitted by the SS/MOSI/MISO/SCK GPIO-
+//    number match in build_boards.js) lands on the correct pins with the
+//    correct label instead of the plain-Pico template's coincidentally
+//    permuted mapping.
+//
+// GPIO15 (INTn), GPIO22 (RSTn): CONFIRMED dedicated single-purpose
+// control lines to/from the W6300 - not part of the QSPI data bus itself
+// and not general-purpose. No capability vocabulary applies (not a
+// button/LED, not a bus role) - capabilities left empty, note-only,
+// matching this repo's "no legitimate hardware alias worth surfacing"
+// precedent (adafruit_trinkeyrp2040qt).
+//
+// GPIO16 (CSn), GPIO17 (SCLK), GPIO18 (IO0), GPIO19 (IO1): CONFIRMED
+// QSPI bus lines to the W6300. capabilities left empty here so no
+// digital_input/digital_output/pwm_output is offered; the corrected
+// PIN_SPI0_SS/SCK/MOSI/MISO aliases in pins_arduino.h make
+// build_boards.js unconditionally attach the correct "spi_ss"/"spi_sck"/
+// "spi_mosi"/"spi_miso" bus-role tag to each (GPIO18/19 are quad-mode
+// data lines re-using the single-SPI MOSI/MISO GPIO slots in single/dual
+// QSPI mode, per the WIZnet-PICO-C driver pin table).
+//
+// GPIO20 (IO2), GPIO21 (IO3): CONFIRMED QSPI quad-mode data lines to the
+// W6300 (only active in quad SPI mode). No SS/MOSI/MISO/SCK slot exists
+// for these two extra data lines (plain SPI only has 4 roles), so no bus
+// tag is available to attach - capabilities left empty, note-only.
+//
+// No onboard user button beyond the Pico's own standard BOOTSEL (not a
+// normal GPIO, out of scope).
+//
+// GPIO25 (user LED): the Pico's own standard LED circuit - identical to
+// the one already confirmed active-high on the sibling rpipico/board.json
+// precedent. Tagged below (2026-07-12 consistency pass) rather than left
+// deferred, since the evidence (identical unmodified stock LED circuit,
+// this board's pins_arduino.h doesn't declare a board-specific LED alias)
+// is already established.
+//
+// See boardsDetails/rp2040/rp2040/wiznet_6300_evb_pico/notes.txt for the
+// full research trail.
+{
+  "boardName": "RP2040",
+  "displayName": "Raspberry Pi Pico (RP2040)",
+  "family": "rp2040",
+  "inputOnlyGpios": [],
+  "connections": ["serial"],
+  "pinNotes": {},
+  "chipGpios": {
+    "15": { "capabilities": [], "note": "W6300 INTn - Ethernet chip interrupt request line, dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "16": { "capabilities": [], "note": "W6300 CSn - Ethernet chip QSPI chip select, dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "17": { "capabilities": [], "note": "W6300 SCLK - Ethernet chip QSPI clock, dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "18": { "capabilities": [], "note": "W6300 IO0 - Ethernet chip QSPI data line 0 (MOSI in single-SPI mode), dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "19": { "capabilities": [], "note": "W6300 IO1 - Ethernet chip QSPI data line 1 (MISO in single-SPI mode), dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "20": { "capabilities": [], "note": "W6300 IO2 - Ethernet chip QSPI quad-mode data line 2, dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "21": { "capabilities": [], "note": "W6300 IO3 - Ethernet chip QSPI quad-mode data line 3, dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "22": { "capabilities": [], "note": "W6300 RSTn - Ethernet chip reset line, dedicated, not general purpose (confirmed docs.wiznet.io pinout + WIZnet-PICO-C driver)" },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Connected to user LED. Standard unmodified Pico LED circuit, confirmed active-high per the rpipico precedent." }
+  },
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

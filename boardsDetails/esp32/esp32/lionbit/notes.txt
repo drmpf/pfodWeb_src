@@ -1,0 +1,102 @@
+lionbit board research notes
+=============================
+Board: variants/esp32/esp32/lionbit (classic ESP32, NOT the sibling "lionbits3" ESP32-S3 board - not touched).
+Candidates from pins_arduino.h alias names (NOT trusted on their own, per task rules):
+  LED_BUILTIN = GPIO0
+  SWITCH_A    = GPIO2
+  SWITCH_B    = GPIO4
+
+Sources consulted (URL - what it told me)
+------------------------------------------
+https://docs.platformio.org/en/latest/boards/espressif32/lionbit.html
+  - Confirms board is classic ESP32 (not S3), 240MHz/4MB/320KB, vendor link http://lionbit.lk/.
+  - No peripheral/button/LED detail beyond upload/debug config.
+
+https://www.espboards.dev/esp32/lionbit/
+  - Third-party auto-generated pinout page, just reproduces the same pins_arduino.h alias
+    names (LED_BUILTIN on GPIO0, SWITCH_A on GPIO2, SWITCH_B on GPIO4). Not independent
+    confirmation - same info source as the header file itself.
+
+https://lionbit.cc/blog-details.html  (vendor site, "What is Lion:Bit")
+  - Describes the *current* product line as ESP32-S3 WROOM-1 based, with LCD, RGB LED,
+    buzzer, LDR, touch pins, "two input buttons labeled A and B for user interaction".
+  - This text is for the S3 product (Lion:Bit S3), not necessarily the original ESP32
+    "Lion:Bit" (this board). No separate marketing page found describing a plain single-
+    color LED for the original non-S3 board.
+
+https://lionbit.cc/  (vendor homepage)
+  - Only surfaced Lion:Bit S3 model description; did not find a dedicated non-S3 product
+    page distinguishing original-board-only features.
+
+https://github.com/espressif/arduino-esp32/pull/6151
+  - Official PR adding this board's pins_arduino.h, submitted by niwantha33 (LionBit vendor
+    rep). Links to https://lionbit.lk and https://github.com/LionBit-Sri-Lanka/lionbit_dev_board.
+  - No extra hardware description beyond "Arduino pin definition of Lion:Bit Dev Board".
+
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/lionbit/pins_arduino.h
+  - Confirmed current upstream pins_arduino.h matches our copy (LED_BUILTIN=0, SWITCH_A=2,
+    SWITCH_B=4, TX=1, RX=3, display pins RST=33/CLK=18/CS=27/DC=32/ST_MOSI=23, LDR on A2/GPIO34).
+  - Does NOT define any RGBLED/NeoPixel constant - i.e. this classic-ESP32 "lionbit" board
+    has no onboard addressable RGB LED (unlike its S3 sibling, see below).
+
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/lionbits3/pins_arduino.h
+  - Confirms the SEPARATE ESP32-S3 "lionbits3" board defines RGBLED=GPIO48 (NeoPixel),
+    LED_BUILTIN=GPIO0, SWITCH_A=GPIO46, SWITCH_B=GPIO47 - different GPIO numbers entirely,
+    proving lionbit (classic) and lionbits3 (S3) are genuinely different hardware revisions,
+    not just a copy-paste of the same board.json. Used only to rule out cross-contamination,
+    not touched.
+
+https://github.com/orgs/LionBit-STEM-Board/repositories and
+https://raw.githubusercontent.com/LionBit-STEM-Board/lionBit-STEM-library/main/lionbitsupport.h
+  - This is the vendor's NeoPixel/buzzer support library ("lionbitsupport.h"): uses
+    Adafruit_NeoPixel on constant RGBLED and Adafruit_ST7735 on TFT_CS/DC/MOSI/SCLK/RST.
+  - These constants (RGBLED, TFT_*) do NOT exist in the classic "lionbit" pins_arduino.h,
+    only in "lionbits3" - so this NeoPixel-capable library targets the S3 board, not this one.
+    Confirms this classic board has no confirmed addressable RGB LED.
+
+https://github.com/orgs/LionBit-Sri-Lanka/repositories,
+https://raw.githubusercontent.com/LionBit-Sri-Lanka/lionbit/main/lionbit.h (and /master/ variant)
+  - Separate, older vendor org (LionBit-Sri-Lanka) repo "lionbit" is described as
+    "This library contains the pin definition of the Lion:Bit Development Board", targeting
+    platform=espressif32, board=lionbit (i.e. THIS board, the classic ESP32 one).
+  - Independently reproduces the exact same pin set: LED_BUILTIN=GPIO0, SWITCH_A=GPIO2,
+    SWITCH_B=GPIO4, plus the same ST7735 display pins and LDR-on-A2 assignment.
+  - This is the vendor's own dedicated pin-definition library (separate repo from the
+    arduino-esp32 PR), so it is independent corroboration of the SWITCH_A/SWITCH_B/LED_BUILTIN
+    naming, not merely a re-post of the same header.
+
+https://github.com/LionBit-Sri-Lanka/Home
+  - Vendor's main "Lion:Bit Dev Board" getting-started repo; only setup/PlatformIO
+    instructions, no hardware/schematic detail found in fetched content.
+
+WebSearch: "Lion:Bit" board "tactile" OR "push button" ... specifications
+  - Surfaced lionbit.cc text: "Lion:Bit includes two input buttons labeled 'A' and 'B' that
+    provide a simple way to capture user input" (micro:bit-style A/B button convention).
+
+Pins considered but NOT tagged, and why
+----------------------------------------
+GPIO0 (LED_BUILTIN in pins_arduino.h) - NOT TAGGED.
+  Reasoning: On essentially all classic ESP32 dev boards, GPIO0 is the strapping pin used
+  for the BOOT/FLASH button (pull LOW at reset = download mode; HIGH/floating = normal boot),
+  which matches this board's own board.json pinNote "Must be HIGH or floating on reboot" for
+  GPIO0. "LED_BUILTIN" is exactly the kind of generic/likely-wrong alias name the task
+  instructions warn against trusting. I found NO vendor marketing text, schematic, or product
+  photo describing a plain single-color status LED as a physical feature on this (non-S3)
+  board - the vendor's LED marketing copy that IS confirmed (RGB/NeoPixel LED) applies only
+  to the sibling "lionbits3" (ESP32-S3) board, which has no RGBLED definition in this board's
+  own header at all. Given the strong competing convention (GPIO0 = BOOT button on virtually
+  every ESP32 devkit) and the total absence of independent LED-feature confirmation for this
+  specific board, I made NO guess either way and left GPIO0 untagged. This is a genuine
+  "insufficient evidence" case for human review, not a considered judgment call toward one
+  answer - it could plausibly be either a mislabeled BOOT button or a genuine LED; I found
+  nothing to resolve it either way.
+
+Summary of what WAS tagged
+----------------------------
+GPIO2 (SWITCH_A) -> ["digital_input","button"]
+GPIO4 (SWITCH_B) -> ["digital_input","button"]
+Confirmed via two independent vendor-maintained sources (LionBit-Sri-Lanka's dedicated
+"lionbit" pin-definition library repo, and lionbit.cc's own docs describing "two input
+buttons labeled A and B"), both consistent with the pins_arduino.h GPIO assignments. Neither
+pin coincides with this board's TX (GPIO1) or RX (GPIO3), so no TX/RX hard-reserve conflict.
+No polarity distinction needed since the "button" tag has no active-high/low variants.

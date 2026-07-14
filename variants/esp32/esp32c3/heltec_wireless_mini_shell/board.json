@@ -1,0 +1,88 @@
+// pfodWeb NOTE: this board is the Heltec HT-CT62 LoRa module (ESP32-C3FN4
+// + Semtech SX1262), Arduino IDE board name "Wireless Mini Shell". Its
+// vendor pins_arduino.h is unmodified generic ESP32-C3 boilerplate (byte-
+// identical to the upstream Heltec-Aaron-Lee/WiFi_Kit_series repo copy)
+// and does NOT reflect this module's real onboard LoRa radio wiring.
+// GPIO3/4/5/6/7/8/10 are excluded below - the official HT-CT62(Rev1.1)
+// datasheet's pin description table (Table 2.2) explicitly documents each
+// of these as "connected to SX1262_..." (DIO1/BUSY/RST/MISO/MOSI/NSS/SCK
+// respectively), i.e. dedicated onboard LoRa radio SPI/control lines, not
+// general-purpose GPIO. GPIO11 is also excluded - it is absent from the
+// datasheet's pin table entirely (the table's 22 physical pins total only
+// 15 GPIO, matching the datasheet's own "15*GPIO" hardware-resource count
+// when GPIO11 is left out), consistent with GPIO11 being committed
+// internally to the SiP-packaged flash's VDD_SPI on this ESP32-C3FN4
+// module rather than broken out as usable I/O.
+// No onboard button or LED/NeoPixel is documented anywhere in the vendor
+// datasheet, the docs.heltec.org / heltec.org product pages, or the
+// vendor's own pins_arduino.h (which is generic boilerplate, not board-
+// specific evidence) - so none of GPIO0/1/2/9 are tagged button/led.
+// See boardsDetails/esp32/esp32c3/heltec_wireless_mini_shell/notes.txt
+// for full source list and reasoning, including a documented but
+// discounted third-party (Meshtastic) firmware counter-reference that
+// assigns a button/LED to GPIO9/GPIO2 for an add-on carrier board (not
+// the stock module).
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32C3" -> designer/boards/ESP32C3/ESP32C3.json -> const ESP32C3Data = {...}
+  "boardName": "ESP32C3",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32-C3 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32-C3 has no hardware DAC.
+  "dac": {},
+
+  // ADC: ESP32-C3 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation settable via analogSetAttenuation()
+  // for 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  // ESP32-C3: every exposed GPIO is bidirectional — no input-only pins.
+  "inputOnlyGpios": [],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Reference: ESP32-C3 Technical Reference Manual — Strapping Pins.
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+
+  // User-accessible GPIO numbers on this board.  GPIOs 3/4/5/6/7/8/10 are
+  // excluded - dedicated onboard LoRa SX1262 radio SPI bus and control
+  // lines (DIO1/BUSY/RST/MISO/MOSI/NSS/SCK per the HT-CT62 datasheet's
+  // pin table). GPIO11 is excluded - not broken out on this module
+  // (committed to internal SiP-flash VDD_SPI). GPIOs 12-17 (flash) and
+  // 18-19 (USB) are excluded per the ESP32-C3 chip-level default.
+  // Source: HT-CT62(Rev1.1).pdf datasheet Table 2.2, cross-confirmed by
+  // Meshtastic firmware's heltec_esp32c3 variant.h LoRa pin definitions.
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

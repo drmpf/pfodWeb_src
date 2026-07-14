@@ -1,0 +1,113 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Wemos/LOLIN C3 Mini (mini WiFi + BLE5 dev board, ESP32-C3FH4).
+  // pins_arduino.h declares PIN_RGB_LED=7 (with RGB_BRIGHTNESS=64,
+  // wired to LED_BUILTIN/RGB_BUILTIN via the SOC_GPIO_PIN_COUNT+N
+  // virtual-pin convention). No board.json override existed before this
+  // audit (used the chip-level esp32c3/board.json default). Flagged by
+  // the discovery sweep for the PIN_RGB_LED=7 declaration.
+  //
+  // A sibling board, lolin_c3_pico (same wave), has an identical
+  // `#define PIN_RGB_LED 7` line but ALSO declares a VBAT battery-sense
+  // pin (GPIO3) that this board's own pins_arduino.h does NOT declare -
+  // the two boards were not assumed to be identical hardware and were
+  // verified independently. This board (c3_mini) has no VBAT/battery
+  // pin declared anywhere in its pins_arduino.h, and no vendor source
+  // consulted below mentions one, so none was added.
+  //
+  // Sources consulted:
+  //  - https://www.wemos.cc/en/latest/c3/c3_mini.html
+  //    Official vendor documentation (WEMOS/LOLIN's own site, the same
+  //    URL cited in this board's own pins_arduino.h header comment).
+  //    Confirmed via WebFetch: the board includes "1x WS2812B RGB LED".
+  //    Page also references a schematic PDF and pin-diagram image not
+  //    directly parseable by WebFetch.
+  //  - WebSearch summary of https://mischianti.org/wemos-lolin-esp32-c3-mini-v2-1-high-resolution-pinout-and-specs/
+  //    Independent third-party pinout/datasheet reference. Search-result
+  //    summary states "GPIO7 is connected to the on-board WS2812B RGB
+  //    LED... controlled via GPIO7", matching the vendor page and this
+  //    board's own `#define PIN_RGB_LED 7`. A direct WebFetch of the
+  //    same page separately confirmed the text "RGB_LED, driven by
+  //    GPIO7" and also confirmed the presence of BOOT and RESET buttons
+  //    (labelled "Download button" / "restart" button) without stating
+  //    a GPIO number for either in the fetched excerpt, and confirmed no
+  //    VBAT pin is mentioned for this board.
+  //  - https://github.com/arendst/Tasmota/discussions/15443
+  //    Community discussion specific to this exact board (Wemos C3
+  //    mini) about an unrelated RF antenna-matching hardware issue.
+  //    Confirmed in passing, specific to this board's own flashing
+  //    procedure: "hold GPIO9 down (button) and press and release reset
+  //    button, then release GPIO9" to enter upload mode - i.e. GPIO9 is
+  //    the BOOT button, consistent with the standard ESP32-C3 strapping
+  //    pin already documented at the chip level (pinNotes "Must be HIGH
+  //    for normal boot").
+  //  - https://www.espboards.dev/esp32/lolin-c3-mini/
+  //    Independent third-party board database. Fetched content was
+  //    low-signal (garbled diagram text reading "GPIO2 220Ω LED GND")
+  //    suggesting an unrelated simple/indicator LED reference, not a
+  //    WS2812 RGB LED, and did not confirm or deny anything about GPIO7
+  //    or GPIO9. Treated as an inconclusive outlier and not relied on
+  //    for either finding (same treatment as similar low-signal
+  //    secondary sources in prior audits this session).
+  //  - pins_arduino.h (local, already in repo) - `#define PIN_RGB_LED 7`
+  //    corroborates the GPIO7 RGB LED finding after the vendor and
+  //    mischianti sources had already independently confirmed it.
+  //
+  // GPIO7 (PIN_RGB_LED): CONFIRMED onboard WS2812/NeoPixel-style RGB
+  // LED, per wemos.cc (primary vendor source) and mischianti.org,
+  // corroborated by this board's own firmware macro. Tagged
+  // capabilities ["digital_output","led_neopixel","pwm_output"]
+  // (pwm_output retained since it was already present on this pin at
+  // the chip-level default), matching this repo's existing
+  // led_neopixel precedent (e.g. waveshare_esp32_c3_zero GPIO10,
+  // adafruit_qtpy_esp32c3 GPIO2).
+  //
+  // GPIO9 (opportunistic section 7a button check): CONFIRMED onboard
+  // physical BOOT button, per a community discussion specific to this
+  // exact board plus the standard ESP32-C3 strapping-pin convention
+  // already reflected in the chip-level pinNotes for GPIO9 ("Must be
+  // HIGH for normal boot", retained as-is - expected/documented for
+  // this exact pin, same treatment as the adafruit_qtpy_esp32c3 and
+  // waveshare_esp32_c3_zero precedents). Tagged capabilities
+  // ["digital_input","button"] only.
+  //
+  // Alias-conflict check (critical check flagged repeatedly this
+  // session): this board's own pins_arduino.h declares TX=21, RX=20,
+  // SDA=8, SCL=10, SS=5, MOSI=4, MISO=3, SCK=2, plus A0-A5 = 0,1,2,3,4,5.
+  // Neither GPIO7 nor GPIO9 collides with any of these aliases, so no
+  // conflicting boilerplate alias line existed to strip and no
+  // pins_arduino.h edit was needed.
+  //
+  // See boardsDetails/esp32/esp32c3/lolin_c3_mini/notes.txt for the
+  // full research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

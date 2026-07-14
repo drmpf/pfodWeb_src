@@ -1,0 +1,67 @@
+Board: esp32h2 / esp32h2 (Espressif generic "ESP32H2 Dev Module" entry,
+representing the official ESP32-H2-DevKitM-1 reference board)
+Directory: variants/esp32/esp32h2/esp32h2/
+Audit date: 2026-07-12
+
+pins_arduino.h summary (read in full):
+  PIN_RGB_LED 8, LED_BUILTIN/RGB_BUILTIN wired to it, RGB_BRIGHTNESS 64
+  TX=24, RX=23, SDA=12, SCL=22, SS=0, MOSI=25, MISO=11, SCK=10
+  A0..A4 = GPIO1..GPIO5
+  No board.json override existed before this audit (used the
+  chip-level esp32h2/board.json default, "inputOnlyGpios": []).
+
+Sources consulted:
+  1. https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32h2/esp32-h2-devkitm-1/user_guide.html
+     Official Espressif esp-dev-kits documentation for the
+     ESP32-H2-DevKitM-1. States: "Addressable RGB LED, driven by
+     GPIO8. This means that all color data is transmitted serially
+     through a single data line (GPIO8) to control the color of the
+     RGB LED." The J3 pin header table lists GPIO8 with a footnote
+     "Used for driving RGB LED inside the module." The guide also
+     references an LED blink example for using the onboard RGB LED.
+  2. General web corroboration (esp32.co.uk pinout guide, espboards.dev
+     ESP32-H2 pages) - consistent with an addressable WS2812-style RGB
+     LED wired to GPIO8 on the ESP32-H2-DevKitM-1, matching Espressif's
+     own documentation.
+  3. Cross-checked against this same audit pass's sibling generic chip
+     entries (esp32c3, esp32c6) which both independently confirmed a
+     real onboard NeoPixel at GPIO8 via Espressif's own official
+     DevKitM-1/DevKitC-1 user guides - the H2 finding is consistent
+     with that established pattern for Espressif's own generic RISC-V
+     dev-kit boards.
+
+Reasoning:
+  GPIO8 (PIN_RGB_LED): CONFIRMED real onboard WS2812 addressable RGB
+  LED, stated directly by Espressif's own official user guide for the
+  exact physical reference board (ESP32-H2-DevKitM-1) this generic
+  Arduino IDE entry models. High confidence - primary vendor source,
+  explicit statement of an addressable RGB LED driven by GPIO8, plus
+  consistency with sibling esp32c3/esp32c6 findings in this same audit
+  pass. Tagged capabilities ["digital_output","led_neopixel",
+  "pwm_output"] (digital_input dropped), matching this repo's existing
+  led_neopixel precedent (esp32c3/esp32c3 GPIO8, esp32c6/esp32c6 GPIO8,
+  waveshare_esp32_s3_zero GPIO21, adafruit_qtpy_esp32c3 GPIO2).
+
+  Alias-collision check (per this session's new step): compared GPIO8
+  against this variant's own TX/RX/SDA/SCL/SS/MOSI/MISO/SCK alias list
+  (24/23/12/22/0/25/11/10) - GPIO8 is not aliased as any of those, so
+  no conflicting boilerplate bus alias exists for this pin and
+  build_boards.js will not auto-append an i2c_sda/spi_*/serial_*
+  capability onto it. Unlike esp32c3/esp32c3 (which had a colliding
+  default "SDA = 8" requiring a pins_arduino.h edit), no pins_arduino.h
+  change was needed here - the vendor default SDA/SCL/SPI pins on this
+  chip's generic variant are all elsewhere (12/22/0/25/11/10).
+
+  pinNotes "8": "Must be HIGH or floating on reboot" retained as-is -
+  this is documented strapping-pin behavior for this exact pin
+  (GPIO8/GPIO9 are ESP32-H2 strapping pins per Espressif's TRM), not a
+  reason to exclude the pin. The onboard RGB LED circuit is understood
+  to be pre-tuned by Espressif so it doesn't interfere with boot,
+  consistent with the sibling esp32c3/esp32c6 findings.
+
+Summary: Created variants/esp32/esp32h2/esp32h2/board.json (full copy
+of the chip-level esp32h2/board.json default) with GPIO8 retagged
+["digital_output","led_neopixel","pwm_output"] for the confirmed
+onboard WS2812 RGB LED on the ESP32-H2-DevKitM-1; no alias-collision
+bug found on this board (GPIO8 not aliased as any bus/serial pin in
+pins_arduino.h); no pins_arduino.h edit needed.

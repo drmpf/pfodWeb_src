@@ -1,0 +1,75 @@
+uPesy_esp32_wroom_devkit - button/LED research notes
+=====================================================
+
+Sources consulted:
+
+1. https://www.upesy.com/blogs/tutorials/upesy-esp32-wroom-devkit-board-documentation-version-latest
+   Official uPesy documentation for THIS exact board. "Details on pin numbers"
+   table lists: Keyword LED_BUILTIN -> Arduino Uno pin 13 -> ESP32 Pin 2.
+   Confirms GPIO2 = onboard LED_BUILTIN mapping (matches this variant's
+   pins_arduino.h: static const uint8_t LED_BUILTIN = 2;). Also states the
+   board has two buttons, EN and BOOT, for "control of the state of the
+   ESP32" - i.e. reset/bootloader entry, not a general-purpose user button.
+   No mention of any dedicated user pushbutton wired to a free GPIO.
+
+2. https://www.upesy.com/blogs/tutorials/upesy-esp32-wroom-low-power-devkit-board-documentation-version-latest
+   Official uPesy documentation for the sibling "Low Power" variant. States
+   this Low Power board deliberately has "no blue LED on the GPIO2 pin
+   either" and "no LED lights up when powered in the optimized power supply
+   modes" - explicitly framed as a difference vs. the standard DevKit. This
+   corroborates that the STANDARD uPesy ESP32 Wroom DevKit (the board being
+   audited here) does have a blue LED on GPIO2 by default. Confirms both
+   EN and BOOT buttons exist on both boards (used for reset / manual flash
+   mode entry), not user-purpose buttons.
+
+3. https://www.upesy.com/products/upesy-esp32-wroom-devkit-board
+   Official uPesy product page for this board. Mentions "a simple and clear
+   pinout" and a pinout card sheet, but does not itself restate LED/button
+   GPIO numbers (no new information beyond source 1).
+
+4. https://www.espboards.dev/esp32/upesy-wroom/
+   Third-party aggregator pinout page. States "The module includes a
+   built-in LED connected to GPIO13" and a pinout table row
+   "LED_BUILTIN | GPIO13 | output | Built-in LED". This CONTRADICTS the
+   official uPesy documentation (source 1) and this board's own
+   pins_arduino.h, both of which say LED_BUILTIN = GPIO2. Treated as
+   unreliable/likely auto-generated error and NOT used as the basis for
+   any tag - official first-party uPesy docs + pins_arduino.h were
+   preferred instead.
+
+5. https://www.circuitstate.com/pinouts/doit-esp32-devkit-v1-wifi-development-board-pinout-diagram-and-reference/
+   Reference for the generic "ESP32 DevKitC-style" reference design that
+   this uPesy board and many other generic ESP32 DevKit clones are based
+   on. Describes GPIO2 -> 330 ohm resistor -> LED anode -> cathode -> GND,
+   and states the LED is "high active" (GPIO HIGH = LED on). Used only to
+   confirm the active-HIGH polarity convention for a GPIO2-anode/GND-cathode
+   LED wiring, since the uPesy docs themselves do not state polarity
+   explicitly. Not a uPesy-specific schematic, but consistent with the
+   confirmed presence of a GPIO2 LED on this generic-style board.
+
+Pins considered but NOT tagged:
+
+- No onboard user pushbutton was tagged. Only EN and BOOT pins were found
+  documented (both official uPesy doc pages, sources 1 and 2), and these
+  are generic reset/bootloader-entry pins common to nearly all ESP32
+  DevKit-style boards, not a general-purpose user button wired to a free
+  GPIO. This is a deliberate NO-GUESS decision, not a judgment call -
+  no source suggested any additional user button exists on this board.
+  (EN is not even a normal GPIO; BOOT/GPIO0 is a strapping pin used for
+  flash-mode entry and was not treated as a "confirmed onboard user
+  button" per task rules, since no vendor source calls it a user button.)
+
+- GPIO13 (the LED pin claimed by espboards.dev, source 4) was explicitly
+  NOT tagged. This conflicts with both the official uPesy documentation
+  and this variant's own pins_arduino.h (LED_BUILTIN = GPIO2), so it was
+  judged unreliable and disregarded rather than guessed at.
+
+Tag applied:
+
+- GPIO2 tagged ["digital_output", "led_high", "pwm_output"] (was
+  ["analog_input_serial","digital_input","digital_output","pwm_output"])
+  in board.json - confirmed onboard blue LED, active-high, per sources 1
+  and 2 above plus the generic ESP32 DevKitC-style active-high GPIO2 LED
+  reference design (source 5). GPIO2 is neither TX (GPIO1) nor RX (GPIO3)
+  for this board, so no TX/RX hard-reservation conflict applies. No
+  pre-existing pin-exclusion covered GPIO2 in this board's chipGpios.

@@ -1,0 +1,99 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Olimex ESP32-C3-DevKit-Lipo, ESP32-C3-MINI-1 module + built-in
+  // LiPo charger (STATUS LED + CHARGE LED), RESET button, USB-C. pins_arduino.h
+  // declares LED_BUILTIN=8, BUT_BUILTIN=9 (plus the usual generic ESP32-C3
+  // template SPI/I2C/analog boilerplate aliasing GPIO4-8). No board.json
+  // override existed before this audit (used the chip-level esp32c3/board.json
+  // default). Flagged by the discovery sweep for having BUT_BUILTIN=9 declared
+  // but never individually reviewed.
+  //
+  // Sources consulted:
+  //  - https://www.olimex.com/Products/IoT/ESP32-C3/ESP32-C3-DevKit-Lipo/open-source-hardware
+  //    Official Olimex product page. Lists board features: "User button" and
+  //    "Status LED" among others (in addition to the RESET button/CHARGE LED
+  //    covered by the user manual below).
+  //  - https://www.electrokit.com/upload/product/41020/41020799/ESP32-C3-Devkit-Lipo-user-manual-2.pdf
+  //    Official Olimex user manual, Rev.1.0 Sept 2022. Labelled board photo
+  //    shows "RESET" (RST1) and "STATUS LED" (LED1) plus "CHARGE LED"
+  //    (LiPo-charger status). The pinout-description page lists GPIO9 as a
+  //    plain EXT2 header pin (does not itself call out a second button).
+  //  - https://raw.githubusercontent.com/OLIMEX/ESP32-C3-DevKit-Lipo/main/HARDWARE/ESP32-C3-DevKit-Lipo_Rev_C/ESP32-C3-DevKit-Lipo_Rev_C.kicad_sch
+  //    Official Olimex KiCad schematic source, Rev C (current hardware
+  //    revision, dated 2026-01-09), fetched directly from the vendor's GitHub
+  //    hardware repo (github.com/OLIMEX/ESP32-C3-DevKit-Lipo). This is the
+  //    ground-truth net-level schematic, not a rendering. It contains:
+  //      - A "Main-BUS" bus_alias explicitly listing "GPIO9\USER_BUT" and
+  //        "GPIO8\USER_LED" (net-level labels, not guesses).
+  //      - A pushbutton symbol (lib symbol "OLIMEX_Buttons:T1107A...",
+  //        Reference "SW") wired into the GPIO9 net, with a schematic text
+  //        callout reading "USER\nButton" placed directly next to it.
+  //      - A strapping-pin note text: "ESP32-C3 family has three strapping
+  //        pins: GPIO2, GPIO8 and GPIO9. By default, GPIO9 is connected to
+  //        the internal pull-up resistor." - consistent with a button that
+  //        pulls GPIO9 low when pressed.
+  //      - Also confirms (informational, out of scope for this audit):
+  //        GPIO5\BAT_MEASURE (battery-voltage-sense pin - the pins_arduino.h
+  //        BAT_SENSE=3 commented-out placeholder does not match the real
+  //        schematic pin, GPIO5), GPIO1\EXT_PWR_SENSE (external power sense
+  //        - pins_arduino.h's commented-out PWR_SENSE=4 placeholder also
+  //        does not match), GPIO7\I2C_SDA and GPIO3\I2C_SCK (the board's
+  //        real I2C bus, on neither GPIO8 nor GPIO9 - confirming the
+  //        pins_arduino.h SDA=8/SCL=9 lines are unrelated generic-template
+  //        boilerplate, not this board's actual I2C wiring).
+  //
+  // GPIO9 (BUT_BUILTIN): CONFIRMED onboard physical user button, directly
+  // shown in the vendor's own Rev C schematic (net alias "GPIO9\USER_BUT",
+  // a real pushbutton symbol, and a "USER Button" text callout - not a
+  // guess or boilerplate name). Also the ESP32-C3's standard strapping pin
+  // (chip-level pinNotes entry "Must be HIGH for normal boot" retained
+  // unchanged, not removed - expected for this pin). Checked this board's
+  // own pins_arduino.h for any other I2C/SPI/UART alias landing on GPIO9:
+  // TX=21, RX=20, SDA=8, SS=7, MOSI=6, MISO=5, SCK=4 - none is 9 EXCEPT the
+  // now-deleted SCL=9 line (see pins_arduino.h pfodWeb NOTE and the
+  // schematic evidence above showing the real I2C SCL is GPIO3, not GPIO9).
+  // Tagged capabilities ["digital_input","button"] only, per the playbook's
+  // exclusion rule for button pins (no analog/output/pwm mixed in).
+  //
+  // Alias-conflict check (per this session's new playbook step): GPIO9 was
+  // aliased as SCL in the original pins_arduino.h (generic ESP32-C3 core
+  // template boilerplate, matching the sibling board found earlier this
+  // session with the identical bug). Deleted that line rather than
+  // commenting it out, per the playbook instruction, since build_boards.js
+  // unconditionally appends "i2c_scl" to any GPIO equal to the SCL alias
+  // regardless of the chipGpios override, which would otherwise silently
+  // re-contaminate this confirmed button-only capability list.
+  //
+  // See boardsDetails/esp32/esp32c3/esp32c3-devkit-lipo/notes.txt for the
+  // full research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

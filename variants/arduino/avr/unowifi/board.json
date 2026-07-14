@@ -1,0 +1,66 @@
+{
+  // boardName / displayName are overridden by boards.txt entry:
+  //   unowifi.name=Arduino UNO WiFi
+  "boardName": "unowifi",
+  "displayName": "Arduino UNO WiFi",
+
+  // Arduino UNO WiFi Rev1 ("UNO WiFi Developer Edition", 2016) is an
+  // ATmega328P Uno with an onboard ESP8266 Wi-Fi co-processor added.
+  // Mechanically it has the SAME digital/analog pin map as the standard
+  // Uno-family boards (pins_arduino.h just includes ../standard's) - see
+  // this directory's own pins_arduino.h. Split off from "standard"
+  // (2026-07-14 AVR pin audit) purely for the ESP8266-bridge pinNotes
+  // below; it does NOT change chipGpios/capabilities since the bridge
+  // sits on the ordinary shared TWI bus, not a dedicated GPIO.
+  "family": "avr",
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  // ADC: ATmega328P 10-bit ADC (0-1023), 5V operation like the standard
+  // Uno-family boards (confirmed via official Arduino UNO WiFi
+  // documentation: "Microcontroller ... Operating Voltage 5 V").
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "5.0" },
+  "inputOnlyGpios": [],
+
+  "connections": ["serial"],
+
+  // A4 (SDA, digital pin 18) and A5 (SCL, digital pin 19): official
+  // Arduino UNO WiFi documentation explicitly notes "the A4 or SDA pin
+  // and A5 or SCL pin are in use by the IO Expander SC16IS750IBS" - an
+  // onboard SC16IS750 UART-to-I2C bridge chip (fixed I2C address 0x48)
+  // that carries traffic to/from the onboard ESP8266 Wi-Fi co-processor.
+  // NOT excluded here: I2C is inherently multi-drop and the SC16IS750
+  // only occupies one fixed address on the bus, so a user's own I2C
+  // sensor at a different address still works normally on this same
+  // bus (matches the pin-audit playbook's "general-purpose I2C bus,
+  // even with one onboard device already attached" KEEP policy) - the
+  // official docs themselves keep listing A4/A5 as ordinary TWI pins,
+  // just flagged with this note, rather than removing them from the
+  // pinout. Left as plain informational notes, capabilities unchanged.
+  "pinNotes": {
+    "18": "A4/SDA - shared with the onboard SC16IS750 UART-to-I2C bridge chip (addr 0x48) used to talk to the onboard ESP8266 Wi-Fi co-processor. Still usable for your own I2C devices at a different address (I2C is multi-drop).",
+    "19": "A5/SCL - shared with the onboard SC16IS750 UART-to-I2C bridge chip (addr 0x48) used to talk to the onboard ESP8266 Wi-Fi co-processor. Still usable for your own I2C devices at a different address (I2C is multi-drop)."
+  },
+
+  // D13 - onboard status LED "L", active-high (official Arduino UNO WiFi
+  // documentation: "There is a built-in LED connected to digital pin 13.
+  // When the pin is HIGH value, the LED is on"). Confirmed identical to
+  // the standard-family boards. Also this board's PIN_SPI_SCK - the
+  // classic Arduino pin-13 LED+SCK sharing convention, not a bug. A
+  // chipGpios capability override COMPLETELY REPLACES the auto-derived
+  // capability list for this pin (including the spi_sck tag it would
+  // otherwise get) - deliberately, to avoid the "confirmed identity tag
+  // contaminated with a spurious bus-role tag" bug class documented in
+  // the pin-audit playbook (section 12).
+  //
+  // No other onboard LED wired to an ATmega328P GPIO was found: the
+  // board also carries "ON"/RX/TX indicator LEDs (wired to the
+  // ATmega16U2/8U2 USB-serial chip per official docs, not the 328P) and
+  // a "WiFi" status LED (silkscreened next to the ESP8266 module, with
+  // no ATmega328P pin function documented for it anywhere in Arduino's
+  // own pin-by-pin enumeration) - both out of scope per this pin audit's
+  // "not an AVR GPIO" rule. Not guessed; see boardsDetails notes.txt.
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED \"L\", active-high. Also PIN_SPI_SCK (classic Arduino pin-13 LED+SCK sharing, not a conflict for typical use)." }
+  }
+}

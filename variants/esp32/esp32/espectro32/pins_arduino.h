@@ -17,7 +17,10 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SD_SS = 33;
+// pfodWeb NOTE: SD_SS (GPIO33) deliberately NOT declared - dedicated
+// onboard microSD card chip-select (shares the general MOSI/MISO/SCK
+// bus below, which stays kept - the SD card has its own CS, leaving
+// room for other SPI devices on the same bus).
 static const uint8_t SS = 5;
 static const uint8_t MOSI = 23;
 static const uint8_t MISO = 19;
@@ -26,7 +29,7 @@ static const uint8_t SCK = 18;
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
 static const uint8_t A4 = 32;
-static const uint8_t A5 = 33;
+// pfodWeb NOTE: A5 (GPIO33) deliberately NOT declared - same as SD_SS above.
 static const uint8_t A6 = 34;
 static const uint8_t A7 = 35;
 static const uint8_t A10 = 4;
@@ -48,7 +51,7 @@ static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
 static const uint8_t T6 = 14;
 static const uint8_t T7 = 27;
-static const uint8_t T8 = 33;
+// pfodWeb NOTE: T8 (GPIO33) deliberately NOT declared - same as SD_SS above.
 static const uint8_t T9 = 32;
 
 static const uint8_t DAC1 = 25;

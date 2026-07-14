@@ -1,0 +1,83 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same pin-declaration style as RP2040 — shares the "rp2040" family
+  // value (see variants/rp2040/rp2040/board.json for the full rationale)
+  // so this stays grouped under the same Designer family, split out as
+  // its own "chip" bucket.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases. The board has BOOT and RESET buttons (schematic
+  // reference designators Key1/Key2 — confirmed via the official
+  // RP2350_Plus.pdf schematic, read directly: Key1 sits on the RUN net
+  // (reset button, pulls RUN low), Key2 sits on the QSPI_SS_N net
+  // through R20 1K (BOOTSEL button, pulls flash chip-select low during
+  // boot to enter the ROM bootloader) — identical layout to the
+  // confirmed RP2040 sibling board (../../rp2040/waveshare_rp2040_plus).
+  // Independently corroborated by Waveshare's own product page wording:
+  // "BOOT button - Press it when resetting to enter download mode" and
+  // "RESET button". Neither button is a normal GPIO digitalRead() pin
+  // (same out-of-scope rationale as ../rpipico2/board.json and the
+  // RP2040 sibling), so there is no pin to attach a "button" capability
+  // to.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  // RP2040/RP2350 boot from an internal ROM/BOOTSEL, not GPIO-driven
+  // flash-mode strapping pins like ESP32/ESP8266 — no boot-time
+  // restrictions to flag at the chip level.
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED) is the board's only onboard visual indicator — the
+  // official schematic (RP2350_Plus.pdf, "Key & LED" block, read
+  // directly) shows Led1 in series with current-limiting resistor R19
+  // (470R) between GPIO25 and GND — pin-for-pin identical wiring to the
+  // confirmed RP2040 sibling board (waveshare_rp2040_plus, chip family
+  // rp2040), which this RP2350-Plus board is explicitly the RP2350A
+  // drop-in successor to (same "Waveshare ... Plus" pinout/form factor,
+  // same schematic block layout and reference designators R19/Led1/
+  // Key1/Key2). Waveshare's own product page describes it simply as
+  // "User LED (not power indicator)". No NeoPixel/WS2812 exists on this
+  // board (only the single GPIO25 LED — confirmed via the schematic,
+  // which shows no WS2812/RGB component, and the product page, which
+  // mentions only the one user LED).
+  // Polarity: ACTIVE HIGH, by the same reasoning as the confirmed
+  // RP2040 sibling — GPIO25 drives current through R19 into the LED
+  // anode and out to GND, the standard Raspberry Pi Pico GPIO25 LED
+  // convention this Pico-compatible board follows. No RP2350-Plus-
+  // specific Zephyr board definition exists (checked; only rp2350_zero
+  // is upstreamed) so the RP2040-Plus Zephyr GPIO_ACTIVE_HIGH
+  // confirmation is carried across by the identical schematic wiring,
+  // not re-derived independently for this exact board — flagged here in
+  // case a future audit finds a more direct source.
+  // digital_input dropped and pwm_output kept per this repo's
+  // established led_high precedent for dedicated onboard LED pins (see
+  // ../../rp2040/waveshare_rp2040_plus/board.json GPIO25).
+  // Bus-collision check (per the audit's known bug class): GPIO25 carries
+  // no SDA/SCL/SS/MOSI/MISO/SCK alias in this board's pins_arduino.h
+  // (SPI0 uses GPIO16-19, SPI1 uses GPIO12-15, Wire0 uses GPIO8-9, Wire1
+  // uses GPIO6-7) — no collision, no pins_arduino.h edit needed.
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard user status LED, active-high, confirmed via RP2350_Plus.pdf schematic (Led1/R19 470R between GPIO25 and GND, identical to confirmed RP2040 sibling waveshare_rp2040_plus) and Waveshare product page (\"User LED (not power indicator)\") — see pfodWeb NOTE above" }
+  },
+
+  // Same 8-bit analogWrite() default as RP2040 — see
+  // variants/rp2040/rp2040/board.json.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  "dac": {},
+
+  // Same 12-bit ADC as RP2040 — see variants/rp2040/rp2040/board.json.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

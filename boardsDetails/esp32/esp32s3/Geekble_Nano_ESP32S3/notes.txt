@@ -1,0 +1,161 @@
+Geekble_Nano_ESP32S3 board.json tagging/exclusion research notes
+==================================================================
+
+Board: Geekble nano ESP32-S3 (variants/esp32/esp32s3/Geekble_Nano_ESP32S3),
+a Korean maker-education brand's (Geekble / designer "SooDragon"/"SooD")
+ESP32-S3FH4R2 module in an Arduino-Nano-compatible form factor. No prior
+board.json override existed - board was using the chip-level
+esp32/esp32s3/board.json default unchanged.
+
+Flagged declarations under review (from a fresh discovery sweep):
+  static const uint8_t SW_BUILTIN = 0;
+  static const uint8_t RTS = 45;
+  static const uint8_t CTS = D3;   // D3 = GPIO6
+  static const uint8_t DTR = A0;   // A0 = GPIO1
+  static const uint8_t DSR = D4;   // D4 = GPIO7
+  #define PIN_I2S_SCK    D7        // D7 = GPIO10
+  #define PIN_I2S_FS     D8        // D8 = GPIO17
+  #define PIN_I2S_SD     D9        // D9 = GPIO18
+  #define PIN_I2S_SD_OUT D9        // same as bidir
+  #define PIN_I2S_SD_IN  D10       // D10 = GPIO21
+
+Sources consulted
+------------------
+- https://github.com/SooDragon/Geekble-nano-ESP32S3
+  Official hardware repo for this exact board. Contains KiCad schematic,
+  pinmap image, dimension drawing, footprint/symbol data. The same author
+  ("SooD"/"SooDragon") authored the upstream espressif/arduino-esp32 PR
+  #11005 "feat(boards): Add Geekble-nano-ESP32S3" that added this variant
+  to the official Arduino core, and PR #11131 (LED_BUILTIN/naming fix).
+
+- https://raw.githubusercontent.com/SooDragon/Geekble-nano-ESP32S3/main/PinMap/Geekble%20nano%20PinMap.png
+  Official pinmap diagram (downloaded and visually inspected, "LAST UPDATE
+  2026.02.24", "Circuit Created by SooD, Designed by Vector"). Shows:
+    * "SW_BUILTIN" / "BOOT" / "PULL-UP (EXTERNAL)" labels on pin B1/GPIO0,
+      matching a "BOOT" pushbutton symbol drawn near the USB-C connector
+      at the top of the board (alongside a separate "RESET" button).
+    * A "USB D-"=GPIO19 / "USB D+"=GPIO20 native-USB connection straight
+      to the USB-C connector (VUSB/GND) - no separate USB-UART bridge chip
+      shown or implied anywhere on the diagram.
+    * No RTS/CTS/DTR/DSR labels appear ANYWHERE on the diagram. GPIO45 is
+      not present at all on the main Nano-style dual header pinout (only
+      D0-D13, A0-A7, B0/B1, power/ground) - it is only reachable via the
+      secondary expansion pad row, and even there it is shown as a bare
+      "GPIO45" pad with no other annotation.
+    * D3(GPIO6)/D4(GPIO7)/A0(GPIO1)/D7(GPIO10)/D8(GPIO17)/D9(GPIO18)/
+      D10(GPIO21) are all shown as plain digital/analog header pins with
+      no serial-control or I2S/audio-specific silkscreen labelling.
+
+- https://raw.githubusercontent.com/SooDragon/Geekble-nano-ESP32S3/main/Schematic/Geekble_nano_Ver.2.5_Schematic.png
+  Official KiCad schematic, "File: Geekble_Nano_ESP32S3.kicad_sch", Rev 1
+  (downloaded and visually inspected). Confirms:
+    * GPIO0/BOOT net is wired to a real tactile pushbutton SW2
+      (TS-1088-AR02016) with a 10k pull-up (R2) to 3V3 - a genuine onboard
+      BOOT button, matching the pinmap. A second, separate button SW1 (also
+      10k pull-up, R1) resets the chip via CHIP_PU/EN, not a GPIO.
+    * The USB-C receptacle's D+/D- lines go directly to the ESP32-S3
+      module's GPIO20/GPIO19 pins (native USB-CDC/JTAG-Serial peripheral
+      built into the chip). There is NO discrete USB-to-UART bridge IC
+      anywhere on the board (no CP2102/CH340/CH9102/etc. footprint) - the
+      only ICs present are a TPS630701 buck-boost regulator, a
+      ME6217C33M5G 3.3V LDO, and the ESP32-S3FH4R2 module itself. With no
+      physical UART-to-USB bridge on the board, there is no hardware for
+      RTS/CTS/DTR/DSR serial-modem-control lines to actually control -
+      the native-USB CDC auto-reset (if used at all) is handled internally
+      by the ESP32-S3's own USB-Serial-JTAG peripheral via CHIP_PU/GPIO0,
+      not via these named GPIOs.
+    * GPIO45 appears only as a bare broken-out pad (silkscreen ref "H44"
+      in the secondary expansion header) with no other net connections.
+      GPIO1, GPIO6, GPIO7 (A0/D3/D4) are likewise bare broken-out pads on
+      the main header with no additional circuitry attached.
+    * No microphone, speaker, amplifier, or audio-codec component or
+      footprint is present anywhere in the schematic.
+
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/arduino_nano_nora/pins_arduino.h
+  The official Arduino Nano ESP32 (u-blox NORA-W106) variant - the obvious
+  template this board's Nano-style D0-D13/A0-A7/RTS/CTS/DTR/DSR naming
+  convention was modelled on (Geekble's own docs describe the board as
+  Nano-form-factor / Nano-pinmap-compatible). In that upstream file, RTS is
+  aliased to "LED_BLUE" - i.e. not a real serial control signal at all on
+  that board either. This confirms the RTS/CTS/DTR/DSR alias names in this
+  pin-naming family are inherited/decorative compatibility names carried
+  across the template, not proof of dedicated serial-control wiring on
+  every board that reuses the naming pattern (including this one, per the
+  schematic review above).
+
+- https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/Geekble_Nano_ESP32S3/pins_arduino.h
+  Upstream espressif/arduino-esp32 copy of this exact board's
+  pins_arduino.h. Byte-identical (same D0-D13/A0-A7 GPIO numbers, same
+  RTS=45/CTS=D3/DTR=A0/DSR=D4, same PIN_I2S_* defines) to this project's
+  local copy at variants/esp32/esp32s3/Geekble_Nano_ESP32S3/pins_arduino.h
+  - confirms no local drift and that these are the real, current upstream
+  declarations for this board (not a stale/mistaken local copy).
+
+Per-pin decisions
+------------------
+GPIO0 (SW_BUILTIN) - KEEP pin, RETAG.
+  Confirmed onboard physical BOOT pushbutton (SW2 + external 10k pull-up
+  per schematic; "BOOT"/"SW_BUILTIN"/"PULL-UP (EXTERNAL)" per pinmap).
+  Verified NOT this board's TX/RX pin (TX=D1=GPIO43, RX=D0=GPIO44 per
+  pins_arduino.h and confirmed on the pinmap/schematic). Standard ESP32-S3
+  boot-strapping pin doubling as a user-readable button, the same pattern
+  used on most ESP32-S3 dev boards (and on the sibling Geekble_ESP32C3
+  board audited earlier). Tagged ["digital_input","button"] only in the
+  new board.json override; chip-level pinNotes["0"] "Must be HIGH for
+  normal boot" retained unchanged.
+
+GPIO45 (RTS) - REVIEWED, KEPT unchanged (no exclusion).
+  Not wired to any onboard USB-to-serial auto-reset circuit: this board
+  has no discrete USB-UART bridge chip at all (native-USB only, via
+  GPIO19/20, which are already excluded at the chip level as USB pins).
+  Schematic shows GPIO45 as a bare broken-out expansion pad with no other
+  connections. "RTS" is an inherited alias name from the Nano-style
+  pin-naming template (see arduino_nano_nora cross-check above), not
+  evidence of dedicated hardware on this specific board. Left as a normal
+  chip-default GPIO; chip-level pinNotes["45"] "Must be LOW or floating on
+  reboot" (strapping-pin warning, unrelated to the RTS name) retained
+  unchanged.
+
+GPIO6/D3 (CTS), GPIO7/D4 (DSR), GPIO1/A0 (DTR) - REVIEWED, KEPT unchanged.
+  Same reasoning as GPIO45: no onboard USB-UART bridge exists on this
+  board for any of these flow-control aliases to actually control.
+  Schematic shows all three as plain broken-out digital/analog pads with
+  no dedicated circuitry. Left as normal chip-default GPIOs.
+
+PIN_I2S_SCK/D7 (GPIO10), PIN_I2S_FS/D8 (GPIO17),
+PIN_I2S_SD/PIN_I2S_SD_OUT/D9 (GPIO18), PIN_I2S_SD_IN/D10 (GPIO21) -
+REVIEWED, KEPT unchanged.
+  These are preprocessor #define aliases (not "static const uint8_t" pin
+  declarations) pointing at D7-D10, which are already ordinary
+  chip-default GPIOs used elsewhere on the header (general digital pins on
+  the pinmap). No microphone, speaker, amplifier, or audio-codec
+  component exists anywhere on this board per the schematic review - this
+  is a general-purpose I2S pin grouping intended for the user's own
+  external I2S hardware (e.g. an external DAC/mic module), not a
+  dedicated onboard audio peripheral. No board.json or pins_arduino.h
+  change made for these.
+
+What was changed
+------------------
+- Created variants/esp32/esp32s3/Geekble_Nano_ESP32S3/board.json (none
+  existed before) as a full copy of the chip-level esp32/esp32s3/board.json
+  default, with only GPIO0's capabilities changed to
+  ["digital_input","button"], plus a detailed "pfodWeb NOTE" comment block
+  at the top citing all sources and the per-pin reasoning above (including
+  the "reviewed, kept" decisions for GPIO45/6/7/1/10/17/18/21).
+- pins_arduino.h was NOT edited. No pin on this board was found to be
+  wired to dedicated onboard hardware requiring exclusion from chipGpios -
+  the RTS/CTS/DTR/DSR names are inherited template aliases with no real
+  onboard USB-serial bridge circuit behind them, and the I2S pins are a
+  general-purpose breakout with no onboard mic/speaker/codec.
+
+Summary
+--------
+Only GPIO0 (SW_BUILTIN) needed a change: confirmed onboard BOOT button,
+tagged ["digital_input","button"] in a new board.json override. GPIO45
+(RTS), GPIO6/D3 (CTS), GPIO7/D4 (DSR), GPIO1/A0 (DTR), and the I2S pins
+D7/D8/D9/D10 (GPIO10/17/18/21) were all reviewed against the board's real
+KiCad schematic and pinmap and found to have no dedicated onboard hardware
+attached (no USB-UART bridge chip exists on this native-USB-only board;
+no microphone/speaker/codec exists on this board) - all kept as normal
+chip-default GPIOs, no exclusions applied.

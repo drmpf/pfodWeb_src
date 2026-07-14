@@ -20,7 +20,8 @@
 static const uint8_t LED = LED_PIN;
 static const uint8_t STAT_LED = 0;
 static const uint8_t BTN = 0;
-static const uint8_t Q_EN = 45;
+// pfodWeb NOTE: Q_EN (GPIO45) deliberately NOT declared - Qwiic I2C
+// connector power-enable line, not general-purpose.
 
 static const uint8_t TX = 43;
 static const uint8_t RX = 44;
@@ -50,12 +51,7 @@ static const uint8_t GPIO6 = 1;
 
 static const uint8_t FREEBIE = 42;
 
-static const uint8_t SDIO_DET = 48;
-static const uint8_t SDIO0 = 39;
-static const uint8_t SDIO1 = 40;
-static const uint8_t SDIO2 = 47;
-static const uint8_t SDIO3 = 33;
-static const uint8_t SDIO_CLK = 38;
-static const uint8_t SDIO_CMD = 34;
+// pfodWeb NOTE: SDIO_DET/SDIO0-3/SDIO_CLK/SDIO_CMD deliberately NOT
+// declared - dedicated onboard SDIO card slot, not general-purpose.
 
 #endif /* Pins_Arduino_h */

@@ -1,0 +1,86 @@
+Board: Pcbcupid_GLYPH_H2 (chip esp32h2)
+Audit: dedicated-hardware pin-exclusion audit (BAT_MEASURE flag) + opportunistic
+section 7a button/LED check.
+
+FLAGGED DECLARATION (pins_arduino.h):
+  static const uint8_t BAT_MEASURE = 1;
+  #define BAT_VOLT_PIN BAT_MEASURE
+  #define MSR          BAT_MEASURE
+
+SOURCES CONSULTED:
+- https://learn.pcbcupid.com/boards/glyph-h2/pinouts
+- https://learn.pcbcupid.com/documentation/modules/glyph/glyph-esp32h2/pinouts-h2
+- https://learn.pcbcupid.com/boards/glyph-h2/overview
+- https://shop.pcbcupid.com/product/gd003/ (product page, GD003)
+- https://github.com/espressif/arduino-esp32/pull/10671 ("feat (Variants) Added
+  custom boards variants GLYPH C3, GLYPHC6 & GLYPHH2" by pcbcupid) - confirms
+  this is the real upstream board and pins_arduino.h matches our local copy
+  verbatim.
+- raw.githubusercontent.com/espressif/arduino-esp32/master/variants/
+  Pcbcupid_GLYPH_H2/pins_arduino.h - confirms upstream file content identical
+  to local copy (BAT_MEASURE/BAT_VOLT_PIN/MSR all = GPIO1).
+- ESP32-H2 Series Datasheet v1.1 (Espressif), Table 2-5 "Analog Function of
+  IO Pins" - confirms GPIO1 = ADC1_CH0 on this chip (via web search excerpt).
+- Tindie listing (www.tindie.com/products/pcbcupid/glyph-h2-...) - general
+  product corroboration.
+
+FINDINGS:
+1. GPIO1 (BAT_MEASURE / BAT_VOLT_PIN / MSR) is a genuine on-board battery
+   voltage/capacity sense pin. Vendor docs state: "MSR PADS: Short this MSR
+   pad to measure battery capacity using IO1" (labelled A1 on the silkscreen).
+   Confirmed this pin has real ADC hardware on the ESP32-H2 chip: GPIO1 =
+   ADC1_CH0 per the Espressif datasheet - the H2's more limited ADC (12-bit,
+   single ADC unit, only GPIO0-5 have any analog function, and GPIO0 has
+   none) does still cover GPIO1, so the concern that H2 might not expose ADC
+   on this pin is unfounded.
+2. No documented voltage-divider resistor ratio was found in any vendor
+   source (pinouts page, overview page, shop page). The board simply exposes
+   raw IO1 to an "MSR" pad that must be manually bridged/shorted by the user
+   to bring the battery-sense circuit onto GPIO1 - this is a build-time/
+   assembly-time jumper, not a fixed always-connected divider network with a
+   documented scale factor. Because no ratio is documented, defaultRefVolts
+   was NOT changed from the chip-level default (3.3V) - there is no vendor
+   number to correct it to, and speculating on a divider ratio the vendor
+   never states would risk misleading users about actual battery voltage.
+3. Opportunistic section 7a check: no onboard status/NeoPixel LED found in
+   any vendor source. LED_BUILTIN=0 in this board's pins_arduino.h carries
+   the generic Espressif-core boilerplate comment ("BUILTIN_LED can be used
+   in new Arduino API digitalWrite() like in Blink.ino") seen verbatim
+   across many other ESP32 variant files - not board-specific evidence of a
+   real LED - so GPIO0 was left untagged (matches chip-level default).
+   However, GPIO9 (already a boot-strapping pin per the chip-level
+   pinNotes "Must be HIGH for normal boot") IS confirmed by vendor docs to
+   be wired to a real onboard physical BOOT pushbutton ("GPIO 9 controls
+   whether the chip boots from internal Flash... connected to the onboard
+   BOOT button"). Tagged GPIO9 "button" in the new board.json, following
+   the same convention used elsewhere in this database for BOOT-strapping
+   buttons (e.g. Bee_Motion, lilygo_t_display_s3 GPIO0): capabilities
+   reduced from [digital_input, digital_output, pwm_output] to
+   [digital_input, button] so the pfod UI cannot drive this pin as an
+   output and interfere with boot strapping.
+
+DECISION / MECHANISM:
+- Created board.json (full copy of variants/esp32/esp32h2/board.json) because
+  a note WAS warranted: GPIO1 needed a documentation note (battery-sense
+  pin identity + MSR-pad-must-be-bridged caveat) per the KEEP policy, and
+  the opportunistic BOOT-button finding on GPIO9 also needed a capability
+  change (button tag, output capabilities dropped). A lightweight
+  no-op board.json was not worth creating on its own merits, but since a
+  real change (GPIO9) was needed anyway, the GPIO1 note was folded into the
+  same file.
+- Policy applied: GPIO1 = KEEP (battery-voltage-sense pins are explicitly
+  KEEP per the playbook), not excluded from the pin picker. Only a
+  descriptive "note" field was added to its chipGpios entry; capabilities
+  list unchanged (analog_input, digital_input, digital_output, pwm_output).
+- displayName set to "Pcbcupid GLYPH H2" matching boards.txt's
+  Pcbcupid_GLYPH_H2.name= entry (which takes precedence anyway per the
+  chip-level board.json's own documentation of the override mechanism).
+
+SUMMARY: GPIO1 (BAT_MEASURE/MSR) confirmed as a real, ADC-capable
+(ADC1_CH0) battery-voltage/capacity sense pin with no documented divider
+ratio - KEPT with a new documentation note, defaultRefVolts left at 3.3V.
+Opportunistically also tagged GPIO9 as "button" (confirmed physical
+onboard BOOT pushbutton), dropping its output capabilities per the
+existing BOOT-button convention; no onboard LED found. New
+board.json created at
+variants/esp32/esp32h2/Pcbcupid_GLYPH_H2/board.json.

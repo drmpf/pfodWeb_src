@@ -1,0 +1,167 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Waveshare RP2350 LCD 0.96" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — the
+  // onboard-LCD-dedicated GPIOs below are handled entirely via the
+  // chipGpios capability overrides (empty capability sets), not via
+  // inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) "rp2350" chip
+  // bucket; this module has no onboard WiFi radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Waveshare "RP2350-LCD-0.96" — the RP2350 successor to the
+  // already-audited waveshare_rp2040_lcd_0_96 sibling. Pico-form-factor
+  // RP2350A board with an onboard 0.96in 160x80 65K-colour IPS TFT LCD
+  // (ST7735s-family controller, 4-wire SPI + separate D/C line), USB-C
+  // connector, MP28164 + TPS63000 buck-boost DC-DC chips, and a
+  // temperature sensor. Standard BOOT/RESET button pair only (RP2350's
+  // BOOTSEL-equivalent firmware-download combo, not a general-purpose
+  // GPIO-readable user button) — no onboard NeoPixel/WS2812, no onboard
+  // general-purpose status LED. GPIO25 drives the LCD's PWM-dimmable
+  // backlight, exactly like the RP2040 sibling.
+  //
+  // Sources consulted:
+  // 1. This board's own pins_arduino.h (vendor-sourced comments already
+  //    present, citing waveshare.com/wiki/RP2350-LCD-0.96, the board's
+  //    schematic PDF, and a detail photo) — declares PIN_LCD_DC=8,
+  //    PIN_LCD_CS=9, PIN_LCD_SCLK=10, PIN_LCD_MOSI=11, PIN_LCD_RST=12,
+  //    PIN_LCD_BL=25 (`LDC_SPI (1u)` identifying the LCD as using the
+  //    SPI1 peripheral, remapped in software to SCK=GPIO10/TX=GPIO11
+  //    rather than that peripheral's silicon-default SCK/TX pins
+  //    GPIO14/15 — same valid, ordinary GPIO-mux remap as the RP2040
+  //    sibling, not a discrepancy). Also declares `PICO_RP2350A 1`,
+  //    confirming this is the 30-pin RP2350A pinout (pin-identical to
+  //    RP2040), consistent with variants/rp2040/rp2350/board.json's
+  //    chip-bucket comment.
+  // 2. earlephilhower/arduino-pico vendor source, raw.githubusercontent.com
+  //    /earlephilhower/arduino-pico/master/variants/waveshare_rp2350_lcd_0_96
+  //    /pins_arduino.h (fetched directly) — confirms this repo's copy is
+  //    byte-for-byte identical to the real toolchain's variant file,
+  //    including PIN_LCD_DC=8/CS=9/SCLK=10/MOSI=11/RST=12/BL=25 AND the
+  //    same PIN_WIRE0_SDA=8/PIN_WIRE0_SCL=9 vendor default that collides
+  //    with the LCD DC/CS pins (see bus-collision note below) — this is a
+  //    genuine vendor-shipped header quirk on the real board, not an
+  //    artifact of this repo's mirror.
+  // 3. CircuitPython's official board definition for this exact board,
+  //    raw.githubusercontent.com/adafruit/circuitpython/main/ports/
+  //    raspberrypi/boards/waveshare_rp2350_lcd_0_96/pins.c and
+  //    mpconfigboard.h (fetched directly) — independently confirms
+  //    LCD_DC=GPIO8, LCD_CS=GPIO9, LCD_CLK=GPIO10, LCD_DIN=GPIO11,
+  //    LCD_RST=GPIO12, LCD_BL=GPIO25 against an "ST7735s" controller.
+  //    CircuitPython's own default I2C is SCL=GPIO21/SDA=GPIO20 and
+  //    default SPI is SCK=GPIO18/MOSI=GPIO19/MISO=GPIO16 — i.e.
+  //    CircuitPython deliberately avoids GPIO8/9 for I2C on this board,
+  //    corroborating that Arduino-Pico's GPIO8/9 Wire0 default is the
+  //    outlier / genuine collision. No LED, NeoPixel, or button pin
+  //    definitions found anywhere in either file.
+  // 4. waveshare.com/wiki/RP2350-LCD-0.96 (official wiki; direct WebFetch
+  //    returned HTTP 403, fetched via a text-extraction proxy instead) —
+  //    feature list: "26 x multi-functional GPIO pins", "SPI x 2, I2C x
+  //    2, UART x 2, 12-bit ADC x 4, controllable PWM channel x 16, 12 x
+  //    PIO state machines", "onboard 0.96inch LCD display", Type-C
+  //    connector, temperature sensor, MP28164 + TPS63000 DC-DC chips.
+  //    Explicitly: "No dedicated onboard user LED or NeoPixel is
+  //    mentioned in the documentation." A full-page re-scan specifically
+  //    for "WS2812", "NeoPixel", "RGB LED", and any LED demo/lesson
+  //    turned up zero matches anywhere on the page. Confirms "BOOT" and
+  //    "RESET" buttons only, described purely in the context of the
+  //    firmware-download key-combo procedure (press BOOT+RESET, release
+  //    RESET first then BOOT), not as general-purpose user buttons.
+  // 5. Waveshare product page (waveshare.com/rp2350-lcd-0.96.htm) and
+  //    independent web search corroboration — GPIO8=LCD_DC, GPIO9=LCD_CS,
+  //    GPIO12=LCD_RST, SPI1 used for the LCD; matches sources #1-#3
+  //    exactly. No independent source found claiming an onboard
+  //    NeoPixel/WS2812 or user button on this specific board (an initial
+  //    ambiguous search snippet mentioning "WS2812 board status" could not
+  //    be corroborated against the wiki page itself on a targeted re-scan
+  //    — see source #4 — and is treated as a mix-up with a different
+  //    Waveshare product, same conclusion pattern as the RP2040 sibling's
+  //    audit).
+  // 6. Standard RP2350 BOOTSEL/RESET: as with every other Pico-family
+  //    board in this repo (rpipico, wiznet_5500_evb_pico,
+  //    bridgetek_idm2040_43a, waveshare_rp2040_lcd_0_96), BOOTSEL is not a
+  //    normal GPIO (arduino-pico exposes it as a `BOOTSEL` boolean, not
+  //    `digitalRead()`), so it is out of scope for GPIO capability
+  //    tagging, not a missed button.
+  //
+  // GPIO8/GPIO9 bus-role collision fix (separate bug class from the
+  // pins_arduino.h vendor default, not from Waveshare's hardware, and
+  // confirmed present in the real vendor arduino-pico source per source
+  // #2 above — i.e. this is a genuine upstream quirk, reproduced
+  // identically on the RP2040 sibling): this board's pins_arduino.h
+  // declared `PIN_WIRE0_SDA (8u)` / `PIN_WIRE0_SCL (9u)` (Wire0's
+  // *default* I2C0 location on a stock Pico 2) plus a top-level
+  // `static const uint8_t SDA = PIN_WIRE0_SDA;` / `SCL = PIN_WIRE0_SCL;`
+  // alias — but GPIO8/9 on *this* board are physically the LCD's
+  // dedicated DC/CS lines, so Wire0 can never actually be used there.
+  // Because build_boards.js's i2c_sda/i2c_scl bus-role auto-append keys
+  // off the SDA/SCL alias value unconditionally (fires even under a
+  // chipGpios capabilities:[] override), GPIO8/9 would otherwise still be
+  // mistagged i2c_sda/i2c_scl on top of full generic digital I/O. Fixed
+  // at the source: removed `#define PIN_WIRE0_SDA/SCL` and the two
+  // referencing `static const uint8_t SDA/SCL` lines from this board's
+  // pins_arduino.h (Wire1 on GPIO6/7, unaffected, is untouched). This
+  // pins_arduino.h copy is this repo's Designer-parsing mirror (already
+  // diverged from the vendor's original per this file's own history), not
+  // a file compiled by the real arduino-pico toolchain, so this edit does
+  // not affect real firmware builds.
+  //
+  // GPIO10/11/12/25: this board's pins_arduino.h already omits any
+  // `static const uint8_t D10`..`D15`/`D25` alias (matching the RP2040
+  // sibling's pattern), so build_boards.js's alias-driven parser already
+  // excludes GPIO10-15 and GPIO25 from the Designer without any chipGpios
+  // entry. GPIO10/11/12/25 are confirmed LCD-dedicated (SCLK/MOSI/RST/BL
+  // per sources #1-#3) and are documented below anyway, matching this
+  // repo's established precedent of recording dedicated-hardware pins
+  // even when already invisible. GPIO13/14/15 (SPI1's silicon-default
+  // SS/SCK/MOSI pins, left unused because the LCD remaps SPI1's SCK/MOSI
+  // to GPIO10/11 instead) are NOT confirmed by any source as physically
+  // wired to the LCD or any other onboard peripheral; per this audit's
+  // "confirm via real vendor documentation, never guess" rule they are
+  // left out of chipGpios (no board.json entry needed since they're
+  // already excluded from the Designer by the missing alias, and no
+  // evidence supports either re-including or explicitly excluding them),
+  // matching the RP2040 sibling's identical conclusion for these same
+  // three GPIOs.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/waveshare_rp2350_lcd_0_96/notes.txt
+  "chipGpios": {
+    "8":  { "capabilities": [], "note": "PIN_LCD_DC — onboard 0.96in ST7735s-family LCD's dedicated SPI data/command select line. Not general-purpose. (Also the vendor's default Wire0 SDA pin, removed from this board's pins_arduino.h — see pfodWeb NOTE above.)" },
+    "9":  { "capabilities": [], "note": "PIN_LCD_CS — onboard LCD's dedicated SPI1 chip-select line. Not general-purpose. (Also the vendor's default Wire0 SCL pin, removed from this board's pins_arduino.h — see pfodWeb NOTE above.)" },
+    "10": { "capabilities": [], "note": "PIN_LCD_SCLK — onboard LCD's dedicated SPI1 clock line (remapped from SPI1's silicon-default GPIO14 in software). Not general-purpose. No pins_arduino.h alias declared for this GPIO (documented here for clarity only)." },
+    "11": { "capabilities": [], "note": "PIN_LCD_MOSI (DIN) — onboard LCD's dedicated SPI1 data-out line (remapped from SPI1's silicon-default GPIO15 in software). Not general-purpose. No pins_arduino.h alias declared for this GPIO (documented here for clarity only)." },
+    "12": { "capabilities": [], "note": "PIN_LCD_RST — onboard LCD's dedicated hardware reset line. Not general-purpose. No pins_arduino.h alias declared for this GPIO (documented here for clarity only)." },
+    "25": { "capabilities": [], "note": "PIN_LCD_BL — onboard LCD's dedicated, PWM-dimmable backlight-enable line (confirmed via CircuitPython's official board definition and independent product-page/search corroboration). Not a general-purpose status LED and not a spare PWM output — entirely committed to the onboard display. No pins_arduino.h alias declared for this GPIO (documented here for clarity only)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's 12-bit ADC (0-4095), ~3.3V reference — same as every other
+  // RP2040/RP2350 board. Not affected by this audit (none of the excluded
+  // GPIOs carry an analog_input alias in the first place).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

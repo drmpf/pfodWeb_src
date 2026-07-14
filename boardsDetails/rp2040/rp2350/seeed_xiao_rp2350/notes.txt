@@ -1,0 +1,129 @@
+Board: Seeed Studio "XIAO RP2350" (chip: rp2350, family: rp2040)
+Directory: variants/rp2040/rp2350/seeed_xiao_rp2350/
+Audit date: 2026-07-13
+Part of the ongoing RP2040/RP2350 family button/LED/NeoPixel-tagging + dedicated-hardware
+pin-exclusion audit (never done for this family before this session).
+
+SUMMARY (one line):
+Created variants/rp2040/rp2350/seeed_xiao_rp2350/board.json with chipGpios entries for
+GPIO25 (single yellow USER LED, active-low) and GPIO22 (onboard RGB LED / NeoPixel data
+line, power gated by GPIO23 which is intentionally left unexposed) — a DIFFERENT LED
+layout than the RP2040 sibling (which has a 3-channel discrete RGB LED + a separate
+NeoPixel on different GPIO numbers). No pins_arduino.h edit needed (no bus-alias
+collision found).
+
+FILES READ:
+- variants/rp2040/rp2350/seeed_xiao_rp2350/pins_arduino.h (this board, full file)
+- variants/rp2040/rp2350/board.json (chip-level defaults, chipGpios: {} deliberately empty)
+- variants/rp2040/rp2040/seeed_xiao_rp2040/board.json (RP2040 sibling precedent, already
+  audited this session)
+- variants/rp2040/rp2040/seeed_xiao_rp2040/pins_arduino.h (RP2040 sibling pins file, for
+  comparison)
+
+SOURCES CONSULTED (WebSearch/WebFetch):
+1. wiki.seeedstudio.com/xiao_rp2350_arduino/ (official Seeed "Getting Started ... Arduino"
+   wiki page) — Hardware Overview confirms "19 multifunction GPIOs ... onboard RGB LED ...
+   Battery Management System". States: "The USER LED, the yellow LED on the XIAO RP2350,
+   is connected to GPIO25/D19 ... will light up when set to a low level and turn off when
+   set to a high level."
+2. github.com/Seeed-Studio/OSHW-XIAO-Series — document/SeeedStudio_XIAO_RP2350/XIAO-RP2350.md
+   (official Seeed open-hardware pin-map document for this exact board). Pin map: GPIO22 =
+   "RGB LED" (data line), GPIO25 = "USER_LED / User Light_Yellow". A worked code example in
+   the same doc set uses LED_PIN=22 with POWER_PIN=23, "must be set high to activate the
+   LED" -- identifies GPIO23 as the RGB LED's power-enable gate.
+3. mischianti.org/seeed-studio-xiao-rp2350-pinout-datasheet-schema-and-specifications/
+   (independent third-party pinout/datasheet reference) — corroborates: onboard addressable
+   RGB LED is WS2812B type (needs Adafruit NeoPixel library), GPIO22 = data, GPIO23 =
+   power-enable (must be driven HIGH; pin also flagged with an RP2350 silicon errata E9
+   latch-up risk if left as INPUT_PULLDOWN -- a power/gate-only role, not general I/O).
+   USER LED on GPIO25, "Active Low (typically)".
+4. nuttx.apache.org/docs/latest/platforms/arm/rp23xx/boards/xiao-rp2350/ (independent RTOS
+   board-support docs) — corroborates GPIO25 USER LED "light up when set to a low level ...
+   active-low logic", and confirms a WS2812/NeoPixel-type RGB LED is present (tested via a
+   ws2812 example; GPIO number not restated there but consistent with sources 2-3).
+5. github.com/Seeed-Studio/OSHW-XIAO-Series pin map (source 2 above) also used to confirm
+   BOOT/RESET are plain physical buttons used only to enter BOOTSEL bootloader mode, not
+   GPIO-readable inputs -- matches the seeed_xiao_rp2040 precedent's inputOnlyGpios
+   reasoning (dedicated QSPI-CS silicon trick / hard reset line).
+
+KEY FINDING -- this board's LED hardware differs from its RP2040 sibling:
+- seeed_xiao_rp2040 (already audited): 3-channel discrete RGB "user LED" at GPIO16/17/25
+  (PIN_LED_G/PIN_LED_R/PIN_LED_B, active-low) PLUS a separate single NeoPixel at GPIO12
+  with a manual power gate at GPIO11.
+- seeed_xiao_rp2350 (this board): only ONE single-colour yellow "USER LED" at GPIO25
+  (active-low, no R/G/B channel breakdown -- confirmed by this board's own pins_arduino.h,
+  which declares just one PIN_LED=(25u)/LED_BUILTIN, no PIN_LED_R/G/B macros at all) PLUS
+  a separate single onboard RGB LED (WS2812/NeoPixel) at GPIO22 with its own power-enable
+  gate at GPIO23 -- different GPIO numbers than the RP2040 sibling's NeoPixel (12/11).
+  Verified independently via 4 sources above rather than assumed from the sibling, per
+  task instructions.
+
+PER-PIN REASONING:
+
+GPIO25 (PIN_LED / LED_BUILTIN):
+  CONFIRMED onboard single yellow USER LED, active-low (sources 1, 2, 3, 4 -- four
+  independent sources agree). Not aliased to any D-pin in this board's pins_arduino.h
+  (D0-D18 list = GPIO 26,27,28,5,6,7,0,1,2,4,3,21,20,17,16,11,12,10,9 -- GPIO25 absent),
+  so it is internal-only and needs a chipGpios entry to surface at all, matching the
+  RP2040/RP2350 family mechanism (chip-level chipGpios: {}).
+  Tagged: ["digital_output","pwm_output","led_low"].
+  pwm_output included because arduino-pico's analogWrite() works on any RP2040/RP2350
+  GPIO 0-29 (per chip-level board.json note), enabling brightness dimming of this LED.
+  Bus-alias collision check: this board's SPI0 (MISO=4,MOSI=3,SCK=2,SS=5), SPI1
+  (MISO=12,MOSI=11,SCK=10,SS=9), Wire0 (SDA=16,SCL=17), Wire1 (SDA=6,SCL=7), Serial1
+  (TX=0,RX=1), Serial2 (TX=20,RX=21) -- none use GPIO25. No collision, no
+  pins_arduino.h edit needed.
+
+GPIO22 (onboard RGB LED / NeoPixel data line, no pins_arduino.h #define for it):
+  CONFIRMED via sources 2 and 3 (official Seeed pin-map doc + independent third-party
+  corroboration), output-only WS2812-protocol addressable LED. Not aliased to any D-pin
+  and not referenced in any SPI/Wire/Serial #define in this board's pins_arduino.h --
+  internal-only.
+  Tagged: ["digital_output","led_neopixel"], matching this repo's seeed_xiao_rp2040/
+  adafruit_qtpy/adafruit_itsybitsy NeoPixel-pin precedent (no digital_input/pwm_output --
+  NeoPixel protocol timing is driven via the RP2040/RP2350 PIO peripheral, not
+  analogWrite/digitalRead). Power is separately gated by GPIO23 (see below).
+  Bus-alias collision check: same bus list as GPIO25 above -- no collision.
+
+GPIO23 (RGB LED power-enable gate, no pins_arduino.h #define for it):
+  CONFIRMED internal-only power-gate line for the GPIO22 RGB LED, must be manually driven
+  HIGH by sketch code before the LED will light (sources 2, 3) -- NOT automatically driven
+  by the Arduino core. Same "manual gate" pattern as this repo's seeed_xiao_rp2040 GPIO11
+  (NEOPIXEL_POWER) / adafruit_qtpy GPIO11 precedent.
+  Decision: NO chipGpios entry added -- deliberately excluded (matches the repo-wide
+  NEOPIXEL_POWER exclusion precedent: seeed_xiao_rp2040, adafruit_qtpy, adafruit_qtpy_esp32,
+  adafruit_qtpy_esp32s2/s3, adafruit_itsybitsy_esp32, adafruit_itsybitsy_rp2040). Since
+  this board's pins_arduino.h declares no D-pin alias for GPIO23, under the RP2040/RP2350
+  "GPIO needs an alias or an explicit chipGpios entry to appear at all" mechanism it
+  simply will not surface as a pin unless one is added. Source 3 additionally documents an
+  RP2350 silicon errata (E9: latch-up risk ~2.1V if configured INPUT_PULLDOWN) specific to
+  this pin -- one more reason not to expose it as a general-purpose digital I/O pin in the
+  Designer.
+
+BOOT / Reset buttons: no chipGpios entry. Both are plain physical buttons used only to
+  enter BOOTSEL bootloader mode (source 2/5) -- the BOOT button is the same dedicated
+  QSPI-CS "hold CS low at boot" silicon trick used by the official Raspberry Pi Pico and
+  the RP2040 sibling, not a normal GPIO wired to a switch; Reset is a hard MCU reset line.
+  Neither is readable via digitalRead(). Since this repo's capability tagging is keyed by
+  GPIO number, there is no pin to attach a "button" capability to -- out of scope, not a
+  missed tag. Matches the seeed_xiao_rp2040 precedent exactly.
+
+ADC: this board's pins_arduino.h declares A0-A2 = GPIO26/27/28 (3 analog inputs, one
+  fewer than the RP2040 sibling's A0-A3/GPIO26-29) -- otherwise matches the chip-level
+  12-bit/4095/3.3V default. No adc block override needed.
+
+BUS-ALIAS-COLLISION CHECK (the "confirmed button/LED pin also aliased as SDA/SCL/SS/MOSI/
+  MISO/SCK" bug class flagged in the task instructions): checked GPIO22, GPIO23, and
+  GPIO25 against every SPI0/SPI1/Wire0/Wire1/Serial1/Serial2 #define in this board's
+  pins_arduino.h -- no collisions found. No pins_arduino.h edit required (unlike the
+  adafruit_feather_scorpio precedent, which did need one).
+
+FILES WRITTEN:
+- variants/rp2040/rp2350/seeed_xiao_rp2350/board.json (new, full file: chip-level RP2350
+  defaults copied verbatim + chipGpios entries for GPIO22 and GPIO25 as detailed above)
+- boardsDetails/rp2040/rp2350/seeed_xiao_rp2350/notes.txt (this file)
+
+VALIDATION: board.json comments manually stripped (// to end of line) and the remainder
+  parsed with a plain `JSON.parse()` in a one-off `node -e` snippet -- confirmed valid
+  JSON with the expected chipGpios keys ("22", "25"). Per task instructions, no build
+  script (build_boards.js) was run or required().

@@ -1,0 +1,163 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — confirmed here via
+  // ../../boards.txt: "adafruit_metro_rp2350.name=Adafruit Metro RP2350".
+  "displayName": "Adafruit Metro RP2350",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — the
+  // one confirmed button (GPIO24) is a plain SIO GPIO wired to a switch,
+  // handled via the chipGpios "button" tag below (not inputOnlyGpios).
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel + dedicated-
+  // hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Adafruit "Metro RP2350" (product 6003) — the RP2350B refresh of
+  // the Adafruit Metro RP2040. Unlike its RP2040 sibling
+  // (variants/rp2040/rp2040/adafruit_metro), this board's own bespoke
+  // pins_arduino.h (this variant does NOT include ../generic_full/common.h)
+  // ALSO defines a PIN_BUTTON macro (GPIO24, "'Boot0' button also on GPIO
+  // #24") — a genuine, application-readable onboard button that the RP2040
+  // Metro does not have (its RESET/BOOT buttons are not GPIO-readable). The
+  // LED (GPIO23) and NeoPixel (GPIO25) both carry over from the RP2040
+  // sibling, but the LED's polarity is DIFFERENT: active-LOW here vs
+  // active-HIGH on the RP2040 Metro (independently confirmed via Zephyr's
+  // official board port — see sources below). This board also gained a
+  // DVI/HSTX video-output connector, a USB host connector, a full 4-bit-
+  // SDIO microSD slot, and an optional PSRAM footprint, none of which exist
+  // on the RP2040 sibling.
+  //
+  // SOURCES CONSULTED:
+  // 1. learn.adafruit.com/adafruit-metro-rp2350/pinouts (official Adafruit
+  //    guide) — quotes verbatim: "Below the USB C connector is the #23 LED,
+  //    connected to GPIO23 ... controllable in CircuitPython code using
+  //    board.LED, and in Arduino as PIN_LED"; "[NeoPixel] is connected to
+  //    GPIO25 ... available at board.NEOPIXEL"; digital pin list runs
+  //    D0-D23 (no D24 listed, consistent with GPIO24 being reserved for
+  //    the button rather than a general header pin); USB host pins
+  //    GPIO32(D+)/33(D-)/29(5V); SD/SDIO pins GPIO34(SCK)/35(MOSI)/
+  //    36(MISO)/37(DATA1)/38(DATA2)/39(CS)/40(DETECT) — matches this
+  //    board's own pins_arduino.h exactly. Boot button description: "used
+  //    to enter the bootloader" (no GPIO number given on this page).
+  // 2. learn.adafruit.com/adafruit-metro-rp2350/neopixel (official Adafruit
+  //    guide) — independently confirms the single status NeoPixel at
+  //    GPIO25.
+  // 3. raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+  //    boards/adafruit/metro_rp2350/adafruit_metro_rp2350_rp2350b_m33.dts
+  //    — official upstream Zephyr board port. Quotes:
+  //      leds { user_led: user_led { gpios = <&gpio0 23 GPIO_ACTIVE_LOW>;
+  //        label = "USER_LED"; }; }
+  //      ws2812: ws2812 { gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>;
+  //        chain-length = <1>; ... }
+  //      aliases { led-strip = &ws2812; led0 = &user_led; }
+  //    This CONFIRMS the LED is ACTIVE-LOW (differs from the RP2040 Metro
+  //    sibling's confirmed active-high GPIO13 LED) and the NeoPixel is
+  //    GPIO25, chain-length 1. No gpio_keys/buttons node exists in this
+  //    devicetree at all (Zephyr support for the GPIO24 button hasn't been
+  //    added upstream yet), so Zephyr neither confirms nor contradicts the
+  //    button finding below — it's simply not modeled there yet.
+  // 4. raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/adafruit_metro_rp2350/pins.c — independently
+  //    confirms all three findings: "LED"/"D23" -> pin_GPIO23, "NEOPIXEL" ->
+  //    pin_GPIO25, and — critically — "BUTTON" AND "BOOT" BOTH map to
+  //    pin_GPIO24. This is strong independent corroboration (beyond just
+  //    this board's own arduino-pico pins_arduino.h PIN_BUTTON macro/
+  //    comment) that GPIO24 is a genuine, officially-named,
+  //    application-readable button on this specific board — unlike the
+  //    classic RP2040 Pico/Pico 2's BOOTSEL, which uses a hardwired
+  //    QSPI-flash-chip-select-line trick and is exposed as a boolean
+  //    object, never a numbered GPIO (confirmed via this repo's own
+  //    rpipico2/board.json precedent, which explicitly declined to tag a
+  //    button for that reason). RP2350 (unlike RP2040) supports an
+  //    OTP-configurable boot-select GPIO instead of a hardwired QSPI pin,
+  //    making a genuinely GPIO-readable boot/user button plausible and
+  //    consistent across two independent vendor toolchains (arduino-pico
+  //    and CircuitPython) for this board.
+  //    mpconfigboard.h for this board defines no MICROPY_HW_LED (same as
+  //    the RP2040 sibling — a plain digitalio LED needs no separate driver
+  //    define).
+  // 5. This board's own pins_arduino.h header comment (pfodWeb NOTE, lines
+  //    83-88) already documents GPIO12-19 (DVI), GPIO29/32/33 (USB host,
+  //    including its 5V enable which shares SPI0_SS), GPIO34-40 (SDIO/SD
+  //    card), and GPIO47 (PSRAM) as dedicated to onboard peripherals, not
+  //    general-purpose — independently corroborated against source #1's
+  //    pinouts page (exact GPIO match for USB host and SD/SDIO pins).
+  //
+  // BUS-ALIAS-CONTAMINATION CHECK (per this audit's playbook): GPIO23, 24,
+  // and 25 carry no SPI/Wire/Serial alias anywhere in this board's
+  // pins_arduino.h (SPI0_SS=29, SPI1_SS=39, WIRE0 SDA/SCL=20/21 — none
+  // touch 23/24/25), so no spurious bus capability would be auto-appended
+  // to any of the three confirmed tags below. No pins_arduino.h edit
+  // needed.
+  //
+  // DEDICATED-HARDWARE PIN EXCLUSION (secondary finding, same audit
+  // charter): GPIO12-19 (DVI diff pairs), GPIO32/33 (USB host D+/D-),
+  // GPIO37/38 (SD DATA1/DATA2), and GPIO47 (PSRAM CS) carry NO bus alias
+  // at all in this board's pins_arduino.h, so the chip-level default would
+  // otherwise leave them with full digital_input/digital_output/pwm_output
+  // capability despite being genuinely dedicated to onboard peripherals
+  // (confirmed by source #1 and this board's own pre-existing header
+  // comment) — restricted below. GPIO40 (SD_DETECT) is a card-presence
+  // switch, restricted to digital_input only (matches this repo's
+  // solderparty_rp2350_stamp CARD_DETECT precedent: safe to read, unsafe
+  // to drive as output). GPIO34/35/36/39 (SD CLK/MOSI/MISO/CS) already
+  // carry correct PIN_SPI1_* aliases matching the SD card's own SPI
+  // interface — left untouched, matching the RP2040 Metro sibling's
+  // explicit precedent that an auto-supplied bus-role on a genuinely-owned
+  // dedicated bus pin is desired behavior, not a contamination bug.
+  // GPIO29 (PIN_5V_EN / PIN_SPI0_SS collision) is a genuine vendor
+  // dual-use of one physical pin (already flagged in this board's own
+  // pins_arduino.h header comment) rather than a stray/incidental alias
+  // fixable by deleting a #define (contrast the PIN_SPIx_SS bug class this
+  // audit otherwise watches for) — left untouched and merely noted in
+  // boardsDetails notes.txt.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/adafruit_metro_rp2350/notes.txt
+  "chipGpios": {
+    "12": { "capabilities": [], "note": "PIN_D2P — DVI/HSTX connector differential pair (D2+). Dedicated to onboard DVI video output, not general-purpose. No bus alias in this board's pins_arduino.h." },
+    "13": { "capabilities": [], "note": "PIN_D2N — DVI/HSTX connector differential pair (D2-). Dedicated to onboard DVI video output, not general-purpose." },
+    "14": { "capabilities": [], "note": "PIN_CKP — DVI/HSTX connector clock pair (CK+). Dedicated to onboard DVI video output, not general-purpose." },
+    "15": { "capabilities": [], "note": "PIN_CKN — DVI/HSTX connector clock pair (CK-). Dedicated to onboard DVI video output, not general-purpose." },
+    "16": { "capabilities": [], "note": "PIN_D1P — DVI/HSTX connector differential pair (D1+). Dedicated to onboard DVI video output, not general-purpose." },
+    "17": { "capabilities": [], "note": "PIN_D1N — DVI/HSTX connector differential pair (D1-). Dedicated to onboard DVI video output, not general-purpose." },
+    "18": { "capabilities": [], "note": "PIN_D0P — DVI/HSTX connector differential pair (D0+). Dedicated to onboard DVI video output, not general-purpose." },
+    "19": { "capabilities": [], "note": "PIN_D0N — DVI/HSTX connector differential pair (D0-). Dedicated to onboard DVI video output, not general-purpose." },
+    "23": { "capabilities": ["digital_output", "pwm_output", "led_low"], "note": "PIN_LED — onboard plain red status LED, ACTIVE-LOW. Confirmed via Zephyr's official adafruit_metro_rp2350_rp2350b_m33.dts leds node (gpios = <&gpio0 23 GPIO_ACTIVE_LOW>) and Adafruit's own learn.adafruit.com pinouts/CircuitPython pins.c (board.LED / PIN_LED). digital_input dropped to match this repo's established led_high/led_low precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2350 GPIO. NOTE: polarity is the OPPOSITE of the RP2040 Metro sibling's GPIO13 LED (active-high there, active-low here) — independently reconfirmed, not a copy-paste assumption. No SPI/Wire/Serial alias exists on this GPIO." },
+    "24": { "capabilities": ["digital_input", "button"], "note": "PIN_BUTTON — onboard 'Boot0' button, also readable as a normal application GPIO (unlike the classic RP2040 Pico/Pico 2's non-GPIO BOOTSEL trick). Confirmed via this board's own pins_arduino.h macro name/comment AND independently via CircuitPython's pins.c, where BOTH \"BUTTON\" and \"BOOT\" board-name aliases map to pin_GPIO24 — strong two-source corroboration. Not present at all on the RP2040 Metro sibling (no PIN_BUTTON macro there; its RESET/BOOT are non-GPIO). No SPI/Wire/Serial alias exists on this GPIO." },
+    "25": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard single status NeoPixel (WS2812), output-only data line, unchanged from the RP2040 Metro sibling. Confirmed via Adafruit's own learn.adafruit.com pinouts/neopixel guides, Zephyr's adafruit_metro_rp2350_rp2350b_m33.dts ws2812 node (gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>, chain-length = <1>), and CircuitPython pins.c (\"NEOPIXEL\" -> pin_GPIO25). No SPI/Wire/Serial alias exists on this GPIO." },
+    "32": { "capabilities": [], "note": "PIN_USB_HOST_DP — USB host connector data+ line. Dedicated to onboard USB host connector, not general-purpose. No bus alias in this board's pins_arduino.h." },
+    "33": { "capabilities": [], "note": "PIN_USB_HOST_DM — USB host connector data- line. Dedicated to onboard USB host connector, not general-purpose." },
+    "37": { "capabilities": [], "note": "PIN_SD_DAT1 — SDIO 4-bit-mode data line for the onboard microSD slot. Dedicated hardware, no bus alias in this board's pins_arduino.h (unlike SD_CLK/CMD/DAT0/DAT3 which double as PIN_SPI1_* and are left untouched — see pfodWeb NOTE above)." },
+    "38": { "capabilities": [], "note": "PIN_SD_DAT2 — SDIO 4-bit-mode data line for the onboard microSD slot. Dedicated hardware, no bus alias in this board's pins_arduino.h." },
+    "40": { "capabilities": ["digital_input"], "note": "PIN_SD_DETECT — onboard microSD slot's card-presence-detect switch. digital_output/pwm_output dropped (driving this pin as an output could contend with the mechanical detect switch when a card is inserted), matching this repo's solderparty_rp2350_stamp PIN_CARD_DETECT precedent." },
+    "47": { "capabilities": [], "note": "RP2350_PSRAM_CS — optional onboard PSRAM footprint's chip-select line (not populated on all units). Dedicated hardware, no bus alias in this board's pins_arduino.h." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040/RP2350 board. This board's pins_arduino.h declares its own
+  // A0-A5 (GPIO41-46) analog aliases but no different ADC width/reference,
+  // so the chip-level default applies unchanged.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

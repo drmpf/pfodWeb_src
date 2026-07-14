@@ -1,0 +1,120 @@
+wiznet_55rp20_evb_pico (chip: rp2040) -- dedicated-hardware pin audit
+Date: 2026-07-12
+
+SUMMARY: WIZnet W55RP20-EVB-Pico integrates a W55RP20 SiP (RP2040 core +
+W5500 wired-Ethernet controller in one package). Created a new board.json
+overriding 10 GPIOs (16-25) that were previously exposed as full
+general-purpose digital_input/digital_output/pwm_output pins by the empty
+chip-level default (rp2040/board.json has chipGpios: {}), because this
+board's own pins_arduino.h includes generic_full/common.h, which
+unconditionally declares D0-D29 aliases for every GPIO regardless of
+whether the physical pin is actually available. GPIO29 was reviewed and
+left unchanged (see below). No pins_arduino.h/common.h edits were made
+(out of scope per audit instructions) -- all correction happened in the
+new board.json.
+
+SOURCES CONSULTED
+  1. variants/rp2040/rp2040/wiznet_55rp20_evb_pico/pins_arduino.h (read
+     directly) -- the community contributor's own inline comments on the
+     SPI0 block:
+       "16u is connected to the buck-boost converted[sic]."
+       "19u is connected to USERLED, defined as PIN_LED."
+       "18u is connected to a voltage divider on VBUS."
+       "17u doesn't even show up in the schematics."
+     Also: #define PIN_LED (19u); SPI0 remapped to GPIO2/3/4/5 (MISO/MOSI/
+     SCK/SS) instead of the RP2040 defaults 16/17/18/19, with the comment
+     "Default SPI0 pins are used internally and are unavailable on this
+     board."
+  2. variants/rp2040/rp2040/generic_full/common.h (read directly) --
+     unconditionally declares D0-D29 for all 30 GPIOs (no #ifdef gate
+     beyond the per-board __PIN_Dn override), which is why every GPIO on
+     this board -- including the 10 corrected here -- had an alias and
+     was therefore auto-classified general-purpose by build_boards.js's
+     buildEsp32Board() parser before this audit.
+  3. https://docs.wiznet.io/Product/Chip/MCU/W55RP20/w55rp20-evb-pico
+     Official WIZnet product docs page. Fetched twice independently
+     (identical wording both times -- treated as a direct quote). States
+     verbatim: "GPIO17, GPIO20, GPIO21, GPIO22, GPIO23, GPIO24, and
+     GPIO25 are not available due to the connection inside the board."
+     Also gives:
+       GPIO16 - "DCDC Mode Select Pin" (Output)
+       GPIO18 - "VBUS sense - high if VBUS is present, else low" (Input)
+       GPIO19 - "Connected to user LED" (Output) [polarity not stated]
+       GPIO29 - "Used in ADC mode (ADC3) to measure VSYS/3" (Input/ADC)
+     Overview page (docs.wiznet.io/Product/Chip/MCU/W55RP20) additionally
+     states the board has "23 GPIO pins (4 usable as analog inputs)" --
+     30 total minus the 7 "not available" GPIOs = 23, with the 4 analog
+     pins being GPIO26-29/A0-A3 -- i.e. GPIO29 IS counted as genuinely
+     usable (as an analog pin) on this specific board.
+  4. WebSearch cross-referencing (multiple independent queries, numbers
+     consistent across all of them): identifies the internal RP2040-to-
+     W5500 link as a PIO-implemented SPI bus (not the RP2040 hardware
+     SPI0/SPI1 peripheral) using SCK=GPIO21, MOSI=GPIO23, MISO=GPIO22,
+     CS=GPIO20, IRQ=GPIO24, RST=GPIO25. This accounts for 6 of the 7
+     "not available" GPIOs; GPIO17 is presumed a SiP-internal/unbonded
+     pad (matches the pins_arduino.h author's "doesn't even show up in
+     the schematics" comment). Could not locate an official WIZnet
+     schematic PDF for this exact board (the Hardware-Files-of-WIZnet
+     GitHub repo's 02_iEthernet/W55RP20 folder only contains a
+     WIZMC-T1L subfolder, not the EVB-Pico) to independently verify the
+     PIO signal-to-GPIO role mapping -- this doesn't affect the audit
+     outcome since all 6 pins are already confirmed "not available" by
+     the primary WIZnet docs source (item 3) regardless of which
+     specific signal maps to which pin.
+  5. LED polarity search (docs.wiznet.io "Getting Started" page, WIZnet-
+     PICO-C / W55RP20-S2E GitHub repos, kb.segger.com/WIZnet_W55RP20-EVB-
+     Pico, my.cytron.io CircuitPython LED tutorial): none of these
+     sources show the actual gpio_put()/digitalWrite() polarity used to
+     turn the onboard LED on. Polarity for GPIO19 is therefore left
+     UNCONFIRMED.
+
+PER-PIN REASONING
+  GPIO16 (DCDC Mode Select, output): dedicated buck-boost regulator
+    control pin -- confirmed by both the pins_arduino.h comment and
+    official WIZnet docs. capabilities: [] (fully excluded), note added.
+  GPIO17: confirmed "not available" by official docs and independently
+    by the pins_arduino.h author's own comment. capabilities: []
+    (fully excluded), note added.
+  GPIO18 (VBUS sense, input): confirmed dedicated digital sense pin
+    (HIGH when VBUS/USB power present) via an onboard voltage divider.
+    Not one of the RP2040's 4 ADC-capable pins (26-29), so tagged
+    digital_input only (no analog_input). digital_output/pwm_output
+    excluded -- driving it fights the sense divider.
+  GPIO19 (PIN_LED / LED_BUILTIN, output): confirmed onboard user LED by
+    both sources. Tagged digital_output + pwm_output (digital_input
+    dropped, matching this repo's established dedicated-LED-pin
+    precedent, e.g. rpipico GPIO25). led_high/led_low tag intentionally
+    OMITTED -- polarity could not be confirmed from any source consulted
+    (see item 5 above); per the audit's evidentiary bar, polarity is
+    never inferred from another board's convention. Should be revisited
+    if/when an authoritative schematic or firmware source surfaces.
+  GPIO20-25: confirmed internal-only, forming the on-package RP2040-to-
+    W5500 PIO-SPI link (CS/SCK/MISO/MOSI/IRQ/RST respectively per the
+    cross-referenced WebSearch results in item 4). capabilities: []
+    (fully excluded) for all six, each with its own note recording the
+    corroborated internal role.
+  GPIO29 (A3): vendor docs describe the same VSYS/3-divider-sense role
+    the plain Raspberry Pi Pico has on this GPIO, but WIZnet's own
+    overview page counts it among this board's "4 usable analog inputs"
+    (23 usable GPIOs total = 30 - 7 unavailable), i.e. vendor-confirmed
+    as genuinely usable here, unlike the plain-Pico case (which
+    generic/common.h, the non-"_full" sibling file, excludes outright).
+    NO CHANGE made -- left at the chip-level default derivation via its
+    A3 alias (analog_input/digital_input/digital_output/pwm_output),
+    consistent with this board's own pins_arduino.h choosing to include
+    generic_full/common.h over generic/common.h. This GPIO was also
+    outside the audit's explicitly named scope (GPIO16/18/19 + the
+    internal bus) -- flagged here for visibility only, not acted on.
+  GPIO2-5 (this board's remapped user-facing SPI0/Wire0), GPIO12-15
+    (SPI1), GPIO26-27 (Wire1): left unchanged. These are the pins the
+    board's own pins_arduino.h deliberately remapped SPI0 onto (away
+    from the internally-consumed defaults 16-19), and are not mentioned
+    as unavailable by any consulted source.
+
+ONE-LINE SUMMARY: Created variants/rp2040/rp2040/wiznet_55rp20_evb_pico/
+board.json fully excluding 8 vendor-confirmed internal/unavailable GPIOs
+(16,17,20,21,22,23,24,25 -- capabilities: []) and restricting GPIO18
+(VBUS sense, digital_input-only) and GPIO19 (user LED, digital_output+
+pwm_output-only, polarity unconfirmed so no led_high/led_low tag
+applied); GPIO29 reviewed and left unchanged (vendor-confirmed as a
+genuinely usable analog pin on this board).

@@ -26,39 +26,11 @@ static const uint8_t IO6 = 21;
 static const uint8_t TX = 42;
 static const uint8_t RX = 1;
 static const uint8_t RTS = 2;
-//TOUCHSCREEN
-static const uint8_t BL_PWM = 45;    //BACKLIGHT PWM
-static const uint8_t LCD_RESET = 4;  //LCD RESET, MULTIPLEXED WITH TOUCH RESET
-static const uint8_t LCD_RS = 0;     //COMMAND/DATA
-static const uint8_t LCD_WR = 47;    //WRITE CLOCK
-static const uint8_t LCD_TE = 48;    //FRAME SYNC
-static const uint8_t LCD_DB0 = 9;
-static const uint8_t LCD_DB1 = 46;
-static const uint8_t LCD_DB2 = 3;
-static const uint8_t LCD_DB3 = 8;
-static const uint8_t LCD_DB4 = 18;
-static const uint8_t LCD_DB5 = 17;
-static const uint8_t LCD_DB6 = 16;
-static const uint8_t LCD_DB7 = 15;
-
-//SPEAKER
-static const uint8_t LRCK = 35;
-static const uint8_t BCLK = 36;
-static const uint8_t DOUT = 37;
-
-//TOUCHSCREEN DIGITIZER
-static const uint8_t TP_INT = 7;
-static const uint8_t SDA = 6;
-static const uint8_t SCL = 5;
-static const uint8_t RST = 4;
-//MICRO SD CARD
-static const uint8_t SD_CS = 41;
-static const uint8_t SD_DI = 40;  //MOSI
-static const uint8_t SD_DO = 38;  //MISO
-static const uint8_t SD_CLK = 39;
-static const uint8_t SS = 41;
-static const uint8_t MOSI = 40;
-static const uint8_t MISO = 38;
-static const uint8_t SCK = 39;
+//TOUCHSCREEN (pfodWeb NOTE: LCD_RESET/RS/WR/TE/DB0-7, backlight PWM,
+// touch digitizer I2C/INT/RST, and the SD card's SPI bus are all
+// deliberately NOT declared as pins — dedicated onboard hardware, not
+// general-purpose. LCD_RS shares GPIO0 with BOOT_0 above, which stays
+// kept since it's explicitly labeled "GENERAL I/O" by the vendor. See
+// this board's own board.json chipGpios override for the full list.)
 
 #endif /* Pins_Arduino_h */

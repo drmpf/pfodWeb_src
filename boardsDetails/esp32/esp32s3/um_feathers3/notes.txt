@@ -1,0 +1,91 @@
+um_feathers3 (Unexpected Maker FeatherS3) - button/LED research notes
+======================================================================
+
+Board directory confirmed: variants/esp32/esp32s3/um_feathers3
+(NOT touched: sibling variants/esp32/esp32s3/um_feathers3neo)
+
+Sources consulted
+------------------
+https://esp32s3.com/feathers3.html
+  Official Unexpected Maker FeatherS3 product/intro page. Confirms onboard
+  "Low power RGB LED" described as a "1515 Neopixel", and that IO39 is the
+  programmable EN control for the 2nd LDO (LDO2) which also powers the
+  onboard RGB LED. Did not itself list button GPIOs or LED polarity.
+
+https://help.unexpectedmaker.com/index.php/article-tags/feathers3/
+  (fetched via search snippet; direct WebFetch of this listing page 404'd)
+  Unexpected Maker's own help docs describe entering flash/boot mode by
+  "Press and hold the BOOT button" (sometimes marked "B0") then pressing
+  RESET, exposing the USB-serial connection. Confirms a physical BOOT
+  pushbutton exists on the board.
+
+https://www.espboards.dev/esp32/feathers3/
+  Third-party pinout reference. Lists "A13 - PWM - LED_BUILTIN LED" and
+  "A40 - PWM - RGB_DATA", confirming GPIO13 = single LED, GPIO40 = NeoPixel
+  data pin, matching this board's pins_arduino.h. Did not list a button
+  GPIO explicitly.
+
+https://raw.githubusercontent.com/UnexpectedMaker/esp32s3-arduino-helper/main/src/UMS3.h
+  Official UM Arduino helper library source (downloaded and grepped
+  directly). Confirms:
+    - void setBlueLED(bool on) { digitalWrite(LED_BUILTIN, on); }
+      => writing true/HIGH turns the blue LED on => active-high (led_high).
+    - void setPixelPower(bool on) { digitalWrite(RGB_PWR, on); }
+      RGB_PWR (GPIO39) gates power to the NeoPixel; already excluded in
+      this board.json by a pre-existing NOTE - left untouched.
+    - RGB_DATA used with rmtInit(RGB_DATA, ...) for WS2812-style NeoPixel
+      protocol => confirms GPIO40 is a NeoPixel (led_neopixel) data pin,
+      not a plain LED.
+    - No BTN/button pin constant found in this header (no BOOT/BTN alias
+      defined in the library) - button confirmation relied on the vendor
+      help-doc description of the physical BOOT button (see above) plus
+      the universal ESP32-S3 GPIO0 boot-strap behavior already documented
+      in this board's own pinNotes ("0": "Must be HIGH for normal boot").
+
+https://api.github.com/repos/UnexpectedMaker/esp32s3-arduino-helper/contents/src
+  Confirms UMS3.h is the only source file in this header-only library
+  (no separate .cpp), used to locate the raw file above.
+
+https://api.github.com/repos/RIOT-OS/RIOT/contents/boards
+  Checked whether RIOT-OS has an esp32s3-feathers3 board definition (the
+  sibling board um_pros3 was tagged citing RIOT-OS's esp32s3-pros3 board.h
+  BTN0=GPIO0 entry). Result: RIOT-OS only has "esp32s3-pros3", there is NO
+  "esp32s3-feathers3" board in RIOT-OS. This precedent could NOT be reused
+  directly for FeatherS3 - see judgement call below.
+
+pins_arduino.h (local, this board directory)
+  #define LED_BUILTIN 13, static const uint8_t RGB_DATA = 40, TX=43, RX=44.
+  No BUTTON/BTN alias defined at all (so no risk of the "infer from a
+  misleading alias name" trap for the button call). Neither GPIO13 nor
+  GPIO40 conflicts with TX(43)/RX(44), so no TX/RX hard-reserve conflict.
+
+What was NOT tagged / judgement calls
+--------------------------------------
+- GPIO0 (BOOT button): TAGGED as "button", but this was the one call that
+  required judgement rather than a single explicit datasheet table entry.
+  Unexpected Maker's own help documentation confirms a physical BOOT
+  pushbutton exists and pulls GPIO0 low (standard ESP32-S3 boot-strap
+  behavior, already flagged in this board's pinNotes). No RIOT-OS board.h
+  exists for FeatherS3 specifically (unlike um_pros3, which had an exact
+  BTN0=GPIO0 entry in RIOT-OS's esp32s3-pros3/include/board.h). The tag
+  was applied on the strength of (a) Unexpected Maker's own help-doc
+  description of a physical BOOT button, (b) the pin being the standard,
+  well-documented ESP32-S3 GPIO0 boot-strap pin, and (c) consistency with
+  the already-confirmed identical hardware pattern on the sibling UM board
+  um_pros3. A human reviewer may wish to require a page that explicitly
+  labels a GPIO0 button table entry for FeatherS3 itself before accepting
+  this tag as fully "confirmed" to the same standard as the LED tags.
+- No RESET/RST button was tagged - a hardware RESET line is not a readable
+  GPIO capability in this scheme, so it has no applicable tag.
+- GPIO39 (RGB_PWR/LDO2) was NOT touched - it already has a pre-existing
+  pfodWeb NOTE excluding it as an internal power-control line, and this
+  task's rules say not to reverse pre-existing exclusions. Confirmed via
+  UMS3.h (setPixelPower/RGB_PWR) that this pin is indeed purely a power
+  gate for the NeoPixel, not a general-purpose or LED-signal pin, so
+  leaving it excluded is correct.
+
+What was tagged (summary)
+--------------------------
+GPIO0  -> ["digital_input","button"]                         (BOOT pushbutton)
+GPIO13 -> ["digital_output","pwm_output","led_high"]          (onboard blue LED, active-high)
+GPIO40 -> ["digital_output","pwm_output","led_neopixel"]      (onboard WS2812 NeoPixel data pin)

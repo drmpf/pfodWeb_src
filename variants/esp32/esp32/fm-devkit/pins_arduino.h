@@ -15,11 +15,9 @@ static const uint8_t SW2 = 18;
 static const uint8_t SW3 = 19;
 static const uint8_t SW4 = 21;
 
-//I2S DAC
-static const uint8_t I2S_MCLK = 2;    // CLOCK must be an integer multiplier of SCLK
-static const uint8_t I2S_LRCLK = 25;  // LRCLK
-static const uint8_t I2S_SCLK = 26;   // SCLK - Fs (44100 Hz)
-static const uint8_t I2S_DOUT = 22;   // DATA
+// pfodWeb NOTE: I2S_MCLK/LRCLK/SCLK/DOUT (GPIO2/25/26/22) deliberately
+// NOT declared - dedicated onboard I2S DAC bus (see vendor "I2S DAC"
+// comment).
 
 //GPIO
 static const uint8_t D0 = 34;  // GPI - Input Only

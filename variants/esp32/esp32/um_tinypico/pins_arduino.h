@@ -26,7 +26,8 @@ static const uint8_t A10 = 4;
 static const uint8_t A11 = 0;
 static const uint8_t A12 = 2;
 static const uint8_t A13 = 15;
-static const uint8_t A14 = 13;
+// pfodWeb NOTE: A14 (GPIO13) deliberately NOT declared - same as
+// APA_POWER below.
 static const uint8_t A15 = 12;
 static const uint8_t A16 = 14;
 static const uint8_t A17 = 27;
@@ -37,7 +38,8 @@ static const uint8_t T0 = 4;
 static const uint8_t T1 = 0;
 static const uint8_t T2 = 2;
 static const uint8_t T3 = 15;
-static const uint8_t T4 = 13;
+// pfodWeb NOTE: T4 (GPIO13) deliberately NOT declared - same as
+// APA_POWER below.
 static const uint8_t T5 = 12;
 static const uint8_t T6 = 14;
 static const uint8_t T7 = 27;
@@ -47,7 +49,8 @@ static const uint8_t T9 = 32;
 static const uint8_t DAC1 = 25;
 static const uint8_t DAC2 = 26;
 
-static const uint8_t APA_POWER = 13;
+// pfodWeb NOTE: APA_POWER (GPIO13) deliberately NOT declared - internal
+// power-gate for the onboard APA102 DotStar LED, not general-purpose.
 static const uint8_t APA_DATA = 2;
 static const uint8_t APA_CLK = 12;
 

@@ -1,0 +1,144 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI. Overridden by
+  // the matching `pimoroni_pga2350.name=` entry in variants/rp2040/
+  // boards.txt ("Pimoroni PGA2350") when present.
+  "displayName": "Pimoroni PGA2350",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins confirmed on this
+  // board beyond the chip-level default.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Bare RP2350B breakout module, no
+  // onboard radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family audit, button/LED/NeoPixel
+  // tagging + dedicated-hardware pin exclusion, 2026-07-13):
+  //
+  // Board: Pimoroni PGA2350 (PIM722), chip rp2350 (RP2350B, PICO_RP2350A
+  // set to 0 in this board's own pins_arduino.h). This board's own
+  // variants/rp2040/rp2350/pimoroni_pga2350/pins_arduino.h contains only:
+  //   #define RP2350_PSRAM_CS    47
+  //   #define PICO_RP2350A 0 // RP2350B
+  //   #include "../generic/pins_arduino.h"
+  // — i.e. it declares NO board-specific pin aliases of its own at all
+  // (no PIN_LED, no PIN_BUTTON, no PIN_NEOPIXEL), falling back entirely
+  // to the shared variants/rp2040/rp2350/generic/pins_arduino.h +
+  // generic/common.h fallback (same mechanism used by the sibling
+  // pimoroni_pga2040 board in the rp2040 chip bucket, which likewise has
+  // no board.json and no board-specific pins_arduino.h aliases).
+  //
+  // Sources consulted (WebSearch/WebFetch, 2026-07-13):
+  //  1. shop.pimoroni.com/en-us/products/pga2350 (official Pimoroni
+  //     product page, fetched directly) — describes the PGA2350 as "a
+  //     minimal but powerful RP2350 breakout board modelled on a Pin
+  //     Grid Array, with the maximum exposed pins crammed into the
+  //     smallest possible space," built around the RP2350B (dual Arm
+  //     Cortex-M33, up to 150MHz, 520KB SRAM), with onboard 8MB PSRAM
+  //     and 16MB flash, exposing 64 pins at 2.54mm pitch (48 usable as
+  //     general-purpose I/O, 8 ADC-equipped), 25.4mm square footprint.
+  //     States VERBATIM: "Note that it has no LEDs, buttons or USB
+  //     connectors - you'll need to attach your own USB connector to be
+  //     able to program it." Header pins are sold separately
+  //     (shop.pimoroni.com/en-us/products/header-pins-and-sockets-for-
+  //     pga2040-style boards) — this board ships as a bare module.
+  //  2. WebSearch cross-references (cpc.farnell.com/pimoroni/pim722,
+  //     pishop.us/product/pga2350, pishop.ca/product/pga2350,
+  //     wholesale.pimoroni.com/en-us/products/pga2350) all independently
+  //     repeat the same "no LEDs, buttons or USB connectors" feature
+  //     description sourced from Pimoroni's own product copy.
+  //  3. variants/rp2040/boards.txt: `pimoroni_pga2350.build.led=` is
+  //     declared but left EMPTY (no GPIO number assigned) — consistent
+  //     with "no onboard LED" at the boards.txt/build-flag level too
+  //     (same empty-build.led pattern as the sibling pimoroni_pga2040
+  //     entry, which is confirmed by Pimoroni's own PGA2040 product page
+  //     to likewise have "no fripperies like LEDs, buttons and USB
+  //     connectors").
+  //
+  // Per-pin findings:
+  //   No onboard LED, NeoPixel, or button of any kind exists on this
+  //   board — confirmed directly from Pimoroni's own product page (see
+  //   source #1 above), corroborated by boards.txt's empty build.led.
+  //   NO CHANGE: no chipGpios entries added for any button/LED/NeoPixel
+  //   tag, matching the confirmed absence of such hardware.
+  //
+  //   GPIO47 (RP2350_PSRAM_CS) — onboard 8MB PSRAM chip-select,
+  //   confirmed via this board's own pins_arduino.h (`RP2350_PSRAM_CS
+  //   47`) and the vendor-documented "8MB of PSRAM" spec (source #1).
+  //   Same situation as variants/rp2040/rp2350/pimoroni_pico_plus_2/
+  //   board.json's GPIO47 finding: this pin needs NO chipGpios override
+  //   here either. It is declared only as a bare `#define`, with no
+  //   `static const uint8_t` peer alias anywhere in this board's
+  //   pins_arduino.h or the shared generic/pins_arduino.h +
+  //   generic/common.h it falls back to (verified — generic/common.h's
+  //   only static-const aliases are D0-D22, A0-A2, and
+  //   SS/MOSI/MISO/SCK/SDA/SCL, none aliasing GPIO47). build_boards.js
+  //   only adds a GPIO to the routable pin set from (a) a resolved
+  //   `static const uint8_t` alias, or (b) an explicit chipGpios key —
+  //   GPIO47 satisfies neither, so it is already correctly absent from
+  //   the generated pin list with no board.json change needed. Adding a
+  //   chipGpios entry for it would be counter-productive: chipGpios keys
+  //   are unconditionally added to the routable-pin set, so an
+  //   empty-capabilities override would introduce a previously-absent
+  //   inert "GPIO47" pin into the Designer where none is generated
+  //   today — the opposite of the desired exclusion. Left untouched.
+  //
+  //   PIN_LED (GPIO25, via generic/pins_arduino.h's unconditional
+  //   `#define PIN_LED (25u)`) — also NOT swept into the routable pin
+  //   set for the same reason as GPIO47: generic/common.h's
+  //   `#define LED_BUILTIN PIN_LED` is a plain macro, not a `static
+  //   const uint8_t` alias, so it never resolves to a chipGpios-visible
+  //   GPIO here. This is actually correct for THIS board regardless: the
+  //   generic fallback's PIN_LED=25 reflects the Raspberry Pi Pico
+  //   reference design's onboard-LED convention, not anything specific
+  //   to the PGA2350 hardware, which vendor sources confirm has no LED
+  //   at all. No action needed/possible either way.
+  //
+  //   GPIO0-22, 26-28 (D0-D22, A0-A2 via generic/common.h) — the only
+  //   GPIOs actually swept into this board's routable pin set by the
+  //   generic fallback's static-const aliases. These are genuinely
+  //   general-purpose header pins on the real PGA2350 (which exposes 48
+  //   of its 64 pins as GPIO per source #1) — left at chip-level default
+  //   (digital_input/digital_output/pwm_output, no button/LED tag),
+  //   which is correct since none of them are confirmed to be
+  //   button/LED/NeoPixel pins. Note the generic fallback's 26-pin cap
+  //   (PINS_COUNT=26) significantly under-represents the real board's
+  //   48-GPIO count — this is a pre-existing scope-of-fallback
+  //   limitation (see generic/common.h's own pfodWeb NOTE on GPIO23/24/
+  //   25/29 assuming a Pico-shaped reference design), not a button/LED/
+  //   NeoPixel tagging or dedicated-hardware-pin-exclusion issue, and is
+  //   therefore out of scope for this audit — flagged here for
+  //   visibility only, not acted on. Expanding pin coverage would require
+  //   a genuinely custom pins_arduino.h for this board (bypassing the
+  //   generic fallback entirely), which is a separate, larger change.
+  //
+  // No SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies: there is no
+  // confirmed button/LED/NeoPixel pin on this board at all (see above),
+  // so build_boards.js's unconditional SS/SDA/SCL/MOSI/MISO/SCK alias
+  // auto-append cannot collide with anything here.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/pimoroni_pga2350/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's 12-bit ADC (0-4095), ~3.3V reference — same as every other
+  // plain RP2040/RP2350 board using the generic fallback (this board's
+  // own pins_arduino.h declares no custom analog pins).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

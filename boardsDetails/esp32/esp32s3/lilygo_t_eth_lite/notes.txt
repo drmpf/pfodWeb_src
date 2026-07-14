@@ -1,0 +1,67 @@
+Board: lilygo_t_eth_lite (LilyGo T-ETH-Lite, ESP32-S3), chip esp32s3
+Audit date: 2026-07-14
+Batch H independent-verification pass. A prior audit pass (2026-07-14,
+documentation backfill) had cited only this repo's own vendor
+pins_arduino.h ("// Ethernet" ETH_PHY_* macros) for the GPIO9-14 and GPIO42
+exclusions - no external vendor documentation, schematic, or forum had been
+independently checked. This pass fetched real external vendor/community
+sources and cross-checked every pin against them.
+
+SOURCES CONSULTED (real external verification, not just this repo's own file)
+-------------------------------------------------------------------------------
+1. esp3d.io hardware board page for this exact board:
+   https://esp3d.io/ESP3D/Version_3.X/hardware/esp_boards/esp32-s3/
+   lilygo_t-eth-lite/
+   Independently lists the full GPIO pinout for this board:
+     Ethernet (W5500 via SPI2): SCK=GPIO10, MISO=GPIO11, MOSI=GPIO12,
+     CS=GPIO9, IRQ=GPIO13, RST=GPIO14.
+     microSD card (separate SPI bus): MISO=GPIO5, MOSI=GPIO6, CLK=GPIO7,
+     CS=GPIO42.
+   Explicitly notes: "Ethernet SPI cannot be shared with SD card SPI" - the
+   board deliberately uses two independent SPI buses so both peripherals
+   can run simultaneously.
+2. LilyGO's own official GitHub repository and ESPHome reference config:
+   https://github.com/Xinyuan-LilyGO/LilyGO-T-ETH-Series
+   https://github.com/Xinyuan-LilyGO/LilyGO-T-ETH-Series/blob/master/
+   esphome/lilygo-eth-lite-esp32s3.yaml
+   Independently confirms the W5500 Ethernet pin assignment used in
+   ESPHome's own board support: clk_pin: GPIO10, mosi_pin: GPIO12,
+   miso_pin: GPIO11, cs_pin: GPIO9, interrupt_pin: GPIO13 - matching source
+   1 and this repo's own pins_arduino.h ETH_PHY_SPI_SCK/MOSI/MISO/CS values
+   exactly.
+3. Web search corroboration across additional community sources (espboards
+   listings, forum discussion of a related but DIFFERENT LilyGO board - the
+   T-ETH-ELite, not this T-ETH-Lite - was checked and excluded as
+   irrelevant/a different SKU with a different W5500 pin layout, per
+   GitHub issue "T-ETH ELite -> PIN layout wrong (IO9 and IO11)" which is
+   about that other board, not this one).
+
+PER-PIN FINDINGS
+----------------
+- GPIO9, 10, 11, 12, 13: dedicated onboard W5500 Ethernet SPI bus
+  (CS=9, SCK=10, MISO=11, MOSI=12, IRQ=13) - CONFIRMED by two independent
+  real vendor/community sources (esp3d.io board page, LilyGO's own ESPHome
+  yaml), in addition to this repo's own pins_arduino.h ETH_PHY_* macros.
+  Excluded (removed from chipGpios entirely), unchanged.
+- GPIO14: dedicated W5500 RST line - CONFIRMED by esp3d.io's board page
+  (RST=GPIO14) in addition to this repo's own pins_arduino.h ETH_PHY_RST.
+  Excluded, unchanged.
+- GPIO42: dedicated onboard microSD card chip-select (SD_SS) - CONFIRMED by
+  esp3d.io's board page (microSD CS=GPIO42) as a SEPARATE SPI bus from the
+  Ethernet one (explicitly documented as non-shareable), in addition to
+  this repo's own pins_arduino.h comment. Excluded, unchanged.
+- GPIO0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 17, 18, 21, 38, 39, 40, 41, 43, 44,
+  45, 46, 47, 48: left at the plain chip-level default capability set (no
+  board-specific note). The general SPI0 bus (SS=4/MISO=5/MOSI=6/SCK=7)
+  stays available among these - independently confirmed by esp3d.io's
+  microSD MISO=5/MOSI=6/CLK=7 entries, which match this board's general
+  SPI0 pins (the microSD reader is wired onto the chip's default SPI0 bus,
+  not a separate dedicated one - only its CS line on GPIO42 is dedicated).
+
+CONCLUSION: all existing findings CONFIRMED against two independent real
+vendor/community sources (esp3d.io board definition page and LilyGO's own
+official ESPHome config), beyond just this repo's internal pins_arduino.h.
+No corrections needed. W5500 Ethernet SPI bus (GPIO9-14) and microSD
+chip-select (GPIO42) remain excluded as dedicated onboard hardware; the
+general-purpose SPI0 bus (GPIO4-7) remains available. No buttons or LEDs
+were found or tagged on this board.

@@ -11,11 +11,11 @@ static const uint8_t RX = 3;
 
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
-static const uint8_t I2C_INT = 4;
+// pfodWeb NOTE: I2C_INT (GPIO4) deliberately NOT declared - dedicated
+// onboard interrupt line, not general-purpose.
 
-#define WIRE1_PIN_DEFINED 1  // See Wire.cpp at bool TwoWire::initPins(int sdaPin, int sclPin)
-static const uint8_t SDA1 = 26;
-static const uint8_t SCL1 = 25;
+// pfodWeb NOTE: SDA1/SCL1 deliberately NOT declared - same GPIO26/25 as
+// the dedicated onboard audio codec's AUD_BCLK/AUD_LRCLK below.
 
 static const uint8_t SS = 5;
 static const uint8_t MOSI = 23;
@@ -33,18 +33,14 @@ static const uint8_t PWM1 = 12;
 static const uint8_t D0 = 14;
 static const uint8_t D1 = 27;
 
+// pfodWeb NOTE: G1-G4 deliberately NOT declared - same dedicated onboard
+// audio codec pins as AUD_LRCLK/BCLK/OUT/IN below.
 static const uint8_t G0 = 15;
-static const uint8_t G1 = 25;
-static const uint8_t G2 = 26;
-static const uint8_t G3 = 17;
-static const uint8_t G4 = 16;
 static const uint8_t G5 = 32;
 static const uint8_t G6 = 33;
 
-static const uint8_t AUD_OUT = 17;
-static const uint8_t AUD_IN = 16;
-static const uint8_t AUD_LRCLK = 25;
-static const uint8_t AUD_BCLK = 26;
+// pfodWeb NOTE: AUD_OUT/IN/LRCLK/BCLK deliberately NOT declared -
+// dedicated onboard audio codec I2S bus, not general-purpose.
 
 static const uint8_t T0 = 4;
 static const uint8_t T1 = 0;

@@ -1,0 +1,90 @@
+esp32-evb - button/LED capability-tagging audit (section 7a)
+==============================================================
+
+Board: Olimex ESP32-EVB (chip: esp32). This board already had a board.json
+override from an earlier dedicated-hardware-exclusion pass (Ethernet PHY
+GPIO0/18/19/21/22/23/25/26/27 and microSD SDMMC GPIO2/14/15 already
+excluded), but that earlier pass never applied button/LED tagging to
+GPIO34 (KEY_BUILTIN). This pass adds only the button/LED tagging - no
+changes to the existing dedicated-hardware exclusions.
+
+Sources consulted:
+
+1. https://raw.githubusercontent.com/RIOT-OS/RIOT/master/boards/esp32-olimex-evb/include/board.h
+   RIOT-OS's own board support header for this exact board (esp32-olimex-evb).
+   Defines: "#define BTN0_PIN GPIO34", "#define BTN0_MODE GPIO_IN",
+   "#define BTN0_INT_FLANK GPIO_FALLING", "#define BUTTON0_PIN BTN0_PIN"
+   (external pull-up, falling-edge interrupt - standard active-low button
+   wiring). Also shows "#define LED0_PIN GPIO33" / "#define LED0_ACTIVE (1)"
+   is ONLY compiled when MODULE_OLIMEX_ESP32_GATEWAY is defined - i.e. that
+   LED definition belongs to the sibling ESP32-GATEWAY board, not this one.
+   No unconditional LED definition exists for plain ESP32-EVB in this file.
+
+2. WebSearch results (multiple independent hits, ESPHome/community configs
+   and Olimex docs) consistently describe this board's GPIO32/GPIO33 as
+   "Relay1"/"Relay2" outputs, not an LED - matching board.h point 1 above
+   (LED0/GPIO33 only applies to the ESP32-GATEWAY variant; on ESP32-EVB
+   that same pin drives Relay2 instead).
+
+3. https://docs.zephyrproject.org/latest/boards/olimex_esp32_evb/doc/index.html
+   Zephyr board doc for this board. Confirms board features: "User push
+   button" and "2 x 10A/250VAC (15A/120VAC 15A/24VDC) relays with
+   connectors and status LEDs" - i.e. the relay boards carry their own
+   indicator LEDs (not GPIO-driven MCU status LEDs), consistent with no
+   separate LED_BUILTIN GPIO on this board.
+
+4. https://github.com/OLIMEX/ESP32-EVB (main README + HARDWARE/README.md)
+   Official Olimex open-hardware repo for this exact board. Confirms
+   onboard button "BUT1" exists (FAQ mentions converting BUT1 into a BOOT
+   button via R46/R14 rework) and board description: "ESP32 wifi / BLE
+   development board with Ethernet, relays, microSD card, CAN, infrared,
+   Li-Po charger, GPIOs." Does not itself give a GPIO number for BUT1, but
+   does not conflict with the GPIO34 assignment from board.h/pins_arduino.h.
+
+5. Checked for a per-board Olimex "GPIOs pinout PDF" like the one that
+   exists for the sibling ESP32-GATEWAY
+   (ESP32-GATEWAY-GPIOs-Rev.F-up.pdf) - no equivalent per-board GPIO
+   pinout PDF resource is published for plain ESP32-EVB (only a general
+   user manual PDF and per-revision schematic PDFs, which could not be
+   text-extracted via WebFetch - binary/compressed PDF, no poppler
+   installed locally to render pages). Did not block the audit since
+   RIOT-OS's board.h (source-of-truth firmware definitions used by an
+   actual OS port of this specific board) plus multiple corroborating
+   independent sources already gave consistent, unambiguous confirmation.
+
+6. This board's own pins_arduino.h (variants/esp32/esp32/esp32-evb/):
+   declares KEY_BUILTIN=34, TX=1, RX=3, TX1/RX1=4/36, TX2/RX2=17/16,
+   SDA=13, SCL=16, plus the ETH_PHY_* and BOARD_HAS_1BIT_SDMMC macros
+   already handled by the earlier exclusion pass. No LED_BUILTIN is
+   declared anywhere in this file.
+
+Reasoning / decisions:
+
+- GPIO34 (KEY_BUILTIN): CONFIRMED onboard user button ("BUT1"). Tagged
+  ["digital_input", "button"] in board.json's chipGpios (was previously
+  ["analog_input", "digital_input"] from the inherited esp32/esp32
+  chip-level default). GPIO34 is input-only on classic ESP32 (already in
+  inputOnlyGpios: [34,35,36,37,38,39]), so no digital_output/pwm_output
+  capability was added; analog_input was dropped in favour of the plain
+  button tag, matching the policy already applied to sibling esp32-gateway
+  in this database.
+
+- LED: NO onboard status-LED GPIO exists on plain ESP32-EVB to tag.
+  GPIO33 (which is LED0 on the sibling ESP32-GATEWAY board per the same
+  RIOT-OS board.h, guarded by #ifdef MODULE_OLIMEX_ESP32_GATEWAY) is
+  Relay2 output on this board instead, and this board's own
+  pins_arduino.h declares no LED_BUILTIN. Left untagged/unchanged.
+
+- Alias-collision check (per audit step 4): GPIO34 is NOT aliased as
+  SDA/SCL/SS/MOSI/MISO/SCK anywhere in this board's pins_arduino.h
+  (SDA=13, SCL=16; SS/MOSI/MISO/SCK are deliberately not declared at all,
+  per the existing pfodWeb NOTE already in this file from the earlier
+  exclusion pass). No collision, no alias lines needed deleting, and
+  pins_arduino.h was left unmodified this pass.
+
+Summary: Tagged GPIO34 (KEY_BUILTIN) as a confirmed onboard button
+(["digital_input", "button"]) in board.json, dropping the inherited
+analog_input tag per policy. No LED tag applied - this board has no
+onboard status-LED GPIO (GPIO32/33 are relay outputs). No alias
+collisions found; pins_arduino.h unchanged. Existing dedicated-hardware
+Ethernet/SDMMC exclusions from the earlier pass were left untouched.

@@ -21,10 +21,8 @@
 static const uint8_t PIN_DOTSTAR_DATA = 14;
 static const uint8_t PIN_DOTSTAR_CLOCK = 15;
 
-static const uint8_t TFT_BACKLIGHT = 21;
-static const uint8_t TFT_DC = 39;
-static const uint8_t TFT_CS = 40;
-static const uint8_t TFT_RESET = 41;
+// pfodWeb NOTE: TFT_BACKLIGHT/DC/CS/RESET deliberately NOT declared -
+// dedicated onboard TFT display control lines (see board.json).
 
 static const uint8_t SPEAKER = 42;
 static const uint8_t BUTTON_DOWN = PIN_BUTTON1;
@@ -36,10 +34,8 @@ static const uint8_t SENSOR_LIGHT = 18;
 static const uint8_t SDA = 34;
 static const uint8_t SCL = 33;
 
-static const uint8_t SS = 40;
-static const uint8_t MOSI = 35;
-static const uint8_t SCK = 36;
-static const uint8_t MISO = 37;
+// pfodWeb NOTE: SS/MOSI/SCK/MISO deliberately NOT declared - dedicated
+// onboard TFT display SPI bus (SS shares the same GPIO40 as TFT_CS above).
 
 static const uint8_t A0 = 17;
 static const uint8_t A1 = 2;

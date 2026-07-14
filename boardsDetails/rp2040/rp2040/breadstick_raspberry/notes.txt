@@ -1,0 +1,159 @@
+RP2040 family audit - breadstick_raspberry ("Raspberry Breadstick")
+Date: 2026-07-13
+
+BOARD IDENTIFICATION
+--------------------
+"Breadstick Raspberry" (variant dir name breadstick_raspberry) is the
+"Raspberry Breadstick" by Breadstick Innovations, a Canadian hobbyist/
+community hardware maker (shop.breadstick.ca, also on Tindie and Crowd
+Supply). Successfully crowdfunded on Crowd Supply, Jan 2024. Open-source
+hardware (MIT/Apache-2.0), design files on GitHub.
+
+It is a long, slender ("breadstick"-shaped) RP2040 dev board designed to
+span the full length/height of a solderless breadboard, spacing GPIO
+pins out along both long edges instead of a compact 2-row Pico-style
+header, to avoid jumper-wire clutter.
+
+Key onboard features (from vendor/press sources):
+  - RP2040 + 16MB flash
+  - 24x SK9822 addressable RGB LEDs (APA102/DotStar-compatible protocol -
+    clock + data, NOT WS2812/NeoPixel single-wire)
+  - 6-axis IMU: STMicroelectronics LSM6DSMTR (3-axis accel + 3-axis gyro)
+  - USB-C with 5.1k-ohm CC resistors for 5V @ 3A (incl. PD)
+  - Only 18 of the RP2040's GPIOs exposed as general board I/O (vs 26 on
+    plain Pico) - 16 PWM-capable, 4 ADC-capable, per vendor spec.
+  - CircuitPython / MicroPython / Arduino / official C SDK support.
+
+SOURCES CONSULTED
+------------------
+1. https://github.com/Breadstick-Innovations/Raspberry-Breadstick
+   - the exact repo cited verbatim in this board's own pins_arduino.h
+   header comment ("Pin definitions taken from:
+   https://github.com/Breadstick-Innovations/Raspberry-Breadstick").
+   README/product description (via WebSearch snippet) confirms the 24x
+   SK9822 LED count + Data/Clock wiring, the LSM6DSMTR IMU, the 16MB
+   flash, and the USB-C PD resistor detail.
+2. https://www.electromaker.io/blog/article/raspberry-breadstick-the-new-rp2040-development-board-from-crowd-supply
+   - independent tech-press write-up, corroborates board description,
+   features, and Crowd Supply funding.
+3. https://www.crowdsupply.com/breadstick-innovations/raspberry-breadstick
+   - official crowdfunding campaign page (WebFetch on this URL returned
+   HTTP 403 directly, but WebSearch's own indexed snippet of this page
+   independently corroborated the same feature list: RP2040 + 16MB flash,
+   24x SK9822 LEDs Data+Clock, 6-axis LSM6DSMTR IMU, "18 of the ... GPIO
+   pins are brought out ... compared to 26 on the Raspberry Pi Pico").
+4. https://www.tindie.com/products/breadstick/rp2040-dev-board/ and
+   https://www.hackster.io/news/breadstick-innovations-stretches-the-raspberry-pi-pico-to-fill-a-breadboard-and-adds-bonuses-8139821b18ae
+   - further independent corroboration of the same board identity/specs
+   (found via WebSearch, not individually WebFetched - consistent across
+   every independent source found, no contradictions).
+5. https://api.github.com/repos/Breadstick-Innovations/Raspberry-Breadstick/contents/RP2040-Breadstick
+   and the KiCad schematic sources within it:
+     - LSM6DS3TR.kicad_sch: hierarchical labels "IMU_SCL" (pin 13,
+       SCL/SPC) and "IMU_SDA" (pin 14, SDA/SDI/SDO) on the IMU footprint
+       - matches this board's own pins_arduino.h IMU_SDA/IMU_SCL alias
+       NAMES verbatim (byte-for-byte identifier match).
+     - SK9822_RGB_LED_Strip.kicad_sch: hierarchical labels "LED_DATA" and
+       "LED_CLK" on the LED strip driver circuit - matches this board's
+       own DOTSTAR_DATA/DOTSTAR_CLOCK aliases in spirit/role (data+clock
+       pair for the addressable strip), confirming it is genuinely a
+       2-wire clocked protocol device, not single-wire.
+   IMPORTANT CAVEAT: an attempt was made to trace these hierarchical
+   labels through the top-level RP2040-Breadstick.kicad_sch and
+   RP2040.kicad_sch schematic files to the exact RP2040 GPIO numbers via
+   WebFetch/automated summarization. This produced internally
+   inconsistent and almost certainly hallucinated results across repeat
+   fetches (one pass claimed IMU_SDA/IMU_SCL were on GPIO26/27 and that
+   GPIO26 also doubled as the RUN/reset pin - both self-contradictory
+   with basic RP2040 facts, since RUN is not a GPIO at all, and with each
+   other, since a fetch of the IMU's own sub-schematic already showed
+   labels not raw GPIO numbers). KiCad's dense s-expression schematic
+   format is not reliably summarizable by an automated small-model fetch.
+   These specific claimed GPIO-number results were explicitly discarded
+   and NOT used as evidence anywhere in this audit's conclusions. Only
+   the hierarchical *label names* (IMU_SDA/IMU_SCL/LED_DATA/LED_CLK),
+   which were consistent and matched this board's own pins_arduino.h
+   naming exactly across repeated fetches, were retained as
+   corroboration. The actual GPIO12/13/16/17 assignments used in
+   board.json come directly from this board's own authoritative
+   pins_arduino.h (itself sourced from this same repo, per its own
+   header comment), cross-checked against the vendor's own "18 I/O pins"
+   spec (see reasoning below) rather than from the unreliable schematic
+   GPIO-number fetch.
+
+PER-PIN REASONING
+------------------
+This board's pins_arduino.h declares PINS_COUNT=22 / NUM_DIGITAL_PINS=22
+total GPIOs in use, of which exactly 18 are exposed via the D1-D18
+static-const alias list (GPIO27,26,11,10,9,8,7,6,5,24,23,22,21,20,19,18,
+29,28) - this is the board's own general-purpose header pin set. The
+remaining 4 GPIOs used by this board (12, 13, 16, 17) are declared only
+via bespoke named aliases (IMU_SDA, IMU_SCL, DOTSTAR_CLOCK, DOTSTAR_DATA)
+and do NOT appear anywhere in the D1-D18 list. This 22-4=18 arithmetic
+exactly matches the vendor's own independently-published "18 I/O pins"
+marketing spec (sources #1-4 above), which is strong internal-consistency
+confirmation, independent of the discarded schematic-GPIO-number fetch,
+that GPIO12/13/16/17 are genuinely reserved/dedicated-only and not
+header-broken-out for general use.
+
+  GPIO12 (IMU_SDA / PIN_WIRE0_SDA) and GPIO13 (IMU_SCL / PIN_WIRE0_SCL):
+    Dedicated I2C0 bus to the onboard LSM6DSMTR 6-axis IMU only. Not a
+    general-purpose/user-facing I2C bus (contrast with e.g. a STEMMA QT
+    connector shared with onboard+external devices - no such shared-bus
+    evidence found here; this board's general-purpose I2C is Wire1,
+    GPIO22/23, which duplicates two of the D1-D18 pins and is left
+    unchanged). chipGpios capabilities set to [] (not general digital
+    I/O); the i2c_sda/i2c_scl bus-role tags are still correctly
+    auto-supplied by build_boards.js from the genuine PIN_WIRE0_SDA/
+    PIN_WIRE0_SCL aliases - this is a real I2C bus, not a false-positive
+    bus-alias collision bug, so no #define needed removing.
+
+  GPIO16 (DOTSTAR_CLOCK) and GPIO17 (DOTSTAR_DATA):
+    Dedicated clock+data pair driving the onboard 24x SK9822 addressable
+    RGB LED strip only. SK9822 is APA102/DotStar-protocol compatible -
+    a 2-wire, externally-clocked addressable-LED protocol, fundamentally
+    different from WS2812/NeoPixel's single-wire self-clocked protocol.
+    This repo's "led_neopixel" capability tag is explicitly documented in
+    designer/boards/shared/PinType.js as: "fixed onboard addressable
+    (WS2812-style) RGB LED data pin" - a single-wire protocol descriptor
+    that does not accurately describe this board's genuine 2-wire clocked
+    hardware. A full-repo grep confirmed no "led_dotstar" or other
+    2-wire/clocked-addressable-LED capability tag exists anywhere in this
+    codebase's vocabulary. Per this audit's explicit mandate to confirm
+    via real vendor documentation and never guess, applying led_neopixel
+    to either pin would misrepresent the actual protocol rather than
+    merely omit a nice-to-have label, so it was NOT applied to either
+    pin. Both GPIO16 and GPIO17 get capabilities: [] (output-only, not
+    general-purpose I/O, no SPI/I2C hardware-bus alias declared in
+    pins_arduino.h either - this is a bit-banged/PIO-driven software
+    protocol, not a hardware peripheral bus), matching this repo's
+    adafruit_feather_prop_maker PIN_I2S_DATA/PIN_I2S_BIT_CLOCK/
+    PIN_I2S_WORD_SELECT precedent for a confirmed onboard peripheral with
+    no capability tag fitting it.
+
+  Every other GPIO used by this board (5-11, 18-24, 26-29 - the full
+  D1-D18 general-purpose alias list, which also covers this board's own
+  Wire1 SDA/SCL=GPIO22/23 and SPI1 MISO/MOSI/SCK/SS=GPIO8/11/10/9
+  aliases): NO CHANGE. Left at the chip-level default full
+  digital_input/digital_output/pwm_output capability set. No onboard
+  button or plain (non-strip) status LED was found documented anywhere
+  by any source consulted - this board's only "LED" hardware is the
+  24-LED SK9822 strip (handled above), and no button/switch of any kind
+  is mentioned in any vendor/press source found. No SDA/SCL/SS/MOSI/
+  MISO/SCK bus-alias collision with any button/LED pin was found (no
+  button/LED pins exist on this board at all besides the excluded
+  DotStar/IMU lines above), so no pins_arduino.h #define removal was
+  needed for this board.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/breadstick_raspberry/board.json (full
+file, chip-level defaults + chipGpios overrides for GPIO12/13/16/17,
+excluding this board's onboard-only IMU I2C bus and DotStar LED
+clock/data pair from the default full-GPIO-capability fallback; no
+led_neopixel tag applied since the onboard LED hardware is confirmed to
+be a 2-wire DotStar/APA102-protocol device, not WS2812/NeoPixel, and no
+matching capability tag exists in this repo's vocabulary). No pins_arduino.h
+changes were needed (no button/LED bus-alias collision bug found on this
+board). No onboard button or plain status LED exists on this board per
+every source consulted.

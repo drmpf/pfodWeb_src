@@ -18,12 +18,10 @@ static const uint8_t SCL = 9;
 static const uint8_t SDA2 = 20;
 static const uint8_t SCL2 = 19;
 
-static const uint8_t SS = 47;
-static const uint8_t MOSI = 11;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 12;
-static const uint8_t SDCS = 10;  // sd cs pin
-static const uint8_t DSCS = 14;  //display cs pin
+// pfodWeb NOTE: SS deliberately NOT declared - same GPIO47 as LDO2 below
+// (internal power-control line, not a usable SPI CS). MOSI/MISO/SCK and
+// SDCS/DSCS deliberately NOT declared - dedicated onboard microSD +
+// display shared SPI bus.
 
 static const uint8_t A1 = 1;
 static const uint8_t A2 = 2;
@@ -39,7 +37,8 @@ static const uint8_t D4 = 4;
 static const uint8_t D5 = 5;
 static const uint8_t D6 = 6;
 static const uint8_t D8 = 8;
-static const uint8_t D13 = 13;
+// pfodWeb NOTE: D13 (GPIO13) deliberately NOT declared - same as MISO
+// above, dedicated onboard microSD+display SPI bus.
 static const uint8_t D9 = 9;
 
 static const uint8_t T1 = 1;
@@ -52,14 +51,18 @@ static const uint8_t T6 = 6;
 static const uint8_t BOOT_BTN = 0;
 static const uint8_t VBAT_VOLTAGE = 7;
 #define BAT_VOLT_PIN VBAT_VOLTAGE
-static const uint8_t LDO2 = 47;
+// pfodWeb NOTE: LDO2 (GPIO47) deliberately NOT declared - internal
+// power-control line, not general-purpose.
 static const uint8_t STATUS_RGB = 35;
 static const uint8_t RGB_STRIP = 36;
 static const uint8_t INTERRUPT_PIN = 18;
-static const uint8_t USER_BTN_1 = 14;
-static const uint8_t USER_BTN_2 = 39;
+// pfodWeb NOTE: USER_BTN_1 (GPIO14) deliberately NOT declared - same
+// GPIO as the dedicated display CS (DSCS) above. USER_BTN_2 (GPIO39)
+// deliberately NOT declared - same GPIO as the dedicated I2S amp
+// AMP_DIN below.
 static const uint8_t USER_BTN_3 = 40;
-static const uint8_t AMP_DIN = 39;
+// pfodWeb NOTE: AMP_DIN (GPIO39, see USER_BTN_2 note above) deliberately
+// NOT declared here again.
 static const uint8_t AMP_SD = 42;
 static const uint8_t AMP_BCLK = 45;
 static const uint8_t AMP_LRCLK = 48;

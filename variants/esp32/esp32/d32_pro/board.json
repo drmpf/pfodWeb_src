@@ -1,0 +1,80 @@
+// pfodWeb NOTE: excludes GPIO4/12/14/27/32/33 - dedicated onboard TFT
+// display + resistive touch controller + microSD card slot (TF_CS/
+// TS_CS/TFT_CS/TFT_DC/TFT_LED/TFT_RST, all macro-only in vendor
+// pins_arduino.h, including SS which is #define'd to TF_CS). This is the
+// LOLIN D32 Pro's built-in ILI9341+XPT2046+microSD system.
+//
+// pfodWeb NOTE (2026-07-12): button/LED capability-tagging audit
+// (playbook section 7a). GPIO5 (LED_BUILTIN) CONFIRMED as a genuine
+// onboard active-LOW LED via the official Wemos/LOLIN D32 Pro schematic
+// (sch_d32_pro_v2.0.0.pdf, rev 2.0.0, title block "D32_pro") - "Battery"
+// sheet block shows +3V3 -> R9 (2k) -> LED2 -> net "IO05/SS" (GPIO5),
+// same reference designators (R9/LED2) and topology as sibling board
+// d32's confirmed active-low LED, independently verified on this board's
+// own schematic (not assumed identical). Tagged
+// ["digital_output","led_low","pwm_output"] below, matching this repo's
+// led_low precedent (d32, node32s, oroca_edubot).
+//
+// Alias-collision check: this board's own pins_arduino.h declares only
+// "static const uint8_t LED_BUILTIN = 5;" and "static const uint8_t
+// _VBAT = 35;" as parseable static-const pin aliases - no
+// SDA/SCL/SS/MOSI/MISO/SCK/TX/RX static-const alias exists in the file.
+// The file's own "#define SS TF_CS" macro is not parsed as a pin alias
+// by build_boards.js (only static-const declarations are) and in any
+// case resolves to GPIO4 (TF_CS), not GPIO5 - no collision on GPIO5 from
+// this board's own header. The shared vendor header d32_core.h (pulled
+// in via "#include <../d32/d32_core.h>") DOES declare
+// "static const uint8_t SS = 5;" (a generic boilerplate default,
+// matching the ESP32-WROOM-32's default VSPI CS0 pin) - this schematic
+// itself even labels the GPIO5 net "IO05/SS" for the same reason - but
+// this board's own pins_arduino.h deliberately overrides SS to TF_CS
+// (GPIO4) for the SD card, and the schematic confirms GPIO5 is wired
+// only to the LED, not to TFT/SD. Separately, build_boards.js's
+// resolveIncludes() only expands quoted `#include "..."` directives, not
+// this file's angle-bracket `#include <../d32/d32_core.h>`, so
+// d32_core.h's SS=5 is never actually pulled into the parsed source for
+// this board - confirmed inert, matching the identical finding already
+// documented for sibling board d32. d32_core.h is shared by d32,
+// d32_pro, and d1_mini32, so it was left unmodified (out of scope for a
+// single-board audit; changing it would have no effect on any of the
+// three boards' generated output anyway, since none of their includes
+// resolve). See boardsDetails/esp32/esp32/d32_pro/notes.txt for the full
+// research trail.
+{
+  "boardName": "ESP32",
+  "displayName": "ESP32 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_output", "led_low", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

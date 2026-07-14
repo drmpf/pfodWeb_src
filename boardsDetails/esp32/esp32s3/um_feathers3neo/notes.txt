@@ -1,0 +1,86 @@
+um_feathers3neo (Unexpected Maker FeatherS3 Neo, ESP32-S3) - button/LED tag research
+=====================================================================================
+
+SOURCES CONSULTED
+-----------------
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/um_feathers3neo/pins_arduino.h
+  -> Official Arduino-ESP32 core variant source for THIS exact board. Byte-for-byte
+     matches the local pins_arduino.h (confirms local copy is accurate, not tampered).
+     Defines: LED_BUILTIN=13 ("User LED"), RGB_DATA=40 (used with rgbLedWrite()/
+     RGB_BUILTIN - Arduino core NeoPixel API), RGB_PWR=RGB_MATRIX_PWR=39,
+     RGB_MATRIX_DATA=16. TX=43, RX=44 (checked - no conflict with any candidate pin).
+
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/um_feathers3/pins_arduino.h
+  -> Sibling non-Neo board's official variant source, fetched for cross-check. Shares
+     identical LED_BUILTIN=13 and RGB_DATA=40 definitions, confirming these two pins'
+     roles are consistent across the FeatherS3 family (Neo adds the matrix on top).
+
+https://raw.githubusercontent.com/UnexpectedMaker/esp32s3-arduino-helper/main/src/UMS3.h
+  -> Official UM Arduino helper library source. Contains:
+       void setBlueLED(bool on) { digitalWrite(LED_BUILTIN, on); }
+     confirming GPIO13 LED is ACTIVE-HIGH (on=true -> HIGH -> lit).
+     Also contains: void setMatrixPower(bool on) { digitalWrite(RGB_MATRIX_PWR, on); }
+     (guarded by #if defined(ARDUINO_FEATHERS3NEO)) confirming GPIO39 is the shared
+     power/enable line for both the single NeoPixel and the 7x7 matrix (already
+     excluded from chipGpios by a pre-existing NOTE - not touched by this task).
+
+WebSearch results citing https://unexpectedmaker.com/feathers3neo and
+https://esp32s3.com/feathers3neo.html
+  -> Product page text confirms: "FeatherS3 Neo has ... a 7x7 Low Power RGB LED
+     Matrix", and "the second LDO powers the RGB LED Matrix and RGB Status LED ...
+     programmable EN control tied to IO39" - matches RGB_MATRIX_PWR/RGB_PWR=39 found
+     in source, giving independent (non-source-code) confirmation of the GPIO39
+     shared-power role and the presence of both an onboard single NeoPixel status
+     LED and a 7x7 NeoPixel-style matrix.
+
+WebSearch snippet (aggregated, likely derived from Tasmota/ESPHome community configs)
+  -> "GPIO40 (NeoPixel): The WS2812B Neopixel is on GPIO40 ... with power on GPIO39"
+     and "The blue LED on the FeatherS3 is connected to GPIO13". Used as corroborating,
+     not primary, evidence - primary evidence is the official source files above.
+
+https://deepwiki.com/UnexpectedMaker/esp32s3/2-hardware-reference and
+https://deepwiki.com/UnexpectedMaker/esp32s3/2.6-feathers3-neo-board
+  -> DISREGARDED. This AI-generated wiki gave GPIO33/GPIO21/GPIO34 for the NeoPixel/
+     matrix/power pins, which directly CONTRADICTS the official Arduino core source
+     and the UMS3.h helper library (both agree on 40/16/39). Treated as unreliable
+     hallucination and not used as evidence for any tagging decision.
+
+https://help.unexpectedmaker.com/docs/boards/rgb-led-not-working/
+  -> General troubleshooting page; confirms "RGB LED is powered via LDO2" but does
+     not list GPIO numbers or polarity. Not used as primary evidence.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+GPIO0 (BOOT strapping pin, pinNotes already says "Must be HIGH for normal boot"):
+  Considered as a possible "button" candidate since ESP32 BOOT buttons are
+  sometimes user-accessible, but found NO vendor documentation confirming a
+  general-purpose user button exists on this board at all - only the standard
+  BOOT+RESET recovery-mode button combo mentioned in generic UM docs, which is a
+  strapping/programming function, not a general-purpose input. The sibling
+  um_feathers3 board.json (audited earlier, not modified by this task) also left
+  GPIO0 untagged, consistent with this conclusion. NOT TAGGED - no guess made,
+  deliberate no-button-found conclusion, not a coin-flip judgment call.
+
+No other GPIO was considered a button/LED candidate - pins_arduino.h has no other
+LED-like or BUTTON-like aliases besides LED_BUILTIN/LED (13), RGB_DATA (40), and
+RGB_MATRIX_DATA (16), all of which were confirmed and tagged (see below).
+
+GPIO39 (RGB_PWR / RGB_MATRIX_PWR): already excluded from chipGpios by a pre-existing
+  pfodWeb NOTE from an earlier audit pass (internal power/enable line, not a
+  capability pin). Left untouched per task instructions (out of scope to reverse a
+  pre-existing exclusion) - documented here only for completeness, not a new
+  judgment call by this pass.
+
+No TX/RX conflicts: TX=43, RX=44; none of GPIO13/16/40 coincide with these, so no
+capability was silently dropped by the TX/RX hard-reservation in build_boards.js.
+
+WHAT WAS TAGGED
+----------------
+GPIO13 -> ["digital_output","pwm_output","led_high"] (onboard blue "User LED",
+  active-high, per official pins_arduino.h + UMS3.h setBlueLED()).
+GPIO40 -> ["digital_output","pwm_output","led_neopixel"] (onboard single WS2812B
+  status NeoPixel, RGB_DATA, per official pins_arduino.h/rgbLedWrite() + vendor docs).
+GPIO16 -> ["digital_output","pwm_output","led_neopixel"] (onboard 7x7 RGB LED
+  matrix data line, RGB_MATRIX_DATA, per official pins_arduino.h + vendor product
+  page + UMS3.h setMatrixPower()). pwm_output retained on all three since it was
+  already present in each pin's prior capability set.

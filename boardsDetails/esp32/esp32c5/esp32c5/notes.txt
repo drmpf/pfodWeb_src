@@ -1,0 +1,95 @@
+Board: esp32c5 / esp32c5 (Espressif generic "ESP32C5 Dev Module" entry,
+representing the official ESP32-C5-DevKitC-1 reference board)
+Directory: variants/esp32/esp32c5/esp32c5/
+Audit date: 2026-07-12
+
+pins_arduino.h summary (read in full):
+  PIN_RGB_LED 27, LED_BUILTIN/RGB_BUILTIN wired to it, RGB_BRIGHTNESS 64
+  TX=11, RX=12, SDA=0, SCL=1, SS=6, MOSI=8, MISO=9, SCK=10
+  A0..A5 = GPIO1..GPIO6
+  LP_SDA=2, LP_SCL=3, WIRE1_PIN_DEFINED, SDA1=LP_SDA, SCL1=LP_SCL
+    ("LP I2C Pins are fixed on ESP32-C5")
+  LP_RX=4, LP_TX=5 ("LP UART Pins are fixed on ESP32-C5")
+
+Sources consulted:
+  1. https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32c5/esp32-c5-devkitc-1/user_guide.html
+     Official Espressif esp-dev-kits documentation for ESP32-C5-DevKitC-1.
+     States the board has an addressable RGB LED "driven by GPIO27" and
+     lists GPIO27 as one of the chip's strapping pins (MTMS, MTDI, GPIO7,
+     GPIO25, GPIO26, GPIO27, GPIO28). Same page's pin-function table
+     gives:
+       GPIO2 = MTMS, GPIO2, LP_GPIO2, LP_UART_RTSN, LP_I2C_SDA, ADC1_CH1, FSPIQ
+       GPIO3 = MTDI, GPIO3, LP_GPIO3, LP_UART_CTSN, LP_I2C_SCL, ADC1_CH2
+       GPIO4 = MTCK, GPIO4, LP_GPIO4, LP_UART_RXD, ADC1_CH3, FSPIHD
+       GPIO5 = MTDO, GPIO5, LP_GPIO5, LP_UART_TXD, ADC1_CH4, FSPIWP
+     None of these four pins' function lists references any onboard
+     peripheral beyond the fixed LP_I2C/LP_UART controller pin mux.
+  2. https://esp32.co.uk/esp32-c5-devkitc-pinout-diagram-safe-gpios/
+     Independent pinout/safe-GPIO guide. Corroborates the onboard
+     addressable RGB LED on GPIO27. Describes GPIO2/GPIO3 as
+     strapping-pin-flagged general-purpose pins (use cautiously) and
+     GPIO4/GPIO5 as explicitly recommended safe general-purpose pins -
+     no dedicated onboard peripheral wired to any of the four.
+  3. ESP32-C5 Series Datasheet (documentation.espressif.com) - confirms
+     LP_GPIO2..LP_GPIO5 are the chip's fixed low-power I2C/UART
+     controller pins, a chip-wide LP-domain pin-mux constraint present
+     on every ESP32-C5 module, not evidence of an onboard device on this
+     specific reference board.
+  4. ESP-IDF Programming Guide, ULP LP Core Coprocessor / GPIO & RTC GPIO
+     pages (docs.espressif.com/projects/esp-idf/.../esp32c5/...) -
+     general background confirming the ESP32-C5's LP core has its own
+     small set of LP-only peripherals (LP_I2C, LP_UART) mapped to a
+     fixed subset of GPIOs, separate from the HP (main) core's
+     general-purpose I2C/UART controllers which can be routed to any
+     GPIO via the standard GPIO matrix.
+
+Reasoning:
+  GPIO27 (PIN_RGB_LED): CONFIRMED real onboard WS2812 NeoPixel, stated by
+  Espressif's own official user guide for the exact physical reference
+  board this generic entry models. High confidence - primary vendor
+  source, plus independent third-party corroboration (esp32.co.uk).
+  Tagged capabilities ["digital_output","led_neopixel","pwm_output"],
+  matching this repo's existing led_neopixel precedent (esp32c6/esp32c6
+  GPIO8, waveshare_esp32_s3_zero GPIO21, adafruit_qtpy_esp32c3 GPIO2).
+
+  Alias-collision check (this session's new playbook step): compared
+  GPIO27 against this variant's own TX/RX/SDA/SCL/SS/MOSI/MISO/SCK alias
+  list (11/12/0/1/6/8/9/10) and the A0-A5 analog alias list
+  (1/2/3/4/5/6) - GPIO27 appears in neither. No conflicting boilerplate
+  bus alias exists for this pin (build_boards.js's unconditional
+  SDA/SCL/SS/MOSI/MISO/SCK/TX/RX-append behavior does not fire here). No
+  pins_arduino.h edit was needed.
+
+  Also noted: GPIO27 is itself listed as a strapping pin in Espressif's
+  official user guide, but the chip-level board.json's pinNotes (sourced
+  from the ESP32-C5 Technical Reference Manual's strapping-pin section)
+  only lists GPIOs 4, 5, 6, and 23 as boot-mode-sensitive. Left
+  pinNotes unchanged - adding a GPIO27 strapping note was not directly
+  TRM-sourced during this audit and is out of scope for the LP-pin/RGB
+  question this task targeted; flagging here for a possible future
+  chip-level pinNotes review.
+
+  LP_SDA=2/LP_SCL=3 (LP-domain I2C, WIRE1/SDA1/SCL1) and LP_RX=4/LP_TX=5
+  (LP-domain UART): KEEP as general-purpose GPIOs. Espressif's own
+  pin-function table shows these are simply the chip's fixed LP_I2C/
+  LP_UART controller pins - a hardware pin-mux constraint of the ESP32-C5
+  LP (low-power) core, which has its own small dedicated set of I2C/UART
+  peripheral instances separate from the HP (main) core's I2C/UART (which
+  can be routed to any GPIO via the GPIO matrix). This is architecturally
+  different from "a second bus wired to an onboard chip" - it just means
+  GPIO2/3/4/5 are the ONLY pins capable of driving the LP-domain I2C/UART
+  hardware blocks, should a sketch choose to use them. No onboard
+  peripheral consumer of the LP bus is documented on the DevKitC-1
+  reference board - the LP_SDA/SCL/RX/TX names describe a capability, not
+  a dedicated wiring. A user sketch remains free to use GPIO2/3/4/5 as
+  plain digital or analog GPIOs. Left unchanged from chip-level defaults
+  (GPIO2/3/4/5 all already carry analog_input+digital_input+
+  digital_output+pwm_output, matching their A1/A2/A3/A4 analog aliases).
+
+Summary: Created variants/esp32/esp32c5/esp32c5/board.json (full copy of
+the chip-level esp32c5/board.json default) with GPIO27 retagged
+["digital_output","led_neopixel","pwm_output"] for the confirmed onboard
+WS2812 RGB LED; GPIO2/GPIO3/GPIO4/GPIO5 (LP_SDA/LP_SCL/LP_RX/LP_TX) left
+as general-purpose GPIOs (no change) since they are capability-only LP
+pin-mux facts, not dedicated onboard hardware; no alias-collision bug
+found on this board; no pins_arduino.h edit was needed.

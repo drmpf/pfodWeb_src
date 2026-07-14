@@ -135,6 +135,7 @@ impl AppState {
             .or_insert_with(|| Arc::new(BleSession::default()))
             .clone()
     }
+
 }
 
 // ── per-target session wrappers ─────────────────────────────────────
@@ -252,4 +253,13 @@ pub struct BleState {
     pub cancel_tx:  Option<tokio::sync::oneshot::Sender<()>>,
     /// See `SerialState::initial_rx`.
     pub initial_rx: Option<broadcast::Receiver<Vec<u8>>>,
+    /// Timestamp of the most recent failed open attempt for this target,
+    /// if any.  ble.rs's `ensure_open` enforces a cooldown from this
+    /// before allowing another scan/connect attempt — a rapid client
+    /// retry loop (observed: ~40 attempts in under 4s while a different
+    /// central held the device) otherwise hammers the BLE adapter for no
+    /// benefit, since nothing about a genuine external obstruction (the
+    /// device connected elsewhere, not yet re-advertising) changes any
+    /// faster by retrying sooner. Cleared on a successful connect.
+    pub last_failure: Option<Instant>,
 }

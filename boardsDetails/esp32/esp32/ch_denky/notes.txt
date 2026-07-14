@@ -1,0 +1,93 @@
+Board: ch_denky (Charles Hallard's "Denky" ESP32 Teleinfo/TIC reader
+board, French Linky smart-meter reader, optionally with LoRa)
+Date: 2026-07-14 (independent verification pass - real external research,
+replacing the earlier pass's reliance on this repo's own copied
+pins_arduino.h alone; ALSO CORRECTS a missed finding)
+
+Sources consulted (real, external, independently checked):
+- https://github.com/espressif/arduino-esp32/commits/master/variants/ch_denky
+  - the official upstream Arduino-ESP32 core's own commit history for
+    this exact variant. The board was added in PR #5079 ("added denky
+    boards"), authored by GitHub user "hallard" - i.e. Charles Hallard
+    himself, the actual designer/vendor of this board (confirmed by
+    cross-referencing his Tindie store below). This means this repo's
+    pins_arduino.h is not a third-party guess - it is a direct copy of
+    the real board designer's own upstream contribution.
+  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/ch_denky/pins_arduino.h
+    - fetched and diffed against this repo's local copy; the two
+      revision blocks (ARDUINO_DENKY_WROOM32 / ARDUINO_DENKY_PICOV3) and
+      all pin macros match exactly.
+- https://www.tindie.com/products/hallard/denky-d4-esp32-tic-teleinfo-reader/
+  and https://github.com/hallard/Denky-D4 - Charles Hallard's own current
+  product listing/repo for the "Denky D4" board (the commercial successor
+  to this variant's 2nd/PICOV3 revision), confirming he is a real,
+  independently-identifiable hardware vendor (Poitiers, France;
+  Teleinfo/TIC reader products under Creative Commons
+  Attribution-NonCommercial-ShareAlike 4.0) and that GPIO8 remains the
+  TIC RX pin and an onboard RGB LED remains dedicated hardware on his
+  current product line.
+
+Per-pin findings:
+- GPIO4, GPIO33: excluded (capabilities: [] / omitted from chipGpios) -
+  Teleinfo/TIC reader enable+RX pins on the 1st-revision
+  ARDUINO_DENKY_WROOM32 (TIC_ENABLE_PIN=4, TIC_RX_PIN=33). CONFIRMED
+  against the official arduino-esp32 upstream source (PR #5079, authored
+  by the board's actual designer).
+- GPIO8: excluded - TIC RX on the 2nd-revision PICOV3 board
+  (TIC_RX_PIN=8). CONFIRMED against the same upstream source, and
+  independently corroborated by the designer's later "Denky-D4" product
+  (GPIO8 remains the Teleinfo Rx pin there too).
+- GPIO14: excluded - LoRa reset pin on the 1st-revision WROOM32
+  (LORA_RESET=14). CONFIRMED against the official upstream source.
+- GPIO26, GPIO27: excluded - LoRa TX/RX on the 1st revision
+  (LORA_TX_PIN=26, LORA_RX_PIN=27), but RGB LED green/red channels
+  (LED_GRN_PIN=26, LED_RED_PIN=27) on the 2nd-revision PICOV3 - a genuine
+  cross-revision ambiguity (LoRa comms vs. LED) confirmed against the
+  official upstream source. Correctly excluded per the repo's
+  never-guess policy, since tagging either a LoRa role or an LED role
+  would be wrong on the other revision.
+- GPIO25 (CORRECTION - 2026-07-14): this pin was NOT excluded by the
+  earlier audit pass, but should have been. It is dedicated onboard LED
+  hardware on BOTH revisions: RGB_LED_PIN=25 on the 1st-revision WROOM32
+  (a single-wire addressable RGB LED data line, i.e. a NeoPixel-style
+  pin, per the vendor's own #define RGB_LED_PIN 25), and LED_BLU_PIN=25
+  on the 2nd-revision PICOV3 (the blue channel of a discrete 3-pin RGB
+  LED alongside GPIO26/27). Unlike GPIO26/27, this is not "conflicting
+  roles across revisions" but "dedicated LED hardware on BOTH revisions,
+  just a different flavour of LED wiring" - so there is no revision on
+  which GPIO25 is genuinely general-purpose. Also, unlike a simple
+  digital LED, an addressable/single-wire RGB LED needs a different
+  capability tag (this repo's convention is "led_neopixel", e.g. in
+  adafruit_qtpy_esp32/board.json) than a discrete blue channel would
+  (e.g. "led_b_high") - since which of those actually applies depends on
+  which physical revision is populated, and that cannot be determined
+  from software alone, this pin is excluded (capabilities: [] / omitted
+  from chipGpios) rather than guessing either tag. This mirrors the
+  reasoning already applied to GPIO26/27 in the prior pass, just missed
+  for GPIO25 at the time.
+- GPIO0: NOT tagged "button", left unchanged (no change made this pass).
+  The 1st-revision WROOM32's pins_arduino.h defines
+  `#define PUSH_BUTTON 0`, which - if independently confirmed - would
+  suggest a "button" tag. However: (a) GPIO0 is already the near-universal
+  ESP32 BOOT-mode strapping pin present on almost every ESP32 devkit,
+  and (b) the vendor's own header does NOT re-declare PUSH_BUTTON under
+  the ARDUINO_DENKY_PICOV3 block, so it is genuinely unclear whether the
+  2nd-revision board actually has a discrete user-facing pushbutton on
+  this pin or whether the WROOM32 macro merely labels the standard
+  EN/BOOT-adjacent flash button. Per the repo's never-guess policy, no
+  tag was added - this is flagged here as an open question for a future
+  pass, not a confirmed finding either way.
+- GPIO0, GPIO1, GPIO2, GPIO3, GPIO5, GPIO12, GPIO13, GPIO15, GPIO18,
+  GPIO19, GPIO21, GPIO22, GPIO23, GPIO32, GPIO34, GPIO35, GPIO36, GPIO37,
+  GPIO38, GPIO39: kept, unchanged generic capabilities.
+
+Summary: Pure dedicated-hardware exclusion pass - no button/LED tagging
+was applied on this board (button ambiguity on GPIO0 left unresolved
+rather than guessed). GPIO4/33 (Teleinfo/TIC reader enable+RX), GPIO8
+(TIC RX on 2nd-revision PICOV3 board), GPIO14 (LoRa reset), and GPIO26/27
+(LoRa TX/RX on 1st revision, ambiguous with LED on 2nd) were all
+CONFIRMED via the official arduino-esp32 upstream repo (PR #5079,
+authored by the board's actual designer, Charles Hallard). CORRECTION
+this pass: GPIO25 - dedicated onboard RGB LED hardware on both
+revisions - was missed by the earlier pass and has now been added to the
+exclusion list.

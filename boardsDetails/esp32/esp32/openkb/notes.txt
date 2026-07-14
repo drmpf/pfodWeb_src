@@ -1,0 +1,129 @@
+openkb (INEX OpenKB, ESP32) - button/LED capability research notes
+====================================================================
+
+Board identity: NOT a mechanical-keyboard controller as the folder name might
+suggest. It is the INEX "OpenKB" educational ESP32 board (Thailand,
+KidBright ecosystem) - a 16x8 red LED dot-matrix display board with buzzer,
+LDR, temperature sensor, RTC+supercap, and two large tactile pushbuttons.
+"KB" = KidBright, not "keyboard".
+
+Sources consulted
+------------------
+1. https://www.espboards.dev/esp32/openkb/
+   Third-party auto-generated pinout page. Lists SW1=GPIO16, SW2=GPIO14,
+   LED_BUILTIN=GPIO16, WIFI_LED=GPIO2, BT_LED=GPIO17, IOT_LED=GPIO12,
+   NTP_LED=GPIO15, BUZZER=GPIO13. Values match this repo's pins_arduino.h
+   exactly - almost certainly auto-generated FROM that same file, so this
+   is NOT treated as independent confirmation on its own, only as a
+   cross-check of pin numbers.
+
+2. https://inex.co.th/home/product/openkb/ (official INEX product page)
+   Independent, vendor-authored description of physical hardware:
+   "Push Buttons: Two large tactile switches for user input", plus 16x8
+   dot-matrix display, piezo buzzer, LDR, I2C temperature sensor, RTC with
+   supercap backup, separate reset switch, microUSB. Confirms there are
+   exactly two onboard tactile switches (matches SW1+SW2 count) but does
+   NOT give GPIO numbers or say anything about a distinct single-color
+   "status LED" separate from the dot-matrix/status LEDs.
+
+3. https://doc.inex.co.th/openkb_kidbright_iot/ (INEX official tutorial,
+   Thai language, IoT over OpenKB/KidBright32i via kidBright IDE)
+   Independently uses the phrases "LED แสดงสถานะ WiFi" (WiFi status LED)
+   and "LED แสดงสถานะ IoT" (IoT status LED) turning on when connected -
+   confirms these are real, named, physical status LEDs on the board
+   (matching WIFI_LED/IOT_LED aliases), not just firmware constants with
+   no physical component. Gives no GPIO numbers, no polarity (HIGH/LOW),
+   no code snippets.
+
+4. https://doc.inex.co.th/openkb-kidbright-kidbright-ide-oled-clock/
+   (INEX official tutorial) - Uses SW1 to enter alarm-set mode, SW2 to
+   increment values, confirming SW1/SW2 are real, distinct, functioning
+   user buttons in official examples. No GPIO/electrical detail (block-code
+   example, not raw C).
+
+5. https://doc.inex.co.th/category/microcontroller/kidbright-openkb/
+   Category listing of OpenKB tutorials; confirmed general topic coverage
+   (I/O, peripherals, servo) but no hardware pin-level detail.
+
+6. https://inex.co.th/store/document/ -> https://inex.co.th/store/workshop/OPEN-KB-200117.pdf
+   Thai workshop PDF (Maker Faire Bangkok 2020 handout). Could not be
+   parsed as text (binary/PDF rendering tool unavailable in this
+   environment - pdftoppm/poppler not installed) - not usable as evidence
+   either way.
+
+7. https://github.com/espressif/arduino-esp32/commits/master/variants/openkb/pins_arduino.h
+   Commit history for this repo's own pins_arduino.h. Confirms:
+   - Original board contribution: PR #4002 "Add Inex OpenKB Board"
+     (jcubuntu, 2020-10-02) - the SW1/SW2/BT_LED/WIFI_LED/NTP_LED/IOT_LED
+     AND the "static const uint8_t LED_BUILTIN = 16;" line were ALL part
+     of this same original contribution (i.e. the LED_BUILTIN=16/SW1=16
+     collision is a mistake baked into the original vendor submission,
+     not introduced later by an unrelated bulk edit).
+   - PR #4520 "Added #define LED_BUILTIN to all pins_arduino.h that need
+     it" (lbernstone, 2020-11-10) only added the
+     "#define LED_BUILTIN LED_BUILTIN" compatibility macro line to boards
+     that already had the static const declared - did not change the
+     GPIO16 value for this board.
+
+8. https://api.github.com/repos/espressif/arduino-esp32/contents/variants/openkb
+   Confirmed this repo's local pins_arduino.h (2179 bytes) is byte-identical
+   to the upstream espressif/arduino-esp32 mainline file - i.e. we are
+   looking at the authoritative, currently-shipping vendor file.
+
+9. https://github.com/inexglobal/arduino-esp32-inex (INEX's own ESP32
+   Arduino core fork) - checked variants/ directory listing; there is NO
+   "openkb" entry in INEX's own fork (103 other boards listed, no openkb).
+   This means the openkb variant lives only in the upstream Espressif repo
+   (contributed once by a third party, jcubuntu) and was never
+   independently maintained/corrected by INEX in their own fork - reduces
+   confidence that anyone at INEX ever reviewed/fixed the LED_BUILTIN=16
+   collision.
+
+Pins considered and NOT tagged
+--------------------------------
+- GPIO16 (SW1 per pins_arduino.h, but ALSO aliased as LED_BUILTIN in the
+  very same file - a direct internal contradiction: a single ESP32 GPIO
+  cannot simultaneously be a physical pushbutton input and a driven LED
+  output in normal use). Per source #7 above, this contradiction was
+  present from the original 2020 PR itself, was never fixed. Regardless of
+  which alias is "correct", GPIO16 falls inside this chip's PSRAM-reserved
+  16-17 exclusion range in the existing esp32/esp32/board.json
+  (chip-level pin-exclusion audited previously) and therefore has NO
+  chipGpios entry to tag in the first place. Per task instructions, this
+  exclusion is out of scope to reverse. NOT TAGGED - left for human
+  review in case someone finds a real schematic resolving the SW1 vs
+  LED_BUILTIN contradiction and decides the chip-level exclusion should be
+  revisited.
+- GPIO17 (BT_LED per pins_arduino.h). Also falls inside the same
+  PSRAM-reserved 16-17 chip-level exclusion range, no chipGpios entry.
+  NOT TAGGED for the same reason as GPIO16 above (best-guess identity is
+  plausible - "Bluetooth status LED" - but moot since the GPIO is excluded
+  at chip level regardless).
+- GPIO2 (WIFI_LED), GPIO12 (IOT_LED), GPIO15 (NTP_LED). Identity as real,
+  physical, distinct status LEDs is reasonably well corroborated (source
+  #3: INEX's own tutorial independently describes a "WiFi status LED" and
+  "IoT status LED" lighting up, matching these names/count). However, NO
+  source found (schematic, datasheet, firmware source with digitalWrite
+  calls) confirms whether HIGH or LOW turns each LED on, so the
+  led_high vs led_low polarity choice would be a guess. Per task
+  instructions ("If you cannot find solid confirming evidence, do NOT tag
+  anything"), these three GPIOs are deliberately left untagged. This is a
+  best-guess-not-made judgment call - a human with access to the OpenKB
+  schematic PDF (source #6, currently unreadable in this environment)
+  could likely resolve the polarity and tag these with confidence.
+  Also note: GPIO12 and GPIO15 are ESP32 strapping pins (see existing
+  "pinNotes" boot-warnings in board.json) - using them as always-on status
+  LEDs would be unusual if they must float/be LOW/HIGH at boot, which is a
+  further (soft) reason to want schematic confirmation before tagging.
+
+Summary of what was tagged
+-----------------------------
+TAGGED: GPIO14 -> ["digital_input","button"] (SW2), confirmed via INEX's
+own product page ("Two large tactile switches for user input") plus the
+board-specific SW2 alias and its use as a real button in INEX's own
+tutorial examples. GPIO14 is not this board's TX/RX pin (TX=1, RX=3 per
+pins_arduino.h) so the tag is not at risk of being silently discarded by
+build_boards.js's TX/RX hard-reservation.
+
+No LED was tagged on this board (see "Pins considered and NOT tagged"
+above for the four LED candidates and why each was left untagged).

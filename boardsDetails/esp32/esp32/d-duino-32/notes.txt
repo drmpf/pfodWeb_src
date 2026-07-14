@@ -1,0 +1,76 @@
+d-duino-32 (ESP32, LILYGO/Wemos-family "built-in OLED" board) - dedicated-hardware pin-exclusion audit
+========================================================================================================
+
+Sources consulted
+------------------
+https://github.com/espressif/arduino-esp32/blob/master/variants/d-duino-32/pins_arduino.h
+  Official vendor/Espressif arduino-esp32 repo, the exact variant this board is built from. Content
+  matches this project's local variants/esp32/esp32/d-duino-32/pins_arduino.h byte-for-byte on the
+  pins that matter: SDA=5, SCL=4, OLED_SCL=SCL (->4), OLED_SDA=SDA (->5). No LED_BUILTIN, no
+  KEY_BUILTIN, no button/LED alias of any kind is declared anywhere in the file. Treated as the
+  strongest source since it is the literal first-party file this board definition derives from.
+
+https://github.com/espressif/arduino-esp32/issues/930 ("Support for D-duino-32")
+  Confirms the board carries an onboard I2C SSD1306 OLED, 128x64, and that it uses non-standard
+  SDA/SCL pin numbers (5/4) instead of the ESP32 default (21/22) - i.e. the OLED sits on the SAME
+  bus as the board's general-purpose SDA/SCL, not a separate dedicated pin pair. Issue discussion
+  is about needing to pass explicit pin numbers to I2C component libraries that assume the default
+  21/22 pins; does not mention any onboard button or LED.
+
+https://github.com/espressif/arduino-esp32/issues/4681 ("D-duino-32 library error + fix")
+  Also concerns this exact board; discusses a pins_arduino.h compile issue with the OLED_SCL/
+  OLED_SDA declarations (unrelated to pin function). No button/LED mentioned.
+
+https://www.espboards.dev/esp32/d-duino-32/
+  Consulted but found UNRELIABLE for this specific board: its scraped pinout table reported
+  OLED_SCL on "GPIO 39", which contradicts both the vendor's own pins_arduino.h (GPIO4) and this
+  project's local file (also GPIO4). Its claim of a "GPIO2 220-ohm LED to GND" is therefore also
+  treated as unconfirmed/likely generic-template noise rather than board-specific fact, since the
+  same fetch got the OLED pin demonstrably wrong. Not used as evidence for or against an LED tag.
+  (espboards.dev has been used successfully for other boards in this audit series, but its output
+  for this particular board did not check out against a stronger first-party source.)
+
+General web search ("D-duino-32 ESP32 OLED pinout schematic", "D-duino-32 ... github pins_arduino.h",
+schematic/button searches) turned up no independent schematic or vendor page with a documented
+onboard button or discrete status LED for this specific board. The oft-cited "GPIO0/BOOT and EN"
+buttons are the generic ESP32 module bootstrap buttons present on nearly all dev boards, not a
+board-specific user button, and are not tagged per this project's established convention.
+
+Reasoning
+---------
+OLED bus (GPIO4=SCL, GPIO5=SDA): Confirmed onboard SSD1306 128x64 I2C OLED, wired directly to the
+same SDA/SCL pins this board exposes as its general-purpose I2C bus (OLED_SCL/OLED_SDA are plain
+aliases of SCL/SDA in pins_arduino.h, not a separate GPIO pair). Since I2C is a multi-drop bus and
+the OLED only occupies one address on it (SSD1306 modules conventionally default to 0x3C, though no
+source here explicitly states this board's exact address), the bus is not exclusively consumed the
+way a dedicated SPI/parallel display would consume its lines. This matches the KEEP policy for
+general-purpose I2C without a documented EXCLUSIVE onboard consumer: GPIO4/5 keep their normal chip
+capabilities (build_boards.js also auto-appends i2c_scl/i2c_sda to whichever GPIOs pins_arduino.h
+declares as SCL/SDA, independent of chipGpios, so these two pins would carry the I2C bus tags either
+way). An informational-only pinNotes entry was added to GPIO4 and GPIO5 in the new board.json so
+Designer users see that an OLED display already occupies this bus before wiring up another I2C
+device on it.
+
+Checked for the alias-collision pitfall (item 4 of the audit brief): GPIO4 and GPIO5 are the SDA/SCL
+pins themselves, so their i2c_scl/i2c_sda capability is correct and intentional, not contamination -
+there is no exclusion being applied to these pins that a boilerplate alias could silently undermine.
+No other GPIO in this board's chipGpios needed exclusion, since no other dedicated/exclusive onboard
+peripheral (display, radio, sensor) beyond the shared-bus OLED was found.
+
+Button/LED: No onboard general-purpose button or status LED is declared in the vendor pins_arduino.h,
+and no independent schematic/vendor page confirmed one either (see espboards.dev caveat above). No
+guess was made; no button/LED capability was added.
+
+Files changed
+-------------
+variants/esp32/esp32/d-duino-32/board.json (NEW) - full copy of the esp32/esp32 chip-level default
+  board.json, with informational pinNotes added on GPIO4 ("4") and GPIO5 ("5") documenting the
+  onboard shared-bus OLED. No chipGpios capabilities were changed (KEEP - shared bus, not exclusive).
+variants/esp32/esp32/d-duino-32/pins_arduino.h - unchanged (read-only reference for this audit;
+  matches the vendor source verified above).
+
+One-line summary
+-----------------
+D-duino-32's onboard SSD1306 OLED shares the general I2C bus (SCL=GPIO4, SDA=GPIO5) with no separate
+dedicated pin pair, so both pins are KEPT with their normal I2C capabilities, plus a new informational
+pinNotes entry flagging the OLED's presence; no button or LED was confirmable so none was tagged.

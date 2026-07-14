@@ -1,0 +1,18 @@
+um_pros3 (Unexpected Maker ProS3, ESP32-S3) — button/LED tag research notes
+Date: 2026-07-11
+
+Sources consulted:
+- https://esp32s3.com/pros3.html — Official UM ProS3 product page. Confirms "Low power RGB LED", states LDO2 has "programmable EN control tied to IO17" and "LDO2 also powers the onboard RGB LED". Did not explicitly state the RGB data GPIO number in the fetched excerpt.
+- https://www.espboards.dev/esp32/pros3/ — Third-party pinout/spec page. Explicitly lists "GPIO 18: RGB_DATA" and "GPIO 17: RGB_PWR LDO2" — confirms NeoPixel data pin is GPIO18 and power-enable is GPIO17 (already excluded in this board's board.json from an earlier audit pass).
+- https://api.riot-os.org/group__boards__esp32s3__pros3.html — Official RIOT-OS board documentation for this exact board. States "1 x RGB-LED WS2812B" (confirms it is an addressable/NeoPixel-type LED, not a simple single-color LED) and explicitly lists "BTN0 GPIO0 labeled as BOOT button" — confirms GPIO0 is a physical BOOT/user pushbutton.
+- https://help.unexpectedmaker.com/index.php/knowledge-base/im-trying-to-use-the-rgb-led-but-its-not-lighting-up/ — returned HTTP 404 at fetch time (page since moved/renamed to help.unexpectedmaker.com/docs/boards/rgb-led-not-working/); not directly used, but corroborating snippet surfaced via WebSearch confirmed "RGB LED is powered via LDO2 ... enable LDO2 before you'll see output on the LED", consistent with the GPIO17/GPIO18 relationship above.
+- https://github.com/UnexpectedMaker/esp32s3-arduino-helper — UM's own Arduino helper library for ProS3-family boards; WebSearch summary confirmed it exposes setPixelColor()/setPixelBrightness() for the RGB LED and setLDO2Power(bool) for GPIO17, consistent with GPIO18 = NeoPixel data / GPIO17 = LDO2 enable.
+- pins_arduino.h (local, in this board's variant directory) — declares RGB_DATA = GPIO18 and LED_BUILTIN = RGB_BUILTIN (mapped to the NeoPixel). Used only as a cross-check, NOT as the sole basis for tagging (per task rules), since vendor/third-party documentation above independently confirmed the same GPIO18/GPIO17 assignment.
+
+Pins considered but NOT tagged:
+- GPIO17 (RGB_PWR / LDO2 enable): NOT tagged. This is a power-control/enable line for the NeoPixel's regulator, not a button or a directly-driven LED indicator pin, so no button/LED capability tag applies to it. It was already excluded from chipGpios in an earlier pin-exclusion audit pass (pre-existing "// pfodWeb NOTE: excludes GPIO17..." comment) — left untouched per task instructions (out of scope to reverse pre-existing exclusions). No guess made either way; this is a confirmed non-candidate, not an uncertain one.
+- No other candidate GPIOs were found. There is no separate single-color status LED distinct from the WS2812B NeoPixel on this board per the sources above — only the one addressable RGB LED (GPIO18/data) and the BOOT button (GPIO0) were identified as confirmable onboard button/LED features.
+
+Tagged:
+- GPIO18 -> led_neopixel (+ pwm_output retained, was already present) — onboard WS2812B addressable RGB LED data pin.
+- GPIO0 -> button (digital_input + button only, pwm_output/digital_output/analog stripped per tag spec) — onboard BOOT/user pushbutton (BTN0). Not a TX/RX pin (board TX=43, RX=44), so no conflict.

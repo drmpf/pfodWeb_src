@@ -1,0 +1,174 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "iLabs Challenger NB 2040 WiFi" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This board's own pins_arduino.h
+  // (top-of-file pfodWeb NOTE, already present before this audit) documents
+  // why: it carries an add-on ESP8285 WiFi co-processor reached over a
+  // plain UART (Serial2 / GPIO4-5) plus two GPIO control lines
+  // (PIN_ESP8285_MODE/PIN_ESP8285_RST), NOT the native RP2040 + CYW43439
+  // combo that Pico W / rp2040w-bucket boards use (matches the sibling
+  // challenger_2040_wifi board exactly — same ESP8285 co-processor wiring,
+  // same PIN_SERIAL2_TX/RX=4/5, PIN_ESP8285_MODE=13, PIN_ESP8285_RST=19,
+  // and the same build.extra_flags=-DWIFIESPAT2 in boards.txt). This board
+  // would need its own dedicated AT-command/co-processor .ino templates
+  // before it could genuinely offer tcp/http/ble connections — also listed
+  // by name alongside challenger_2040_wifi in the rp2040w chip bucket's own
+  // board.json comment as one of the boards deliberately excluded from that
+  // bucket for this reason.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/NeoPixel tagging
+  // audit, 2026-07-13):
+  //
+  // Board: iLabs "Challenger NB RP2040 WiFi" (Adafruit Feather form
+  // factor). "NB" = "No Battery" — confirmed via the vendor datasheet: this
+  // is a variant of the regular Challenger RP2040 WiFi board with the
+  // battery connector and Li-Po charging circuit removed, and "extra GPIO
+  // pins added" in that freed-up board area instead. It is NOT an NB-IoT
+  // cellular variant (no cellular modem of any kind is present) — verified
+  // directly against the datasheet text and confirmed by boards.txt
+  // (build.extra_flags=-DWIFIESPAT2, the same ESP8285 AT-firmware flag used
+  // by the plain challenger_2040_wifi board; no modem-related library flag
+  // anywhere in this board's boards.txt entry).
+  //
+  // Sources consulted:
+  //   1. https://ilabs.se/challenger-nb-rp2040-wifi-datasheet/ (official
+  //      vendor datasheet, fetched directly) — confirms: RP2040 + 8MB
+  //      flash; WiFi section "based on the Espressif ESP8285 chip...
+  //      connected to the microcontroller using a UART channel" driven by
+  //      AT-commands; onboard user LED "connected to pin D15 (LED_BUILTIN)
+  //      and can easily be controlled by the user program" (LED_BUILTIN
+  //      resolves unambiguously via this board's own pins_arduino.h
+  //      `#define LED_BUILTIN PIN_LED` / `#define PIN_LED (12u)` to GPIO12,
+  //      independent of any iLabs silkscreen "Dn" numbering ambiguity);
+  //      confirms the "No Battery" design removes the battery
+  //      connector/charge circuit and adds "extra GPIO pins" in its place;
+  //      no onboard pushbutton mentioned; does not explicitly state the
+  //      NeoPixel's GPIO number.
+  //   2. CircuitPython's board "challenger_nb_rp2040_wifi" pins.c
+  //      (github.com/adafruit/circuitpython, ports/raspberrypi/boards/
+  //      challenger_nb_rp2040_wifi/pins.c, fetched directly) —
+  //      independently confirms `board.LED` -> GPIO12, `board.NEOPIXEL` ->
+  //      GPIO11, `board.WIFI_MODE` -> GPIO13, `board.WIFI_RESET` -> GPIO19,
+  //      `board.A5` -> GPIO21 (matching this board's own PIN_SPI0_SS=21,
+  //      a normal dual-use analog/SPI-chip-select breakout pin, not a
+  //      dedicated-hardware collision). No `board.BUTTON` defined anywhere
+  //      in the file — corroborating the datasheet's silence on a
+  //      pushbutton.
+  //   3. This board's own pins_arduino.h (variants/rp2040/rp2040/
+  //      challenger_nb_2040_wifi/pins_arduino.h) — already carries a
+  //      pre-existing top-of-file pfodWeb NOTE re: the ESP8285 co-processor
+  //      and Serial-only bucketing. Verified directly: PIN_LED=(12u),
+  //      NEOPIXEL=(11u), PIN_SERIAL2_TX=(4u)/PIN_SERIAL2_RX=(5u),
+  //      PIN_ESP8285_MODE=(13u), PIN_ESP8285_RST=(19u) — all four ESP8285
+  //      control/UART GPIOs (4, 5, 13, 19) are confirmed absent from the
+  //      D0-D17/A0-A5 alias list (D-aliases resolve to GPIOs {16,17,24,23,
+  //      22,2,3,0,1,6,7,8,9,10,14,15,18,20}; A-aliases to {26,27,28,29,25,
+  //      21}) — matching the sibling challenger_2040_wifi board's own
+  //      equivalent exclusion.
+  //   4. Sibling precedent: variants/rp2040/rp2040/challenger_2040_wifi/
+  //      board.json (already audited this session) — identical ESP8285
+  //      wiring (GPIO4/5/13/19), identical PIN_LED=12/NEOPIXEL=11, and its
+  //      own datasheet (https://ilabs.se/challenger-rp2040-wifi-datasheet/)
+  //      explicitly states "Active level: High" for the shared onboard LED
+  //      reference-circuit design reused across this entire iLabs
+  //      Challenger RP2040 product line — this board's own datasheet does
+  //      not restate the polarity, so led_high here is a cross-referenced
+  //      inference from the identical shared circuit on the direct sibling
+  //      board, consistent with every other RP2040 board audited in this
+  //      family to date (all confirmed or inferred active-high, none
+  //      active-low).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/challenger_nb_2040_wifi/notes.txt
+  //
+  // Per-pin reasoning:
+  //   GPIO4  - PIN_SERIAL2_TX / PIN_ESP_TX - onboard ESP8285 WiFi
+  //            co-processor's dedicated UART1 TX line, not general
+  //            purpose. No SPI/I2C bus alias on this pin, so no
+  //            build_boards.js auto-append to strip — capabilities left
+  //            empty outright.
+  //   GPIO5  - PIN_SERIAL2_RX / PIN_ESP_RX - ESP8285 co-processor UART1
+  //            RX. Same reasoning as GPIO4.
+  //   GPIO13 - PIN_ESP8285_MODE / PIN_ESP_MODE - ESP8285 flash-mode
+  //            select line, driven by the RP2040 during ESP8285 firmware
+  //            updates. Not general-purpose. Independently confirmed as
+  //            board.WIFI_MODE in CircuitPython.
+  //   GPIO19 - PIN_ESP8285_RST / PIN_ESP_RST - ESP8285 active-low reset
+  //            line, driven by the RP2040. Not general-purpose.
+  //            Independently confirmed as board.WIFI_RESET in
+  //            CircuitPython.
+  //   GPIO11 - NEOPIXEL - onboard WS2812 addressable RGB status pixel.
+  //            Tagged "led_neopixel" (not led_high/led_low, since it is
+  //            one addressable pixel, not a simple on/off LED) — matches
+  //            this repo's established led_neopixel precedent (e.g.
+  //            challenger_2040_wifi/board.json GPIO11, sea_picro/
+  //            board.json GPIO25). pwm_output kept per the same
+  //            precedent (arduino-pico's analogWrite() works on any
+  //            RP2040 GPIO); digital_input dropped.
+  //   GPIO12 - PIN_LED / LED_BUILTIN - onboard user LED, confirmed by the
+  //            vendor datasheet's own "D15 (LED_BUILTIN)" text (LED_BUILTIN
+  //            resolves via this file's own #define to GPIO12) and
+  //            independently by CircuitPython's board.LED=GPIO12. Tagged
+  //            led_high per the sibling challenger_2040_wifi board's own
+  //            datasheet ("Active level: High" for the identical shared
+  //            reference LED circuit); digital_input dropped, pwm_output
+  //            kept for brightness dimming.
+  //
+  // No onboard user button beyond BOOTSEL (not a normal GPIO, out of scope
+  // per the same reasoning already documented in rpipico/board.json) —
+  // confirmed no separate pushbutton exists on this board via both the
+  // vendor datasheet and CircuitPython's pins.c (no board.BUTTON defined).
+  //
+  // GPIO4/5/13/19 carry no SPI/I2C/other bus alias on this board, so the
+  // build_boards.js unconditional bus-capability auto-append (the
+  // "confirmed button/LED pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK"
+  // bug class flagged for this audit) does not apply here — no
+  // pins_arduino.h edit was needed. GPIO11/12 (NeoPixel/LED) likewise
+  // carry no SPI/I2C/other bus alias (Wire0 lives on GPIO0-1, SPI0 on
+  // GPIO21-24).
+  //
+  // GPIO14, 15, 18, 20 (D14-D17) — the "extra GPIO pins" the datasheet
+  // says were added in place of the removed battery connector/charge
+  // circuit — carry no dedicated-hardware function of any kind (confirmed
+  // via both the datasheet and CircuitPython's pins.c, which expose them
+  // as plain board.D14-board.D17 general-purpose pins). Left with full
+  // default capabilities via the empty chip-level chipGpios — no override
+  // needed.
+  "chipGpios": {
+    "4": { "capabilities": [], "note": "PIN_SERIAL2_TX / PIN_ESP_TX - onboard ESP8285 WiFi co-processor's dedicated UART1 TX line, not general-purpose." },
+    "5": { "capabilities": [], "note": "PIN_SERIAL2_RX / PIN_ESP_RX - onboard ESP8285 WiFi co-processor's dedicated UART1 RX line, not general-purpose." },
+    "13": { "capabilities": [], "note": "PIN_ESP8285_MODE / PIN_ESP_MODE - onboard ESP8285 WiFi co-processor's flash-mode select line, driven by the RP2040 during firmware updates. Not general-purpose. Confirmed as CircuitPython's board.WIFI_MODE." },
+    "19": { "capabilities": [], "note": "PIN_ESP8285_RST / PIN_ESP_RST - onboard ESP8285 WiFi co-processor's active-low reset line, driven by the RP2040. Not general-purpose. Confirmed as CircuitPython's board.WIFI_RESET." },
+    "11": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "NEOPIXEL - onboard WS2812 addressable RGB status LED. Confirmed via CircuitPython's board.NEOPIXEL=GP11 definition, matching this board's own NEOPIXEL=(11u)." },
+    "12": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN - onboard user LED, confirmed by the vendor datasheet's own \"D15 (LED_BUILTIN)\" text and CircuitPython's board.LED=GP12 definition. Active-high polarity cross-referenced from the sibling challenger_2040_wifi board's datasheet (\"Active level: High\" for the identical shared reference LED circuit reused across this iLabs product line)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Matches this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12u).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

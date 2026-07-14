@@ -1,0 +1,109 @@
+Bee_Motion_Mini board.json dedicated-hardware pin-exclusion audit research notes
+=================================================================================
+
+Board: Bee_Motion_Mini (variants/esp32/esp32c3/Bee_Motion_Mini), chip esp32c3.
+pins_arduino.h: TX=21, RX=20, BOOT_BTN=9, PIR=5, SDA=8, SCL=9, SS=7, MOSI=6,
+MISO=5, SCK=4, A0-A5=0-5. No board.json override existed before this audit
+(used the chip-level esp32c3/board.json default). Flagged by the corrected
+non-boilerplate discovery sweep (section 11 of the pin-audit playbook) for
+having BOOT_BTN=9 and PIR=5 declared but never individually reviewed.
+
+Sources consulted
+------------------
+- https://www.cnx-software.com/2022/04/05/bee-motion-mini-esp32-c3-pir-sensor-board/
+  CNX Software product writeup. Confirms: ESP32-C3-MINI-1 module, PIR sensor
+  with dome lens (~5 m range), "BOOT and RESET buttons" present on the board,
+  no USB port on this SKU - "the only I/Os are the Tx/Rx pins" (plus the
+  buttons and the sensor). Links to the vendor's GitHub docs repo. No GPIO
+  numbers given in the article text itself.
+- https://www.tindie.com/products/smartbee/bee-motion-mini-esp32-pir-motion-sensor/
+  Vendor (Smart Bee Designs LLC) Tindie listing. Confirms the board's entire
+  purpose is an onboard PIR motion sensor + ESP32-C3, JST PH2.0 battery
+  connector, designed to be hidden in a small 3D-printed enclosure. Confirms
+  this is a real, purpose-built PIR sensor board, not a generic dev board
+  that merely has "PIR" as a leftover/unused alias name.
+- https://www.hackster.io/news/the-bee-motion-mini-is-a-risc-v-powered-arduino-compatible-miniature-motion-detecting-marvel-98db2506ddf8
+  Corroborates the CNX Software/Tindie description (RISC-V ESP32-C3 +
+  onboard PIR, Arduino-compatible). No new pin-level detail.
+- https://github.com/strid3r21/BeeMotionMini
+  Official documentation repo (designer: Paul Price / strid3r21). README
+  describes the flashing procedure: "press and hold the boot button ... press
+  and release reset ... release the boot button" to enter download mode -
+  confirms a real, physical onboard BOOT button (the standard ESP32-C3
+  BOOT/strapping-pin button used for both user input and flash-mode select
+  at power-up), matching this board's own BOOT_BTN alias. Also references an
+  Arduino sketch that polls the PIR sensor, but the raw README text fetched
+  did not itself state the GPIO number for either the button or the sensor
+  (repo is documentation-focused; did not attempt a full source-tree fetch of
+  every sketch file under GitHub's rendered UI).
+- https://www.espboards.dev/esp32/bee-motion-mini/
+  Independent third-party board-database pinout table. States "BOOT_BTN" on
+  pin 9 and RX=20/TX=21 - matches this board's own pins_arduino.h exactly,
+  corroborating GPIO9 as the named BOOT button pin from a source outside our
+  own repo. The same page's pin-capability table did not explicitly label
+  which pin is the PIR sensor.
+- General web search for "Bee Motion Mini ESP32-C3 PIR GPIO5" / "pin 5" did
+  not surface an independently-published schematic explicitly stating
+  "PIR = GPIO5"; the strongest evidence for GPIO5 specifically is (a) the
+  vendor's own pins_arduino.h alias name "PIR" in the actual Arduino core
+  variant file used to flash real hardware (not a random community guess -
+  this file is what the vendor/community submitted upstream to make the
+  board work), combined with (b) every independent product source agreeing
+  this board's sole defining feature is an onboard PIR sensor with no other
+  candidate sensor/peripheral competing for a GPIO.
+
+Reasoning per pin
+------------------
+GPIO9 (BOOT_BTN) - CONFIRMED onboard button, not a guess. Corroborated by
+  two independent sources (CNX Software's "BOOT and RESET buttons" mention,
+  and the GitHub repo's own flashing instructions describing a physical
+  press-and-hold boot button) plus an independent third-party pinout table
+  (espboards.dev) agreeing GPIO9 is the named BOOT_BTN pin. Checked against
+  TX(21)/RX(20) - no conflict, so the tag is not overridden by the parser's
+  serial-pin reservation. GPIO9 already carries the chip-level pinNotes
+  boot-strapping warning ("Must be HIGH for normal boot") - retained as-is,
+  not removed. Tagged capabilities ["digital_input","button"] only, per the
+  playbook's exclusion rule for button pins (no analog/output/pwm mixed in).
+
+GPIO5 (PIR) - CONFIRMED as this board's onboard PIR sensor digital output,
+  though via a slightly weaker evidentiary chain than GPIO9 (no independently
+  published schematic pin-numbers the PIR line explicitly). This is treated
+  as confirmed-not-a-guess because: the board's own upstream Arduino-core
+  pins_arduino.h (used to actually build/flash working firmware for real
+  units) names the pin "PIR", and every independent product source (CNX
+  Software, Tindie, Hackster) agrees the board's entire hardware identity is
+  "ESP32-C3 + onboard PIR sensor" with no other sensor/peripheral in the
+  picture that could instead be the true owner of that alias. Per the
+  playbook's KEEP-vs-EXCLUDE policy, a PIR digital output is explicitly in
+  the same KEEP-available bucket as a battery/voltage monitor or SD-detect
+  switch (a real sensor reading pfodWeb's own use case supports) - NOT
+  excluded from the pin picker. No capability tag was added (this project's
+  capability-tag vocabulary - button/led_*/led_neopixel/led_r|g|b - has no
+  "PIR sensor" or generic-sensor entry), but an informational "note" field
+  was added to the GPIO5 chipGpios entry in board.json explaining what it's
+  wired to, so a Designer user picking this pin understands the context.
+  Checked against TX(21)/RX(20) - no conflict.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0-4, 6-8, 10, 11, 20, 21) were left at the
+chip-level esp32c3/board.json default - no evidence found of any other
+dedicated onboard hardware beyond the BOOT button and the PIR sensor. SDA=8/
+SCL=9 and the SPI SS/MOSI/MISO/SCK aliases are the standard boilerplate
+identity-mapped onto the same small GPIO set (5,6,7,4) already covered by
+the PIR/analog notes above - no separate onboard I2C/SPI peripheral is
+documented for this board (the header pins are general-purpose, matching
+the "no USB port, only Tx/Rx plus a small header" description).
+
+What was tagged/changed
+-------------------------
+Created variants/esp32/esp32c3/Bee_Motion_Mini/board.json (none existed
+before) as a full copy of the chip-level esp32c3/board.json default, with:
+  - GPIO9 capabilities changed to ["digital_input","button"] (was
+    ["digital_input","digital_output","pwm_output"])
+  - GPIO5 given an added "note" field describing the onboard PIR sensor
+    wiring; capabilities left unchanged
+    (["analog_input_serial","digital_input","digital_output","pwm_output"])
+plus a pfodWeb NOTE comment block at the top of the file citing the sources
+above. No GPIOs were excluded from chipGpios and no pins_arduino.h edit was
+needed (no pin required removal).

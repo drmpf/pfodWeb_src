@@ -9,12 +9,6 @@
   // Serial is USB-CDC and is not a suitable pfod transport.
   "family": "avr",
 
-  "defaultBaud": 115200,
-  "supportedBauds": [
-    300, 600, 1200, 2400, 4800, 9600, 14400, 19200,
-    28800, 38400, 57600, 115200
-  ],
-
   "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
   "dac": {},
   // ADC: ATmega32U4 has a 10-bit ADC (0–1023).  Default reference is
@@ -25,6 +19,57 @@
   // Hardware serial via the D0/D1 alligator-clip pads (Serial1 in sketch).
   "connections": ["serial"],
 
+  // pfodWeb AVR pin audit (2026-07-14). This board's pins_arduino.h is the
+  // plain mechanical Leonardo map (bare `static const uint8_t A0 = 18;`
+  // style, no PIN_A0/PIN_SPI_*/PIN_WIRE_* macros, no
+  // analogInputToDigitalPin() macro) — it carries NO board-specific
+  // hardware info at all. Every finding below is sourced from Adafruit's
+  // own official "Introducing Circuit Playground" learn guide
+  // (https://learn.adafruit.com/introducing-circuit-playground/pinouts)
+  // and, as primary/authoritative evidence, the official
+  // Adafruit_CircuitPlayground Arduino library source
+  // (github.com/adafruit/Adafruit_CircuitPlayground,
+  // Adafruit_Circuit_Playground.h `#ifdef __AVR__` block +
+  // Adafruit_CircuitPlayground.cpp `begin()`), which hard-codes the exact
+  // D<n> pin number of every onboard component for this specific
+  // (ATmega32u4/"classic") board variant. Full research trail and
+  // per-pin reasoning: boardsDetails/arduino/avr/circuitplay32u4/notes.txt.
+  //
+  // IMPORTANT PARSER GOTCHA (documented for the coordinating session, NOT
+  // fixed here — out of scope for a single-board board.json edit):
+  // because this pins_arduino.h has no analogInputToDigitalPin()/PIN_A0
+  // macro, build_boards.js's parseAnalogOffset() returns null for this
+  // board, so buildAvrBoard()'s `isAnalog` test never fires — pin indices
+  // 18-29 are emitted as plain "D18".."D29" (no "A0".."A11" naming, no
+  // analog_input capability) instead of "A0".."A11". This does NOT affect
+  // the chipGpios keys below (they're keyed by raw digital pin number
+  // either way), but it does mean six physical pins are silently
+  // double-counted in the generated pin list under two different index
+  // numbers each, because the digital/analog numbering scheme for this
+  // chip reuses the SAME physical GPIO under both a low D-number and a
+  // separate high 18-29 "A-number" (per pins_arduino.h's own comments:
+  // "A6 = 24 // D4", "A8 = 26 // D8", etc.). Two of our confirmed
+  // hardware pins fall in that duplicate set (D4/"A6"=24 is the left
+  // button; D8/"A8"=26 is the accelerometer chip-select) — both index
+  // numbers are tagged identically below so the duplicate doesn't appear
+  // as a plain, pickable general-purpose pin.
   "pinNotes": {},
-  "chipGpios": {}
+  "chipGpios": {
+    "4": { "capabilities": ["digital_input", "button"], "note": "Left button (Button A). Confirmed via the official Adafruit_CircuitPlayground library (Adafruit_Circuit_Playground.h: `#define CPLAY_LEFTBUTTON 4` in the __AVR__ block) and the official \"Introducing Circuit Playground\" pinout guide. This physical pin is also aliased as \"A6\" (value 24) elsewhere in this same pins_arduino.h -- see the \"24\" entry below, tagged identically." },
+    "24": { "capabilities": ["digital_input", "button"], "note": "Same physical pin as D4 (left Button A) -- pins_arduino.h aliases it a second time as A6 (static const uint8_t A6 = 24; // D4). Tagged identically to \"4\" so this duplicate index doesn't appear as an ordinary free pin (see the parser-gotcha comment above the chipGpios block)." },
+    "19": { "capabilities": ["digital_input", "button"], "note": "Right button (Button B). Confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_RIGHTBUTTON 19`) and the official pinout guide." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard small red status LED, active-high. Confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_REDLED 13`; `redLED(bool v)` calls `digitalWrite(CPLAY_REDLED, v)`, and Adafruit's own \"Basic LEDs\" lesson states writing it HIGH turns the LED on) and the official pinout guide (\"D13 - Red LED\"). Supports PWM per this file's own digitalPinHasPWM() macro (TIMER4A)." },
+    "17": { "capabilities": ["digital_output", "led_neopixel"], "note": "Data pin for the ring of 10 onboard mini NeoPixels (WS2812-style). Confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_NEOPIXELPIN 17`; `strip.setPin(CPLAY_NEOPIXELPIN)`) and the official pinout guide (\"D17 - Built-in 10 NeoPixels\"). This pin is also this board's hardware SPI SS line (pins_arduino.h: `static const uint8_t SS = 17;`) -- not a conflict since the entire hardware SPI bus (D14/D15/D16 plus this SS line) is already fully dedicated to the onboard accelerometer (see \"14\"/\"15\"/\"16\"/\"8\" below), so SS is never needed for a real SPI transaction; the override here deliberately omits any spi_ss tag (avoids the identity/bus-tag contamination bug class documented in the pin-audit playbook section 12)." },
+    "5": { "capabilities": [], "note": "Dedicated to the onboard piezo speaker/buzzer -- confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_BUZZER 5`; `pinMode(CPLAY_BUZZER, OUTPUT)` in begin()) and the official pinout guide (\"D5 - Speaker PWM output\"). Not general purpose." },
+    "18": { "capabilities": [], "note": "Dedicated to the onboard NTC thermistor (temperature sensor) -- confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_THERMISTORPIN A0` = digital pin 18) and the official pinout guide (\"A0 - Temperature Sensor\"). Not general purpose." },
+    "22": { "capabilities": [], "note": "Dedicated to the onboard microphone (analog sound sensor) -- confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_SOUNDSENSOR A4` = digital pin 22) and the official pinout guide (\"A4 - Microphone sound sensor\"). Not general purpose." },
+    "23": { "capabilities": [], "note": "Dedicated to the onboard phototransistor (light sensor) -- confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_LIGHTSENSOR A5` = digital pin 23) and the official pinout guide (\"A5 - Light Sensor\"). Not general purpose." },
+    "7": { "capabilities": [], "note": "Dedicated interrupt line from the onboard LIS3DH accelerometer -- confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_LIS3DH_INTERRUPT 7`) and the official pinout guide (\"D7 - Accelerometer interrupt\"). Not general purpose." },
+    "8": { "capabilities": [], "note": "Chip-select line for the onboard LIS3DH accelerometer, which on this board (the 'classic'/AVR variant only) is wired over dedicated hardware SPI, NOT I2C -- confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_LIS3DH_CS 8`; `lis = Adafruit_CPlay_LIS3DH(CPLAY_LIS3DH_CS, &SPI); // SPI` in begin(), __AVR__ branch only). This physical pin is also aliased as \"A8\" (value 26) elsewhere in this pins_arduino.h -- see the \"26\" entry below, tagged identically. Not general purpose." },
+    "26": { "capabilities": [], "note": "Same physical pin as D8 (accelerometer chip-select) -- pins_arduino.h aliases it a second time as A8 (static const uint8_t A8 = 26; // D8). Tagged identically to \"8\" so this duplicate index doesn't appear as an ordinary free pin (see the parser-gotcha comment above the chipGpios block)." },
+    "14": { "capabilities": [], "note": "Hardware SPI MISO, entirely dedicated to the onboard LIS3DH accelerometer's private SPI bus on this board (see \"8\" above) -- no other onboard or user-facing device shares this bus. Not general purpose." },
+    "15": { "capabilities": [], "note": "Hardware SPI SCK, entirely dedicated to the onboard LIS3DH accelerometer's private SPI bus on this board (see \"8\" above). Not general purpose." },
+    "16": { "capabilities": [], "note": "Hardware SPI MOSI, entirely dedicated to the onboard LIS3DH accelerometer's private SPI bus on this board (see \"8\" above). Not general purpose." },
+    "30": { "capabilities": [], "note": "Internal 'send' reference pin shared by the onboard capacitive-touch-sensing circuit for all 8 general-purpose alligator pads (D0/D1/D2/D3/D6/D9/D10/D12) -- confirmed via the official Adafruit_CircuitPlayground library (`#define CPLAY_CAPSENSE_SHARED 30`; driven as `pinMode(CPLAY_CAPSENSE_SHARED, OUTPUT)` and passed as the common send-pin to all 8 `CPlay_CapacitiveSensor(CPLAY_CAPSENSE_SHARED, <pad>)` instances in begin()). Not a user-facing alligator pad at all (absent from Adafruit's own pinout guide's pad list) and driving/reading it independently would disrupt touch sensing on every pad. Not general purpose." }
+  }
 }

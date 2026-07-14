@@ -1,0 +1,202 @@
+Board: NekoSystems "BL2040 Mini" (Alpha V3) - chip family: rp2040
+Audit date: 2026-07-13
+Part of: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion audit (never done for this family before this session). Clean
+retry of this exact board after a prior attempt hit an API session-limit
+error with zero file changes made.
+
+RESULT: NO CHANGE to chipGpios (left empty {}, matching chip-level defaults).
+board.json was still created (previously absent for this board - it relied
+entirely on the chip-level ../board.json default) to document the research
+trail and formally record the NO-CHANGE decision, per this audit's standard
+practice of creating a board.json for every board reviewed.
+
+Board identity and context
+---------------------------
+This board is NOT a general-purpose dev-kit like almost every other board in
+this family - it is a SimpleFOC/Arduino-compatible RP2040-powered BRUSHLESS
+SERVO/MOTOR DRIVER: onboard 3-phase 6-PWM gate driver stage (PIN_PWMH_A/
+PIN_PWML_A/.../PIN_PWMH_C/PIN_PWML_C, GPIO0-5), 2x Hall-effect current
+sensors (+/-20A range, PIN_IOUT_A/B, GPIO26/27, analog), an onboard 14-bit
+magnetic angle sensor reachable via a dedicated SPI0 bus (PIN_HALL_RX/CS/SCK,
+GPIO16/17/18, also aliased PIN_SPI0_MISO/SS/SCK), and VBUS/VCC sense inputs
+(GPIO7 digital, GPIO28 analog). This board's own local pins_arduino.h
+(variants/rp2040/rp2040/nekosystems_bl2040_mini/pins_arduino.h) already
+carries a pre-existing "pfodWeb NOTE" comment (line 69, added in an earlier
+session before per-board board.json files existed for this family) that
+correctly flags GPIO0-5 and GPIO16-18 as "dedicated to an onboard peripheral
+on this board... not general-purpose" - this audit's own independent
+research (below) corroborates that note.
+
+Sources consulted
+------------------
+1. This board's own pins_arduino.h
+   (variants/rp2040/rp2040/nekosystems_bl2040_mini/pins_arduino.h):
+   `#define PIN_LED (6u)` under a "STANDARD SECTION" heading (grouped with
+   Serial1/Serial2/SPI/Wire - i.e. presented as a general board feature,
+   not part of the "MOTOR CONTROL SECTION" block above it) - no color or
+   polarity comment anywhere near it. No button/key/BOOT alias of any kind
+   exists anywhere in the file. No PIN_NEOPIXEL/WS2812 alias exists
+   anywhere in the file. GPIO16/17/18 are declared as BOTH
+   PIN_HALL_RX/PIN_HALL_CS/PIN_HALL_SCK AND PIN_SPI0_MISO/PIN_SPI0_SS/
+   PIN_SPI0_SCK, with an explicit vendor comment directly above them:
+   "NOTE: SPI0 is used by the on-board magnetic angle sensor, do not
+   change the pins assigned to this SPI object!" - this is a genuinely
+   dedicated onboard peripheral, not a spare/accidental bus collision (the
+   specific bug class this audit checks for: a confirmed button/LED pin
+   ALSO aliased as a bus role, where the bus is genuinely unused/spare).
+   Since PIN_LED (GPIO6) carries no bus alias of any kind in this file,
+   that bug class does not apply to the LED pin at all, and since GPIO16-18
+   carry no button/LED alias, there is nothing to fix there either - the
+   SPI0-vs-hall-sensor dual role is confirmed intentional and already
+   correctly documented, not a defect.
+
+2. WebSearch + WebFetch of
+   https://oshwlab.com/nekosystems/bl2040-mini-alpha-v3 - the board's
+   official OSHWLab open-source-hardware project page, the only public
+   project page found for this board anywhere. Verbatim hardware
+   description: "RP2040 32-bit microcontroller, with 4MB of flash; 2x Hall
+   effect current sensors, +/-20A range; 14-bit hall effect angle sensor on
+   the back (requires soldering); All IO broken out to headers, including
+   allocated pins." The ONLY LED mentioned anywhere on the page is an
+   errata note: "The green LED for +5V power rail is a bit too bright,
+   might want to add a slightly higher resistor value" - this describes a
+   power-rail-presence indicator hard-wired directly across the +5V supply
+   rail (same category as this family's redscorp_rp2040_promini precedent's
+   D2 buck-boost power-good LED - see that board's board.json/notes.txt),
+   NOT connected to any RP2040 GPIO, and NOT the same LED as PIN_LED/GPIO6
+   - out of scope for GPIO-keyed capability tagging. No button of any kind
+   and no NeoPixel/RGB LED are mentioned anywhere on this page. The page's
+   Attachments/BOM section explicitly read "No data", and no schematic
+   file/PDF could be retrieved through WebFetch (OSHWLab's schematic viewer
+   is JS-rendered in-browser, unlike e.g. the redscorp_rp2040_promini
+   precedent's directly-downloadable schematic PDF) - so, unlike that
+   precedent, no authoritative schematic-level polarity confirmation was
+   obtainable for this board's LED.
+
+3. WebFetch of
+   raw.githubusercontent.com/earlephilhower/arduino-pico master
+   variants/nekosystems_bl2040_mini/pins_arduino.h (upstream arduino-pico's
+   own copy of this exact variant) - confirms this repo's local copy
+   matches upstream exactly for every #define (PIN_LED=6, all motor/hall/
+   sensor pins, etc.); the only difference is this repo's local copy
+   additionally inlines ../generic/common.h's D-pin/bus-alias boilerplate
+   directly into the file (a pre-existing repo convention predating this
+   audit, not something this audit changed) where upstream reaches the
+   same content via a plain `#include "../generic/common.h"`. No
+   additional LED/button/NeoPixel information present upstream beyond what
+   this repo's local file already has.
+
+4. Checked for independent community documentation to cross-reference
+   against the vendor page, all with negative results:
+   - CircuitPython board port (raw.githubusercontent.com/adafruit/
+     circuitpython main ports/raspberrypi/boards/nekosystems_bl2040_mini/
+     pins.c) - HTTP 404, does not exist.
+   - MicroPython board port - not found.
+   - Zephyr devicetree board port - not found.
+   - Hackaday feature/review - WebSearch for "BL2040 hackaday review LED
+     button" returned no relevant results.
+   - No GitHub hardware/schematic repository exists under the nekosystems
+     GitHub organization (github.com/nekosystems) - its 5 repos are
+     unrelated (cybercat, SimpleFOCStudio, nekosystems.github.io,
+     pi-sph-fluid, and the arduino-pico core fork itself); the hardware
+     design lives only on OSHWLab, which has no downloadable schematic/BOM
+     for this project as noted above.
+   This board has essentially no independent documentation beyond its
+   OSHWLab project page and its arduino-pico core support - it is a niche,
+   Arduino-only motor-controller board with a much smaller
+   documentation/adoption footprint than the dev-kit-style boards
+   previously audited in this family (e.g. vccgnd_yd_rp2040, which had
+   four independent corroborating community sources).
+
+Per-pin reasoning
+------------------
+GPIO6 (PIN_LED):
+  A real onboard LED exists per the pins_arduino.h "STANDARD SECTION"
+  grouping (i.e. presented as a general board feature alongside Serial/
+  SPI/Wire, not as part of the motor-control-specific pin block) - but NO
+  source found (vendor OSHWLab page, upstream arduino-pico file, or any
+  independent community port) documents its color or polarity (active-high
+  vs active-low). Per this audit's explicit "never guess" instruction, this
+  is left UNTAGGED (no led_high/led_low, no chipGpios entry) rather than
+  assuming polarity from the alias name alone - reported as NO CHANGE, not
+  a missed tag. Left at full chip-level default capabilities
+  (digital_input/digital_output/pwm_output). GPIO6 carries no SDA/SCL/SS/
+  MOSI/MISO/SCK bus alias of any kind in this board's pins_arduino.h, so
+  the "confirmed LED pin also aliased as a bus role" bug class this audit
+  checks for does not apply to this pin regardless of the polarity
+  question.
+
+Button: no button/key/BOOT GPIO alias exists anywhere in this board's
+  pins_arduino.h, and none is mentioned in the only available project
+  documentation (OSHWLab page) or in upstream arduino-pico's copy of the
+  same file - genuinely absent from this board, not under-researched.
+  (The standard RP2040 BOOTSEL bootloader-entry mechanism is, as with
+  every other board in this family, wired to the chip's internal QSPI
+  flash chip-select line rather than a numbered GPIO, so it carries no
+  digitalRead()-able pin to tag in any case - same out-of-scope rationale
+  as rpipico/board.json.)
+
+NeoPixel: no PIN_NEOPIXEL/WS2812 GPIO alias exists anywhere in this
+  board's pins_arduino.h, and none is mentioned in the OSHWLab project
+  page - genuinely absent from this board.
+
+GPIO16/17/18 (PIN_HALL_RX/PIN_HALL_CS/PIN_HALL_SCK = PIN_SPI0_MISO/
+  PIN_SPI0_SS/PIN_SPI0_SCK): confirmed genuinely dedicated to the onboard
+  14-bit magnetic angle sensor by the vendor's own pins_arduino.h comment
+  ("do not change the pins assigned to this SPI object") and corroborated
+  by the OSHWLab page's mention of a "14-bit hall effect angle sensor on
+  the back (requires soldering)" - this is NOT a spare/unused bus
+  accidentally colliding with a button/LED pin (the bug class this audit
+  specifically watches for), it is a deliberate, vendor-documented
+  dedicated-hardware wiring. No button/LED alias exists on any of these
+  three pins either way, so there is no capability tag at risk of bus-role
+  contamination here. Consistent with this repo's RP2040 family philosophy
+  (each board's own declared aliases are trusted as the full picture -
+  see the chip-level ../board.json's empty chipGpios{} rationale), and with
+  this audit's scope (button/LED/NeoPixel tagging plus the specific
+  button/LED-vs-bus collision bug class), no chipGpios entry was added for
+  these three pins - a documentation-only observation, not a change.
+
+GPIO0-5 (PIN_PWMH_A/PIN_PWML_A/PIN_PWMH_B/PIN_PWML_B/PIN_PWMH_C/
+  PIN_PWML_C), GPIO7 (PIN_VBUS_DET), GPIO26-28 (PIN_IOUT_A/PIN_IOUT_B/
+  PIN_VCC_SENSE): all confirmed dedicated to onboard motor-control/
+  sensing hardware by this board's own pins_arduino.h "MOTOR CONTROL
+  SECTION" comments and corroborated by the OSHWLab page's hardware
+  description. None of these carry a button/LED/NeoPixel alias, so none
+  are in scope for this audit's capability-tagging vocabulary; left at
+  full chip-level default capabilities, matching the established
+  precedent (see e.g. redscorp_rp2040_promini/notes.txt's treatment of its
+  own board's QSPI-flash-dedicated pins: dedicated-but-untagged pins are
+  documented, not given a chipGpios entry, when they carry no button/LED/
+  NeoPixel role).
+
+Bug-class check performed (per playbook): no button or LED pin is aliased
+as an SDA/SCL/SS/MOSI/MISO/SCK bus role anywhere on this board (PIN_LED/
+GPIO6 has no bus alias at all; GPIO16-18's SPI0 role is paired with the
+onboard hall sensor, not a button/LED). build_boards.js's unconditional
+bus-alias auto-append therefore has no button/LED tag to contaminate on
+this board. No pins_arduino.h edit was made or needed.
+
+JSON validity: verified via a scratch Node script
+(check_json_neko.js in this session's scratchpad) that strips `//` line
+comments (tracking double-quote string state, including escaped-quote
+handling) and then JSON.parse()s the result - confirmed VALID,
+chipGpios keys = [] as expected (empty object, no entries). No build
+command and no require() of build_boards.js was run, per instructions.
+
+Summary: This board's own pins_arduino.h has a real onboard LED (GPIO6/
+PIN_LED) whose color and polarity could not be confirmed via any
+authoritative or independent source (the vendor's OSHWLab project page has
+no schematic download and mentions only an unrelated +5V power-rail
+indicator LED; no CircuitPython/MicroPython/Zephyr board port or Hackaday
+coverage exists for this niche board) - left UNTAGGED per this audit's
+"never guess" instruction, reported honestly as NO CHANGE. No button and
+no NeoPixel exist on this board. The board's onboard motor-control/
+sensor-dedicated pins (GPIO0-5 PWM gate driver, GPIO7 VBUS sense, GPIO16-18
+hall-sensor SPI0, GPIO26-28 current/voltage sense) are confirmed genuinely
+dedicated but carry no button/LED/NeoPixel alias, so are out of scope for
+this audit's tagging vocabulary and were left undocumented in chipGpios
+(matching this family's established treatment of dedicated-but-untagged
+pins). chipGpios left empty {}; board.json created purely to record this
+research trail (previously this board relied on the chip-level default).

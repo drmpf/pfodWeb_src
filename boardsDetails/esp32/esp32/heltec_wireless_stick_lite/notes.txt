@@ -1,0 +1,95 @@
+Board: heltec_wireless_stick_lite (C:\ai\aicode\pfodWeb\variants\esp32\esp32\heltec_wireless_stick_lite)
+Chip: ESP32 (not the v3 sibling, which is ESP32-S3 and was NOT touched)
+Research date: 2026-07-11
+
+pins_arduino.h relevant aliases (NOT trusted alone, only as leads):
+  LED_BUILTIN = 25, KEY_BUILTIN = 0, TX = 1, RX = 3, DAC1 = 25, LED = 25
+
+1) SOURCES CONSULTED
+
+- https://resource.heltec.cn/download/Wireless_Stick_Lite/Wireless_Stick_Lite.pdf
+  Official Heltec "Wireless Stick Lite Pinout Diagram" PDF. Fetched and read directly
+  (text/labels extracted from the PDF). CONFIRMS:
+    * GPIO0 is labeled "PRG_BUTTON" (yellow "Control" category in the diagram legend),
+      alongside ADC2_1/TOUCH1.
+    * GPIO25 is labeled "LED" (yellow "Control" category in the diagram legend),
+      alongside ADC2_8/DAC2.
+  This is the primary/strongest piece of evidence - an official vendor schematic-derived
+  pinout diagram, not just a header-file alias name.
+
+- https://github.com/HelTecAutomation/Heltec_ESP32/blob/master/examples/Factory_Test/Wireless_Stick_Lite_FactoryTest/Wireless_Stick_Lite_FactoryTest.ino
+  (also fetched raw via
+  https://raw.githubusercontent.com/HelTecAutomation/Heltec_ESP32/master/examples/Factory_Test/Wireless_Stick_Lite_FactoryTest/Wireless_Stick_Lite_FactoryTest.ino)
+  Official Heltec factory-test firmware for this exact board. CONFIRMS:
+    * `attachInterrupt(0, interrupt_GPIO0, FALLING); ... if (digitalRead(0)==0)` -
+      GPIO0 is read as a real button input, active LOW (pressed = LOW), consistent
+      with a button pulled HIGH and grounded on press - i.e. a genuine physical button,
+      not just a strap pin being exercised.
+    * `pinMode(LED, OUTPUT); digitalWrite(LED, LOW);` at setup (LED starts off), then
+      `digitalWrite(LED, HIGH);` when a packet is received (rxNumber%2==0) - i.e. HIGH
+      turns the LED on. `LED` resolves to GPIO25 per pins_arduino.h. This confirms
+      GPIO25 drives a real onboard single-color LED, and that it is ACTIVE-HIGH
+      (HIGH = on, LOW = off).
+
+- http://community.heltec.cn/t/wireless-stick-gpio25/4886
+  Community forum thread titled "Wireless Stick GPIO25". Could not be fetched directly
+  (WebFetch returned `connect ECONNREFUSED 47.252.4.208:443` - the community.heltec.cn
+  host refused the connection). Only saw via WebSearch snippet: a user reported
+  difficulty getting the onboard LED to light using digitalWrite(25,HIGH), and another
+  reply said "the LED is quite small on the board" (i.e. it's real but easy to miss
+  visually, not a wiring/polarity problem). Treated as weak/secondary corroboration
+  only, not used to override the stronger factory-test firmware evidence above.
+
+- https://www.espboards.dev/esp32/heltec-wireless-stick-lite/
+  Third-party pinout aggregator page. Restates LED_BUILTIN=GPIO25 and KEY_BUILTIN=GPIO0
+  from the Arduino variant header - essentially just repeats the alias names, so NOT
+  used as confirming evidence on its own (per task rules), only as a cross-check that
+  it's consistent with the vendor PDF and factory-test firmware.
+
+- https://docs.heltec.org/en/node/esp32/wireless_stick_lite/index.html
+  Heltec's own docs index/landing page for this board. Fetched but the excerpt returned
+  only a table of contents / links (Pin Map PDF link, examples link) - no GPIO detail
+  was present in the fetched excerpt itself.
+
+- https://docs.heltec.org/en/node/esp32/wireless_stick_lite/example.html
+  Heltec's "Example Manual" intro page for this board. Fetched but contained only
+  generic setup/precondition instructions, no actual LED/button code shown.
+
+- WebSearch queries run (for search-result discovery only, not treated as sources of
+  fact beyond pointing at the above pages):
+    "Heltec Wireless Stick Lite GPIO25 LED GPIO0 button schematic"
+    "Heltec Wireless Stick Lite V1 pinout PRG button LED pin"
+    "Heltec Wireless Stick Lite GPIO25 LED active high digitalWrite example"
+    "Wireless Stick Lite heltec-esp32 pins_arduino.h github LED"
+    "github Heltec ESP32 factory test LED GPIO25 Wireless Stick Lite blink"
+    "heltec wireless stick GPIO25 LED digitalWrite OR LOW OR active low community forum"
+  One search result surfaced a conflicting/irrelevant claim that "GPIO35 is used for
+  LED Write Control" on "Wireless Stick Lite V1" - this appears to be a search-engine
+  summarization error/confusion with the unrelated V3 board (which does use a
+  different LED pin on the ESP32-S3 variant). It directly contradicts both the
+  official vendor PDF and the official factory-test firmware for this exact
+  (non-v3) board, both of which independently and consistently show GPIO25 as LED,
+  so this claim was discarded as unreliable.
+
+2) PINS CONSIDERED BUT NOT TAGGED
+
+- No other candidate GPIOs were considered. Only GPIO0 (button) and GPIO25 (LED) had
+  any alias suggesting a user-facing control, and both were independently confirmed
+  by the vendor pinout diagram plus the vendor factory-test firmware. No ambiguity
+  remained on either pin's identity or polarity, so no best-guess judgment calls were
+  needed for these two.
+- TX/RX check: this board's TX=GPIO1, RX=GPIO3 (from pins_arduino.h). Neither GPIO0
+  nor GPIO25 coincides with TX/RX, so no TX/RX-conflict exclusion applies here.
+- GPIO26 (LoRa_DIO0/DAC1 per the vendor PDF) was noted in the diagram as adjacent to
+  the LED pin but is a dedicated onboard LoRa control line (already excluded from
+  chipGpios per the pre-existing pfodWeb NOTE at the top of board.json) - left alone,
+  not reconsidered.
+
+3) SUMMARY OF WHAT WAS TAGGED
+
+- GPIO0: capabilities set to exactly ["digital_input","button"] - confirmed onboard
+  PRG_BUTTON (active LOW) via official Heltec pinout PDF + factory-test firmware.
+- GPIO25: capabilities set to exactly ["digital_output","led_high","pwm_output"]
+  (pwm_output retained because it was already present on this pin) - confirmed
+  onboard single-color LED, active-high (HIGH=on), via official Heltec pinout PDF +
+  factory-test firmware.

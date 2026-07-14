@@ -1,0 +1,39 @@
+Board: espino32 (chip: esp32)
+Date: 2026-07-14 (documentation backfill — findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- CNX Software, "Getting Started with Espruino & JavaScript on ESP32 with
+  ESPino32 Board": "IO16 will be turned on when D16 is low"; also
+  describes the board as having "two buttons (reset and program)".
+- Espressif esptool boot-mode-selection docs (ESP32 program/BOOT buttons
+  are universally wired to GPIO0, active-low).
+- Vendor's own pins_arduino.h: BUILTIN_KEY = 0.
+
+Per-pin findings:
+- GPIO16: tagged "led_low" (capabilities: ["digital_output", "pwm_output",
+  "led_low"]). Note from board.json: confirmed active-low onboard LED
+  (CNX Software, "Getting Started with Espruino & JavaScript on ESP32
+  with ESPino32 Board": "IO16 will be turned on when D16 is low").
+  GPIO16/17 are excluded chip-wide by default for PSRAM use, but ESPino32
+  uses a plain ESP-WROOM-32 module (no PSRAM), so GPIO16 is genuinely
+  user-accessible here and is re-added just for this pin (GPIO17 stays
+  excluded, unused).
+- GPIO0: tagged "button" (capabilities: ["digital_input", "button"]).
+  Note from board.json: confirmed onboard program button (CNX Software
+  article: board "features ... two buttons (reset and program)"; ESP32
+  program/BOOT buttons are universally wired to GPIO0, active-low, per
+  Espressif's esptool boot-mode-selection docs, matching the vendor's own
+  pins_arduino.h BUILTIN_KEY = 0). Not TX/RX (TX=1, RX=3).
+- All remaining chipGpios entries (1,2,3,4,5,12,13,14,15,18,19,21,22,23,
+  25,26,27,32,33,34,35,36,37,38,39) are unchanged from the esp32/esp32
+  chip-level default (variants/esp32/esp32/board.json) - plain
+  analog/digital/pwm/dac capabilities per pin, no additional
+  board-specific findings. GPIO17 remains excluded (chip-wide PSRAM
+  default), unused on this board.
+
+Summary: GPIO16 tagged led_low as the onboard active-low LED (re-added
+from the chip-wide PSRAM exclusion since this board's module has no
+PSRAM), and GPIO0 tagged button as the onboard active-low program
+button, per CNX Software's ESPino32 article and Espressif's esptool
+boot-mode docs; all other pins left at the chip-level esp32/esp32
+default.

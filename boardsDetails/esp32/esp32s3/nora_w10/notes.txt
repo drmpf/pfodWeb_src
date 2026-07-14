@@ -1,0 +1,116 @@
+nora_w10 - onboard button/LED research notes
+Board: variants/esp32/esp32s3/nora_w10 (u-blox NORA-W101/NORA-W106 module,
+ESP32-S3 based; local pins_arduino.h header comment: "based on u-blox
+EVK-NORA-W1, a Arduino compatible board")
+Researched: 2026-07-11
+
+SOURCES CONSULTED
+-----------------
+1. https://www.mouser.com/datasheet/2/1025/EVK_NORA_W1_UserGuide_UBX_22002764-3180413.pdf
+   = https://www.tme.eu/Document/ebf9c5af3ba279fb179f4bce8ecb8a94/EVK-NORA-W1_UserGuide.pdf
+   Official u-blox "EVK-NORA-W10 - User guide", document UBX-22002764, R03,
+   14-Oct-2022 (C1-Public). Fetched and read as PDF directly (28 pages).
+   This is the primary, decisive source. Key findings:
+   - Section 3.4 "Buttons" + Table 1 "User button components": "the
+     evaluation board also supports four user buttons that are active-low
+     and connect to ground when pressed. The functionality of these
+     buttons is controlled by the system software through the GPIO
+     interface... For proper operation, the internal pull-up resistor of
+     each NORA-W10 GPIO pin must be enabled." Table 1 lists:
+       Button 1 = SW1 = GPIO46 = "No predefined function (software controlled)"
+       Button 2 = SW2 = GPIO0  = "BOOTn" (also usable for other user
+                                  functions after power-up per the note:
+                                  "The BOOTn button is multifunctional...
+                                  the button can then be used for other
+                                  user functions in the software")
+       Button 3 = SW3 = GPIO47 = "No predefined function (software controlled)"
+       Button 4 = SW4 = GPIO48 = "No predefined function (software controlled)"
+       Button 5 = SW5 = "-"    = "RESETn" (hardware reset, not a GPIO)
+   - Section 3.5 "LEDs" + Table 2 "RGB LED associated signals": "System
+     status (RGB1): Powered by +3V3 and turned on by pulling the
+     associated GPIO low." Table 2 lists:
+       Red (pin1)   = GPIO5/ADC1-CH4
+       Green (pin2) = GPIO2/ADC1-CH1
+       Blue (pin3)  = GPIO8/ADC1-CH7
+     This is a discrete 3-pin RGB LED (separate R/G/B GPIOs each pulled
+     low individually), not a single-wire NeoPixel/addressable LED.
+   - Also documents 6 further LEDs (D4-D9) that are hard-wired UART0
+     signal-activity indicators (TxD/RxD/RTS/CTS/DTR/DSR) driven by
+     buffer ICs, not general-purpose user-controllable LEDs, and a power
+     LED (D10) wired directly across the supply rail (not GPIO-driven).
+   - Table 4 "COM port connections" confirms UART0 pin functions:
+     GPIO43=TxD, GPIO44=RxD, GPIO45=RTS, GPIO6=CTS, GPIO1=DTR, GPIO7=DSR -
+     none of these overlap the button/LED candidate GPIOs.
+
+2. https://www.espboards.dev/esp32/nora-w10/
+   Third-party pinout aggregator. Listed LED_GREEN=GPIO2, LED_RED=GPIO5
+   (matching the official user guide) but incorrectly listed
+   LED_BLUE=GPIO38 (conflicts with both this repo's local pins_arduino.h,
+   which has LED_BLUE=GPIO8, and the official u-blox user guide Table 2,
+   which also says GPIO8). Treated as an unreliable secondary source and
+   NOT used as the basis for any tag - the official u-blox PDF and the
+   raw upstream arduino-esp32 pins_arduino.h (source 3 below) were used
+   instead, and they agree with each other.
+
+3. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/nora_w10/pins_arduino.h
+   Upstream Espressif arduino-esp32 repository's official pins_arduino.h
+   for this exact variant (confirmed byte-for-byte equivalent in content
+   to this repo's local copy at variants/esp32/esp32s3/nora_w10/pins_arduino.h).
+   Confirms LED_RED=5, LED_GREEN=2, LED_BLUE=8 (=BUILTIN_LED/LED_BUILTIN),
+   SW1=46, SW2=0 (BOOT), SW3=47, SW4=48, TX=43, RX=44. Used only to
+   corroborate pin numbers already read from the code, per task rules
+   this alias-name file alone was NOT used as proof of button/LED
+   identity or polarity - the official user guide (source 1) supplied
+   that.
+
+4. https://github.com/espressif/arduino-esp32/pull/7191
+   PR that originally added the nora_w10 variant to arduino-esp32
+   ("Adding u-blox NORA-W10 series (ESP32-S3)", merged 2022-08-29).
+   WebFetch summary confirmed the variant's default pin assignment is
+   "based on the EVK-NORA-W1 Arduino compatible board" and that it was
+   tested on the EVK-NORA-W106 evaluation kit - consistent with source 1
+   being the correct reference document for this variant. No GPIO-level
+   detail was retrievable from the PR page itself (file diff not
+   rendered by the fetch tool).
+
+5. https://www.u-blox.com/en/product/evk-nora-w10 and general web search
+   results (manuals.plus, device.report, manualzz.com mirrors of the same
+   UBX-22002764 user guide) - used only to locate the canonical PDF in
+   source 1; manuals.plus and device.report pages themselves returned
+   HTTP 403 when fetched directly, so the Mouser/TME PDF mirrors were
+   used instead to obtain the actual content.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- SW5 / RESET button: per Table 1, this drives the module's RESETn
+  signal directly, not a GPIO. Correctly left untagged - not a judgement
+  call, this is not a GPIO at all (same situation as the sibling
+  namino_bianco board's separate reset pushbutton).
+- D4-D9 (six UART0 status LEDs) and D10 (power LED): D4-D9 are
+  hard-wired activity indicators for the UART0 TxD/RxD/RTS/CTS/DTR/DSR
+  lines via buffer ICs (not independently GPIO-controllable as generic
+  user LEDs - their "on" state just mirrors serial-line electrical
+  state), and their associated GPIOs (43,44,45,6,1,7) are the serial
+  TX/RTS/CTS/DTR/DSR pins in any case. D10 is wired directly across the
+  3.3V supply rail with no GPIO connection. None of these are
+  general-purpose user-controllable LEDs, so none were tagged. No
+  judgement call - this is explicit in the vendor documentation.
+- No TX/RX conflicts were found: this board's TX=GPIO43, RX=GPIO44,
+  neither of which coincides with any of the tagged button/LED GPIOs
+  (0, 2, 5, 8, 46, 47, 48), so no exclusion was required on that account.
+
+WHAT WAS TAGGED
+----------------
+board.json did not previously exist for nora_w10; it was created as a
+full copy of the chip-level default variants/esp32/esp32s3/board.json
+with the following GPIOs modified, plus pfodWeb NOTE comments:
+- GPIO46, GPIO0, GPIO47, GPIO48: capabilities changed to
+  ["digital_input", "button"] - confirmed onboard user buttons
+  SW1/SW2/SW3/SW4 (u-blox EVK-NORA-W10 User guide, Table 1).
+- GPIO5, GPIO2, GPIO8: capabilities changed to ["digital_output",
+  "pwm_output", "led_r_low"] / ["digital_output", "pwm_output",
+  "led_g_low"] / ["digital_output", "pwm_output", "led_b_low"]
+  respectively - confirmed onboard discrete RGB LED, active-low
+  (u-blox EVK-NORA-W10 User guide, section 3.5 and Table 2). pwm_output
+  kept on all three because each already carried it in the chip-level
+  default.

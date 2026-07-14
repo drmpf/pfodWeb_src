@@ -1,0 +1,40 @@
+Board: SparkFun ESP32-C6 Qwiic Pocket (sparkfun_esp32c6_qwiic_pocket), chip esp32c6
+Date: 2026-07-14 (documentation backfill - findings from an earlier audit pass, not new research)
+
+NO BOARD-SPECIFIC board.json: this board directory
+(variants/esp32/esp32c6/sparkfun_esp32c6_qwiic_pocket/) has no board.json of
+its own. It relies entirely on build_boards.js's ancestor-fallback mechanism,
+using the plain chip-level default at variants/esp32/esp32c6/board.json. No
+board-specific pins_arduino.h research, button/LED tagging, or
+dedicated-hardware exclusion was ever performed for this board - it is
+identical to every other ESP32-C6 sibling board that also has no dedicated
+board.json of its own (e.g. dfrobot_beetle_esp32c6).
+
+Sources consulted (from the shared chip-level variants/esp32/esp32c6/board.json):
+- Espressif ESP-IDF documentation (docs.espressif.com) - source cited for the
+  chipGpios user-accessible GPIO list (GPIOs 24-30 flash/PSRAM and GPIOs
+  12-13 USB excluded; no DAC on this chip).
+- ESP32-C6 Technical Reference Manual - Strapping Pins - source cited for the
+  pinNotes boot-time warnings.
+
+Per-pin findings:
+All 20 chipGpios entries (0,1,2,3,4,5,6,7,8,9,10,11,14,15,16,17,18,19,20,21,
+22,23) carry only the plain chip-level default capability sets - no
+button/LED/dedicated-hardware tag or exclusion has been applied to any pin
+for this board specifically:
+- GPIO0-6: ["analog_input","digital_input","digital_output","pwm_output"]
+- GPIO7-11, 14-23: ["digital_input","digital_output","pwm_output"]
+- pinNotes (strapping/boot warnings, chip-level, not board-specific):
+  GPIO8 "Must be HIGH or floating on reboot", GPIO9 "Must be HIGH for normal
+  boot", GPIO15 "Must be LOW or floating on reboot".
+No pin was excluded (capabilities:[]) and no button/led_high/led_low/
+led_neopixel tag was applied anywhere - this board has never been through a
+board-specific dedicated-hardware or capability-tagging audit pass. Despite
+the "Qwiic Pocket" name implying an onboard Qwiic/STEMMA QT connector, no
+board-specific exclusion of the underlying I2C pins has been made (they
+remain at the generic chip-level default).
+
+Summary: sparkfun_esp32c6_qwiic_pocket has no board-specific board.json; it
+uses the shared ESP32-C6 chip-level default board.json verbatim, identical to
+all other ESP32-C6 sibling boards without their own board.json - no
+board-specific findings exist to document.

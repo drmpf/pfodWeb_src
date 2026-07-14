@@ -1,0 +1,79 @@
+huidu_hd_wf2 board.json pfodWeb tagging research notes
+Board dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\huidu_hd_wf2
+Date: 2026-07-11
+
+Sources consulted:
+- https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/discussions/667
+  Contains the same vendor pins_arduino.h content used in this repo, including
+  "#define WF2_BUTTON_TEST 17 // Test key button on PCB, 1=normal, 0=pressed"
+  and "#define WF2_LED_RUN_PIN 40 // Status LED on PCB". Confirms both a real
+  PCB test button and a status LED physically exist on this board; does not
+  give LED polarity. Also confirms author physically tested the board
+  ("LED matrix seems to work fine").
+- https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/issues/433
+  Independently repeats the same WF2_BUTTON_TEST(17)/WF2_LED_RUN_PIN(40)
+  defines, corroborating pin numbers/existence from a second thread.
+- https://www.hdwell.com/Product/index46.html
+  Official Huidu HD-WF2 product page. Describes WiFi/USB control modes,
+  loading capacity, program/text effects - no mention of a physical
+  button or LED (full spec PDF not fetched, page itself has no info).
+- https://github.com/mrcodetastic/HD-WF1-WF2-LED-MatrixPanel-DMA
+  (top-level README) - repo overview only, no button/LED code visible
+  in the fetched excerpt; had to pull individual source files (below).
+- https://raw.githubusercontent.com/mrcodetastic/HD-WF1-WF2-LED-MatrixPanel-DMA/main/src/hd-wf2-esp32s3-config.h
+  Independent third source defining "#define RUN_LED_PIN 40" and
+  "#define PUSH_BUTTON_PIN 17" for the WF2 board specifically - matches
+  our pins_arduino.h GPIO numbers exactly (different author naming,
+  same pins), strong corroboration these are real onboard components.
+- https://raw.githubusercontent.com/mrcodetastic/HD-WF1-WF2-LED-MatrixPanel-DMA/main/src/HD-WF1-WF2-LED-MatrixPanel-DMA.ino.cpp
+  Working firmware for this exact board. Shows:
+    button.attach(PUSH_BUTTON_PIN, INPUT); // USE EXTERNAL PULL-UP
+    button.setPressedState(LOW); // LOW state corresponds to pressing
+  confirming the PCB test button (GPIO17) is a real, wired, active-low
+  digital input button, matching the vendor comment "1=normal, 0=pressed".
+  Also configures RUN_LED_PIN (GPIO40) as an LEDC PWM channel driving a
+  breathing/fade task.
+- https://raw.githubusercontent.com/mrcodetastic/HD-WF1-WF2-LED-MatrixPanel-DMA/main/src/led_pwm_handler.h
+  ledFadeTask() fades LEDC duty from 0 (BREATH_MIN) up to max (BREATH_MAX)
+  for "fade in" and back down for "fade out", with NO duty inversion
+  anywhere in the code. Non-inverted PWM where duty=0 is the intended "off"
+  point and rising duty is the intended "brighter" point is standard
+  practice for an active-high LED (GPIO sourcing current through the LED to
+  GND). Taken together with the working "fade in/out ... alive" breathing
+  effect, this is treated as sufficient confirmation of active-high polarity
+  for this task (led_high), though no schematic diagram was available to
+  see the physical anode/cathode orientation directly.
+- https://raw.githubusercontent.com/mrcodetastic/HD-WF1-WF2-LED-MatrixPanel-DMA/main/test/gpio_discover.ino
+  A multimeter-probing test sketch, but its comment "Pin 11 on the WF-01 is
+  the toggle switch" refers to the WF-01/WF-1 board variant, not WF2, and
+  pin 11 on WF2 is WF2_X1_B2_PIN (HUB75 data line, already excluded) - NOT
+  used or relied upon for this board's tagging decision.
+
+Pins considered and NOT tagged:
+- None additional. Only GPIO17 (button) and GPIO40 (LED) were candidates,
+  matching the pre-existing pin-exclusion NOTE comment in board.json which
+  already called these two out by name ("BUTTON_TEST(17)/LED_RUN(40) ...
+  are kept - genuine button/LED/spare pads"). No TX/RX conflict: this
+  board's TX=43, RX=44 (from pins_arduino.h), neither collides with
+  GPIO17 or GPIO40.
+- A WebSearch result summary claimed "a push button connected to GPIO 11
+  for user control" for this board family. This conflicts with the
+  board's own pins_arduino.h (GPIO11 = WF2_X1_B2_PIN, a HUB75 matrix data
+  line, already excluded from chipGpios) and was not corroborated by any
+  of the primary sources actually fetched (issue #433, discussion #667,
+  hd-wf2-esp32s3-config.h, or the working .ino.cpp firmware, all of which
+  consistently show the button on GPIO17). Treated as a low-confidence/
+  likely-erroneous search summary and explicitly NOT acted on - GPIO11
+  was left untagged and unchanged.
+- LED polarity (active-high vs active-low) was not confirmed by an actual
+  schematic; it was inferred from non-inverted LEDC PWM breathing-effect
+  firmware behavior as described above. This is a judgment call, not a
+  fully direct schematic confirmation - flagged here explicitly in case a
+  human reviewer wants to double check against a real schematic.
+
+Summary of changes made:
+- GPIO17 (WF2_BUTTON_TEST): tagged ["digital_input","button"].
+- GPIO40 (WF2_LED_RUN_PIN): tagged ["digital_output","pwm_output","led_high"]
+  (pwm_output kept because it was already present on this pin).
+- Added corresponding "pfodWeb NOTE" comments at the top of board.json,
+  after the pre-existing pin-exclusion NOTE comment.

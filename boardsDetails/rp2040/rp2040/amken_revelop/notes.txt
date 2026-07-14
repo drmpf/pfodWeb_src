@@ -1,0 +1,263 @@
+pfodWeb RP2040 family audit — board: amken_revelop ("Amken Revelop")
+Date: 2026-07-13
+Result: NO CHANGE (board.json created with chipGpios: {} — matches the
+chip-level default, no capability overrides applied).
+
+FILES READ
+----------
+- variants/rp2040/rp2040/amken_revelop/pins_arduino.h (full file, 79
+  lines)
+- rp2040_board_variants/variants/amken_revelop/pins_arduino.h (the
+  un-annotated upstream source file this variant's pins_arduino.h was
+  generated from — confirmed byte-identical content, minus pfodWeb's
+  own added comments)
+- variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {})
+- variants/rp2040/rp2040/amken_bunny/board.json + boardsDetails/rp2040/
+  rp2040/amken_bunny/notes.txt (directly relevant precedent — sibling
+  board audited earlier this session, task brief's primary reference)
+- variants/rp2040/rp2040/amken_revelop_es/board.json (sibling board
+  audited this session with real dedicated hardware found — read for
+  contrast/vendor-research-pattern comparison; NOT reused as a template
+  since amken_revelop_es is a substantially different, more capable
+  board)
+- variants/rp2040/rp2040/rpipico/board.json (precedent for how a
+  genuinely-pinned-out Wire0/I2C bus pin is treated — left with no
+  chipGpios override, since the SDA/SCL-alias auto-append in
+  build_boards.js already correctly conveys the bus role)
+- variants/rp2040/rp2040/amken_revelop_es/pins_arduino.h (sibling,
+  read for contrast)
+- boardsDetails/rp2040/rp2040/amken_revelop_es/notes.txt (sibling
+  research trail, read for contrast)
+- Confirmed via `ls`: variants/rp2040/rp2040/amken_revelop/ contained
+  ONLY pins_arduino.h before this session (no board.json existed yet);
+  boardsDetails/rp2040/rp2040/ contained no amken_revelop/ directory
+  yet either.
+
+BOARD IDENTIFICATION
+---------------------
+"Amken Revelop" is the arduino-pico variant/display name; the vendor's
+own product name is simply "Revelop" (confirmed via WebFetch of
+raw.githubusercontent.com/earlephilhower/arduino-pico/master/tools/json/
+amken_revelop.json: "name": "Revelop", "vendor": "Amken", "url":
+"https://www.amken3d.com", USB VID/PID 0x2E8A/0x00C0 and 0x2770/0x7304,
+32MB max flash, boot2 "W25Q32JVxQ_4_padded_checksum").
+
+Vendor: Amken LLC / "Amken3D" (amken.us, amken3d.com — Springfield, VA,
+USA), per the amken_bunny sibling audit's own research this session.
+Amken makes RP2040/RP2350-based 3D-printer motion-control mainboards.
+
+"Amken Revelop" was added to earlephilhower/arduino-pico in PR #2283
+("Add Amken boards"), merged 2024-07-19, commit
+1f71135a2b31350e40370b84c54c3e19f5e7ba55, co-authored by Amken's
+H.Keni, alongside three siblings added in the same PR: Amken Bunny,
+Amken Revelop Plus, Amken Revelop eS. Independently re-fetched this
+session via WebFetch of the PR page: confirms the four-board list and
+that these boards were originally designed for Klipper firmware, being
+adapted for Marlin via the Arduino-Pico core. Neither the PR
+description, its review discussion, nor the visible commit/file-diff
+summary contains any hardware description, datasheet, schematic, or
+pinout diagram for any of the four boards, including Revelop
+specifically.
+
+Unlike "Bunny" (absent from Amken's current site, apparently
+discontinued), amken3d.com's current live site (checked 2026-07-13) DOES
+list "Revelop" as a current product: landing page headed "Amken Revelop
+3D Printer Controller Board", tagline "Compact. Powerful. Affordable.
+Innovative.", text mentioning "designed with the following components"
+alongside product images. WebFetch's HTML-to-markdown conversion could
+not read any text content from those product images (no OCR/vision
+pass was performed on them, consistent with this audit's scope — pure
+text/markdown web research). No LED, button, NeoPixel, or
+stepper-driver technical specification was reachable in the page's
+readable text content; only a "Revelop e-S" sibling blurb and a
+company/contact-us section were otherwise present. This is the exact
+same minimal-marketing-page ceiling documented in the amken_revelop_es
+sibling audit's own notes.txt.
+
+PER-PIN REASONING
+------------------
+GPIO0 (PIN_SERIAL1_TX, D0): general Serial1 TX. No board-specific role
+  comment in pins_arduino.h. KEPT general-purpose.
+
+GPIO1 (PIN_SERIAL1_RX, D1): general Serial1 RX. Same reasoning. KEPT
+  general-purpose.
+
+GPIO2, GPIO3 (D2, D3): no PIN_ macro, no comment, no known role. KEPT
+  general-purpose.
+
+GPIO4 (PIN_SERIAL2_TX): vendor's own comment "// TMC UART" directly
+  above `#define PIN_SERIAL2_TX (4u)` confirms this is the UART TX line
+  to an onboard TMC stepper-driver chip — dedicated, not general
+  purpose. Identical macro, identical comment, identical GPIO number to
+  amken_bunny's own GPIO4. Already correctly excluded from the
+  Designer's routable pin list by omission: this file's own D-alias
+  list skips D4 and D5 entirely (jumps from D3 straight to D6), and its
+  own pre-existing "pfodWeb NOTE" comment ("GPIO4,5 are the UART to the
+  onboard TMC stepper driver, not general-purpose") documents this.
+  build_boards.js's parser only harvests routable pins from `static
+  const uint8_t NAME = n;` declarations, never from bare `#define`s, so
+  GPIO4/5 never appear as Designer-selectable pins in the first place —
+  no chipGpios override is needed or added; there is nothing broken
+  here to fix.
+
+GPIO5 (PIN_SERIAL2_RX): TMC UART RX, same reasoning and same
+  already-correct exclusion as GPIO4.
+
+GPIO6-GPIO23, GPIO25-GPIO27 (D6-D23, D25-D27): no PIN_ macro, no
+  board-specific comment identifying any of these as a STEP/DIR/EN/
+  thermistor/heater/endstop/fan line. Same research ceiling as
+  amken_bunny: no external documentation (vendor site product-image
+  text was unreadable, GitHub PR/commit, PlatformIO JSON descriptor,
+  amken3d org repos, general web search) maps any of these GPIOs to a
+  specific onboard stepper driver, heater MOSFET, thermistor divider,
+  endstop, or fan connector on the physical Revelop board. Per this
+  audit's rule to report NO CHANGE rather than guess, all of these pins
+  are LEFT at full chip-default derived capabilities
+  (digital_input/digital_output/pwm_output) — exactly as they already
+  build today via the chip-level empty chipGpios{} fallback.
+
+GPIO24 (PIN_LED, D24): vendor's own comment "// LEDs" directly above
+  `#define PIN_LED (24u)` confirms an onboard LED genuinely exists at
+  this pin — identical macro, identical comment, identical GPIO number
+  to amken_bunny's own GPIO24 (both boards share this exact LED
+  definition verbatim). However, exactly as with amken_bunny, the LED's
+  drive polarity (active-high vs active-low) is NOT documented anywhere
+  found: no datasheet, no schematic, no readable product-page text (the
+  amken3d.com Revelop page's only technical detail is embedded in
+  unreadable product images), no forum/review discussion, and no
+  independent source (WebSearch across several query variations,
+  including "Amken Revelop pinout schematic GPIO24 LED polarity") turned
+  up any authoritative confirmation either way. Per this audit's
+  explicit rule ("if you cannot find authoritative vendor documentation,
+  report NO CHANGE rather than guess at polarity from the alias name
+  alone"), GPIO24 is NOT tagged led_high/led_low. It is left at its full
+  chip-default derived capabilities (digital_input/digital_output/
+  pwm_output) — the pin remains fully usable as a generic digital output
+  for anyone wanting to drive the LED experimentally, it simply is not
+  given an LED-specific on/off semantic in the Designer UI.
+
+GPIO28 (PIN_WIRE0_SDA, D28, also A2): vendor's own "// Wire" comment
+  block confirms this is the board's genuinely-pinned-out I2C data
+  line (contrast with amken_bunny, whose Wire0 is sentineled to (31u) —
+  "not pinned out" — this is the one substantive hardware difference
+  between the two boards, exactly as flagged in amken_bunny's own
+  notes.txt "for future reference" section). This is an ordinary
+  bidirectional GPIO doubling as an I2C bus pin, not a confirmed
+  button/LED pin — no override is needed: build_boards.js's own
+  SDA-alias auto-append already correctly attaches i2c_sda capability
+  on top of the full chip-default digital_input/digital_output/
+  pwm_output/analog_input capabilities with no chipGpios entry required,
+  exactly matching the established rpipico/board.json precedent (that
+  board's own real Wire0 SDA pin, GPIO4, likewise carries no chipGpios
+  override).
+
+GPIO29 (PIN_WIRE0_SCL, D29, also A3): same reasoning as GPIO28 — a
+  genuinely-pinned-out I2C clock line, ordinary GPIO otherwise, no
+  override needed.
+
+BUS-COLLISION CHECK (SDA/SCL/SS/MOSI/MISO/SCK auto-append bug class)
+----------------------------------------------------------------------
+Checked whether GPIO24 (the confirmed LED pin) is ALSO aliased to any
+SDA/SCL/SS/MOSI/MISO/SCK bus role — the specific bug class this audit
+watches for. It is not: this board's PIN_SPI0_*/PIN_SPI1_* are all
+sentineled to (31u) — GPIO31 does not physically exist on RP2040 — and
+PIN_WIRE0_SDA/SCL resolve to GPIO28/29, not GPIO24. GPIO24's only two
+aliases in this file are PIN_LED and the plain general-purpose D24
+alias. No collision, no fix needed.
+
+Also checked whether GPIO28/29 (the genuine I2C pins) collide with any
+button/LED confirmed pin — they do not; no button or LED is declared
+anywhere near these GPIOs. Their SDA/SCL auto-append is the CORRECT,
+intended behavior here (these pins really are the board's I2C bus), not
+an instance of the bug class.
+
+No button of any kind: no button/capacitive-touch alias is declared in
+  pins_arduino.h, and no source consulted documents a physical button
+  on this board beyond the RP2040's own BOOTSEL (out of scope per the
+  established rpipico/board.json precedent — BOOTSEL is read via a
+  special SDK trick, not digitalRead(), and is not GPIO-keyed). No
+  button tagging applied.
+
+No NeoPixel: no PIN_NEOPIXEL/NUM_NEOPIXEL alias is declared anywhere in
+  this file (contrast with sibling amken_revelop_es, which does declare
+  one at GPIO5, doubling as its LED_BUILTIN — a substantially different
+  board design from Revelop's plain-LED-at-GPIO24 approach). No
+  NeoPixel tagging applied.
+
+SOURCES CONSULTED (WebSearch/WebFetch, 2026-07-13)
+----------------------------------------------------
+1. This board's own pins_arduino.h and the un-annotated upstream
+   rp2040_board_variants/variants/amken_revelop/pins_arduino.h (byte-
+   identical content confirmed) — the only source of hardware identity
+   found for this board beyond the vendor site's marketing text.
+2. raw.githubusercontent.com/earlephilhower/arduino-pico/master/tools/
+   json/amken_revelop.json (PlatformIO board descriptor) — vendor name,
+   product name "Revelop", URL, USB VID/PID, flash size, boot2 stage —
+   no pin/hardware detail beyond pins_arduino.h.
+3. amken3d.com (official vendor site, live 2026-07-13) — "Amken Revelop
+   3D Printer Controller Board" landing page; marketing tagline and a
+   "designed with the following components" section backed by
+   unreadable product images; no readable LED/button/NeoPixel/stepper-
+   driver technical specification.
+4. github.com/earlephilhower/arduino-pico PR #2283 ("Add Amken boards")
+   — description and review discussion re-fetched independently this
+   session; confirms board list and Klipper-to-Marlin adaptation
+   context; no pin-level hardware detail for any of the four boards.
+5. WebSearch: "Amken Revelop RP2040 3D printer motherboard pinout LED",
+   "amken3d revelop controller board", "Amken Revelop pinout schematic
+   GPIO24 LED polarity" — no independent product page, forum thread,
+   review, schematic, or pinout diagram specific to "Revelop" (as
+   distinct from "Revelop e-S") was found anywhere beyond sources 1-4.
+6. github.com/amken3d org repos (gopper, KliPiNP, Pingo, Rabbit-Feeder,
+   etc., per the amken_bunny/amken_revelop_es sibling audits' own
+   research this session) — firmware/tooling projects, not hardware/
+   schematic repos for this specific board; not independently
+   re-fetched this session since the sibling audits already established
+   this ceiling and no new evidence would be expected.
+
+Given the practical research ceiling (no schematic/pinout diagram, no
+readable product-image content, no independent review/forum/teardown
+reachable anywhere), this audit reaches the same conclusion as its
+amken_bunny sibling: the onboard LED at GPIO24 is vendor-confirmed to
+exist but its polarity cannot be confirmed, so no led_high/led_low tag
+is applied, per this audit's explicit "NO CHANGE rather than guess"
+rule.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax with a standalone
+  script (scratchpad/validate_json.js — a string-aware `//`-comment
+  stripper, correctly leaves `https://` inside quoted strings intact)
+  that strips comment tails line-by-line and then runs JSON.parse()
+  against the result — confirmed VALID. chipGpios is an empty object
+  (no keys), matching the "NO CHANGE" outcome. No build script was
+  executed or required() (per task instructions).
+- All 10 fields from build_boards.js's REQUIRED_BOARD_FIELDS list are
+  present with no extras: boardName, displayName, family,
+  inputOnlyGpios, connections, pinNotes, chipGpios, pwm, dac, adc.
+- pwm/dac/adc/family/connections/pinNotes/inputOnlyGpios/boardName/
+  displayName values reproduce the chip-level
+  variants/rp2040/rp2040/board.json defaults verbatim.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/amken_revelop/board.json (new file —
+  this board previously had none; chipGpios: {} with a full pfodWeb
+  NOTE documenting the research trail, matching the amken_bunny
+  NO-CHANGE precedent format).
+- Created: boardsDetails/rp2040/rp2040/amken_revelop/notes.txt (this
+  file, new directory created).
+- pins_arduino.h: NOT modified. No defect requiring a pins_arduino.h
+  edit was found (GPIO4/5 TMC UART exclusion is already correct by
+  omission; no SDA/SCL/SS/MOSI/MISO/SCK collision exists to fix; GPIO28/
+  29's SDA/SCL auto-append is correct/intended behavior, not a bug).
+
+FOR FUTURE REFERENCE — REMAINING AMKEN SIBLING BOARD
+--------------------------------------------------------
+amken_revelop_plus: not inspected this session (out of scope). Per the
+amken_bunny sibling's own forward-note, expect the same amken.us/
+amken3d.com documentation gap encountered here and for Bunny (Revelop
+Plus is not shown as a current product on either site's visible
+navigation) — will need its own independent pins_arduino.h read and
+web-research pass rather than assuming identical findings to Revelop or
+Bunny.

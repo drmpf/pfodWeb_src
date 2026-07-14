@@ -1,0 +1,185 @@
+Board variant: variants/esp8266/esp8266/generic (pins_arduino.h + common.h, no board.json override)
+Shared fallback (build.variant=generic) for FOUR unrelated boards.txt entries:
+  - generic        "Generic ESP8266 Module"
+  - gen4iod        "4D Systems gen4 IoD Range"
+  - arduino-esp8266 "Arduino" (top-level fallback only — its actual sub-models
+                     Primo/Star OTTO/Uno WiFi override build.variant to
+                     arduino_spi/arduino_uart, so "generic" here really only
+                     applies to a bare/unselected Arduino ESP8266 board entry)
+  - esp210         "SweetPea ESP-210"
+
+=== Files read ===
+- variants/esp8266/esp8266/generic/pins_arduino.h — only defines SDA/SCL,
+  LED_BUILTIN=1, includes common.h. No BUTTON/FLASH pin macro anywhere.
+- variants/esp8266/esp8266/generic/common.h — SPI pins, PIN_A0=17, no
+  button/LED additions.
+- variants/esp8266/esp8266/board.json (parent, chip-level defaults; no
+  generic/board.json override exists) — chipGpios comment explicitly notes
+  GPIO1 = "Hardware UART0 TX0 — used by the Serial pfod connection, not
+  available as a general GPIO". adc.defaultRefVolts = "1.0" (native ESP8266
+  ADC, 0-1.0V, no divider assumed at chip level).
+- variants/esp8266/boards.txt lines ~31-45 (generic), ~838-854 (gen4iod),
+  ~1620-1649 (arduino-esp8266), ~7560-7579 (esp210) — confirmed all four
+  build.variant=generic, no per-board LED/button/ADC build flags defined in
+  boards.txt itself.
+
+=== URLs consulted ===
+- https://www.espboards.dev/esp8266/gen4iod/ (WebFetch) — page references a
+  generic "LED_BUILTIN" pin-mapping table (i.e. the same LED_BUILTIN=1 this
+  variant already defines) but gives no board-specific GPIO/polarity detail
+  beyond that; no button info found.
+- https://resources.4dsystems.com.au/datasheets/iod/gen4-IoD-series/ and
+  gen4iod PlatformIO page (WebSearch snippets) — gen4-IoD is a TFT-display
+  IoT board where GPIO0 is dedicated to LCD backlight control (PWM/on-off),
+  not a general-purpose button or status LED. This is genuine
+  board-specific hardware but belongs ONLY to gen4iod, not to the other
+  three products.
+- https://docs.platformio.org/en/latest/boards/espressif8266/esp210.html
+  (WebFetch) — no button/LED/ADC divider info in the fetched text.
+- WebSearch snippet (unverified, single source, could not confirm via
+  primary SweetPea wiki http://wiki.sweetpeas.se/index.php?title=ESP-210)
+  suggested ESP-210 may have a "user-definable LED" on GPIO5. Could not
+  independently confirm via WebFetch of the actual wiki page. Even if true,
+  this is specific to ESP-210 only and conflicts with gen4iod's GPIO0
+  backlight usage — i.e. the two products, where any board-specific pin
+  info could be found, do NOT agree with each other, let alone with the
+  other two.
+- No board-specific button/LED info found for the generic "Generic ESP8266
+  Module" boards.txt entry or the arduino-esp8266 fallback entry (expected,
+  since "generic" and "Arduino" (unselected) imply no assumed hardware).
+
+=== Reasoning: button/LED — NO CHANGE ===
+1. Overwhelming-evidence bar not met: the only two products where any
+   board-specific pin usage could be found (gen4iod: GPIO0 backlight;
+   esp210: possible GPIO5 LED, unconfirmed) already disagree with each
+   other. The other two products (generic module, bare Arduino fallback)
+   have no documented onboard button/LED at all. There is no plausible
+   shared GPIO/polarity across all four.
+2. Independent of the above, the variant's only LED reference,
+   LED_BUILTIN=1 (GPIO1), sits on the hardware UART0 TX pin, which
+   board.json's own chipGpios comment and build_boards.js hard-reserve for
+   the Serial pfod connection. Even in a hypothetical single-vendor
+   scenario this pin could not be tagged as a button/LED capability.
+3. No button pin (e.g. FLASH/BOOT button) is defined anywhere in
+   pins_arduino.h/common.h for this variant.
+=> Conclusion: do not tag any digital_input/button or digital_output/led_*
+   capability on this shared variant.
+
+Flag for human review / future split: gen4iod's GPIO0 LCD-backlight control
+and the unconfirmed esp210 GPIO5 LED are real board-specific hardware that
+could eventually justify splitting gen4iod and esp210 out of the shared
+"generic" variant into their own per-board pins_arduino.h/board.json so
+that legitimate hardware features aren't lost by being forced through this
+lowest-common-denominator file. Not acted on now per task scope (would
+incorrectly affect the other two products sharing this file).
+
+=== Reasoning: ADC reference voltage — NO CHANGE ===
+No board.json exists inside generic/ itself, so this variant already
+inherits the chip-level default from variants/esp8266/esp8266/board.json:
+adc.defaultRefVolts = "1.0" (native ESP8266 0-1.0V ADC, no divider
+assumed). No source consulted for any of the four products documented a
+shared resistor divider extending A0 to 3.3V (contrast with NodeMCU/D1
+Mini, which board.json's own comment says legitimately override this).
+Per task instructions, since divider presence cannot be confirmed as
+common to all four products, the existing inherited 1.0V default is left
+unchanged.
+
+=== One-line summary ===
+NO CHANGE: shared 4-vendor fallback variant has no common button/LED
+(LED_BUILTIN sits on the TX pin regardless) and no confirmed common ADC
+divider, so all defaults are left as inherited from the chip-level
+board.json; gen4iod's GPIO0 backlight and a possible esp210 GPIO5 LED are
+flagged for a future per-board split.
+
+===============================================================================
+[2026-07-12] FULL dedicated-hardware pin-exclusion sweep (playbook sections
+1-6, distinct from the button/LED/ADC-divider retrofit above) — part of the
+28-directory ESP8266 backlog opened in playbook section 11.
+===============================================================================
+
+=== Files read (full content, not excerpted) ===
+- variants/esp8266/esp8266/generic/pins_arduino.h (42 lines, entire file):
+  declares only PIN_WIRE_SDA=4/SCL=5 (I2C bus aliases), LED_BUILTIN=1 inside
+  an `#ifndef LED_BUILTIN` guard (single branch, no #else), then
+  `#include "common.h"`. Nothing else.
+- variants/esp8266/esp8266/generic/common.h (85 lines, entire file):
+  declares EXTERNAL_NUM_INTERRUPTS/NUM_DIGITAL_PINS/NUM_ANALOG_INPUTS
+  (chip-wide constants, not pins), the `isFlashInterfacePin(p)` /
+  `analogInputToDigitalPin(p)` / `digitalPinToInterrupt(p)` /
+  `digitalPinHasPWM(p)` helper macros (all take a runtime pin-number
+  argument, are not themselves pin declarations, and do not add any GPIO to
+  the parser's alias table), PIN_SPI_SS=15/MOSI=13/MISO=12/SCK=14 (generic
+  SPI bus), PIN_A0=17 inside an `#ifndef PIN_A0` guard (single branch), the
+  four SERIAL_PORT_* aliases (all resolve to `Serial`, not a pin), and a
+  `BUILTIN_LED` deprecated-alias `extern` block inside `#ifdef LED_BUILTIN`
+  (single branch, mirrors LED_BUILTIN, adds no new pin).
+- Confirmed via Glob: only pins_arduino.h and common.h exist under
+  variants/esp8266/esp8266/generic/ — no board.json override present (still
+  true as of this pass; matches the earlier notes.txt entry above).
+
+=== Step 2: exhaustive non-standard-#define/static-const sweep ===
+Applying the playbook's corrected discovery regex (section 11) to both
+files: every `#define`/`static const` line in pins_arduino.h and common.h
+matches the boilerplate exclude list (PIN_WIRE_SDA/SCL, LED_BUILTIN,
+PIN_SPI_SS/MOSI/MISO/SCK, PIN_A0, NUM_DIGITAL_PINS/NUM_ANALOG_INPUTS,
+EXTERNAL_NUM_INTERRUPTS). Zero non-boilerplate hits. This is consistent
+with the task's framing that a fresh discovery sweep found zero
+non-boilerplate declarations for this variant.
+
+=== Step 4 (critical check): duplicate-declaration-under-conditional bug scan ===
+Searched both files for any `#if`/`#ifdef`/`#else`/`#endif` structure that
+declares the SAME `static const` (or object-like `#define` feeding a
+`static const`) name twice under different branches — the exact bug
+pattern just found on `espectro` (version-selector macro silently resolved
+to the wrong/last branch by build_boards.js's non-conditional regex
+parser) and being checked in parallel on `itead`/`wifi_slot`.
+Result: NOT PRESENT in this file.
+  - pins_arduino.h has exactly one conditional block: `#ifndef LED_BUILTIN
+    / #define LED_BUILTIN 1 / #endif` — single branch, no #else, no second
+    declaration of LED_BUILTIN anywhere else in the file.
+  - common.h has two conditional blocks: `#ifndef PIN_A0 / #define PIN_A0
+    (17) / #endif` (single branch, no #else) and `#ifdef LED_BUILTIN /
+    extern ... BUILTIN_LED ... / #endif` (single branch, declares
+    BUILTIN_LED once, not a second LED_BUILTIN).
+  - `isFlashInterfacePin(p)` uses a runtime ternary on `esp_is_8285()`
+    inside a single `#define` — this is NOT a preprocessor conditional and
+    does not declare any `static const` pin alias in either "branch" of
+    the ternary, so it cannot trigger the parser's last-branch-wins bug
+    (there is nothing for the regex-based `static const` scanner to see
+    here at all).
+  => No duplicate-declaration ambiguity to resolve or document for this
+     variant. (The multi-vendor version-selector concern flagged in the
+     task instructions — i.e. "might represent genuinely different
+     underlying products, leave ambiguity undocumented rather than
+     resolved" — does not arise here because there is no such conditional
+     to begin with.)
+
+=== Step 3/6: KEEP vs EXCLUDE policy applied ===
+Every declaration in both files is generic bus/LED/serial-port boilerplate
+(I2C SDA/SCL, SPI SS/MOSI/MISO/SCK, single analog input A0, LED_BUILTIN
+already ruled on above, Serial port name aliases, chip pin-count/interrupt
+constants). None of it is dedicated to a specific onboard peripheral (no
+radio module, SD card, display bus, motor/stepper/servo driver, analog
+mux, or any other fixed-function hardware block appears anywhere in
+either file). Per playbook section 3, none of this qualifies for EXCLUDE
+under any interpretation, single-vendor or shared. Consistent with and
+reinforcing the earlier (button/LED/ADC) pass's finding that this variant
+is a lowest-common-denominator file with no board-specific hardware baked
+into the pins_arduino.h/common.h source itself — whatever dedicated
+hardware individual products (gen4iod's LCD backlight, a possible esp210
+LED) might have lives entirely outside this shared file's declarations,
+as already flagged for a future per-board split above.
+
+=== Result: NO CHANGE ===
+No dedicated-hardware pins to exclude, no duplicate-declaration parser
+ambiguity found, no board.json override created. This variant's existing
+inherited chip-level board.json (variants/esp8266/esp8266/board.json)
+remains the sole source of its GPIO/capability/ADC data, unchanged by
+this pass. No Edit/Write made to pins_arduino.h, common.h, or any
+board.json for this directory.
+
+=== One-line summary (this pass) ===
+Full dedicated-hardware sweep confirms zero non-boilerplate declarations
+in pins_arduino.h/common.h and zero duplicate-declaration-under-#if bugs
+(unlike espectro/itead/wifi_slot found elsewhere this session) — NO CHANGE,
+multi-vendor conservatism from the earlier pass stands unmodified.

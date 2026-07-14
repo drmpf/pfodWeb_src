@@ -1,0 +1,62 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // "rp2040" is its own family value (so the Designer's board picker
+  // keeps this family separate from ESP32/ESP8266), but it routes
+  // through the same buildEsp32Board() parser — arduino-pico's
+  // pins_arduino.h declares pins via the identical `#define PIN_X (n)`
+  // macro -> `static const uint8_t ALIAS = PIN_X;` indirection pattern
+  // ESP8266 uses, which the parser's numeric-#define fallback resolution
+  // already handles. Matches how "ccode"/"unlistedBoard" already share
+  // one parser function.
+  "family": "rp2040",
+
+  // No GPIO concept applies — RP2040/RP2350 third-party boards are far
+  // more heterogeneous in pinout than ESP32/ESP8266 dev kits (custom
+  // PSRAM, DVI, radio modules, etc. all repurpose different pins per
+  // board), so unlike ESP32/ESP8266 there is no uniform "input-only" set
+  // to declare here — each board's own pins_arduino.h is authoritative.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.  Every WiFi-chip-equipped board
+  // (Pico W, Pico 2 W, Pimoroni Pico Plus 2 W, etc.) lives in its own
+  // "rp2040w" chip bucket instead (variants/rp2040/rp2040w/board.json),
+  // so this plain "rp2040" bucket never needs a tcp/http/ble override.
+  "connections": ["serial"],
+
+  // RP2040/RP2350 boot from an internal ROM/BOOTSEL, not GPIO-driven
+  // flash-mode strapping pins like ESP32/ESP8266 — no boot-time
+  // restrictions to flag at the chip level.
+  "pinNotes": {},
+
+  // Deliberately empty — unlike ESP32/ESP8266 (uniform dev-kit pinouts
+  // where a "full chip GPIO map" fallback makes sense), RP2040/RP2350
+  // third-party boards vary too much in which GPIOs are actually broken
+  // out vs repurposed for on-board peripherals. Each board's own declared
+  // aliases (via its own pins_arduino.h, directly or through the shared
+  // generic/common.h) are trusted as the full picture, matching the AVR
+  // philosophy.
+  "chipGpios": {},
+
+  // arduino-pico's analogWrite() defaults to an 8-bit range (0-255) —
+  // confirmed against `analogScale = 255` in the core's
+  // wiring_analog.cpp — same as AVR/ESP32, unlike ESP8266's 0-1023.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040/RP2350 have one 12-bit ADC (0-4095), confirmed via
+  // `#define ADC_RESOLUTION (12u)` in the shared common.h. Reference is
+  // ~3.3V (ADC_VREF tied to 3V3 on official boards).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

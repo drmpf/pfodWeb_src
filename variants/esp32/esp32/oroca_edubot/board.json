@@ -1,0 +1,209 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: OROCA EduBot (ESP32-WROOM-32 based educational robot kit). No
+  // board.json override existed before this audit (used the chip-level
+  // esp32/esp32/board.json default). Flagged by the discovery sweep for
+  // declaring "static const uint8_t VBAT = 35;" / "#define BAT_VOLT_PIN
+  // VBAT" - a battery-voltage-sense pin, which is a real, board-specific
+  // declaration outside the ordinary LED/Serial/SPI/Wire/touch boilerplate.
+  //
+  // Sources consulted:
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/oroca_edubot/pins_arduino.h
+  //    Official upstream Espressif arduino-esp32 core copy of this exact
+  //    file - byte-for-byte matches the local pins_arduino.h before this
+  //    session's edits (not a stale copy). Confirms VBAT=35/BAT_VOLT_PIN is
+  //    the only board-specific declaration in the file itself; no motor/
+  //    encoder/IMU pins are declared via static const here.
+  //  - https://github.com/oroca/OROCA-EduBot-Library (vendor's own official
+  //    Arduino library for this exact board, maintainer "Baram")
+  //    src/EduBot.h / src/EduBot.cpp: confirms adcInfoEnable(VBAT) (battery
+  //    voltage read), pinMode(0, INPUT_PULLUP) "for Unser [sic] Button",
+  //    pinMode(13, OUTPUT) "for Internal LED", ledOn()=digitalWrite(13,LOW)
+  //    / ledOff()=digitalWrite(13,HIGH) (active-low), buttonGetPressed()
+  //    reads digitalRead(0)==0 (active-low, matches INPUT_PULLUP), and
+  //    tofBegin() sequences pinMode(D6,OUTPUT)/pinMode(D7,OUTPUT) as XSHUT
+  //    enable lines for two onboard VL53L0X time-of-flight sensors
+  //    (tof_L/tof_R) at boot, where D6=GPIO18 and D7=GPIO19.
+  //  - https://raw.githubusercontent.com/oroca/OROCA-EduBot-Library/master/src/driver/stepmotor/motor.cpp
+  //    Confirms the onboard two-wheel stepper-motor driver's actual GPIO
+  //    wiring via StepMotor::begin(enable_pin, step_pin, dir_pin, dir):
+  //    left motor = step_l.begin(27, 14, 32, 1) (enable=GPIO27, step=GPIO14,
+  //    dir=GPIO32); right motor = step_r.begin(12, 15, 2, -1) (enable=
+  //    GPIO12, step=GPIO15, dir=GPIO2).
+  //  - https://raw.githubusercontent.com/oroca/OROCA-EduBot-Library/master/src/driver/audio/MAX98357.h
+  //    and MAX98357.cpp: confirms the onboard I2S audio amplifier
+  //    (MAX98357) is constructed with default pins pin_lrc=GPIO_NUM_25,
+  //    pin_bck=GPIO_NUM_26, pin_din=GPIO_NUM_21 - i.e. GPIO25/26 (which this
+  //    board's pins_arduino.h separately aliases as DAC1/DAC2) and GPIO21
+  //    are wired to the speaker amplifier's clock/data lines, not general-
+  //    purpose DAC outputs.
+  //  - https://raw.githubusercontent.com/oroca/OROCA-EduBot-Library/master/src/driver/ir_remote/ir_remote.h
+  //    Confirms IrRemote::begin(uint8_t _rx_pin = 5) - the onboard IR
+  //    remote receiver's default/only-used input is GPIO5, which this
+  //    board's pins_arduino.h separately aliases as SCK and D5.
+  //  - https://raw.githubusercontent.com/oroca/OROCA-EduBot-Library/master/src/driver/neopixel/neopixel.cpp
+  //    Confirms "#define PIN D0" / "NeoPixelBus<...> pixels(2, PIN)" - a
+  //    real 2-pixel addressable (WS2812-class) NeoPixel strip on GPIO4
+  //    (D0), used by leftBright()/rightBright() for the robot's two "eye"
+  //    indicators.
+  //  - https://raw.githubusercontent.com/oroca/OROCA-EduBot-Library/master/src/driver/floor/floor.cpp
+  //    Confirms four onboard analog floor/line-following IR sensors wired
+  //    to A0-A3 (GPIO34/39/36/33) via adcInfoEnable(A0..A3) - ordinary
+  //    analog sensor readings, matches this repo's KEEP policy for
+  //    onboard analog sensors (thermistor/battery/etc-class readings), no
+  //    exclusion needed.
+  //  - https://raw.githubusercontent.com/oroca/OROCA-EduBot-Library/master/src/EduBot.h
+  //    and src/driver/oled/oled.cpp: confirms the onboard OLED display
+  //    (SSD1306) uses "Wire1.begin(17, 16)" - a second I2C bus wired to the
+  //    same two GPIOs already aliased TX=17/RX=16 in pins_arduino.h. No
+  //    action needed: build_boards.js already hard-reserves whatever GPIO
+  //    equals the board's TX/RX alias to serial_tx/serial_rx only,
+  //    regardless of any other capability, so this pre-existing behaviour
+  //    already prevents those two GPIOs from being offered generically.
+  //  - https://raw.githubusercontent.com/oroca/OROCA-EduBot-Library/master/src/driver/imu/imu.cpp
+  //    Onboard IMU (MPU9250, via SparkFun MPU9250-DMP library) uses the
+  //    default Wire (SDA=23/SCL=22) bus - ordinary I2C, KEPT per this
+  //    repo's "general-purpose I2C bus without an exclusive onboard
+  //    consumer" policy (I2C is inherently multi-drop; other things could
+  //    share this bus via the extension header).
+  //  - https://docs.platformio.org/en/latest/boards/espressif32/oroca_edubot.html
+  //    Confirms chip/vendor identity (ESP32, 240MHz, 4MB flash, 320KB RAM,
+  //    vendor "OROCA") but no pin-level detail beyond that.
+  //
+  // Alias-collision check (playbook step): this variant's pins_arduino.h
+  // aliased SS=2, MOSI=18, MISO=19, SCK=5, plus D5=5/D6=18/D7=19 and
+  // T2=2/T3=15/T5=12/T6=14/T7=27/T9=32. Every one of GPIO2/5/12/14/15/18/19/
+  // 27/32 turned out to be dedicated onboard hardware (motor driver, IR
+  // receiver, or ToF XSHUT lines) per the vendor library sources above, and
+  // none of those boilerplate aliases were vendor-confirmed as real SPI/
+  // touch functions on this board. All of them were deleted from
+  // pins_arduino.h (see the NOTE comments there) so build_boards.js's
+  // unconditional spi_ss/spi_mosi/spi_miso/spi_sck capability appends, and
+  // its "leak the GPIO back in via a leftover alias" fallback, cannot
+  // silently reintroduce these excluded pins. DAC1=25/DAC2=26 (also
+  // deleted) is the same class of collision against build_boards.js's
+  // unconditional dac_output append for a GPIO matching those aliases.
+  //
+  // GPIO0: CONFIRMED onboard user button (active-low, INPUT_PULLUP) - see
+  // sources above. Tagged ["digital_input","button"], matching this repo's
+  // button precedent.
+  //
+  // GPIO13 (LED_BUILTIN): CONFIRMED onboard single-colour "Internal LED",
+  // active-low - see sources above. Tagged ["digital_output","led_low",
+  // "pwm_output"] (pwm_output retained since GPIO13 supports LEDC PWM at
+  // the chip level and this repo's precedent keeps it when already
+  // present), matching this repo's led_low precedent.
+  //
+  // GPIO4 (D0): CONFIRMED onboard 2-pixel addressable NeoPixel strip
+  // ("eyes") - see sources above. Tagged ["digital_output","led_neopixel",
+  // "pwm_output"], matching this repo's led_neopixel precedent.
+  //
+  // GPIO2/12/14/15/27/32: CONFIRMED dedicated stepper-motor driver control
+  // lines (enable/step/direction, one set per wheel) - EXCLUDED (removed
+  // from chipGpios) per this repo's "fixed hardware actuator requiring
+  // specific timing/safety" policy (stepper EN/STEP/DIR).
+  //
+  // GPIO18/19: CONFIRMED dedicated XSHUT enable/reset lines for the two
+  // onboard VL53L0X time-of-flight sensors - EXCLUDED per this repo's
+  // "internal-only control/reset line for an onboard chip" policy.
+  //
+  // GPIO21/25/26: CONFIRMED dedicated I2S bus to the onboard MAX98357
+  // audio amplifier (speaker) - EXCLUDED per this repo's "dedicated I2S
+  // audio codec bus" policy.
+  //
+  // GPIO5: CONFIRMED dedicated onboard IR remote receiver input -
+  // EXCLUDED as dedicated hardware wired to a fixed onboard IR receiver
+  // component (not a general-purpose header pin).
+  //
+  // GPIO34/36/39/33 (A0-A3): CONFIRMED onboard analog floor/line-following
+  // IR sensors - KEPT unchanged (matches this repo's KEEP policy for
+  // onboard analog sensor readings; chip-level capabilities already
+  // correctly describe them).
+  //
+  // GPIO16/17 (RX/TX): also internally wired to the onboard OLED's second
+  // I2C bus (Wire1) - no board.json change needed, already fully reserved
+  // to serial_rx/serial_tx by build_boards.js's existing TX/RX handling.
+  //
+  // See boardsDetails/esp32/esp32/oroca_edubot/notes.txt for the full
+  // research trail.
+
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP32" -> designer/boards/ESP32/ESP32.json -> const ESP32Data = {...}
+  "boardName": "ESP32",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "ESP32 Dev Module",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // Supported values: "avr", "esp32".
+  "family": "esp32",
+
+  // Default PWM output range for analogWrite() (LEDC, 8-bit default).
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // DAC output: ESP32 has two 8-bit DAC channels on GPIO 25 and GPIO 26.
+  // dacWrite(pin, value): value 0–255 maps to 0.0–3.3 V output.
+  // On this board GPIO25/26 are excluded (wired to the onboard I2S audio
+  // amplifier, not a general-purpose DAC) - this block is now unused but
+  // left in place, matching the chip-level default shape.
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+
+  // ADC: ESP32 has a 12-bit ADC (0–4095) via analogRead().  Default reference
+  // is the internal 3.3 V supply.  Attenuation can be set via analogSetAttenuation()
+  // for full 0–3.3 V range; without attenuation input range is ~0–1.1 V.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+
+  // GPIO numbers that are input-only (no internal pull-up driver, no
+  // output driver).  Used by the ESP32 parser to drop digital_output and
+  // pwm_output capabilities from those pins.  Leave [] on boards where
+  // every pin is bidirectional (e.g. all AVR variants).
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+
+  // Transports this board can talk pfod over.  Values are the lowercase
+  // machine identifiers from pfodCommon.html's protocol radios.  ESP32
+  // family supports Serial via UART, BLE via Bluetooth LE, TCP via the
+  // WiFi stack, and HTTP via the WiFi stack + a small server library.
+  "connections": ["serial", "ble", "tcp", "http"],
+
+  // Boot-time / power-up warnings for specific GPIO numbers.
+  // Keys are GPIO numbers as strings; values are plain text shown
+  // under the pin label in the pin picker (use \n for line breaks).
+  // Reference: ESP32 Technical Reference Manual — Strapping Pins section.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+
+  // User-accessible GPIO numbers on the ESP32 chip.  GPIOs 6-11 (flash)
+  // and 16-17 (PSRAM) are excluded — not user-accessible on modules with
+  // integrated flash/PSRAM.  GPIOs 34-39 are input-only (no output driver).
+  // GPIOs 20, 24, 28-31 do not exist in this chip's silicon.
+  // Source: Espressif ESP-IDF documentation (docs.espressif.com).
+  //
+  // Board-specific: GPIO2/5/12/14/15/18/19/21/25/26/27/32 removed entirely
+  // (confirmed dedicated onboard hardware - motor driver, IR receiver, ToF
+  // sensor XSHUT lines, I2S audio amp - see the pfodWeb NOTE above).
+  // GPIO0/4/13 retagged with confirmed button/LED/NeoPixel capabilities.
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "13": { "capabilities": ["digital_output", "led_low", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

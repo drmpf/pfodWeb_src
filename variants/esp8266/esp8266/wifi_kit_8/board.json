@@ -1,0 +1,84 @@
+{
+  "boardName": "ESP8266",
+  "displayName": "WiFi Kit 8",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. Commonly wired to a FLASH/BOOT button on dev boards",
+    "2":  "Must be HIGH at boot.",
+    "4":  "Onboard SSD1306 OLED display is wired to this pin as I2C SDA (shared general-purpose I2C bus, not exclusive - other I2C devices can still be added).",
+    "5":  "Onboard SSD1306 OLED display is wired to this pin as I2C SCL (shared general-purpose I2C bus, not exclusive - other I2C devices can still be added).",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM."
+  },
+
+  // Per-board override: GPIO16 is this board's onboard SSD1306 OLED
+  // display's RST line (see pins_arduino.h's OLED_RST) — a dedicated
+  // single-purpose control line for the display, not general-purpose.
+  // Removed entirely from the chip-level default map below (unlike
+  // other boards, where GPIO16 stays available as a plain digital pin).
+  // pfodWeb NOTE: GPIO0 tagged "button" — onboard "PRG" pushbutton, pulls
+  // GPIO0 LOW when pressed (confirmed via homeding.github.io/boards/wifikit8.htm
+  // and stefanfrings.de/esp8266/#wifikit8, the latter stating "Die beiden
+  // Taster ziehen die Leitungen RESET und GPIO0 direkt ... auf LOW" — RESET
+  // is the chip reset pin, not a GPIO, so only GPIO0 is tagged). No LED tag
+  // added: pins_arduino.h explicitly comments "Board doesn't have a builtin
+  // LED" with LED_BUILTIN commented out, and homeding.github.io confirms
+  // the only onboard LED is the orange charge-status LED on the MIC73831
+  // battery-charging circuit, not user-controllable/GPIO-driven.
+  // Checked GPIO0 for alias collisions with SDA/SCL/SS/MOSI/MISO/SCK: this
+  // file defines no SPI pins, and SDA/SCL are GPIO4/GPIO5 (not GPIO0), so
+  // GPIO0's capability list is not contaminated by any bus alias.
+  //
+  // pfodWeb NOTE (2026-07-12 dedicated-hardware pin-exclusion audit): this
+  // board's onboard SSD1306 128x32 OLED display is wired to the SAME GPIOs
+  // as the general-purpose I2C bus (SDA=GPIO4, SCL=GPIO5 — see this board's
+  // own pins_arduino.h PIN_WIRE_SDA/PIN_WIRE_SCL, and confirmed externally
+  // via stefanfrings.de/esp8266/#wifikit8 "Version A" pinout and a public
+  // U8g2 init example using clock=5/data=4). There is no separate dedicated
+  // OLED SDA/SCL pin pair to exclude, and I2C is inherently multi-drop, so
+  // the bus remains usable for other I2C devices at other addresses. Per
+  // KEEP policy for general-purpose I2C without an EXCLUSIVE onboard
+  // consumer (same precedent as board d-duino-32), GPIO4/5 are left with
+  // their normal capabilities (chip-level i2c_scl/i2c_sda tags are applied
+  // automatically by build_boards.js from the SDA/SCL consts in
+  // pins_arduino.h, regardless of this file's chipGpios). Informational
+  // pinNotes entries are added on GPIO4/5 below so Designer users know a
+  // display already occupies that bus. The display's separate RST line
+  // (GPIO16) was already excluded from chipGpios in an earlier pass (see
+  // comment above and boardsDetails notes.txt).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "Onboard \"PRG\" FLASH/BOOT pushbutton (active-low) — see pfodWeb NOTE above chipGpios for sources" },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  "dac": {},
+
+  // pfodWeb NOTE: adc.defaultRefVolts corrected from "1.0" (earlier-session
+  // value, unverified — bare native ESP8266 ADC range with no divider) to
+  // "3.2" - confirmed via http://stefanfrings.de/esp8266/#wifikit8, which
+  // states: "Analoger Eingang für 0 bis 3,2 V weil mit Spannungsteiler
+  // 220 kΩ + 100 kΩ" ("Analog input for 0 to 3.2V because of a voltage
+  // divider using 220k + 100k resistors"). Divider ratio (220k+100k)/100k
+  // = 3.2, so 1.0V(native) * 3.2 = 3.2V full-scale at A0 - same 220k/100k
+  // divider network and resulting 3.2V value already confirmed on this
+  // repo's other ESP8266 boards (d1_mini, nodemcu, d1, oak, espino,
+  // eduinowifi).
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "3.2" }
+}

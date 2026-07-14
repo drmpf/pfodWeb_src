@@ -1,0 +1,125 @@
+Board: SparkFun "Pro Micro RP2040" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/sparkfun_promicrorp2040/
+Audit date: 2026-07-12
+
+SUMMARY
+-------
+Applied NeoPixel tagging to GPIO25 (the board's single onboard WS2812
+addressable RGB LED, which doubles as the status LED). No button tagging
+applied - the board's only buttons (BOOT/RESET) are hardware-only and not
+wired to a normal GPIO. Created board.json (this board previously had
+none - zero differentiation from the chip-level empty-chipGpios default,
+meaning the Designer would have offered GPIO25 as a plain digital_output/
+digital_input/pwm_output pin with no indication it's actually a single
+addressable pixel).
+
+SOURCES CONSULTED
+------------------
+1. SparkFun's own official Pro Micro RP2040 Hookup Guide
+   (learn.sparkfun.com/tutorials/pro-micro-rp2040-hookup-guide/all) -
+   authoritative. States verbatim: "There are two LEDs on the Pro Micro
+   RP2040. The red LED indicates whether power is present. The other is
+   the addressable WS2812 RGB LED... The addressable LED is connected to
+   GPIO25. You'll [need] to define functions or use the WS2812 library to
+   control that LED. There is a pad on the back of the board that is
+   connected to the WS2812's DO pin. If you decide to daisy chain more
+   LEDs, you'll want to solder to this pad."
+   Also confirms BOOT and RESET buttons are hardware-only, not
+   GPIO-connected: "Boot Button: Forces USB mass storage mode by
+   connecting to the external flash memory" / "Reset Button: Restarts the
+   RP2040 microcontroller" - neither is a numbered GPIO pin.
+2. WebSearch cross-reference: community.sparkfun.com/t/pro-micro-rp2040-
+   controlling-ws2812/42583 (SparkFun's own community forum) independently
+   confirms GPIO25/WS2812 wiring and that it is a single pixel
+   (NUM_NEOPIXEL=1 matches).
+3. Local codebase: this board's own pins_arduino.h
+   (variants/rp2040/rp2040/sparkfun_promicrorp2040/pins_arduino.h)
+   declares:
+     #define PIN_LED        (25u)
+     #define PIN_NEOPIXEL   (25)
+     #define NUM_NEOPIXEL   (1)
+   i.e. PIN_LED and PIN_NEOPIXEL are literally the same GPIO with exactly
+   one pixel - directly corroborating the Hookup Guide's description of
+   one addressable WS2812 LED doing double duty as the status LED (the
+   file's own top-of-file comment cites the schematic:
+   cdn.sparkfun.com/assets/e/2/7/6/b/ProMicroRP2040_Graphical_Datasheet.pdf).
+4. Chip-level default: variants/rp2040/rp2040/board.json (chipGpios: {}
+   - deliberately empty per its own comment).
+5. Schema/style precedent (read before writing):
+   - variants/rp2040/rp2040/rpipico/board.json (simple one-LED case,
+     led_high/led_low style with pwm_output kept).
+   - variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (dedicated-
+     hardware exclusion + LED tagging, full note/style precedent).
+   - variants/rp2040/rp2040/adafruit_trinkeyrp2040qt/board.json
+     (output-only NeoPixel data pin, no pwm_output in that particular
+     case since the pin has no PWM-brightness use case described).
+   - variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json GPIO14 -
+     directly on-point precedent: another SparkFun board with a single
+     onboard WS2812 pixel serving as the status LED (PIN_NEOPIXEL,
+     NUM_NEOPIXEL=1, "RGB_LED_PIN"), tagged
+     ["digital_output","led_neopixel","pwm_output"] with pwm_output
+     explicitly kept because arduino-pico's analogWrite() works on any
+     RP2040 GPIO. This board's GPIO25 entry mirrors that exact capability
+     list and rationale.
+   - variants/esp8266/esp8266/wifinfo/board.json GPIO14 and
+     variants/esp32/esp32s3/adafruit_camera_esp32s3/board.json GPIO1 -
+     further led_neopixel precedents confirming the vocabulary and that
+     digital_input is dropped (pin is committed to driving the LED data
+     line, not usable as general input).
+6. pfodWeb_src/build_boards.js was NOT re-read in depth this pass (its
+   buildEsp32Board()/chipGpios-override behavior was already confirmed in
+   the prior wiznet_5500_evb_pico audit in this same family - a chipGpios
+   entry's "capabilities" array fully replaces the auto-derived list for
+   that GPIO, exactly as needed here for GPIO25).
+
+PER-PIN REASONING
+------------------
+GPIO25 (PIN_LED / PIN_NEOPIXEL, single onboard WS2812 pixel): tagged
+  ["digital_output", "led_neopixel", "pwm_output"].
+  - "led_neopixel" (not "led_high"/"led_low"): this is one addressable
+    WS2812 RGB pixel controlled via a serial bit-banged/PIO protocol, not
+    a simple two-state on/off LED - confirmed by NUM_NEOPIXEL=1 and the
+    Hookup Guide's explicit "WS2812 library" instruction.
+  - "digital_output" kept, "digital_input" dropped: the pin is
+    permanently committed to driving the NeoPixel data line; it has no
+    legitimate general-purpose input role.
+  - "pwm_output" kept: matches the sparkfun_thingplusrp2350 GPIO14
+    precedent exactly - arduino-pico's analogWrite() is available on any
+    RP2040 GPIO, and keeping this capability does not conflict with the
+    NeoPixel's actual bit-banged data protocol (the pin is not literally
+    used for PWM dimming, but the capability tag itself is precedented
+    for this exact board pattern and does not mislead the Designer into
+    thinking it is a real hardware PWM peripheral rather than the
+    bit-banged NeoPixel path - it is provided for tagging consistency
+    with the sibling SparkFun board only).
+
+No onboard user button - confirmed absent by the Hookup Guide (BOOT and
+  RESET are both hardware-only, not GPIO-connected, same as every other
+  RP2040 board's BOOTSEL). No button tagging applied.
+
+Red power-indicator LED - NOT GPIO-connected (passive power indicator
+  only, per the Hookup Guide), so out of scope for GPIO capability
+  tagging entirely - there is no pin to attach a tag to.
+
+VALIDATION
+----------
+- board.json was checked for valid JSON by stripping "//" line comments
+  with a small Node script and running JSON.parse() on the result -
+  confirmed valid, and the parsed structure matches the intended shape
+  (dumped and reviewed). No build script was executed (per task
+  instructions - build_boards.js was not run or required()'d).
+- All 9 fields from build_boards.js's REQUIRED_BOARD_FIELDS list are
+  present: boardName, displayName, family, inputOnlyGpios, connections,
+  pinNotes, chipGpios, pwm, dac, adc.
+- boardName/displayName/family/inputOnlyGpios/connections/pinNotes/pwm/
+  dac/adc values reproduce the chip-level
+  variants/rp2040/rp2040/board.json defaults verbatim except for the
+  added chipGpios entry, per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/sparkfun_promicrorp2040/board.json (new file)
+- Created: boardsDetails/rp2040/rp2040/sparkfun_promicrorp2040/notes.txt (this file)
+- pins_arduino.h: NOT modified (no edits needed - PIN_LED/PIN_NEOPIXEL/
+  NUM_NEOPIXEL aliases were already correctly declared and are the source
+  of truth this audit relied on).

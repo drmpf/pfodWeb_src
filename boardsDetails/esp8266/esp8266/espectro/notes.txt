@@ -1,0 +1,295 @@
+ESPectro Core (ESP8266) — board variant research notes
+Board directory: variants/esp8266/esp8266/espectro/
+Researched: 2026-07-11
+
+VENDOR / FAMILY CHECK
+----------------------
+ESPectro Core is made by DycodeX (Indonesia), sold via Makestro
+(shop.makestro.com). It is part of the same "ESPectro" product family as
+the ESP32 "espectro32" board already tagged earlier this session
+(variants/esp32/esp32/espectro32/board.json), but is a DIFFERENT physical
+board (ESP-12F/ESP8266-based, not ESP32-S) with its own companion Arduino
+library (andriyadi/EspX, not dycodex/ESPectro32). Verified independently
+per instructions rather than assuming identical pinout/polarity to the
+ESP32 sibling — it turned out to have the same vendor conventions
+(single-color LED active-high by library default, WS2812/NeoPixel present,
+one programmable button) but different GPIO numbers and a
+hardware-version-dependent pin assignment not present on the ESP32 board.
+
+URLS CONSULTED
+--------------
+1. https://raw.githubusercontent.com/esp8266/Arduino/master/variants/espectro/pins_arduino.h
+   - Fetched the current upstream copy of this exact file. Byte-for-byte
+     identical to this repo's variants/esp8266/esp8266/espectro/pins_arduino.h:
+     SDA=4, SCL=5, LED_BUILTIN=15, BUTTON_BUILTIN/BUILTIN_BUTTON=0 when
+     ESPECTRO_CORE_VERSION==3 (the #ifndef default, i.e. current default),
+     =2 otherwise; RX0=3/TX0=1 (hardware UART), TX1=2 (alternate UART, not
+     the pfod Serial connection).
+
+2. https://github.com/esp8266/Arduino/pull/2546/files
+   ("Add ESPectro to the supported boards", by andriyadi/DycodeX) — the PR
+   description/added docs give the vendor's own hardware description:
+   "ESPectro is designed by DycodeX, one of the first IoT companies in
+   Indonesia. It uses the famous ESP8266 ESP-12 module, designed to fit on
+   a breadboard." Features listed: WS2812/Neopixel RGB LED, Single-color
+   LED, Programmable user button, I2C grove connector, I2C OLED display
+   compatible connector, Integrated FT231XS USB-to-TTL converter with
+   auto-flash circuitry, Manual flash and reset buttons. This confirms
+   THREE distinct onboard indicator/input elements exist: a single-color
+   LED, a separate NeoPixel, and a user button — matching what the EspX
+   library (below) implements.
+
+3. https://github.com/andriyadi (DycodeX org) and
+   https://github.com/andriyadi/EspX
+   ("ESP8266 Extended Library, especially for ESPectro IoT development
+   board", written by the same author who submitted PR #2546) — this is
+   DycodeX's own first-party board-support library, directly analogous to
+   dycodex/ESPectro32 used for the ESP32 sibling board.
+
+4. https://raw.githubusercontent.com/andriyadi/EspX/master/src/ESPectro_Constants.h
+   - Gives the exact GPIO numbers behind the pins_arduino.h aliases, and
+     crucially reveals the NeoPixel pin (which has NO alias in
+     pins_arduino.h at all):
+       #define ESPECTRO_LED_PIN            15
+       #define ESPECTRO_NEOPIXEL_PIN       15   (pre-v3 hardware)
+       #define ESPECTRO_NEOPIXEL_PIN_V3     2   (v3 hardware)
+       #define ESPECTRO_BUTTON_PIN          2   (pre-v3 hardware)
+       #define ESPECTRO_BUTTON_PIN_V3       0   (v3 hardware)
+     Since this variant's pins_arduino.h defaults ESPECTRO_CORE_VERSION to
+     3 (same as upstream), and BUTTON_BUILTIN already equals 0 for that
+     default, the "v3" pin set is the one that applies without any user
+     override: GPIO0=button, GPIO2=NeoPixel data, GPIO15=LED (LED pin is
+     the same on both hardware versions — on pre-v3 boards the single LED
+     *is* the NeoPixel on the same pin; v3 split them onto separate pins).
+
+5. https://raw.githubusercontent.com/andriyadi/EspX/master/src/ESPectro_LED.h
+   and .../ESPectro_LED.cpp
+   - Constructor: `ESPectro_LED(byte pin = ESPECTRO_LED_PIN, boolean
+     activeHigh = true)` — activeHigh defaults to true.
+   - turnOn(): `digitalWrite(pin_, activeHigh_ ? HIGH : LOW);`
+   - https://raw.githubusercontent.com/andriyadi/EspX/master/src/ESPectro.cpp
+     instantiates it with no explicit argument (`new ESPectro_LED()`),
+     i.e. uses the library's own default — confirms GPIO15 LED is wired/
+     driven active-high on this board.
+
+6. https://raw.githubusercontent.com/andriyadi/EspX/master/src/DCX_Constants.h
+   - Checked for any ADC/battery-voltage/divider-ratio constants (as a
+     proxy for a documented resistor divider on A0). Found none — only
+     debug flags, default WiFi AP credentials, and a WiFi-connect-interval
+     timing constant.
+
+7. https://shop.makestro.com/product/espectrocore/ and
+   https://shop.makestro.com/en/product/espectro-core/
+   - Attempted to fetch the vendor's own product page for a schematic or
+     ADC spec. Both attempts failed with "connect ECONNREFUSED" (site
+     unreachable from this environment). web.archive.org fetch was also
+     blocked (tool restriction). No schematic or datasheet PDF could be
+     located via web search either.
+
+8. https://www.hackster.io/makestro/products/espectro-core
+   - Returned HTTP 403 Forbidden, no content retrieved.
+
+9. General web searches for "ESPectro Core" + ADC/A0/voltage divider/
+   schematic/datasheet turned up nothing board-specific — only generic
+   ESP8266 divider background (NodeMCU/D1 Mini's well-known 220k/100k
+   dividers, used for comparison only, not evidence for this board).
+
+WHAT WAS TAGGED (PART A)
+-------------------------
+board.json created (none existed before), copied from the esp8266
+chip-level default (variants/esp8266/esp8266/board.json), with:
+  - GPIO0  -> ["digital_input","button"]        (BUTTON_BUILTIN / ESPECTRO_BUTTON_PIN_V3)
+  - GPIO2  -> ["digital_output","led_neopixel","pwm_output"]  (ESPECTRO_NEOPIXEL_PIN_V3)
+  - GPIO15 -> ["digital_output","led_high","pwm_output"]      (LED_BUILTIN / ESPECTRO_LED_PIN, active-high)
+pinNotes for 0/2/15 updated to reference these; a "pfodWeb NOTE" comment
+block at the top of the file cites all sources above.
+GPIO1/GPIO3 (hardware UART0 TX0/RX0, this board's actual pfod Serial
+connection) were left untouched/reserved — confirmed as the correct
+Serial pins from pins_arduino.h's own RX0/TX0 aliases. GPIO2 also carries
+this board's TX1 (alternate UART) alias, but that is not the pfod Serial
+connection (only GPIO1/GPIO3 are hard-reserved for that), so GPIO2 was
+still tagged with led_neopixel.
+
+WHAT WAS CONSIDERED BUT NOT CHANGED
+------------------------------------
+- The pre-v3-hardware pin assignments (ESPECTRO_BUTTON_PIN=2,
+  ESPECTRO_NEOPIXEL_PIN=15) were NOT tagged, since this variant's
+  pins_arduino.h defaults ESPECTRO_CORE_VERSION to 3 (matching upstream),
+  making the v3 assignments the actual default/effective ones. Tagging
+  both would double-tag GPIO2/GPIO15 with conflicting roles depending on
+  a compile-time macro this repo's static board.json can't express.
+- The "Manual flash and reset buttons" mentioned in the PR description
+  are the standard FLASH (GPIO0, already tagged as the user button — same
+  physical button serves both roles on this class of board) and RESET
+  (tied to the chip's physical RST pin, not a GPIO) buttons — RESET was
+  not tagged since it isn't a chip GPIO.
+- ADC defaultRefVolts: left unchanged at the chip-level default of "1.0".
+  No schematic, datasheet, or resistor-value documentation could be found
+  for ESPectro Core's A0 pin (vendor shop page unreachable, EspX library
+  headers contain no relevant constants). Unlike NodeMCU/D1 Mini/ESPino
+  elsewhere in this repo (all of which have a confirmed 220k/100k divider
+  from a real schematic/datasheet), there is no comparable source here, so
+  per instructions this was left at 1.0V rather than guessed.
+
+SUMMARY
+-------
+TAGGED espectro: GPIO0=button, GPIO2=led_neopixel, GPIO15=led_high (all
+confirmed via DycodeX's own PR description and EspX library source, not
+inferred from pins_arduino.h aliases alone). ADC: no change — no divider
+evidence found, left at chip default 1.0V.
+
+===========================================================================
+DEDICATED-HARDWARE PIN-EXCLUSION AUDIT — 2026-07-12
+Follow-up pass (parser-ambiguity investigation), separate from the Part A
+button/LED/NeoPixel pass above.
+===========================================================================
+
+SOURCES CONSULTED (this pass)
+------------------------------
+1. variants/esp8266/esp8266/espectro/pins_arduino.h (this repo's copy, read
+   in full before editing).
+2. pfodWeb_src/build_boards.js, function parseEsp32Consts (the regex-based
+   const parser used by all esp32/esp8266-family boards including this
+   one) and buildEsp32Board (consumer of its output) — read in full to
+   determine exactly how a duplicate `static const uint8_t NAME = value;`
+   declaration for the same NAME is resolved, and which output fields
+   (name/label/codeName/capabilities) are actually derived from it.
+3. https://raw.githubusercontent.com/andriyadi/EspX/master/src/ESPectro_Constants.h
+   — re-fetched fresh this pass (independent of Part A's citation) to
+   reconfirm the vendor's own GPIO numbers: ESPECTRO_LED_PIN=15,
+   ESPECTRO_NEOPIXEL_PIN=15 (pre-v3) / ESPECTRO_NEOPIXEL_PIN_V3=2 (v3),
+   ESPECTRO_BUTTON_PIN=2 (pre-v3) / ESPECTRO_BUTTON_PIN_V3=0 (v3).
+4. https://raw.githubusercontent.com/esp8266/Arduino/master/variants/espectro/pins_arduino.h
+   — re-fetched fresh this pass; confirmed byte-for-byte identical to this
+   repo's pre-edit copy, including the `#ifndef ESPECTRO_CORE_VERSION /
+   #define ESPECTRO_CORE_VERSION 3 / #endif` default-to-3 guard and the
+   `#if ESPECTRO_CORE_VERSION == 3 ... #else ... #endif` block around
+   BUTTON_BUILTIN/BUILTIN_BUTTON.
+5. This repo's own variants/esp8266/esp8266/espectro/board.json and the
+   already-generated pfodWeb_src/designer/boards/esp8266_espectro/
+   esp8266_espectro.json, inspected to see the actual current output
+   (not just the intended output) for GPIO0 and GPIO2 before any edit.
+
+THE ANOMALY, EXACTLY AS IT APPEARED IN THE FILE
+-------------------------------------------------
+Contrary to a naive read, the file did NOT declare BUTTON_BUILTIN twice as
+two bare unconditional statements — it declared them inside a real
+`#if ESPECTRO_CORE_VERSION == 3 ... #else ... #endif` block: the `#if`
+branch set BUTTON_BUILTIN/BUILTIN_BUTTON to 0, the `#else` branch set them
+to 2. `ESPECTRO_CORE_VERSION` defaults to 3 via an `#ifndef` guard earlier
+in the file (both in this repo's copy and in the current upstream
+esp8266/Arduino source — reconfirmed by fresh fetch, source 4 above), so
+in an ACTUAL Arduino compile of this file, unless something else defines
+ESPECTRO_CORE_VERSION first, the `#if` branch is the one that applies:
+BUTTON_BUILTIN really is 0 on real hardware/firmware.
+
+WHAT THE PARSER ACTUALLY DOES (verified by reading build_boards.js)
+----------------------------------------------------------------------
+parseEsp32Consts() (pfodWeb_src/build_boards.js) uses one global regex
+sweep for `static const uint8_t NAME = number;` and executes
+`out[name] = parseInt(...)` unconditionally on every match, with no
+"already assigned, skip" guard for direct numeric assignments (that guard
+only exists for the separate alias-resolution pass, i.e. `NAME = OTHER;`
+forms). It does not see or evaluate `#if`/`#else`/`#endif`/`#ifndef` at
+all — the preprocessor text is invisible to it, so it just walks the file
+top to bottom and the LAST direct numeric match for a given name
+overwrites every earlier one. For BUTTON_BUILTIN/BUILTIN_BUTTON, the `#if`
+branch (value 0) is encountered first and the `#else` branch (value 2) is
+encountered second, so the parser's `consts.BUTTON_BUILTIN` /
+`consts.BUILTIN_BUTTON` resolved to 2 — the OPPOSITE of what a real
+compile produces for the file's own default configuration.
+
+Traced what that mis-resolution actually touches downstream in
+buildEsp32Board(): consts.BUTTON_BUILTIN/BUILTIN_BUTTON are NOT among the
+special-cased consts (only TX, RX, SDA, SCL, SS, MOSI, MISO, SCK, DAC1,
+DAC2 are pulled out individually), so they never affect which capability
+a pin gets — capabilities for GPIO0/GPIO2/GPIO15 all come from this
+board.json's own hand-authored chipGpios entries (button / led_neopixel /
+led_high respectively), which were already correct per the Part A pass
+and were UNAFFECTED by this bug. What the mis-resolution DID corrupt was
+the auto-derived "name" and "codeName" fields: because BUTTON_BUILTIN's
+final parsed value was 2, not 0, the generator's alias map attached
+BUTTON_BUILTIN/BUILTIN_BUTTON to GPIO2 instead of GPIO0. Confirmed by
+inspecting the already-generated
+pfodWeb_src/designer/boards/esp8266_espectro/esp8266_espectro.json before
+this pass's edit: its GPIO2 pin entry had
+`"name": "BUTTON_BUILTIN", "codeName": "BUTTON_BUILTIN"` (label was still
+correctly forced to "GPIO2 (Led Neopixel)" by the chipGpios override, but
+codeName was not) while GPIO0's entry had the generic literal
+`"codeName": "0"` instead of a symbolic name. A generated sketch that
+referenced the NeoPixel pin via codeName "BUTTON_BUILTIN" would compile
+correctly as a symbol, but in a REAL compile of this pins_arduino.h
+(ESPECTRO_CORE_VERSION defaulting to 3) that symbol evaluates to 0, not
+2 — i.e. generated code intended to drive the NeoPixel data pin would
+have silently ended up toggling the button pin (GPIO0) instead. This is
+the concrete, real bug the anomaly caused; it was not hypothetical.
+
+BUS-ALIAS CROSS-CHECK (requested check)
+------------------------------------------
+Checked whether GPIO0 or GPIO2 collide with any of the parser's
+specially-handled bus aliases (SDA/SCL/SS/MOSI/MISO/SCK/TX/RX). GPIO2 is
+separately aliased TX1 in this file, but the parser only special-cases the
+exact name "TX" (value 1, i.e. GPIO1) — "TX1" is a distinct identifier and
+is never matched by that check, so there was no bus-capability
+misattachment. GPIO0 carries no bus alias at all. No fix needed on this
+front; only the name/codeName corruption above was real.
+
+WHICH GPIO IS REALLY THE BUTTON, PER VENDOR SOURCES
+-------------------------------------------------------
+Re-fetched DycodeX's own EspX library source
+(src/ESPectro_Constants.h) fresh this pass, independent of the Part A
+citation: ESPECTRO_BUTTON_PIN_V3 = 0, ESPECTRO_NEOPIXEL_PIN_V3 = 2,
+ESPECTRO_LED_PIN = 15 (same on both hardware revisions). Since this
+variant's pins_arduino.h defaults ESPECTRO_CORE_VERSION to 3 (matching
+current upstream), and no mechanism in this repo overrides that macro for
+a different revision, GPIO0 is confirmed as the real button pin, GPIO2 is
+confirmed as the real NeoPixel data pin, and GPIO15 remains the
+single-color LED on both revisions. This matches the Part A pass's
+existing chipGpios tagging exactly — that tagging was correct all along;
+only the machine-generated name/codeName fields (not the capability tags)
+were wrong.
+
+FIX APPLIED
+-----------
+Edited variants/esp8266/esp8266/espectro/pins_arduino.h: removed the
+`#else` branch's BUTTON_BUILTIN/BUILTIN_BUTTON declarations (the
+pre-v3-hardware values, not applicable to this variant's default
+configuration) and the surrounding `#if ESPECTRO_CORE_VERSION == 3` /
+`#else` / `#endif` directives, leaving a single unconditional declaration
+of BUTTON_BUILTIN/BUILTIN_BUTTON = 0. No lines were commented out (the
+parser is comment-blind, so a commented-out duplicate would still need to
+not exist as live text — it was deleted outright, not commented).  The
+`#ifndef ESPECTRO_CORE_VERSION / #define ESPECTRO_CORE_VERSION 3 / #endif`
+guard near the top of the file was left in place (harmless — nothing
+still branches on it, but it preserves the file's provenance/diffability
+against the upstream esp8266/Arduino source for anyone comparing later).
+This makes the parser's last-wins behavior produce the same result a real
+compile does: consts.BUTTON_BUILTIN/BUILTIN_BUTTON now unambiguously
+resolve to 0, so a future regeneration will correctly attach
+BUTTON_BUILTIN/BUILTIN_BUTTON to GPIO0 (giving it a proper symbolic
+codeName instead of the literal "0") and will no longer attach
+BUTTON_BUILTIN to GPIO2 (GPIO2 keeps its own unambiguous TX1 alias, and
+its chipGpios-forced "GPIO2 (Led Neopixel)" label/capabilities are
+untouched). Also added a short explanatory paragraph (plain English, no
+copied source lines) to the top-of-file comment block in board.json
+documenting this fix for future re-audits.
+
+No capability, pinNotes, or chipGpios changes were needed in board.json —
+the button/led_neopixel/led_high tagging from the Part A pass was already
+hardware-correct; only the underlying pins_arduino.h ambiguity (and its
+effect on auto-generated name/codeName, not capabilities) needed fixing.
+Did not run any build command; the currently-checked-in generated
+pfodWeb_src/designer/boards/esp8266_espectro/esp8266_espectro.json still
+reflects the pre-fix codeName until the board build is next run.
+
+ONE-LINE SUMMARY
+-----------------
+The duplicate BUTTON_BUILTIN declaration was a genuine (not hypothetical)
+`#if ESPECTRO_CORE_VERSION==3 / #else` hardware-revision branch that the
+board.json generator's regex parser resolves via "last direct assignment
+wins" regardless of the `#if` — so it had mis-resolved BUTTON_BUILTIN to
+GPIO2 (the pre-v3 value) instead of the real, default, vendor-confirmed
+GPIO0, corrupting the generated NeoPixel pin's name/codeName (not its
+capability tags, which were already correct); fixed by deleting the
+non-applicable `#else` branch from pins_arduino.h so only the correct,
+unambiguous GPIO0 declaration remains.

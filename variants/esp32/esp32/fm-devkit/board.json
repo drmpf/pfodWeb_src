@@ -1,0 +1,78 @@
+// pfodWeb NOTE: excludes GPIO2/22/25/26 - dedicated onboard I2S DAC bus
+// (I2S_MCLK/LRCLK/SCLK/DOUT, see vendor "I2S DAC" comment). SW1-4
+// (GPIO4/18/19/21, buttons) stay available.
+//
+// pfodWeb NOTE (2026-07-12): button/LED capability-tagging audit (playbook
+// section 7a). Vendor source confirmed: https://github.com/dragon-engineer/
+// esp32_fmdevkit (README.md pinout table + example_firmware/
+// FMDevKit_BluetoothAudio/FMDevKit_BluetoothAudio.ino) - this is the actual
+// board designer's own repo, matches this board's pins_arduino.h exactly
+// (LED_BUILTIN=5, SW1=4/SW2=18/SW3=19/SW4=21).
+// GPIO4/18/19/21 (SW1-4) tagged "button" - README pinout table explicitly
+// lists all four as "Button Switch N (ESC/OK/Down/Up) Input"; official
+// firmware setup() uses pinMode(SWn, INPUT) (no INPUT_PULLUP) plus
+// attachInterrupt(SWn, ..., FALLING), i.e. relies on an onboard pull-up and
+// presses pull the pin LOW - genuine hardware buttons, not guessed from the
+// SW-prefixed alias name alone. Capabilities set to ["digital_input",
+// "button"] exactly (analog_input_serial/digital_output/pwm_output dropped
+// for GPIO4), matching this repo's button-tag exclusion rule (widora-air,
+// intorobot-fig, espresso_lite_v1 precedent: a confirmed dedicated button is
+// not also offered as a general-purpose output/PWM/analog pin).
+// GPIO5 (LED_BUILTIN): role CONFIRMED, polarity NOT CONFIRMED. README
+// confirms "LED2"/"LED_BUILTIN" = GPIO5 = "Blue built-in LED" (one of "1
+// Status LED (Red) and 1 User LED (Blue)"), so this is a genuine onboard
+// LED, not alias-name guessing. However no schematic exists for this board
+// (no .sch/.kicad/.pdf files in the vendor repo - "board/esp32/variants/"
+// is empty on GitHub; this repo's local pins_arduino.h is the only variant
+// source) and no source states active-high/active-low polarity explicitly.
+// The official firmware's digitalWrite(LED_BUILTIN, ...) calls (boot: HIGH;
+// steady-state while BT disconnected: LOW; blinks both ways while
+// connected) are suggestive but not an explicit on/off-semantic statement
+// (unlike e.g. espresso_lite_v2's named boolean library), so per this
+// repo's "never guess" policy no led_high/led_low tag is applied - see
+// pinNotes below and boardsDetails/esp32/esp32/fm-devkit/notes.txt for the
+// full research trail (intorobot-fig RGB-channel precedent: confirmed role,
+// unconfirmed polarity -> pinNotes documentation only, no capability tag).
+// Alias-collision check: TX=1, RX=3, SDA=16, SCL=17, SCK/MISO/MOSI/SS all
+// -1 (unused) - none equal 4, 5, 18, 19, or 21, so no bus-role capability
+// contamination on any tagged pin; no pins_arduino.h edit was needed.
+{
+  "boardName": "ESP32",
+  "displayName": "ESP32 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "5":  "Must be HIGH or floating on reboot. Onboard LED (LED2/LED_BUILTIN, confirmed via vendor README github.com/dragon-engineer/esp32_fmdevkit) - active-high/active-low polarity not confirmed by any available source (no schematic exists for this board), so no led_high/led_low capability is applied - this is a plain GPIO. See notes.txt",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["digital_input", "button"], "note": "SW1 (ESC) - onboard pushbutton, vendor-confirmed, see pfodWeb NOTE above" },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "button"], "note": "SW2 (OK) - onboard pushbutton, vendor-confirmed, see pfodWeb NOTE above" },
+    "19": { "capabilities": ["digital_input", "button"], "note": "SW3 (Down) - onboard pushbutton, vendor-confirmed, see pfodWeb NOTE above" },
+    "21": { "capabilities": ["digital_input", "button"], "note": "SW4 (Up) - onboard pushbutton, vendor-confirmed, see pfodWeb NOTE above" },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "27": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

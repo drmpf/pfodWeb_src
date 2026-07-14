@@ -28,10 +28,11 @@ static const uint8_t RX = 20;
 static const uint8_t SDA = 8;
 static const uint8_t SCL = 9;
 
+// NOTE: MISO and SCK aliases were removed here - both collided with this
+// board's onboard discrete RGB LED pins (LED_BLUE/LED_GREEN above); see
+// board.json and boardsDetails/esp32/esp32c3/esp_c3_m1_i_kit/notes.txt.
 static const uint8_t SS = 7;
 static const uint8_t MOSI = 6;
-static const uint8_t MISO = 5;
-static const uint8_t SCK = 4;
 
 static const uint8_t A0 = 0;
 static const uint8_t A1 = 1;

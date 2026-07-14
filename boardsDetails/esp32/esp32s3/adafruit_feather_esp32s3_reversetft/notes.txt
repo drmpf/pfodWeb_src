@@ -1,0 +1,81 @@
+Board: Adafruit Feather ESP32-S3 Reverse TFT (ESP32-S3 Dev Module variant)
+Date: 2026-07-14 (independent verification pass - real vendor/upstream sources
+consulted, replacing the earlier documentation-backfill pass that only cited
+the repo's own board.json comment)
+
+Sources consulted (real, independently fetched):
+1. Official pins_arduino.h, espressif/arduino-esp32 (the actual upstream
+   Arduino core this board.json is derived from):
+   https://github.com/espressif/arduino-esp32/blob/master/variants/adafruit_feather_esp32s3_reversetft/pins_arduino.h
+   Relevant definitions:
+     #define LED_BUILTIN 13
+     #define PIN_NEOPIXEL 33
+     #define NEOPIXEL_NUM 1
+     #define NEOPIXEL_POWER 21
+     #define NEOPIXEL_POWER_ON HIGH
+     #define TFT_I2C_POWER 7
+     #define TFT_CS 42
+     #define TFT_RST 41
+     #define TFT_DC 40
+     #define TFT_BACKLITE 45
+     static const uint8_t MOSI = 35; SCK = 36; MISO = 37;
+2. Adafruit's own pinouts page (confirms LED polarity):
+   https://learn.adafruit.com/esp32-s3-reverse-tft-feather/pinouts
+   States: "Red LED (#13): GPIO 13, active HIGH (controllable as
+   LED_BUILTIN in Arduino)".
+3. Adafruit's Built-In TFT page (confirms TFT is on a dedicated bus not
+   exposed on breakout pads):
+   https://learn.adafruit.com/esp32-s3-reverse-tft-feather/built-in-tft
+
+Per-pin findings:
+- GPIO0: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag. pinNotes: "Must be HIGH for normal boot" (standard
+  strapping-pin note, not part of this audit).
+- GPIO1-GPIO6: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag. No source found tying these to any
+  onboard dedicated hardware.
+- GPIO7: excluded (no chipGpios entry). CONFIRMED - this is TFT_I2C_POWER
+  (power-gate for the TFT display + STEMMA QT connector), per the official
+  pins_arduino.h above.
+- GPIO8-GPIO10: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag.
+- GPIO11, GPIO12: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag.
+- GPIO13: capabilities [digital_output, pwm_output, led_high] - tagged
+  "led_high". CONFIRMED - LED_BUILTIN=13 in the official pins_arduino.h;
+  active-high polarity confirmed by Adafruit's own pinouts page (source 2
+  above).
+- GPIO14-GPIO18: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag.
+- GPIO21: excluded (no chipGpios entry). CONFIRMED - this is
+  NEOPIXEL_POWER (power-gate for the onboard NeoPixel), per the official
+  pins_arduino.h above.
+- GPIO35-GPIO37, GPIO40-GPIO42, GPIO45: excluded (no chipGpios entries).
+  CONFIRMED - these are exactly the TFT SPI bus and control pins per the
+  official pins_arduino.h: MOSI=35, SCK=36, MISO=37, TFT_DC=40, TFT_RST=41,
+  TFT_CS=42, TFT_BACKLITE=45. Matches the claimed "GPIO35-37/40-42/45"
+  range pin-for-pin.
+- GPIO38, GPIO39: capabilities [digital_input, digital_output,
+  pwm_output] - generic, no tag (these are TX/RX per pins_arduino.h - a
+  software UART default assignment, not physically dedicated hardware, so
+  correctly left untagged per this repo's methodology).
+- GPIO43, GPIO44: capabilities [digital_input, digital_output,
+  pwm_output] - generic, no tag.
+- GPIO46-GPIO48: capabilities [digital_input, digital_output,
+  pwm_output] - generic, no tag. pinNotes on GPIO3/45/46: "Must be LOW or
+  floating on reboot" (standard strapping-pin notes; GPIO45 is also
+  excluded above as part of the TFT bus).
+- GPIO33 (PIN_NEOPIXEL per pins_arduino.h): NOT tagged and not present as
+  a chipGpios entry. CONFIRMED this is correctly left untagged - GPIO33 is
+  outside the pin range this board.json variant exposes (chipGpios only
+  covers up to GPIO18 then jumps to GPIO38+), so the onboard NeoPixel
+  cannot be tagged on this variant.
+
+Summary: Every existing finding was independently confirmed against the
+official, actively-maintained espressif/arduino-esp32 pins_arduino.h for
+this exact board variant, plus Adafruit's own pinouts page for LED
+polarity. GPIO13 = confirmed active-high onboard user LED. GPIO7/21 =
+confirmed internal power-gate lines (TFT_I2C_POWER/NEOPIXEL_POWER).
+GPIO35-37/40-42/45 = confirmed dedicated onboard reverse-TFT display + SPI
+bus. No corrections were required - all prior findings hold up under real
+independent verification.

@@ -1,0 +1,118 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Vicharak Shrike-Lite" (variants/rp2040/boards.txt, build.variant=vicharak_shrike-lite).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // No genuinely bidirectional-but-input-only pins on this board — the
+  // onboard LED is handled entirely via the chipGpios capability
+  // override below.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain RP2040 chip build
+  // (boards.txt: vicharak_shrike-lite.build.chip=rp2040), no onboard
+  // radio — this is an RP2040 + small FPGA (Renesas/Silego SLG47910,
+  // 1120 LUTs) combo board, not a WiFi variant.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040 family audit, button/LED/NeoPixel tagging,
+  // 2026-07-13):
+  //
+  // Board: "Shrike-Lite" by Vicharak (vicharak.in / store.vicharak.in) —
+  // a low-cost RP2040 + Renesas/Silego SLG47910 FPGA (1120 LUT) combo
+  // board. Confirmed real and selectable: variants/rp2040/boards.txt
+  // has a full vicharak_shrike-lite.* stanza (name=Vicharak Shrike-Lite,
+  // build.chip=rp2040, build.variant=vicharak_shrike-lite, USB
+  // vid=0x2e8a - the same vid used by other Vicharak boards, usb
+  // manufacturer/product strings "Vicharak"/"Shrike-Lite") — NOT an
+  // orphan for this board (the task brief's orphan-check caveat did not
+  // apply here).
+  //
+  // This board's own pins_arduino.h declares only:
+  //   #define PIN_LED        (4u)
+  //   LED_BUILTIN = PIN_LED
+  // plus UART/SPI0/SPI1/Wire0/Wire1 aliases, then falls through to the
+  // shared ../generic/common.h (rp2040/rp2040/generic/common.h) for
+  // D0-D22/A0-A2/SS/MOSI/MISO/SCK/SDA/SCL fallbacks.
+  //
+  // Sources consulted (multiple independent sources agree):
+  //  - Zephyr's own board port for this exact board
+  //    (zephyrproject-rtos/zephyr, boards/vicharak/shrike_lite/shrike_lite.dts,
+  //    fetched via raw.githubusercontent.com): declares
+  //    `leds { compatible = "gpio-leds"; blue_led: blue_led {
+  //    gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>; label = "Blue LED"; }; };`
+  //    with `aliases { led0 = &blue_led; ... }` — i.e. GPIO4 is a
+  //    "Blue LED" driven GPIO_ACTIVE_HIGH. No gpio-keys (button) node
+  //    exists anywhere in this board's devicetree.
+  //  - TinyGo's board definition for vicharak_shrike-lite
+  //    (tinygo.org/docs/reference/microcontrollers/machine/vicharak_shrike-lite/):
+  //    `LED = IO4` — matches PIN_LED/GPIO4 exactly; no button constant
+  //    defined for this board.
+  //  - DeepWiki auto-generated pin reference for vicharak-in/shrike-lite
+  //    (deepwiki.com/vicharak-in/shrike-lite/10.1-complete-pin-reference):
+  //    GPIO4 listed as "RP2040 user LED indicator", default state "Off";
+  //    no onboard button or NeoPixel pin listed among RP2040 user I/O.
+  //  - CIRCUITSTATE Electronics "Getting Started with Vicharak Shrike-Lite"
+  //    tutorial: board has "User LEDs: 2" total, but only one (the
+  //    GPIO4 "Blue LED" above) is on the RP2040 side — the second is an
+  //    "FPGA User LED" wired to an FPGA pin (FPGA Pin 16 per DeepWiki),
+  //    not an RP2040 GPIO, so out of scope for this repo's GPIO-keyed
+  //    tagging. The same tutorial notes onboard Reset and Boot
+  //    pushbuttons for the RP2040 — these are dedicated
+  //    reset/bootloader-strapping buttons (same category as the classic
+  //    Pico's BOOTSEL, see rpipico/board.json's note), not wired to a
+  //    normal GPIO, so no "button" capability applies to any GPIO here.
+  //
+  // Per-pin findings:
+  //   GPIO4 (PIN_LED / LED_BUILTIN) — onboard "Blue LED", confirmed
+  //     active-high via Zephyr's official board devicetree
+  //     (GPIO_ACTIVE_HIGH) and consistent with DeepWiki's independent
+  //     pin-reference listing. digital_input dropped, pwm_output kept
+  //     for brightness dimming via analogWrite() — same
+  //     led_high/pwm_output precedent as rpipico/board.json and
+  //     vccgnd_yd_rp2040/board.json's GPIO25.
+  //
+  // Bus-collision check (per task brief's flagged concern — this
+  // board's pins_arduino.h declares PIN_WIRE0_SDA separately from
+  // PIN_LED, so both were checked against GPIO4 explicitly): GPIO4 does
+  // NOT collide with any SDA/SCL/SS/MOSI/MISO/SCK alias on this board.
+  // This board's own pins_arduino.h assigns:
+  //   PIN_SPI0_MOSI=19, PIN_SPI0_MISO=20, PIN_SPI0_SCK=18, PIN_SPI0_SS=21
+  //   PIN_SPI1_MOSI=27, PIN_SPI1_MISO=28, PIN_SPI1_SCK=26, PIN_SPI1_SS=29
+  //   PIN_WIRE0_SDA=24, PIN_WIRE0_SCL=25
+  //   PIN_WIRE1_SDA=6,  PIN_WIRE1_SCL=7
+  // and the shared generic/common.h aliases SS/MOSI/MISO/SCK to
+  // PIN_SPI0_* and SDA/SCL to PIN_WIRE0_* — none of which equal 4. No
+  // pins_arduino.h edit was needed for this board (unlike
+  // adafruit_feather_scorpio, where the collision was real).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/vicharak_shrike-lite/notes.txt
+  "chipGpios": {
+    "4": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard \"Blue LED\", active-high. Confirmed via Zephyr's official shrike_lite.dts board port (gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>) and DeepWiki's independently-generated pin reference. No onboard button is wired to a normal GPIO on this board (Reset/Boot buttons are dedicated strapping buttons, not GPIO-readable)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // This board's pins_arduino.h declares no custom analog pins, so the
+  // shared generic/common.h default applies (NUM_ANALOG_INPUTS=3,
+  // ADC_RESOLUTION=12) — 12-bit ADC, ~3.3V reference, same as every
+  // other plain RP2040 board.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

@@ -1,0 +1,213 @@
+Board: LOLIN(WeMos) D1 R1  (boards.txt id "d1", build.variant=d1, build.board=ESP8266_WEMOS_D1R1)
+Arduino-Uno-shield-form-factor ESP8266 board. NOT the same as the "D1 Mini" family
+(sibling variant dir ../d1_mini) - confirmed distinct via boards.txt (only one entry,
+"d1", uses build.variant=d1) and via pins_arduino.h (D1 R1 maps D0=GPIO3(RX)/D1=GPIO1(TX)
+to match Arduino Uno's D0=RX/D1=TX convention; D1 Mini instead uses D0=GPIO16/D1=GPIO5
+and separate RX/TX aliases - a real hardware/pin-map difference between the two boards).
+
+=== URLs consulted ===
+
+1. https://wiki.wemos.cc/products:d1:d1
+   Official legacy WeMos wiki product page for the base "D1" board. DNS resolution
+   failed from this environment (getaddrinfo ENOTFOUND) - could not be fetched
+   directly or via web.archive.org (that domain is blocked for WebFetch in this
+   environment). Not used as a source.
+
+2. https://www.wemos.cc/en/latest/d1/index.html and https://www.wemos.cc/en/latest/d1/d1.html
+   Current official WEMOS documentation site. The D1 (non-mini/Uno-shield) board has
+   been dropped from current docs - the D1 boards index page only lists D1 mini,
+   D1 mini Pro, D1 mini Lite. The base D1/D1 R1/R2 product page (d1.html) 404s.
+   Confirms WeMos/LOLIN no longer document this discontinued board on their current
+   site - had to rely on third-party technical sources instead (below).
+
+3. https://blekenbleu.github.io/Arduino/ESPDuino
+   Third-party technical page specifically about "WeMos D1 UNO R1 ESP8266 Arduino
+   UNO-R3 Clone". States: "Analog Input: 1 (A0) (3.2V max) A1-5 not available".
+   Used as primary evidence for the A0 divider value (3.2V) - this source is
+   R1-specific, matching our exact board.
+
+4. https://www.makershop.de/download/d1-wifi-esp8266-board.pdf
+   Reseller technical datasheet PDF for "WEMOS D1 R2 WIFI ESP8266 Shield Arduino
+   Compatible" (fetched and read as a PDF; full text extracted). Specs section:
+   "Analog Input Pins: 1 (3.2V max input)". Pin table: "A0 | Analog input, max
+   3.3V input | A0" (a 3.2 vs 3.3 rounding inconsistency within the same PDF -
+   3.2V is the value that appears consistently elsewhere so it was used).
+   Pin table also states: "D4 | IO, pull-up, BUILTIN_LED | GPIO2" - confirms the
+   onboard LED is on GPIO2. Board photo shows a single "RESET" button near the
+   power jack; no second/flash button is shown or described anywhere in the doc.
+   This datasheet is for the D1 R2 hardware revision (our board is the earlier
+   R1), but R1 vs R2 differ only in ESP module revision (12B/12E vs 12F) and
+   minor connector changes per Tasmota's comparison doc (below) - the D0-D8/A0
+   pin function map and LED/divider circuit are the same board family design,
+   and this board's own pins_arduino.h independently confirms LED_BUILTIN=2,
+   matching this source.
+
+5. https://envistiamall.com/blogs/learn/wemos-d1-r2-esp8266-wifi-development-board-user-guide
+   Reseller user guide for D1 R2. States explicitly: "The built-in LED on the
+   WeMos D1 R2 is active LOW — writing LOW turns it ON, and writing HIGH turns
+   it OFF." Also: "Analog Input Pins: 1 (A0, 10-bit ADC, 3.2V max)." Confirms
+   both the LED polarity (active-low) and the A0 max voltage (3.2V) independently
+   of source #4. No pushbutton (besides reset) mentioned anywhere in the guide.
+
+6. https://tasmota.github.io/docs/devices/Wemos-D1-R1-&-R2/
+   Tasmota device docs comparing R1 vs R2. Only states: "The old version has an
+   ESP8266 12B or 12E model. The new one has an ESP8266 12F model on the pcb
+   board" plus a note about 2x4 solder pins for serial/I2C on R2. No LED/button/
+   ADC detail, but confirms R1 and R2 are the same board family differing only
+   in ESP module revision and a minor connector addition - supports using R2
+   documentation (sources #4, #5) as valid corroboration for R1 hardware.
+
+7. https://wiki.geekworm.com/WEMOS_ESP8266_D1_R2_V2.1
+   Third-party wiki for a D1 R2 clone/compatible board. Confirmed a "Schematic"
+   section exists but the actual PDF content wasn't retrievable through the
+   fetch tool (image-only page). Not used as a source beyond confirming a
+   schematic exists.
+
+8. https://www.scribd.com/document/448871414/Wemos-d1-r2-Schematic and
+   https://www.openhacks.com/uploadsproductos/wemos-d1-r2-schematic.pdf
+   Attempted to fetch the actual WeMos D1 R2 schematic PDF for a first-hand
+   resistor-value check on the A0 divider (to see if it matches D1 Mini's
+   known 220k/100k divider, R1=220k, R2=100k -> 3.2V full scale). Scribd only
+   returned a non-technical summary; openhacks.com failed with a DNS timeout.
+   Could not directly confirm exact resistor values for D1 R1/R2 (only the
+   resulting 3.2V max input voltage, corroborated by three independent sources
+   above), but 3.2V exactly matches the D1 Mini divider math (1.0V native *
+   (220k+100k)/100k = 3.2V), which is consistent with WeMos reusing the same
+   ESP-12 reference-design divider across the D1 family.
+
+9. https://docs.cirkitdesigner.com/component/02a8a524-0483-4a28-a1ca-b296beed5a54/wemos-d1-r2
+   and https://docs.cirkitdesigner.com/component/031b265b-2c95-40a1-9dd2-eb8feb88830e/wemos-d1-r1
+   Attempted for cross-reference. The R1 URL failed DNS resolution from this
+   environment; the R2 URL loaded and stated "The onboard LED (connected to D4)
+   can be used for basic testing" and "A0: Analog input pin (0-3.3V range)" -
+   consistent with (but less precise than) sources #4/#5, used only as weak
+   secondary corroboration, not as a primary source.
+
+10. Web searches for "onboard button" / "flash button" / "pushbutton" on WeMos
+    D1 R1/R2 (multiple queries, see below) returned no evidence of any GPIO-
+    connected user pushbutton on this board family - only a RESET button
+    (routed to the ESP8266's RST pin, not a GPIO, so not taggable per the
+    button/LED capability scheme) is documented or shown in board photos.
+    This matches the D1 family design generally (unlike NodeMCU Amica devkit
+    boards, which historically had a physical FLASH button on GPIO0 in
+    addition to RESET - D1/D1 R1/R2/Mini boards use auto-reset via the USB-
+    serial chip's DTR/RTS lines instead of a manual flash button).
+
+=== Considered but NOT tagged/changed, and why ===
+
+- GPIO0: No onboard user button found (see source #10) - left untagged, matching
+  the chip-level default. pinNotes updated only to note this was checked.
+- No NeoPixel or discrete RGB LED found on this board - only the single GPIO2
+  blue LED - so only "led_low" was used, not led_neopixel/led_r_high etc.
+- GPIO1/GPIO3 (this board's TX/RX, hard-reserved by build_boards.js as
+  serial_tx/serial_rx) were left untouched, per the task's own warning -
+  no capability tags were placed on them.
+- Did not attempt to change displayName/boardName - per the existing convention
+  seen in sibling ../d1_mini/board.json, these are just fallbacks; the real
+  display name "LOLIN(WeMos) D1 R1" comes from boards.txt's d1.name= entry,
+  which was left untouched (out of scope - boards.txt is shared across many
+  boards, not this board's own file).
+- Considered rounding A0 defaultRefVolts to "3.3" to match the sibling
+  ../d1_mini and ../nodemcu board.json convention (both use "3.3"), but the
+  task explicitly required verifying THIS model's documented value rather
+  than assuming it matches D1 Mini's. Two independent D1 R1/R2-specific
+  sources (#3, #5) state "3.2V max" precisely and consistently, and 3.2V is
+  also the exact value produced by the well-known 220k/100k WeMos reference-
+  design divider math, so "3.2" was used instead of "3.3".
+
+=== Summary ===
+
+TAGGED d1: GPIO2 -> ["digital_output","pwm_output","led_low"] (onboard LED,
+active-low, confirmed via this board's own LED_BUILTIN=2 plus two independent
+D1 R1/R2 vendor/reseller technical sources); no onboard user button found
+(only a non-GPIO RESET button) so GPIO0 was left untagged.
+ADC: changed defaultRefVolts from "1.0" (chip default, no prior board.json
+existed) to "3.2", confirmed via WeMos D1 R1/R2-specific technical sources
+citing "3.2V max" A0 input, matching the documented 220k/100k on-board
+resistor-divider design used across the WeMos/LOLIN D1 family.
+
+=== 2026-07-12: dedicated-hardware pin-exclusion audit (separate pass) ===
+
+Scope: this is the full KEEP-vs-EXCLUDE dedicated-hardware sweep (per the
+board-variant pin-audit playbook), distinct from the earlier button/LED/ADC
+pass above. Re-read pins_arduino.h and variants/esp8266/esp8266/generic/
+common.h in full; re-checked variants/esp8266/esp8266/d1/board.json in full.
+
+--- Step: alias-collision check on the tagged LED pin (GPIO2) ---
+
+Checked whether GPIO2 (LED_BUILTIN, tagged "led_low" in board.json) is
+aliased anywhere in pins_arduino.h or common.h as SDA/SCL/SS/MOSI/MISO/SCK/
+TX/RX (the contamination pattern found repeatedly on the ESP32 side this
+session). Direct inspection of both files:
+  - SDA = PIN_WIRE_SDA = 4 (pins_arduino.h line 29/32)
+  - SCL = PIN_WIRE_SCL = 5 (pins_arduino.h line 30/33)
+  - SS = PIN_SPI_SS = 15, MOSI = PIN_SPI_MOSI = 13, MISO = PIN_SPI_MISO = 12,
+    SCK = PIN_SPI_SCK = 14 (common.h lines 42-50)
+  - TX/RX are hardware UART0 on GPIO1/GPIO3 (D1/D0), not GPIO2
+  - GPIO2's only other alias in this file is D9 (plain D-numbering, not a
+    bus alias)
+None of SDA/SCL/SS/MOSI/MISO/SCK/TX/RX resolve to 2. GPIO2 is clean - no
+collision, no contamination of its capability list. board.json's chipGpios
+entry for "2" already contains only ["digital_output","pwm_output","led_low"]
+with no bus-role tag, confirming there was nothing to fix.
+RESULT: NO CHANGE required for this check.
+
+--- Step: verify the dual D0-D15 numbering is intentional, not a bug ---
+
+The task flagged that several GPIOs appear under two different D-numbers
+(GPIO12 = D6 and D12; GPIO13 = D7 and D11; GPIO14 = D5 and D13; GPIO4 = D4
+and D14; GPIO5 = D3 and D15) and asked to confirm this is deliberate dual
+pin-map support rather than a bug.
+
+Cross-checked common.h's SPI macros against this file's D10-D13 aliases:
+  PIN_SPI_SS=15 -> D10=15, PIN_SPI_MOSI=13 -> D11=13,
+  PIN_SPI_MISO=12 -> D12=12, PIN_SPI_SCK=14 -> D13=14.
+This is an exact match to the classic Arduino Uno shield SPI-on-digital-pin
+convention (Uno: D10=SS, D11=MOSI, D12=MISO, D13=SCK), confirmed against
+WeMos D1 R2 SPI pinout references (SPI hardware lives on GPIO12/13/14/15,
+same GPIOs as D5-D8 in the short numbering / D10-D13 in the extended
+numbering - source: steve.fi/hardware/d1-pins and general D1 R2 pinout
+pages consulted this pass). So D0-D8 is the "short" Uno-digital-row naming
+(matching this board's physical Uno-shield form factor: D0=RX/D1=TX like
+an Uno) and D9-D15 is a second, overlapping naming scheme laid over the
+SAME physical GPIOs so that Uno-shield SPI libraries expecting D10-D13 for
+SS/MOSI/MISO/SCK resolve to the correct GPIOs on this ESP8266 board. This
+is a normal, intentional vendor convenience pattern (dual pin-map for Uno
+shield compatibility), not a duplicate/conflicting definition and not a
+dedicated-hardware exclusion candidate - the underlying GPIOs (4,5,12,13,14)
+are still general-purpose and already correctly listed once each in
+board.json's chipGpios.
+RESULT: NO CHANGE required - confirmed intentional, not a bug.
+
+--- Step: onboard voltage-regulator / shield-header dedicated hardware check ---
+
+Researched whether the Uno-shield form factor dedicates any GPIO to a
+voltage-regulator-select jumper or other onboard peripheral beyond the
+D-numbering and A0 divider already documented.
+  - https://mischianti.org/wemos-d1-esp8266-manage-relay-and-shield/ - turned
+    out to document a D1 Mini relay shield, not this Uno-shield board;
+    no Uno-shield-specific jumper info, not used as a source for this board.
+  - Web searches on "WeMos D1 R2 jumper JP1 5V regulator select shield power"
+    and general D1/D1 R2 regulator discussions (eevblog forum thread title,
+    wemos.cc DC Power Shield docs) confirm that voltage-regulator-select
+    jumpers on WeMos D1-family *shields* (e.g. the separate DC Power Shield
+    product) select between the shield's own regulator and the main board's
+    3.3V rail - this is a VCC/power-rail selection on add-on shields, not a
+    GPIO-level function of the D1 board itself, and no such jumper exists on
+    the D1 R1/R2 base board's own schematic per sources consulted (only a
+    single onboard 5V-in -> 3.3V LDO regulator feeding the ESP module,
+    per source #4/#5 in the prior audit pass and the search results this
+    pass). No specific GPIO is dedicated to a regulator-select function.
+  - No SD card slot, no second LED/RGB, no additional onboard sensor found
+    on the base D1 R1 board (consistent with the prior pass's findings).
+RESULT: NO CHANGE required - no additional dedicated-hardware GPIO found.
+
+=== Overall summary for this pass ===
+
+No board.json edits were made. All three checks (LED-pin alias-collision,
+dual D-numbering legitimacy, shield/regulator dedicated-hardware search)
+came back clean: GPIO2's capability tags are uncontaminated by any bus
+alias, the D9-D15 numbering is confirmed intentional Uno-shield SPI-pin
+compatibility (not a duplicate-definition bug), and no onboard peripheral
+beyond the already-documented LED (GPIO2) and A0 resistor-divider claims
+any GPIO. pins_arduino.h and board.json are unchanged by this pass.

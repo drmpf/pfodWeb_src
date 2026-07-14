@@ -1,0 +1,170 @@
+odroid_esp32 - dedicated-hardware pin-exclusion audit (plus button/LED retrofit) research notes
+=================================================================================================
+
+Background: flagged by a fresh discovery sweep for two undocumented aliases,
+ADC1=GPIO35 and ADC2=GPIO36. Board is Hardkernel's ODROID-GO handheld game
+console (ESP32-WROVER based). This board had NO existing board.json override
+before this session (chip-level esp32/esp32/board.json default only) and no
+prior pfodWeb NOTE trail, so the whole pins_arduino.h was audited, not just
+the two flagged pins - a handheld console typically has many more dedicated
+pins than a single filter hit reveals.
+
+Sources consulted
+------------------
+- https://github.com/espressif/arduino-esp32/pull/1506/files
+  The actual upstream PR that added the odroid_esp32 board variant to the
+  arduino-esp32 core. Fetched the pins_arduino.h diff and confirmed it is
+  byte-identical to this repo's copy (LED_BUILTIN=2, TX=1, RX=3, SDA=15,
+  SCL=4, SS=22, MOSI=23, MISO=19, SCK=18, DAC1=25, DAC2=26, ADC1=35,
+  ADC2=36) - i.e. our file is the genuine vendor source, not a local
+  invention, so every alias needed real-hardware verification rather than
+  being dismissed as a typo.
+- https://raw.githubusercontent.com/hardkernel/ODROID-GO/master/src/utility/Config.h
+  Hardkernel's own open-source Arduino library for the ODROID-GO (official
+  hardkernel GitHub org). This is the authoritative pin-role source used
+  for nearly every decision below: joystick Y=GPIO35, X=GPIO34; buttons
+  A=GPIO32, B=GPIO33, Menu=GPIO13, Select=GPIO27, Volume=GPIO0,
+  Start=GPIO39; TFT display DC=GPIO21, CS=GPIO5, backlight=GPIO14,
+  MOSI=GPIO23, MISO=GPIO19, SCLK=GPIO18 (reset not connected); SD card
+  chip-select=GPIO22; speaker enable=GPIO25, speaker output=GPIO26; status
+  LED=GPIO2. Explicitly states no I2C pins are defined in this
+  configuration file.
+- https://raw.githubusercontent.com/hardkernel/ODROID-GO/master/src/utility/Speaker.cpp
+  Hardkernel's own speaker driver source. Confirms GPIO25
+  (SPEAKER_ENABLE_PIN) is a plain digital enable/mute line for the onboard
+  PAM8304 amplifier (digitalWrite HIGH/LOW), NOT a DAC output despite the
+  vendor pins_arduino.h aliasing it as DAC1. Confirms GPIO26 (SPEAKER_PIN)
+  genuinely is driven via the ESP32's internal DAC (dacWrite) for sampled
+  music playback, and separately via LEDC/PWM tone generation for beeps -
+  so the DAC2 alias on GPIO26 is accurate, but the pin is still dedicated
+  to the one fixed onboard speaker, not general purpose.
+- https://wiki.odroid.com/odroid_go/arduino/03_blue_led_and_pwm (via
+  WebSearch summary; site itself returned 403 to direct fetch)
+  Official ODROID wiki Arduino tutorial. Confirms GPIO2 drives the
+  onboard blue status LED, defined as PIN_BLUE_LED, turned ON with
+  digitalWrite HIGH (active-high) and demonstrated under PWM dimming in
+  the same lesson.
+- https://wiki.odroid.com/odroid_go/arduino/05_battery and
+  magazine.odroid.com "Coding Camp Part 5" (via WebSearch summary)
+  Official ODROID wiki/magazine battery tutorial. Confirms the battery is
+  wired to GPIO36 read via ADC1, through an onboard voltage divider
+  (roughly halves the real battery voltage before it reaches the ADC).
+- austinmorlan.com/posts/odroid_2/ ("Programming the ODROID-GO: Input")
+  Independent third-party series, cross-confirms joystick X=GPIO34,
+  Y=GPIO35 and the six button GPIOs, matching Config.h exactly.
+- WebSearch "ODROID-GO expansion port I2C SDA SCL GPIO pins schematic"
+  Turned up only tangential/unrelated ODROID-family results (ODROID-H2,
+  ODROID-N2 I2C GPIO expansion boards); found no source confirming any
+  onboard or expansion-port I2C use of GPIO15/GPIO4 specifically. Treated
+  as a dead end, consistent with Config.h's explicit "no I2C pins defined"
+  statement.
+
+Pin-by-pin reasoning
+----------------------
+GPIO2 (LED_BUILTIN alias, real): confirmed onboard blue status LED,
+  active-high, PWM-capable. Tagged ["digital_output","led_high",
+  "pwm_output"].
+
+GPIO1/GPIO3 (TX/RX aliases): standard UART0, already hard-reserved by
+  build_boards.js regardless of chipGpios content. No change.
+
+GPIO15/GPIO4 (SDA/SCL aliases, NOT vendor-confirmed as real I2C):
+  Hardkernel's own Config.h explicitly states no I2C pins are defined for
+  this board, and no other source found any expansion-port I2C wiring
+  landing on these exact two pins. Treated as unverified boilerplate
+  copied from a generic ESP32 pins_arduino.h template rather than genuine
+  ODROID-GO wiring - especially notable since build_boards.js
+  unconditionally appends i2c_sda/i2c_scl capabilities to whatever GPIO
+  these aliases name, regardless of chipGpios content, which would have
+  silently mislabeled two otherwise-plain GPIOs as a dedicated I2C bus.
+  Deleted both aliases from pins_arduino.h. Left GPIO15/GPIO4 themselves
+  at the chip-level default capability set in board.json (no evidence of
+  any other dedicated function either) - KEEP as plain general-purpose
+  pins, just without the false bus label.
+
+GPIO22/GPIO23/GPIO19/GPIO18 (SS/MOSI/MISO/SCK aliases, real but
+  dedicated): Config.h confirms SS=22 is the SD card's own chip-select,
+  and MOSI=23/MISO=19/SCK=18 are the shared SPI bus driving both the
+  onboard TFT display and the onboard SD card slot. Per the pin-audit
+  playbook's EXCLUDE bucket ("SD-card SPI", "display SPI"), these are
+  dedicated to fixed onboard peripherals, not general-purpose. Excluded
+  all four from board.json's chipGpios and deleted their aliases from
+  pins_arduino.h (both steps needed - the alias alone would keep leaking
+  the GPIOs back into the pin list, and the alias also unconditionally
+  contaminates whichever GPIO it names with spi_ss/spi_mosi/spi_miso/
+  spi_sck capabilities regardless of chipGpios content).
+
+GPIO5 (TFT_CS), GPIO21 (TFT_DC), GPIO14 (TFT backlight): confirmed via
+  Config.h as dedicated TFT display control lines. None of the three are
+  aliased anywhere in this board's pins_arduino.h (no static const points
+  at them), so no alias-collision risk and no pins_arduino.h edit needed
+  - excluded from board.json's chipGpios only (board.json-only fix, same
+  pattern as the playbook's rakwireless_rak3112 precedent for
+  #define-only dedicated pins).
+
+GPIO25 (DAC1 alias, misleading) / GPIO26 (DAC2 alias, accurate but
+  dedicated): Speaker.cpp confirms GPIO25 is really just a digital
+  enable/mute line for the onboard PAM8304 amplifier - not a DAC output
+  at all, despite this file's original alias naming it DAC1. This is the
+  "electrically real chip feature, but doesn't behave as advertised on
+  this board" case the playbook calls out. GPIO26 genuinely is used as a
+  DAC output (dacWrite for music playback) but is dedicated to the one
+  fixed onboard mono speaker, matching the EXCLUDE bucket's "dedicated
+  audio" and "fixed hardware actuator" language explicitly called out in
+  this task's brief. Excluded both from board.json's chipGpios and
+  deleted both aliases from pins_arduino.h (both steps needed, same
+  reasoning as the SPI group above - dac_output isn't part of
+  build_boards.js's unconditional-append list, but leaving the aliases in
+  place would still re-leak both GPIOs into the pin list via the
+  alias-driven allGpios union even after removing them from chipGpios).
+
+GPIO0 (Volume), GPIO13 (Menu), GPIO27 (Select), GPIO32 (Button A), GPIO33
+  (Button B), GPIO39 (Start): confirmed via Config.h (and independently
+  via austinmorlan.com) as the six physical buttons. None collide with
+  this board's TX(1)/RX(3). Tagged ["digital_input","button"] each,
+  dropping the other default capabilities per the button-tag exclusion
+  rule (a button's fixed pull-resistor-plus-switch circuit has no useful
+  externally-driveable analog/output function). GPIO0 keeps its existing
+  chip-level strapping pinNote ("Must be HIGH or floating on reboot") -
+  consistent with GPIO0 doubling as the classic ESP32 BOOT-button pin.
+
+GPIO35 (ADC1 alias, real) / GPIO36 (ADC2 alias, real) - the two pins that
+  triggered this audit: both confirmed genuine, useful analog sensor
+  readings - GPIO35 is the joystick's Y-axis, GPIO36 is the battery
+  voltage sense line (through an onboard divider that roughly halves the
+  real pack voltage before the ADC). Matches the playbook's KEEP bucket
+  ("analog sensor readings... battery/voltage monitors") and this task's
+  explicit guidance. No capability change needed (chip-level default of
+  analog_input+digital_input was already correct); added pinNotes
+  entries documenting what each pin actually measures, for the Designer
+  UI. GPIO34 (joystick X-axis, present via the chip-level default only -
+  not aliased in this board's own pins_arduino.h at all) got the same
+  documentary pinNotes treatment for consistency, no capability change.
+
+GPIO12, GPIO37, GPIO38: no dedicated function found in any source
+  consulted. Left at chip-level defaults - no change, no guess made.
+
+Alias-collision check (task's critical-check step)
+-----------------------------------------------------
+Checked every remaining/removed alias against SDA/SCL/SS/MOSI/MISO/SCK/
+TX/RX, since build_boards.js appends the matching i2c_*/spi_*
+capabilities to whichever GPIO these six alias names point at,
+regardless of what chipGpios sets. Found and removed all four SPI
+aliases (SS/MOSI/MISO/SCK, real but dedicated to the display+SD bus) and
+both I2C aliases (SDA/SCL, never vendor-confirmed as real on this board)
+- see reasoning above. TX/RX left untouched (standard UART, always
+hard-reserved regardless).
+
+Summary of changes applied
+-----------------------------
+- Created variants/esp32/esp32/odroid_esp32/board.json (full copy of the
+  chip-level default, then edited).
+- pins_arduino.h: removed the SDA, SCL, SS, MOSI, MISO, SCK, DAC1, DAC2
+  alias declarations (8 total); kept LED_BUILTIN, TX, RX, ADC1, ADC2.
+- board.json chipGpios: excluded GPIO5, 14, 18, 19, 21, 22, 23, 25, 26
+  (9 GPIOs - onboard TFT display, SD card, and speaker amplifier/audio
+  hardware). Tagged GPIO0, 13, 27, 32, 33, 39 as buttons (6 GPIOs).
+  Tagged GPIO2 as an active-high, PWM-capable LED. Left GPIO4, 12, 15,
+  34, 35, 36, 37, 38 at chip-level defaults (documented GPIO34/35/36 via
+  pinNotes as the joystick axes / battery sense).
+- No build commands were run, per task instructions.

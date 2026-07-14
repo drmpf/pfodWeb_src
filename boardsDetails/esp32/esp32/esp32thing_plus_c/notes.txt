@@ -1,0 +1,94 @@
+Board: esp32thing_plus_c (chip: esp32)
+Directory: variants/esp32/esp32/esp32thing_plus_c/
+Audit date: 2026-07-12
+
+FLAG THAT TRIGGERED REVIEW
+--------------------------
+Discovery sweep flagged:
+  static const uint8_t RGB_BUILTIN = SOC_GPIO_PIN_COUNT + 2;
+  #define RGB_BUILTIN    RGB_BUILTIN
+  #define RGB_BRIGHTNESS 64
+  #define TX1 TX
+  #define RX1 RX
+plus a separate plain LED_BUILTIN = 13 declaration - two distinct
+LED-related identities in the same file needing separate verification.
+
+FULL FILE REVIEW
+-----------------
+Read the entire pins_arduino.h (59 lines). Contents:
+  - LED_BUILTIN = 13 (plain GPIO)
+  - RGB_BUILTIN = SOC_GPIO_PIN_COUNT + 2 (virtual-pin convention; real
+    underlying GPIO is 2, per the "+2" offset convention used across this
+    codebase's ESP32-family variants)
+  - TX=17, RX=16 with TX1/RX1 macro aliases (not new GPIOs)
+  - SDA=21, SCL=22, SS=15, MOSI=23, MISO=19, SCK=18
+  - A0..A12 analog aliases, T0..T9 touch aliases, DAC1=25, DAC2=26
+
+RESEARCH (SparkFun ESP32 Thing Plus C / Thing Plus USB-C, real board)
+-----------------------------------------------------------------------
+Sources consulted:
+  - https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32_WROOM_C/hardware_overview/
+      (official hardware overview; fetched directly) - states the STAT LED
+      is connected to GPIO13, and the WS2812 RGB LED ("24-bit GRB data
+      signal") is connected to GPIO02.
+  - https://learn.sparkfun.com/tutorials/esp32-thing-plus-usb-c-hookup-guide/all
+      (official hookup guide; fetched directly) - reconfirms GPIO13 STAT LED
+      and GPIO02 WS2812 RGB LED, and gives the board's Blink example:
+        int ledPin = 13;
+        digitalWrite(ledPin, HIGH);  // LED on
+        digitalWrite(ledPin, LOW);   // LED off
+      confirming GPIO13 is active-HIGH.
+  - Cross-checked against this repo's existing sibling
+    boardsDetails/esp32/esp32/esp32thing_plus/notes.txt (the non-C Thing
+    Plus), which independently researched and confirmed the same GPIO13
+    STAT LED / active-HIGH polarity via the same hookup-guide family - the
+    two boards share the same STAT LED circuit, only the USB connector and
+    the addition of the WS2812 RGB LED differ.
+
+Findings:
+  1. GPIO13 - confirmed real, active-HIGH onboard STAT LED (matches
+     LED_BUILTIN=13 in pins_arduino.h). One fetch pass produced an
+     inconsistent claim ("active-low, pull-down resistor") but the literal
+     Blink example code (digitalWrite HIGH => "LED on" comment), repeated
+     verbatim across both the C and non-C hookup guides and independently
+     confirmed by the sibling board's own prior audit, is treated as the
+     authoritative primary evidence. Tagged "led_high".
+  2. GPIO2 - confirmed real, onboard WS2812/NeoPixel addressable RGB LED
+     data pin, new on this USB-C revision versus the plain non-C Thing
+     Plus. Matches the RGB_BUILTIN = SOC_GPIO_PIN_COUNT + 2 virtual-pin
+     convention (real GPIO = 2). Tagged "led_neopixel".
+  Both identities are real and distinct - this is not a case of one being
+  unpopulated boilerplate.
+
+BUS-ALIAS COLLISION CHECK (per audit step 4)
+---------------------------------------------
+Checked GPIO2 and GPIO13 against every SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias
+declared in this pins_arduino.h:
+  SDA=21, SCL=22, SS=15, MOSI=23, MISO=19, SCK=18, TX=17, RX=16
+Neither GPIO2 nor GPIO13 collides with any bus alias. No boilerplate alias
+to delete.
+
+CHANGES APPLIED
+----------------
+Created variants/esp32/esp32/esp32thing_plus_c/board.json (this board
+previously had no override and inherited the chip-level default at
+variants/esp32/esp32/board.json). Copied the chip-level default verbatim
+and changed only two chipGpios entries, following the exact convention
+already used by sibling boards esp32thing_plus/board.json (led_high) and
+sparkfun_esp32_iot_redboard/board.json (led_neopixel):
+  - GPIO2:  ["analog_input_serial","digital_input","digital_output","pwm_output"]
+            -> ["digital_output","led_neopixel","pwm_output"]
+  - GPIO13: ["analog_input_serial","digital_input","digital_output","pwm_output"]
+            -> ["digital_output","pwm_output","led_high"]
+All other chipGpios entries, pwm/dac/adc blocks, inputOnlyGpios, connections,
+and pinNotes are unchanged from the chip-level default.
+
+SUMMARY
+-------
+TX1/RX1 flag was a false positive (alias of existing TX/RX, not new pins).
+Both flagged LED identities are genuine, vendor-confirmed hardware on this
+board: GPIO13 plain STAT LED (active-high) and GPIO2 WS2812 NeoPixel RGB
+LED (matching the RGB_BUILTIN virtual-pin convention). Both now tagged in
+a new board.json. Neither pin collides with an SDA/SCL/SS/MOSI/MISO/SCK/
+TX/RX alias. This board should not be re-flagged for TX1/RX1, LED_BUILTIN,
+or RGB_BUILTIN.

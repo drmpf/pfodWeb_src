@@ -1,0 +1,152 @@
+Board: variants/esp8266/esp8266/modwifi
+Olimex "MOD-WIFI-ESP8266(-DEV)" — open-source-hardware board, Olimex Ltd, Bulgaria.
+Research date: 2026-07-11
+
+=== URLs consulted ===
+
+1. https://www.olimex.com/Products/IoT/ESP8266/MOD-WIFI-ESP8266-DEV/open-source-hardware
+   Olimex product page. Confirms: "User-programmable LED", separate "Power LED",
+   and "Button for UART mode (since hardware revision B)" with the press-hold-
+   power-release-release procedure. Did not give exact GPIO numbers.
+
+2. https://github.com/OLIMEX/ESP8266/tree/master/HARDWARE/MOD-WIFI-ESP8266-DEV
+   Vendor GitHub hardware repo (schematics, BOM, gerbers, changelog).
+
+3. https://github.com/OLIMEX/ESP8266/blob/master/HARDWARE/MOD-WIFI-ESP8266-DEV/Hardware_changes.txt
+   Revision history. Rev B: "Added a button and R11 = 200R" (button = SW1),
+   "Added NA(2k) pads for pull up resistor over GPIO4" (R12, unrelated to the
+   button), "Added a test pad for the RTC pin". No LED or ADC-divider changes
+   listed in any revision, including B1 (which only changed crystal load caps).
+
+4. https://github.com/OLIMEX/ESP8266/blob/master/HARDWARE/MOD-WIFI-ESP8266-DEV/
+   MOD-WiFi-ESP8266-DEV%20revision%20B1/MOD-WiFi-ESP8266-DEV_Rev_B1.pdf
+   Downloaded and read directly (PDF, 1-page schematic). Findings:
+     - SW1 (SW-TAKTIT1185AU2 tactile switch) sits in the boot-mode-select
+       resistor group alongside R7/R8/R9 (2k pull-ups to 3.3V on GPIO0,
+       GPIO2, MTDO/GPIO15 respectively) and R11 (200R, in series with SW1
+       to GND) — the classic "pull GPIO0 low via a button" flash-mode-entry
+       circuit. R12 "NA(2k)" nearby is the separate optional GPIO4 I2C
+       pull-up mentioned in Hardware_changes.txt, not part of the button.
+     - LED/Green/0603 sits on the TXD net (which also drives the UEXT
+       header's TXD pin), fed from U0TXD i.e. GPIO1. A second LED
+       (LED/Red/0603, "PWR") is wired straight to 3.3V via R6 (2k) — pure
+       power indicator, no GPIO involvement.
+     - The 22-pin header's "ADC" pad (pad 12) traces from the ESP8266's
+       TOUT pin (chip pin 6) with only C6 marked "NA" (unpopulated
+       placeholder capacitor) on the line. No series/divider resistor pair
+       visible anywhere near TOUT/ADC — unlike the 220k/100k dividers found
+       on NodeMCU/D1 Mini/ESPino schematics already audited in this repo.
+
+5. https://static.chipdip.ru/lib/292/DOC011292728.pdf
+   ("CHANGING THE MODES OF MOD-WIFI-ESP8266-DEV", Olimex reference doc,
+   Rev B, March 2018 — mirror of the doc Olimex's own product page links
+   to). Downloaded and read directly (PDF). This is the clinching source
+   for the button's GPIO: "This requires setting GPIO0 low during
+   power-up... press and hold the button, apply the power supply (3.3V),
+   release the button" and explicitly, discussing why no DIY jumper/switch
+   mod is needed: "There is no need to add button to GPIO0 since such was
+   added in hardware revision B of the board." Also gives the on-board SMT
+   jumper truth table (jumpers named GPIO0/GPIO2/MTDO, default FLASH mode =
+   GPIO0:1, GPIO2:1, MTDO:0), matching the chip-level board.json's existing
+   pin-0/2/15 boot-strap notes — no new info there.
+
+6. https://www.espboards.dev/esp8266/modwifi/ and
+   https://doc.riot-os.org/group__boards__esp8266__olimex-mod.html (→
+   redirected to api.riot-os.org) — both secondary/community sources,
+   independently corroborate "1 x GPIO1" as the onboard LED and list no
+   onboard button (RIOT's hardware abstraction doesn't model boot buttons).
+   Used only as corroboration, not as the primary source (per task rule to
+   avoid inferring purely from secondary pin-alias tables).
+
+7. This board's own pins_arduino.h (`#define LED_BUILTIN 1`) — corroborates
+   the schematic finding that the LED is wired to GPIO1, but was NOT used
+   as the basis for tagging (per task instructions, aliases are
+   corroboration only, never the primary source).
+
+=== Considered but NOT tagged/changed, and why ===
+
+- GPIO1 LED: real, vendor-schematic-confirmed onboard LED, BUT it is wired
+  to GPIO1 which is this board's hardware UART0 TX0 pin (U0TXD) — used for
+  the Serial pfod connection and hard-reserved as "serial_tx" in
+  chipGpios. It functions as a TX-activity indicator, not a
+  general-purpose GPIO-driven LED (directly analogous to the ESP-01's
+  documented "TXD0" indicator in ../esp01/notes.txt — same reasoning
+  applied). Per task instructions, build_boards.js hard-reserves TX/RX
+  pins and silently discards any other capability tags placed on them, so
+  no led_* tag was added to GPIO1.
+- Power/PWR LED (red): hardwired directly to 3.3V via R6, not driven by
+  any GPIO at all — not taggable by definition.
+- R12 "NA(2k)" GPIO4 pad: an unpopulated optional I2C pull-up, not a
+  button or LED — not relevant to either part of this task.
+- ADC divider: schematic shows no divider resistors on the TOUT/ADC net
+  (only an unpopulated placeholder cap, C6). Left defaultRefVolts at the
+  inherited chip-level default of "1.0" (native 0-1.0V ADC range) since
+  this -DEV breakout appears to expose the bare chip ADC pin.
+
+=== Summary ===
+
+Created variants/esp8266/esp8266/modwifi/board.json (none existed before,
+now a full copy of the esp8266 chip-level default) tagging GPIO0 with
+"button" (SW1, schematic- and vendor-doc-confirmed flash/UART-mode boot
+button, pulled up 2k / pulled to GND via 200R when pressed — same pattern
+as the espino board's GPIO0 button already in this repo). No LED tag added
+(the board's one LED sits on the hard-reserved TX0/GPIO1 pin). ADC
+defaultRefVolts left unchanged at 1.0V — no divider found in the vendor
+schematic.
+
+=== 2026-07-12: Full dedicated-hardware pin-exclusion sweep ===
+
+Scope of this pass (distinct from the button/LED/ADC pass above): re-check
+for ANY other onboard dedicated-hardware peripheral (SD card, display,
+relay, sensor, etc.) not yet covered, and specifically verify the
+already-tagged GPIO0 button pin isn't ALSO aliased as SDA/SCL/SS/MOSI/
+MISO/SCK in a way that could silently contaminate its capability list.
+
+Sources consulted:
+
+1. variants/esp8266/esp8266/modwifi/pins_arduino.h — read in full (41
+   lines). Only declares PIN_WIRE_SDA=2, PIN_WIRE_SCL=14, LED_BUILTIN=1,
+   and includes ../generic/common.h. No other pin aliases present.
+
+2. variants/esp8266/esp8266/generic/common.h — read in full. Declares
+   PIN_SPI_SS=15, PIN_SPI_MOSI=13, PIN_SPI_MISO=12, PIN_SPI_SCK=14, plus
+   PIN_A0=17. No reference to GPIO0 anywhere in this file.
+
+3. https://www.olimex.com/Products/IoT/ESP8266/MOD-WIFI-ESP8266-DEV/open-source-hardware
+   (re-fetched). Full onboard component inventory: Power LED,
+   user-programmable LED, UART-mode button (rev B+), UEXT pads, U.FL
+   antenna pads, PCB antenna, 2MB SPI flash, 22-pin 0.1" header, SMT boot-
+   mode jumpers. No SD card, display, relay, or sensor listed. Page
+   explicitly points users wanting a relay/more integrated peripherals to
+   the separate ESP8266-EVB board instead — confirming MOD-WIFI-ESP8266-DEV
+   itself carries none.
+
+4. https://github.com/OLIMEX/ESP8266/blob/master/HARDWARE/MOD-WIFI-ESP8266-DEV/Hardware_changes.txt
+   (re-fetched, all revisions A, B, B1). Rev B adds only the button
+   (+R11=200R) and the unpopulated GPIO4 I2C pull-up pads; rev B1 only
+   changes crystal load capacitors C1/C2. No revision ever added an SD
+   card, display, relay, or sensor.
+
+Reasoning / findings:
+
+- Alias-collision check (the critical item for this pass): GPIO0 does not
+  appear in pins_arduino.h or generic/common.h at all — it is not aliased
+  to SDA (=2), SCL (=14), SS (=15), MOSI (=13), MISO (=12), or SCK (=14).
+  The "button" tag on GPIO0 in board.json's chipGpios was added directly
+  as a manual override, entirely independent of the pins_arduino.h alias
+  parser, so there is no contamination path here — confirmed clean.
+- Other onboard peripherals: none found beyond what the prior pass already
+  covered (power LED, TX0-activity LED, UART-mode button). Both the vendor
+  product page and the full hardware-revision changelog were re-checked
+  specifically for SD card / display / relay / sensor hardware and none
+  exists on this board.
+- SPI flash (GPIO6-11): already generically excluded by this repo's
+  chip-level board.json comment ("GPIOs 6-11 are internal flash SPI and
+  are never broken out on a standard (non-8285) module — intentionally
+  omitted here") and isFlashInterfacePin() in common.h. Nothing
+  board-specific to add.
+
+Summary: NO CHANGE. variants/esp8266/esp8266/modwifi/board.json and
+pins_arduino.h are unmodified by this pass. The full dedicated-hardware
+sweep found no additional onboard peripherals to exclude, and the GPIO0
+button tag is confirmed free of any SDA/SCL/SPI alias collision.

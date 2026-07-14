@@ -1,0 +1,237 @@
+pfodWeb board research notes — variants/esp8266/esp8266/nodemcu
+Board file shared by TWO boards.txt entries: nodemcu = "NodeMCU 0.9 (ESP-12 Module)"
+and nodemcuv2 = "NodeMCU 1.0 (ESP-12E Module)".
+Date: 2026-07-11
+
+URLS CONSULTED AND FINDINGS
+----------------------------
+
+1. https://lowvoltage.github.io/2017/07/09/Onboard-LEDs-NodeMCU-Got-Two
+   Blog post specifically about NodeMCU's two onboard LEDs. States:
+   - GPIO16 (silkscreen "D0"): LED mounted on the NodeMCU devkit PCB itself.
+   - GPIO2 (silkscreen "D4"): LED mounted on the ESP-12/ESP-12E module itself
+     (also flashes during programming since GPIO2 = U1TXD, secondary UART TX).
+   - Both are 0603 blue LEDs through 470-ohm current-limit resistors, wired
+     "inverted" (pin LOW = LED on) i.e. ACTIVE-LOW.
+   - Matches this board's own pins_arduino.h: `#define LED_BUILTIN 2` and
+     `#define LED_BUILTIN_AUX 16`.
+   Used as primary source for the LED GPIO/polarity tagging.
+
+2. GPIO-12/12E module comparison (multiple pinout reference sites, e.g.
+   randomnerdtutorials.com ESP8266 pinout reference, kofa.mmto.arizona.edu
+   ESP-12 module page): confirms GPIO16 exists and is wired identically on
+   both the ESP-12 (used on NodeMCU 0.9/Amica) and ESP-12E (used on NodeMCU
+   1.0/Lolin) modules — the ESP-12E's extra pins (vs ESP-12) are additional
+   bottom-row flash-chip pins, not GPIO16. This supports tagging GPIO16's
+   LED as applicable to BOTH board revisions, since the D0 LED is a devkit
+   PCB feature (not gated by which module variant is fitted).
+
+3. https://www.etechnophiles.com/nodemcu-esp8266-pinout-specs-board-layout/
+   and https://esp8266.com/viewtopic.php?f=32&t=15869 (forum thread on using
+   the flash button as input) — both describe the onboard FLASH/BOOT button
+   wired to GPIO0, pulled LOW when pressed, standard bootloader-entry button,
+   described identically for the NodeMCU Amica (0.9) and Lolin (1.0)
+   revisions. No schematic PDF with resistor designators could be located
+   (NodeMCU devkit schematics on GitHub — see below — are Altium binary PDFs
+   with no extractable text/component layer), but the GPIO0-button wiring is
+   corroborated by multiple independent community sources plus the standard
+   ESP8266 "GPIO0 LOW at boot = program mode" behavior that a FLASH button
+   is universally wired to exploit. Tagged ["digital_input","button"] with
+   no active-high/low variant, matching this repo's convention for other
+   boards where the exact pull-up value/polarity note isn't schematic-cited
+   (e.g. espino, ESPDuino, itead).
+
+4. https://github.com/nodemcu/nodemcu-devkit-v1.0
+   (NODEMCU_DEVKIT_V1.0.PDF, Altium-generated schematic) — official v1.0
+   schematic repo. The PDF is binary/image-based (compressed Altium output);
+   WebFetch could not extract readable text/component designators from it.
+   Referenced only to confirm the board is officially open-source and that
+   no textual disagreement with the community sources above was found in
+   the repo's issue tracker (issue #32 is an unrelated request for a V3
+   schematic, no technical content).
+
+5. https://esp8266.com/viewtopic.php?f=8&t=16799 (forum thread, "analog
+   input affected by internal voltage divider?") — contributor "btidey"
+   (well-known, technically detailed poster in this community) gives the
+   NodeMCU A0 divider as 220k (in series from A0) + 100k (to GND), with
+   formula V(ADC) = 100000/(320000+RT) x 3.3 for external source resistance
+   RT. Setting RT=0 (direct connection) gives V(ADC) = 0.3125 x 3.3 =
+   1.031V at the chip's raw ADC pin for a full 3.3V input at A0 — i.e.
+   slightly OVER the chip's 1.0V native max, meaning the true safe/rated
+   full-scale at A0 is not 3.3V.
+
+6. https://www.electronicwings.com/nodemcu/nodemcu-adc-with-arduino-ide
+   Independent source, explicitly states: "voltage divider network of
+   resistors (100Kohm & 220Kohm)... R2 is 100kOhm and R1 equals 220kOhm.
+   The Vout port is connected to the ADC pin of the ESP-12 module and Vin
+   is connected to the A0 pin on the NodeMCU board." Confirms same 220k/100k
+   values as source 5, independently.
+   Exact math: chip-native ADC max (1.0V) x (220k+100k)/100k = 3.2V
+   full-scale at A0. This is the SAME 220k/100k divider (and same 3.2V
+   result) already found and corrected on this repo's D1 Mini, D1 R1, and
+   ESPino board.json files — NodeMCU is NOT a different ratio, it is the
+   same widespread reference-design divider, informally rounded to "3.3V"
+   in both of the above sources and in this file's pre-existing (unverified)
+   note.
+
+WHAT WAS CONSIDERED BUT NOT CHANGED
+------------------------------------
+- No 0.9-vs-1.0 discrepancy was found for the GPIO0 button, GPIO2 LED,
+  GPIO16 LED, or the A0 ADC divider — all sources describe the "NodeMCU Dev
+  Kit" family (both Amica/0.9 and Lolin/1.0) identically for these
+  features, so all tags were applied to this single shared board.json
+  without a per-revision split or notes-only flag.
+- GPIO1/GPIO3 (hardware UART0 TX0/RX0) were left untouched — not this
+  board's button/LED pins, and build_boards.js hard-reserves them anyway.
+- RST is the chip's physical reset pin (wired to a separate RESET button on
+  the devkit), not a GPIO — not tagged, consistent with every other board
+  in this repo.
+- Could not obtain a text-readable schematic PDF (official NodeMCU
+  Altium-exported PDFs are image/binary only) to cite exact resistor
+  designators (e.g. "R1"/"R2") for the FLASH button's pull-up value or the
+  LEDs' exact 470-ohm figure beyond the secondary source (lowvoltage.github.io)
+  — two independent, mutually-corroborating community sources were used
+  instead, consistent with this repo's precedent on boards like
+  espresso_lite_v1/v2 where "no schematic PDF could be located" but two
+  independent official/community sources were accepted.
+
+SUMMARY
+-------
+TAGGED: GPIO0 -> +button (FLASH/BOOT, active-low). GPIO2 -> +led_low
+(module LED, D4/LED_BUILTIN). GPIO16 -> +led_low (devkit PCB LED,
+D0/LED_BUILTIN_AUX). All three confirmed to apply identically to both
+NodeMCU 0.9 (ESP-12) and NodeMCU 1.0 (ESP-12E).
+ADC: pre-existing "3.3" value was NOT correct — CORRECTED to "3.2",
+confirmed via independent resistor-math sources (220k/100k divider,
+same as this repo's D1 Mini/D1 R1/ESPino boards) — NodeMCU uses the same
+divider ratio, not a different one.
+
+================================================================
+2026-07-12 — DEDICATED-HARDWARE PIN-EXCLUSION AUDIT (sections 1-6 of the
+board-variant pin-audit playbook, distinct from the button/LED/ADC-divider
+retrofit above)
+================================================================
+
+SCOPE OF THIS PASS
+-------------------
+This is the full "which physical GPIOs are actually broken out on this
+board's header, and does any of them belong to fixed onboard hardware
+(SD card, display, radio module, motor driver, etc.)" sweep — not a
+repeat of the button/LED/ADC tagging already done and recorded above.
+Triggered by a fresh repo-wide discovery sweep that found this board's
+pins_arduino.h contains only the standard Wemos-style D0-D10 board-pin-
+numbering aliases (D0=16, D1=5, D2=4, D3=0, D4=2, D5=14, D6=12, D7=13,
+D8=15, D9=3, D10=1) and nothing else — flagged as "likely no NEW
+dedicated hardware, confirm nothing else was missed."
+
+SOURCES CONSULTED THIS PASS
+----------------------------
+1. variants/esp8266/esp8266/nodemcu/pins_arduino.h — read in full (55
+   lines). Confirmed its only declarations are: PIN_WIRE_SDA(4)/
+   PIN_WIRE_SCL(5) + SDA/SCL static const aliases, LED_BUILTIN(2)/
+   LED_BUILTIN_AUX(16), and the eleven D0-D10 aliases. It then
+   `#include`s "../generic/common.h" and has no other content.
+
+2. variants/esp8266/esp8266/generic/common.h — read the SPI/Wire
+   section: `PIN_SPI_SS(15)/PIN_SPI_MOSI(13)/PIN_SPI_MISO(12)/
+   PIN_SPI_SCK(14)` and their SS/MOSI/MISO/SCK static-const aliases.
+   This is the shared chip-family file, not NodeMCU-specific.
+
+3. Corrected discovery-sweep regex (playbook section 11) run directly
+   against this board's pins_arduino.h:
+     grep "^#define\|^static const" pins_arduino.h | grep -viE
+     "...static const uint8_t (SS|MOSI|MISO|SCK|SDA|SCL|TX|RX|A[0-9]+|
+     D[0-9]+|T[0-9]+|DAC[0-9]+) ="
+   Result: ZERO real (non-boilerplate) hits — only the eleven D0-D10
+   lines matched, and every one of them is caught by the regex's
+   `D[0-9]+` alternation. This board has no declarations at all outside
+   the standard LED/Serial/SPI/Wire/D-numbering convention — it is
+   "safe by definition" per the playbook's own terminology for this
+   sweep (no candidate dedicated-hardware pins exist to even triage).
+
+4. boards.txt cross-check: confirmed `nodemcu.build.variant=nodemcu`
+   and `nodemcuv2.build.variant=nodemcu` both still point at this same
+   shared directory (no drift since the 2026-07-11 pass) — findings
+   below apply to both boards.txt entries.
+
+5. No new WebSearch/WebFetch was performed this pass — the existing
+   research trail above (sources 1-6, 2026-07-11) already exhaustively
+   covers the NodeMCU DevKit's onboard peripherals (two LEDs, one FLASH
+   button, one resistor-divider analog input) via multiple independent
+   sources, and confirms this is the complete peripheral set for the
+   "NodeMCU Dev Kit" family (both 0.9/Amica and 1.0/Lolin revisions) —
+   no SD-card slot, display, radio co-processor, or other dedicated
+   hardware is described anywhere in that prior research, consistent
+   with this being a bare WiFi devkit board with no such peripherals.
+   Re-searching would only re-confirm the same negative; the
+   pins_arduino.h content sweep (source 3 above) already rules out any
+   NEW declaration that prior research could have missed.
+
+CRITICAL CHECK: alias-collision between GPIO0/GPIO2/GPIO16 (already
+tagged button/led_low/led_low) and SDA/SCL/SS/MOSI/MISO/SCK
+--------------------------------------------------------------
+Explicitly checked whether the three already-tagged pins are ALSO
+aliased to an I2C/SPI bus role anywhere in this file or the shared
+common.h it includes, which would mean the earlier button/LED tagging
+is silently sitting on top of a bus pin (a real contamination risk this
+audit pass exists to catch):
+  - SDA = 4, SCL = 5           (this file, PIN_WIRE_SDA/SCL)
+  - SS = 15, MOSI = 13, MISO = 12, SCK = 14   (generic/common.h)
+  - Tagged pins: GPIO0 (button), GPIO2 (led_low), GPIO16 (led_low)
+None of {4, 5, 15, 13, 12, 14} intersects {0, 2, 16}. CONFIRMED: no
+collision, no contamination. The button/LED tags are clean and do not
+overlap any I2C/SPI bus pin.
+
+KEEP vs EXCLUDE POLICY CHECK ON REMAINING GPIOs
+------------------------------------------------
+board.json's chipGpios already lists GPIO4, GPIO5 (I2C SDA/SCL, D2/D1)
+and GPIO12, GPIO13, GPIO14, GPIO15 (SPI MISO/MOSI/SCK/SS, D6/D7/D5/D8)
+with their plain digital_input/digital_output/pwm_output capability
+sets, no bus-specific restriction. Per playbook section 3 ("KEEP
+available: General-purpose I2C/SPI buses without a documented exclusive
+onboard consumer") this is correct as-is — NodeMCU's I2C/SPI header
+pins are general-purpose breakout pins with no onboard device
+permanently wired to them (unlike, e.g., a board with an onboard SD
+card on the SPI bus), so no exclusion applies. No change needed.
+
+WHAT WAS CONSIDERED BUT NOT CHANGED (this pass)
+--------------------------------------------------
+- No SD card, display, radio co-processor, motor/relay driver, or any
+  other fixed onboard peripheral was found — the file has no
+  declarations that could represent one (see source 3's zero-hit
+  result).
+- GPIO1/GPIO3 (D10/D9, hardware UART0 TX0/RX0) — not touched, same
+  reasoning as the 2026-07-11 pass (build_boards.js hard-reserves them
+  for the Serial pfod connection regardless of board.json content).
+- RST — chip's physical reset pin, not a GPIO, not tagged, consistent
+  with every other board in this repo.
+- GPIO4/5/12/13/14/15 (I2C/SPI header pins) — confirmed general-purpose
+  per policy above, left as full-capability KEEP, no board.json change.
+
+MECHANISM CHECK
+-----------------
+No Edit or Write was needed to pins_arduino.h or board.json this pass —
+the alias-collision check (the one mechanism most likely to require a
+fix per the audit brief) came back clean, and the discovery sweep found
+zero candidate declarations to triage. Per the playbook's own parser
+gotchas (section 5), also double-checked no `#ifdef`/`#if 0` branching,
+commented-out `static const` lines, or multi-hop `#define` chains exist
+in this file that could hide a phantom or silently-dropped pin — this
+file has no conditional compilation at all (confirmed by the full read
+in the pins_arduino.h research above: 55 lines, linear, no `#if`/`#ifdef`
+beyond the `LED_BUILTIN` include-guard-style check and the top-of-file
+`#ifndef Pins_Arduino_h` header guard).
+
+SUMMARY (this pass)
+---------------------
+NO CHANGE. Full dedicated-hardware pin-exclusion sweep applied:
+pins_arduino.h has zero non-boilerplate declarations (only D0-D10
+board-numbering aliases, all filtered by the standard/corrected
+discovery regex); the already-tagged GPIO0/GPIO2/GPIO16 (button/
+led_low/led_low) do not collide with SDA(4)/SCL(5)/SS(15)/MOSI(13)/
+MISO(12)/SCK(14) anywhere in this file or the shared generic/common.h
+it includes; GPIO4/5/12/13/14/15 remain correctly KEEP-available as
+general-purpose I2C/SPI header pins with no documented exclusive
+onboard consumer. This board's audit trail is now complete for both
+the button/LED/ADC retrofit (2026-07-11) and the dedicated-hardware
+pin-exclusion sweep (2026-07-12, this section).

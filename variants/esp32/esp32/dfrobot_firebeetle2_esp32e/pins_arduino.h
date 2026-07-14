@@ -11,13 +11,24 @@ static const uint8_t LED_BUILTIN = 2;
 
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;
+
+// pfodWeb NOTE: TX2/RX2 (GPIO17/16) KEPT. This board (DFR0654, 4MB flash)
+// uses a plain ESP-WROOM-32E module with no PSRAM (DFRobot product page
+// confirms "Flash Memory - 4 MB", no PSRAM listed, distinct from the
+// N16R2/PSRAM variant DFR1139), so GPIO16/17 are not consumed by PSRAM.
+// DFRobot's own product page lists "Digital Pins x 18" including
+// "IO16, IO17" among the board's user-accessible GPIOs. See board.json.
 static const uint8_t TX2 = 17;
 static const uint8_t RX2 = 16;
 
 static const uint8_t SDA = 21;
 static const uint8_t SCL = 22;
 
-static const uint8_t SS = 5;
+// pfodWeb NOTE: SS=5 boilerplate alias deleted - GPIO5/D8 is the vendor-
+// confirmed onboard WS2812 RGB LED data line (wiki.dfrobot.com/dfr0654/:
+// "Onboard RGB Light - WS2812 RGB LED, controlled by pin IO5/D8"), not a
+// real SPI chip-select on this board. Left in place it would let
+// build_boards.js unconditionally tag GPIO5 with spi_ss. See board.json.
 static const uint8_t MOSI = 23;
 static const uint8_t MISO = 19;
 static const uint8_t SCK = 18;

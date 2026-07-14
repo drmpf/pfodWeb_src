@@ -1,0 +1,383 @@
+Board: Pimoroni "Explorer" (chip bucket: rp2350, RP2350B silicon)
+Directory: variants/rp2040/rp2350/pimoroni_explorer/
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+Created board.json (this board previously had none - only a pins_arduino.h
+existed, so the Designer was falling back to the empty chip-level
+chipGpios:{} default, meaning GPIO0-5/14-19/22/40-45 statically-aliased
+pins were showing as innocuous general-purpose digital/analog pins with no
+button identity surfaced, while every #define-only pin (servo headers,
+speaker, LCD bus, GPIO25 fake LED, GPIO10/11/29 NC gaps) was silently
+absent from the Designer entirely). Added 30 chipGpios entries:
+  - 6 onboard tactile buttons (SWITCH_C/B/A/X/Y/Z, GPIO14-19) and 1
+    User/Boot button (SWITCH_BOOT, GPIO22) tagged digital_input+button.
+  - 4 servo-header signal pins (GPIO6-9) and 2 onboard-speaker pins
+    (PIN_PWM_AUDIO=12, PIN_SPEAKER_AMP_ENABLE=13) exposed as general-
+    purpose digital_input+digital_output+pwm_output (previously entirely
+    absent from the Designer - #define only, no static-const alias).
+  - 14 onboard-LCD parallel-bus pins (PIN_LCD_BL/CS/RS/WR/RD/DB0-7,
+    GPIO26-28 + 30-39) tagged capabilities:[] - dedicated, coordinated
+    8080-style display bus, not general purpose.
+  - 3 not-connected (NC) gap pins (GPIO10, 11, 29) tagged capabilities:[].
+  - 1 non-functional placeholder pin (GPIO25, PIN_LED/LED_BUILTIN) tagged
+    capabilities:[] with a note explaining it is NOT a real LED (this
+    board's own pins_arduino.h says so explicitly).
+No pins_arduino.h edit was needed/made - no instance of the confirmed
+SDA/SCL/SS/MOSI/MISO/SCK auto-append collision bug class was found on
+this board (see "SDA/SCL COLLISION CHECK" below).
+
+REAL FINDINGS
+-------------
+1. GPIO25 (`#define PIN_LED 25`, `#define LED_BUILTIN PIN_LED`) is NOT a
+   real onboard LED. This board's own pins_arduino.h says so verbatim:
+   "#define PIN_LED 25 // The LED will not blink, but sketches will
+   compile". No vendor source (product page, examples/lib/explorer.py,
+   docs/reference.md) mentions any discrete status LED on this board -
+   only the LCD, six tactile buttons, piezo speaker, servo headers, and
+   analog inputs are documented. Tagged capabilities:[] with a note
+   instead of a led_high/led_low tag, and instead of silently omitting it
+   (it's a #define, not a static-const alias, so it was never routable as
+   a Designer pin regardless of this board.json).
+2. Most of this board's dedicated-hardware pins are declared as plain
+   `#define PIN_xxx (n)` macros, not `static const uint8_t` aliases -
+   build_boards.js's parser (parseEsp32Consts, confirmed by reading
+   pfodWeb_src/build_boards.js in full) only harvests the latter. This
+   means the servo headers, speaker, LCD bus, and NC gap pins were never
+   reaching the Designer at all before this board.json existed - not a
+   "wrongly exposed" defect (unlike the bigtreetech_SKR_Pico GPIO8/9
+   precedent from an earlier session) but a "silently absent" one. Added
+   explicit chipGpios entries for all of them (with capabilities set
+   according to their real nature - general-purpose output for
+   servo/speaker, empty/excluded for the LCD bus/NC/fake-LED) so the
+   Designer's pin picker shows *why* each one is present or absent,
+   matching the established wiznet_5500_evb_pico / bigtreetech_SKR_Pico
+   precedent of documenting findings rather than leaving gaps unexplained.
+
+SOURCES CONSULTED
+------------------
+1. This board's own pins_arduino.h (variants/rp2040/rp2350/
+   pimoroni_explorer/pins_arduino.h) - unusually well-commented, cites
+   its own sources directly:
+     - github.com/pimoroni/explorer/blob/main/explorer/
+     - github.com/pimoroni/explorer/blob/main/examples/lib/explorer.py
+     - cdn.shopify.com/.../Pimoroni_Explorer_Schematic.pdf (vendor
+       schematic, not independently re-fetched - PDF, and the header's
+       own #define layout was taken as authoritative pin-number source,
+       cross-checked against #2 below).
+2. WebFetch of raw.githubusercontent.com/pimoroni/explorer/main/
+   examples/lib/explorer.py (live fetch, 2026-07-13) - confirmed exact
+   pin-number match against this board's pins_arduino.h:
+     Buttons: A=16, B=15, C=14, X=17, Y=18, Z=19, User/Boot=22
+     Servo: pins 6,7,8,9 (four Servo() instances)
+     Audio: PWM_AUDIO_PIN=12, AMP_EN_PIN=13
+     I2C: SDA=20, SCL=21 (Qwiic/STEMMA-QT header)
+     ADC: ADC0-5 = GPIO40-45
+     GPIO breakout: GPIO0-5
+   This is a byte-for-byte match with this board's own pins_arduino.h
+   numbering, giving full independent confirmation of every non-LCD pin.
+3. WebFetch of raw.githubusercontent.com/pimoroni/explorer/main/
+   docs/reference.md (live fetch, 2026-07-13) - confirms: "six onboard
+   buttons accessible as Pin objects... Button A through F (labeled A,
+   B, C, X, Y, Z)... Active Low. So you'll read 0 when the button is
+   being pressed and 1 when it isn't"; "Button pins are defined as GPIO
+   14-19 and 22"; "four Servo instances for driving the four servo
+   connectors" via pins 6-9; "piezo speaker is driven via PWM on pin 12,
+   with an amplifier enable pin (pin 13)"; "I2C interface (Qw/St socket)
+   and six ADC pins are available for external connectivity". Does NOT
+   document LCD control-pin assignments (those come from source #1's own
+   pins_arduino.h, which cites the vendor schematic PDF directly).
+4. WebSearch "Pimoroni Explorer RP2350 board buttons ... LCD ... speaker
+   ... servo" (2026-07-13) - independent corroboration from CNX Software,
+   shop.pimoroni.com, Core Electronics, AAAWave, The Pi Hut product
+   listings: "2.8-inch IPS LCD" (320x240, ST7789V driver, 250 cd/m^2,
+   43.2x57.5mm active area), "powered by RP2350B (Dual Arm Cortex M33 ...
+   520KB SRAM)", "analog inputs, a piezo speaker, servo outputs, Qw/St
+   connectors, connectors for connecting alligator clips, Reset and Boot
+   buttons, and a small breadboard". Confirms RP2350B (48-GPIO) silicon,
+   which reconciles this board's pins_arduino.h using GPIO numbers up to
+   45 (`#define PICO_RP2350A 0` in the header is a boolean-style "this is
+   NOT the 30-GPIO RP2350A package" flag, consistent with the real
+   RP2350B 48-GPIO chip: GPIO40-47 carry ADC on the B package).
+5. pfodWeb_src/build_boards.js (read in full) - confirmed:
+   - chipGpios entries add their GPIO number to the Designer's routable
+     pin set even when pins_arduino.h has no alias for it (allGpios =
+     union of aliasesByGpio.keys() and chipGpios keys, lines ~531-539).
+   - chipGpios-present branch (chipEntry.capabilities array, including
+     empty []) completely overrides the default alias-derived
+     digital_input/digital_output/pwm_output/analog_input derivation.
+   - The unconditional SDA/SCL/SS/MOSI/MISO/SCK bus-role auto-append
+     (lines ~698-703) only fires when a GPIO number equals this board's
+     own `consts.SDA`/`consts.SCL`/etc, which are populated only from a
+     literal `static const uint8_t SDA = ...`-style declaration - see
+     "SDA/SCL COLLISION CHECK" below for why this never fires here.
+   - The "Check if available on board" note (line ~718) is appended
+     whenever a GPIO has no pins_arduino.h alias, for every family except
+     esp32/esp8266 - so it fires on top of every chipGpios note added in
+     this pass (servo/speaker/LCD/NC/fake-LED), same as it already does
+     for the bigtreetech_SKR_Pico and bridgetek_idm2040_43a precedents.
+     This is expected/intentional per the code's own comment.
+6. Same-repo precedents read in full before writing this board.json:
+   - variants/rp2040/rp2040/rpipico/board.json (simple onboard-LED-only
+     precedent; confirmed BOOTSEL is out-of-scope for GPIO-keyed tagging
+     on the plain RP2040 Pico - not directly applicable here since this
+     board's SWITCH_BOOT IS a plain numbered GPIO, unlike classic
+     BOOTSEL).
+   - variants/rp2040/rp2040/bridgetek_idm2040_43a/board.json (EVE-
+     display SPI0/SD-card SPI1 bus exclusion pattern - capabilities:[]
+     for #define-only dedicated multi-pin buses; used as the template
+     for this board's LCD parallel-bus exclusion).
+   - variants/rp2040/rp2040/bigtreetech_SKR_Pico/board.json (extensive
+     #define-only dedicated-hardware exclusion audit incl. GPIO29
+     PIN_SERVOS tagged capabilities:[] as a "purpose-built connector, not
+     general expansion" - considered but NOT followed for this board's
+     4 servo pins; see "SERVO HEADER POLICY DECISION" below for why).
+   - variants/rp2040/rp2040/pimoroni_servo2040/board.json (18-channel
+     servo-driver board; GPIO0-17 servo-header PWM outputs explicitly
+     left general-purpose/UNCHANGED, "not treated as exclusionary
+     dedicated hardware" - directly informed the servo-header policy
+     decision below).
+   - variants/rp2040/rp2040/cytron_maker_pi_rp2040/board.json (PIN_BUZZER
+     GPIO22 "left untagged per task scope (no buzzer capability
+     vocabulary exists in this codebase yet)" - directly informed the
+     onboard-speaker policy decision below).
+   - variants/rp2040/rp2040/adafruit_macropad2040/board.json (KEY1-12
+     tactile-switch precedent: digital_input+button only, input-only,
+     no digital_output/pwm_output - directly informed this board's
+     6-button + boot-button tagging).
+   - variants/rp2040/rp2040/pimoroni_tiny2040/board.json and
+     variants/rp2040/rp2040/pimoroni_plasma2040/board.json (two
+     different BOOT-button precedents: Tiny 2040's diode-protected
+     GPIO23 is input-only; Plasma 2040's undocumented-circuitry GPIO23
+     keeps full digital_input+digital_output+pwm_output+button) - neither
+     applies cleanly here since no source documents special circuitry
+     *or* explicitly rules it out for SWITCH_BOOT; the more conservative
+     macropad2040-style input-only tag was chosen (see per-pin reasoning).
+
+SDA/SCL COLLISION CHECK (per this audit's known bug class)
+------------------------------------------------------------
+This board's pins_arduino.h declares `#define PIN_WIRE0_SDA (20u)` and
+`#define PIN_WIRE0_SCL (21u)` - both plain #define macros, never promoted
+to a `static const uint8_t SDA = ...` / `SCL = ...` top-level alias
+(confirmed by reading the entire file - no such declaration exists
+anywhere in it). build_boards.js's i2c_sda/i2c_scl auto-append (and the
+equivalent spi_ss/spi_mosi/spi_miso/spi_sck checks) key off
+`consts.SDA`/`consts.SCL`/etc, which parseEsp32Consts() only populates
+from a literal `static const uint8_t SDA = n;`/`SCL = n;` declaration -
+never from a #define. Since no such declaration exists on this board, no
+auto-append side effect can fire for GPIO20/21 (or anywhere else on this
+board - the "make people happy" PIN_SPI0/1_*, PIN_WIRE1_SDA/SCL section
+at the bottom of the file is likewise #define-only, all sentineled to
+GPIO10/NC). No pins_arduino.h edit was needed for this bug class on this
+board - it was already safe.
+GPIO20/21 (PIN_WIRE0_SDA/SCL, the Qwiic/STEMMA-QT external I2C
+connector): left OUT OF SCOPE for this board.json - no chipGpios entry
+added. This is a genuine general-purpose external-expansion connector
+(confirmed by both examples/lib/explorer.py and docs/reference.md, "I2C
+interface (Qw/St socket) ... for external connectivity"), not dedicated
+onboard hardware needing exclusion. Since it currently has no
+pins_arduino.h static-const alias, it simply doesn't appear in the
+Designer at all today - fixing that (adding a chipGpios entry to expose
+GPIO20/21 as general-purpose/I2C pins) would be filling in a *missing*
+pin, which is outside this audit's "exclude dedicated hardware, tag
+confirmed button/LED" mandate. Documented here rather than silently
+addressed. No action taken.
+
+SERVO HEADER POLICY DECISION (GPIO6-9, PIN_SERVO1-4)
+------------------------------------------------------
+Two applicable precedents pull in different directions:
+  - bigtreetech_SKR_Pico GPIO29 (PIN_SERVOS, a single BLTouch-probe/servo
+    signal on a 3D-printer control board) -> capabilities:[], reasoned as
+    "a purpose-built connector like the axis/thermistor/fan headers, not
+    a general expansion pin".
+  - pimoroni_servo2040 GPIO0-17 (SERVO1-18, an 18-channel dedicated
+    servo-driver board) -> left fully general-purpose/UNCHANGED, reasoned
+    as legitimate user-facing PWM outputs, NOT exclusionary dedicated
+    hardware.
+Decision: followed the pimoroni_servo2040 precedent. The Explorer's 4
+servo headers are an explicitly advertised, user-facing feature (product
+copy: "servo headers"; examples/lib/explorer.py exposes four independent
+Servo() instances on these exact pins for user sketches to drive), and -
+critically - each servo pin is an independently useful single-pin PWM
+signal (unlike the SKR Pico's dedicated protocol buses), so a Designer
+sketch generating a PWM signal on GPIO6-9 produces a directly meaningful
+result (servo motion) rather than a meaningless partial-bus toggle. This
+is a materially different situation from the bigtreetech_SKR_Pico's
+STEP/DIR/EN/PWM-heater lines (safety-critical or protocol-driven,
+excluded) and closer to that board's own thermistor/aux-header KEEP
+policy. Tagged digital_input+digital_output+pwm_output (the same set a
+plain aliased pin would receive by default) via chipGpios, since these
+pins have no static-const alias in pins_arduino.h and would otherwise be
+completely absent from the Designer.
+
+ONBOARD SPEAKER POLICY DECISION (GPIO12/13, PIN_PWM_AUDIO / AMP_ENABLE)
+-------------------------------------------------------------------------
+This codebase has no "buzzer"/"speaker" capability vocabulary (confirmed
+by reading PinType.js references in build_boards.js and the
+cytron_maker_pi_rp2040 precedent, which explicitly states this and
+"leaves [PIN_BUZZER] untagged" i.e. general-purpose rather than
+excluded). Followed the same policy: GPIO12 (PWM tone-generation line)
+and GPIO13 (amplifier enable/mute line) are tagged general-purpose
+digital_input+digital_output+pwm_output via chipGpios (again, only
+because they have no static-const alias and would otherwise be entirely
+absent from the Designer - this is not a capability restriction, it's
+exposure of an otherwise-missing pin at default capability level).
+
+PER-PIN REASONING
+------------------
+GPIO0-5 (GP0-GP5): KEPT general-purpose, no chipGpios entry. Confirmed
+  general-purpose breadboard/GPIO breakout via examples/lib/explorer.py
+  (GPIO_0_PIN..GPIO_5_PIN) and docs/reference.md ("small breadboard for
+  connecting components"). Default digital_input/digital_output/
+  pwm_output from the GP0-GP5 static-const aliases stands unchanged.
+
+GPIO6 (PIN_SERVO1): dedicated servo-header 1 signal line. No static-const
+  alias (#define only) - added via chipGpios as digital_input+
+  digital_output+pwm_output. See "SERVO HEADER POLICY DECISION" above.
+
+GPIO7 (PIN_SERVO2): servo-header 2. Same as GPIO6.
+
+GPIO8 (PIN_SERVO3): servo-header 3. Same as GPIO6.
+
+GPIO9 (PIN_SERVO4): servo-header 4. Same as GPIO6.
+
+GPIO10: Not connected. pins_arduino.h comment: "// Pin 10 is NC". Also
+  the dummy sentinel value used by this file's "make people happy"
+  PIN_SERIAL1_TX/RX and PIN_SPI0/1_MISO/MOSI/SCK/SS placeholder #defines
+  (none of which represent real wired pins on this board - they exist
+  purely so libraries expecting a default Serial1/SPI0/SPI1 pin-set
+  compile without error). capabilities:[] via chipGpios.
+
+GPIO11: Not connected. pins_arduino.h comment: "// Pin 11 is NC".
+  capabilities:[] via chipGpios.
+
+GPIO12 (PIN_PWM_AUDIO): onboard piezo speaker PWM tone-generation line.
+  No static-const alias - added via chipGpios as digital_input+
+  digital_output+pwm_output. See "ONBOARD SPEAKER POLICY DECISION" above.
+
+GPIO13 (PIN_SPEAKER_AMP_ENABLE): onboard speaker amplifier enable/mute
+  line. Same policy/capabilities as GPIO12.
+
+GPIO14 (SWITCH_C): onboard tactile button, one of six surrounding the
+  LCD. Confirmed via this board's own pins_arduino.h static-const alias,
+  examples/lib/explorer.py (SWITCH_C_PIN=const(14)), and docs/
+  reference.md ("Active Low ... read 0 when pressed"). Tagged
+  digital_input+button (input-only), matching adafruit_macropad2040's
+  KEY1-12 precedent for simple ground-referenced tactile switches (no
+  vendor source suggests any reason to expose these as outputs).
+
+GPIO15 (SWITCH_B): onboard tactile button. Same confirmation/reasoning
+  as GPIO14.
+
+GPIO16 (SWITCH_A): onboard tactile button. Same confirmation/reasoning
+  as GPIO14.
+
+GPIO17 (SWITCH_X): onboard tactile button. Same confirmation/reasoning
+  as GPIO14.
+
+GPIO18 (SWITCH_Y): onboard tactile button. Same confirmation/reasoning
+  as GPIO14.
+
+GPIO19 (SWITCH_Z): onboard tactile button. Same confirmation/reasoning
+  as GPIO14.
+
+GPIO20 (PIN_WIRE0_SDA, #define only): Qwiic/STEMMA-QT external I2C
+  connector. OUT OF SCOPE - no chipGpios entry. See "SDA/SCL COLLISION
+  CHECK" above. No auto-append risk (this board never promotes
+  PIN_WIRE0_SDA to a static-const SDA alias).
+
+GPIO21 (PIN_WIRE0_SCL, #define only): same connector/reasoning as GPIO20.
+
+GPIO22 (SWITCH_BOOT): onboard User/Boot button. Confirmed via this
+  board's own pins_arduino.h comment ("Boot button, also referred to as
+  the user switch") and examples/lib/explorer.py/docs/reference.md,
+  which read it via the identical Active-Low Pin mechanism as SWITCH_A-Z
+  (docs/reference.md separately mentions "Reset and Boot buttons" as
+  board features). No vendor source documents diode isolation or other
+  special strapping circuitry for this pin (unlike the RP2040 Pico's
+  QSPI-CS-based BOOTSEL, which is a completely different, non-GPIO
+  mechanism and out of scope entirely - this SWITCH_BOOT is a plain
+  numbered static-const GPIO alias). Given the ambiguity over whether
+  this pin also participates in any RP2350 boot-strap function, the more
+  conservative macropad2040/tiny2040-style input-only tag
+  (digital_input+button) was chosen rather than the plasma2040-style
+  full-capability tag, erring toward caution per this audit's "confirm
+  via real vendor documentation, never guess" rule.
+
+GPIO23, GPIO24: not defined anywhere in this board's pins_arduino.h (no
+  macro, no alias, no comment) - left completely absent, no chipGpios
+  entry added (nothing to document; consistent with every other
+  #define-and-alias-free gap not called out in the vendor file).
+
+GPIO25 (PIN_LED / LED_BUILTIN): NOT a real onboard LED - see "REAL
+  FINDINGS" item 1 above. capabilities:[] via chipGpios with an
+  explanatory note; no led_high/led_low tag applied.
+
+GPIO26 (PIN_LCD_BL): onboard 2.8" IPS LCD (ST7789V per CNX
+  Software/product-listing corroboration) backlight control line.
+  Dedicated display hardware. capabilities:[] via chipGpios.
+
+GPIO27 (PIN_LCD_CS): LCD parallel-bus chip-select line. capabilities:[].
+
+GPIO28 (PIN_LCD_RS): LCD parallel-bus register-select (D/C) line.
+  capabilities:[].
+
+GPIO29: Not connected - pins_arduino.h comment: "// Pin 29 is NC" (a gap
+  in the LCD control-signal block, between PIN_LCD_RS=28 and
+  PIN_LCD_WR=30). capabilities:[] via chipGpios.
+
+GPIO30 (PIN_LCD_WR): LCD parallel-bus write-strobe line. capabilities:[].
+
+GPIO31 (PIN_LCD_RD): LCD parallel-bus read-strobe line. capabilities:[].
+
+GPIO32-39 (PIN_LCD_DB0..DB7): LCD 8-bit parallel data bus. Each
+  capabilities:[] via chipGpios - a coordinated multi-pin 8080-style bus
+  (CS/RS/WR/RD + 8 data lines), toggling any single line generically
+  produces no useful standalone effect and risks desyncing the display
+  driver, matching the bridgetek_idm2040_43a EVE-SPI-bus and
+  bigtreetech_SKR_Pico STEP/DIR/EN-bus exclusion precedent.
+
+GPIO40-45 (ADC0-ADC5): KEPT general-purpose, no chipGpios entry.
+  Confirmed as the board's advertised "analog-friendly crocodile clip
+  terminals" / analog sensor inputs (product-listing corroboration,
+  examples/lib/explorer.py ADC_0..5_PIN=40-45) - a genuine user-facing
+  expansion feature, not a fixed onboard sensor. Matches this repo's
+  established onboard-analog-sensor KEEP policy (bigtreetech_SKR_Pico
+  GPIO26/27 thermistors, esp32/esp32/oroca_edubot). Default
+  analog_input+digital_input+digital_output+pwm_output from the ADC0-5
+  static-const aliases stands unchanged.
+
+No onboard NeoPixel exists on this board - not mentioned by any source
+consulted (pins_arduino.h, examples/lib/explorer.py, docs/reference.md,
+or any product listing). No led_neopixel tagging applied anywhere.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax with a standalone,
+  string-literal-aware comment stripper (handles escaped quotes inside
+  note strings, e.g. the GPIO25 note which itself contains an escaped
+  `//` inside quoted vendor-comment text) followed by JSON.parse() -
+  confirmed valid. chipGpios contains exactly the 30 expected keys: 6-19,
+  22, 25-39 (excluding 20, 21, 23, 24 as documented above). No build
+  script was executed or required() (per task instructions).
+- All 10 fields from build_boards.js's REQUIRED_BOARD_FIELDS list are
+  present with no extras: boardName, displayName, family,
+  inputOnlyGpios, connections, pinNotes, chipGpios, pwm, dac, adc.
+- pwm/dac/adc/family/connections/pinNotes/inputOnlyGpios/boardName/
+  displayName values reproduce the chip-level
+  variants/rp2040/rp2350/board.json defaults verbatim except for the
+  added chipGpios entries, per the task's stated requirement.
+- boards.txt cross-check: `pimoroni_explorer.name=Pimoroni Explorer`
+  confirmed present in variants/rp2040/boards.txt (line ~28047),
+  matching this board.json's displayName-override expectation.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2350/pimoroni_explorer/board.json (new
+  file - this board previously had none).
+- Created: boardsDetails/rp2040/rp2350/pimoroni_explorer/notes.txt (this
+  file, directory newly created).
+- pins_arduino.h: NOT modified. No instance of the SDA/SCL/SS/MOSI/MISO/
+  SCK auto-append collision bug class was found on this board (see
+  "SDA/SCL COLLISION CHECK" above) - no edit was needed or made.

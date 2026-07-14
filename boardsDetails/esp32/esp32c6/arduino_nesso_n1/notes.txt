@@ -1,0 +1,155 @@
+arduino_nesso_n1 board.json button/LED capability-tagging audit (section 7a)
+=============================================================================
+
+Board: arduino_nesso_n1 (variants/esp32/esp32c6/arduino_nesso_n1), chip esp32c6.
+Vendor: Arduino, official product "Arduino Nesso N1".
+Directory: variants/esp32/esp32c6/arduino_nesso_n1/
+Audit date: 2026-07-12
+
+Context: an earlier dedicated-hardware pin-exclusion pass already created this
+board's board.json (chip-level ESP32-C6 defaults, chipGpios trimmed to 0,1,2,
+4,5,6,7,11,14,18) and left extensive pfodWeb NOTE comments in pins_arduino.h
+documenting why TX/RX, SDA/SCL, MOSI/MISO/SCK/SS, IR_TX_PIN, LORA_IRQ/CS/BUSY
+and SYS_IRQ/LCD_CS/RS were deliberately never declared as aliases (dedicated
+LoRa radio SPI bus, dedicated I2C bus to an onboard GPIO expander, dedicated
+IR blaster, etc). That pass never applied button/LED capability tagging -
+this pass covers that gap.
+
+pins_arduino.h summary (read in full)
+---------------------------------------
+USB_MANUFACTURER "Arduino", USB_PRODUCT "Nesso N1".
+Plain GPIO aliases declared: D1=7, D2=2, D3=6, BEEP_PIN=11, GROVE_IO_0=5,
+GROVE_IO_1=4. None of these are LED or button pins - D1/D2/D3 are generic
+header pins, GROVE_IO_0/1 are the Grove connector's generic digital I/O,
+BEEP_PIN drives an onboard piezo beeper (not in scope for button/LED
+tagging).
+
+Separately, guarded behind `#if !defined(MAIN_ESP32_HAL_GPIO_H_) &&
+defined(__cplusplus)`, the file declares a C++ class `ExpanderPinError`
+(constructor only, no real functionality) and ATTRIBUTE_ERROR-decorated
+pinMode/digitalWrite/digitalRead overloads that intentionally fail to
+compile with a "Please include Arduino_Nesso_N1.h" error. Ten `extern
+ExpanderPinError` variables are declared and macro-aliased to friendly
+names: LORA_LNA_ENABLE, LORA_ANTENNA_SWITCH, LORA_ENABLE, POWEROFF,
+GROVE_POWER_EN, VIN_DETECT, LCD_RESET, LCD_BACKLIGHT, LED_BUILTIN, KEY1,
+KEY2. Critically, LED_BUILTIN and BOTH buttons (KEY1, KEY2) are in this
+list - i.e. on this board neither the LED nor the buttons are real ESP32
+GPIO pins at all; they are typed as ExpanderPinError specifically so that
+any sketch which naively tries `pinMode(LED_BUILTIN, OUTPUT)` or
+`digitalRead(KEY1)` fails to compile with a clear pointer to the correct
+abstraction library, rather than silently misbehaving.
+
+Since `static const uint8_t NAME = value;` is the only declaration shape
+build_boards.js's parser recognizes, none of these ten ExpanderPinError
+names are parsed as pin aliases and none of the ten currently have any
+representation in the Designer's pin list. This is correct, not a gap -
+see reasoning below.
+
+Sources consulted
+------------------
+1. WebSearch "Arduino Nesso N1 pinout LED button GPIO expander" - returned
+   a summary (drawing on Arduino's own docs.arduino.cc pinout PDF and
+   related community sources) stating the Nesso N1 uses two PI4IOE5V6408
+   I/O expanders: E0 @ I2C address 0x43 (buttons & LoRa control) and E1 @
+   0x44 (power/UI: LCD reset/backlight, GROVE power, VIN detect, LED).
+   KEY1 -> E0.P0, KEY2 -> E0.P1. The onboard green LED (LED_BUILTIN) ->
+   E1.P7. GROVE_IO_0/GROVE_IO_1 confirmed as GPIO5/GPIO4 Grove connector
+   digital I/O at 3.3V logic, matching this file's own declarations
+   exactly.
+2. https://github.com/rogerguess/nesso-n1 (WebFetch) - a community
+   examples repo whose README was quoted directly: "KEY1 (Button A) and
+   KEY2 (Button B) are controlled via I2C GPIO expander at addresses
+   0x43/0x44" and "Using pinMode() and digitalRead() on GPIO 0 or GPIO 9
+   will NOT work" and "Buttons on the Nesso N1 are NOT on direct GPIO
+   pins! M5Unified library provides the correct abstraction layer" (the
+   Nesso N1 reuses M5Stack's M5Unified library for the expander
+   abstraction, consistent with the M5Stack-hosted docs page found in the
+   same search, docs.m5stack.com/en/core/Arduino_Nesso_N1). This
+   independently corroborates that both buttons are I2C-expander-based,
+   not raw GPIO, and explicitly warns against the natural but wrong
+   assumption that GPIO0/GPIO9 (this chip's usual strapping/BOOT pins)
+   are the button pins on this particular board.
+3. https://www.cnx-software.com/2025/11/13/arduino-nesso-n1-an-esp32-c6-iot-wireless-development-kit-with-wifi-6-ble-802-15-4-lora-and-ir-transmitter/
+   (WebFetch) - product-launch coverage listing the spec sheet entries
+   "2x programmable buttons", a separate hardware "Power/RESET/BOOT
+   button" (not GPIO - standard EN/RESET wiring), and "2x user LEDs".
+   Does not itself give GPIO numbers or expander details (referred back
+   to the official pinout diagram), but corroborates the general
+   peripheral inventory (two programmable buttons matching KEY1/KEY2,
+   plus a separate physical reset/boot button that is not a GPIO at
+   all).
+4. docs.arduino.cc/tutorials/nesso-n1/user-manual and
+   docs.arduino.cc/cc5c17c80a13bf8afa2022e01d240ec2/TPX00227-full-pinout.pdf
+   (official Arduino sources found via WebSearch) - WebFetch of the user
+   manual page returned no retrievable body text (empty page content on
+   this environment); the pinout PDF was not independently fetchable
+   either. Not used as a direct quote source, but their existence in
+   search results, combined with source 1's summary of them and sources
+   2-3's independent corroboration, gives consistent, non-contradictory
+   confirmation of the I2C-expander LED/button architecture. No source
+   found suggests the LED or KEY1/KEY2 are anything other than
+   expander-based.
+
+Reasoning
+----------
+LED_BUILTIN (_LED_BUILTIN, ExpanderPinError) - CONFIRMED wired to the E1
+  I/O expander (PI4IOE5V6408 #2 @ I2C 0x44, pin P7), not any ESP32-C6
+  GPIO. This is not a case of the Designer's parser "missing" a pin - the
+  vendor deliberately typed it as ExpanderPinError specifically so it
+  CANNOT be used with pinMode()/digitalWrite() (the ATTRIBUTE_ERROR
+  overloads force a compile error). There is no GPIO number to tag.
+  Correctly left with zero representation in board.json's chipGpios.
+  Nothing to tag; misrepresenting this as a GPIO capability (e.g.
+  guessing GPIO0/GPIO9, both of which the community README explicitly
+  warns do NOT work as buttons on this board) would be actively wrong.
+
+KEY1 / KEY2 (_KEY1/_KEY2, ExpanderPinError) - CONFIRMED wired to the E0
+  I/O expander (PI4IOE5V6408 #1 @ I2C 0x43, pins P0/P1), same situation
+  as LED_BUILTIN above. Both "buttons" on this board are I2C-expander
+  buttons, not GPIO buttons. Correctly left untagged - no "button"
+  capability applied to any GPIO, since there is no GPIO for either
+  button.
+
+No other plain-GPIO button or LED alias exists anywhere else in this
+file. D1=7, D2=2, D3=6, GROVE_IO_0=5, GROVE_IO_1=4, and BEEP_PIN=11 are
+the only other aliases, and none of them are LED- or button-named or
+vendor-documented as such - they are generic header/Grove pins and a
+piezo beeper output, outside this audit's button/LED scope.
+
+Alias-collision check (per task step 4)
+------------------------------------------
+No GPIO is being tagged this pass, so there is no new "tagged GPIO" to
+check for SDA/SCL/SS/MOSI/MISO/SCK contamination. For completeness: this
+file already deliberately declares NO SDA/SCL/MOSI/MISO/SCK/SS aliases at
+all (per the pfodWeb NOTEs already present at the top of the file, from
+the earlier exclusion pass - the I2C bus is dedicated to the two onboard
+GPIO expanders and the SPI bus is dedicated to the onboard LoRa radio),
+so no such collision is even possible on this board regardless.
+
+Mechanism decision
+--------------------
+No changes made to pins_arduino.h or board.json this pass. The
+ExpanderPinError LED/button declarations were already correctly excluded
+from the Designer's GPIO pin list by construction (parser cannot and
+should not parse them as GPIO aliases), and no separate plain-GPIO
+button/LED exists on this board to tag. Applying a "button" or LED
+capability to any of D1/D2/D3/GROVE_IO_0/GROVE_IO_1/BEEP_PIN would be
+fabricating hardware capability not documented by the vendor or
+community sources - not done.
+
+Files touched this pass
+--------------------------
+ - C:\ai\aicode\pfodWeb\boardsDetails\esp32\esp32c6\arduino_nesso_n1\notes.txt (this file, created)
+
+No changes to variants/esp32/esp32c6/arduino_nesso_n1/board.json or
+pins_arduino.h were needed or made. No build commands were run this pass,
+per task instructions.
+
+Summary (one line)
+--------------------
+LED_BUILTIN and both buttons (KEY1/KEY2) on the Arduino Nesso N1 are
+confirmed wired to two onboard PI4IOE5V6408 I2C GPIO expander chips (not
+ESP32-C6 GPIO pins at all, enforced by a deliberate ExpanderPinError
+compile-time guard in pins_arduino.h) - correctly outside the Designer's
+GPIO-based capability system, no board.json change needed; no other
+genuine GPIO button/LED was found on this board.

@@ -1,0 +1,234 @@
+Board: Adafruit Feather RP2040 ThinkInk (product 5727)
+Directory: variants/rp2040/rp2040/adafruit_feather_thinkink/
+Audit date: 2026-07-13
+Result: board.json CREATED (chipGpios overrides for EPD connector control
+lines, NeoPixel + power gate, button, LED). pins_arduino.h EDITED (removed
+colliding default PIN_SPI0_SS(13u) alias — see "Bug found" below).
+
+SUMMARY
+-------
+This is a Feather RP2040 with dedicated support circuitry (six GPIOs
+wired to a 24-pin FPC connector) for driving an externally-attached
+e-Ink/e-Paper display over its own dedicated SPI bus — Adafruit's own
+Overview page is explicit: "No display is included onboard. The board
+features support circuitry for common 24-pin e-Paper/e-Ink displays."
+It also has a plain status LED (GPIO13, active-high), a single status
+NeoPixel (GPIO21, gated by a power-enable pin on GPIO20 that must be
+driven HIGH), and a BOOT pushbutton (GPIO7, active-low with internal
+pull-up) — the same identity-pin pattern as the already-audited
+adafruit_feather_scorpio and adafruit_feather_can sibling Feather RP2040
+boards. Chip-level rp2040/rp2040/board.json has chipGpios: {} (deliberately
+empty), so every GPIO with any alias in this board's pins_arduino.h gets
+full digital_input/digital_output/pwm_output capability by default unless
+corrected here.
+
+SOURCES CONSULTED
+------------------
+1. https://learn.adafruit.com/adafruit-rp2040-feather-thinkink/pinouts
+   (official Adafruit guide, primary authority). Fetched directly.
+   Key quotes:
+     "Above the USB C connector is the D13 LED. This little red LED is
+     controllable in CircuitPython code using board.LED, and in Arduino
+     as PIN_LED."
+     "Above the pin labels for D24 and D25 is the status NeoPixel LED.
+     It is connected to GPIO21."
+     "Additionally, there is a NeoPixel power pin on GPIO20. It needs to
+     be set High for the NeoPixel to be powered."
+     "The Boot button is the button on the right, located on GPIO7. It
+     is available as board.BUTTON in CircuitPython, and is available for
+     use in Arduino as PIN_BUTTON."
+     "EPD_BUSY/GPIO16 - The Busy Detect pin for e-Ink displays. It is
+     also SPI0 MISO, UART0 TX, I2C0 SDA and PWM0 A."
+     "EPD_RESET/GPIO17 - The Reset pin for e-Ink displays. It is also
+     SPI0 CS, UART0 RX, I2C0 SCL and PWM0 B."
+     "EPD_DC/GPIO18 - The Data Command pin for e-Ink displays. It is
+     also SPI0 SCK, I2C1 SDA and PWM1 A."
+     "EPD_CS/GPIO19 - The Chip Select pin for e-Ink displays. It is also
+     SPI0 MOSI, I2C1 SCL and PWM1 B."
+     "EPD_SCK/GPIO22 - The SPI SCK pin for e-Ink displays. It is also
+     SPI0 SCK, I2C1 SDA and PWM3 A."
+     "EPD_MOSI/GPIO23 - The SPI MOSI pin for e-Ink displays. It is also
+     SPI0 MOSI, I2C1 SCL and PWM3 B."
+   Also confirmed (separate WebFetch targeted at GPIO8/13/14/15, the
+   Arduino-facing "SPI0" object's pins):
+     "GPIO8 (MI): The main SPI1 MISO. It is also UART1 TX, I2C0 SDA, and
+     PWM4 A."
+     "GPIO13 (D13): Digital I/O pin 13. It is also SPI1 CS, UART0 RX,
+     I2C0 SCL and PWM6 B."
+     "GPIO14 (SCK): The main SPI1 SCK. It is also I2C1 SDA, and PWM7 A."
+     "GPIO15 (MO): The main SPI1 MOSI. It is also I2C1 SCL, and PWM7 B."
+   -> Conclusion: GPIO8/14/15 are the board's general-purpose exposed
+      Feather header SPI pins (not consumed by the EPD or any onboard
+      peripheral); GPIO13 is merely the vendor's default SS pin for that
+      SAME shared bus, and is separately confirmed as this board's
+      dedicated onboard status LED (see "Bug found" below).
+   Note on naming: Adafruit's per-pin quotes label the RP2040's raw
+   hardware SPI0/SPI1 peripherals directly, which this board's
+   pins_arduino.h maps the opposite way round via its
+   __SPI0_DEVICE/__SPI1_DEVICE indirection (__SPI0_DEVICE spi1,
+   __SPI1_DEVICE spi0). The Arduino-facing "SPI1" object in this board's
+   pins_arduino.h (__SPI1_DEVICE spi0) is the EPD bus: PIN_SPI1_SS (19u)
+   / PIN_SPI1_SCK (22u) / PIN_SPI1_MOSI (23u) match EPD_CS/EPD_SCK/
+   EPD_MOSI exactly, and PIN_SPI1_MISO is left "not pinned out" (31u) —
+   consistent with an e-Ink display, which is write-only over SPI and
+   needs no MISO line.
+
+2. https://learn.adafruit.com/adafruit-rp2040-feather-thinkink?view=all
+   (Overview page, official Adafruit guide). Fetched directly. Confirms:
+   "No display is included onboard. The board features support circuitry
+   for common 24-pin e-Paper/e-Ink displays" via a 24-pin FPC connector,
+   compatible with 1.54" to 7" diagonal displays; "One red LED on Pin #13
+   for general-purpose use"; "RGB NeoPixel for full-color indication"; a
+   separate "Bootloader select button" alongside a distinct Reset button
+   (the Reset button is not a GPIO-readable pin, so out of scope for
+   chipGpios tagging).
+
+3. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/
+   raspberrypi/boards/adafruit_feather_rp2040_thinkink/mpconfigboard.h
+   and .../pins.c — official CircuitPython board port, independent
+   cross-reference. Confirms CIRCUITPY_STATUS_LED_POWER -> GPIO20,
+   MICROPY_HW_NEOPIXEL -> pin_GPIO21; pins.c maps LED -> GPIO13,
+   BUTTON/BOOT -> GPIO7, NEOPIXEL -> GPIO21, NEOPIXEL_POWER -> GPIO20,
+   EPD_BUSY -> GPIO16, EPD_RESET -> GPIO17, EPD_DC -> GPIO18,
+   EPD_CS -> GPIO19, EPD_SCK -> GPIO22, EPD_MOSI -> GPIO23 — an exact
+   match to this board's own pins_arduino.h aliases.
+
+4. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/
+   boards/adafruit/feather_rp2040/adafruit_feather_rp2040.dts —
+   no Zephyr board port exists specifically for the ThinkInk variant
+   (checked the boards/adafruit directory listing: only
+   feather_adalogger_rp2040, feather_canbus_rp2040, feather_propmaker_
+   rp2040, feather_rfm95_rp2040, feather_rp2040, feather_scorpio_rp2040,
+   itsybitsy_rp2040, kb2040, macropad_rp2040, metro_rp2040, qt_py_rp2040,
+   trinkey_qt2040 are present — no thinkink/eink entry). Used the plain
+   sibling "Feather RP2040" instead, which shares the identical D13-LED
+   module design reused verbatim across this Adafruit Feather RP2040
+   product line (same phrasing in source 1 as already independently
+   verified on the adafruit_feather_scorpio/adafruit_feather_can
+   siblings). Quoted node:
+     leds { led0: led_0 { gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>; label =
+       "LED"; }; }
+   -> Independently confirms D13 LED is active-high on this shared
+      module design, corroborating the scorpio/can precedents.
+
+5. variants/rp2040/rp2040/adafruit_feather_scorpio/board.json and
+   adafruit_feather_can/board.json + pins_arduino.h (sibling Adafruit
+   Feather RP2040 boards, already audited 2026-07-12/13) — read as the
+   structural/style precedent for this board.json, and as the precedent
+   for the PIN_SPI0_SS bus-alias-contamination bug fix (see below).
+
+6. pfodWeb_src/build_boards.js (read directly, lines ~545-548 and
+   ~697-703) — confirmed the `ss`/`mosi`/`miso`/`sck` auto-append
+   variables resolve ONLY from this file's bare `static const uint8_t
+   SS/MOSI/MISO/SCK = ...;` declarations (consts.SS etc.), not from any
+   PIN_SPI1_* alias directly. Since this board's bespoke pins_arduino.h
+   only declares such bare aliases for the arduino-facing "SPI0" object
+   (SS=PIN_SPI0_SS, MOSI=PIN_SPI0_MOSI, MISO=PIN_SPI0_MISO,
+   SCK=PIN_SPI0_SCK), the EPD bus's PIN_SPI1_SS/SCK/MOSI (GPIO19/22/23)
+   carry NO risk of a spurious spi_ss/spi_sck/spi_mosi auto-append — only
+   GPIO13 (PIN_SPI0_SS, this board's confirmed LED) was at risk, matching
+   the identical bug already found and fixed on adafruit_feather_scorpio
+   and adafruit_feather_can.
+
+PER-PIN FINDINGS
+-----------------
+GPIO7  (PIN_BUTTON / BOOT) — tagged button. Ordinary GPIO wired to a
+  switch to GND, active-low, RP2040 internal pull-up enabled (no
+  external pull-up), matching the identical module design already
+  confirmed via Zephyr devicetree on the scorpio/can siblings. Full
+  digital_input/digital_output/pwm_output capability retained (source 1,
+  source 5).
+
+GPIO13 (PIN_LED) — tagged led_high. Onboard status LED, active-high
+  (source 1, source 3, source 4). digital_input dropped per this repo's
+  established led_high precedent for dedicated onboard LED pins;
+  pwm_output kept (analogWrite() works on any RP2040 GPIO).
+
+GPIO16 (PIN_EPD_BUSY) — capabilities emptied. Dedicated Busy-Detect
+  control line wired to the board's e-Ink display FPC connector (source
+  1, source 3).
+
+GPIO17 (PIN_EPD_RESET) — capabilities emptied. Dedicated active-reset
+  control line for the e-Ink display connector (source 1, source 3).
+
+GPIO18 (PIN_EPD_DC) — capabilities emptied. Dedicated Data/Command
+  select control line for the e-Ink display connector (source 1,
+  source 3).
+
+GPIO19 (PIN_EPD_CS / PIN_SPI1_SS) — capabilities emptied. Dedicated SPI
+  chip-select line for the e-Ink display connector's own SPI bus (source
+  1, source 3). No spi_ss auto-append risk (source 6).
+
+GPIO20 (NEOPIXEL_POWER) — capabilities emptied. NeoPixel power-enable
+  gate; must be driven HIGH for the status NeoPixel to light (source 1,
+  verbatim: "It needs to be set High for the NeoPixel to be powered").
+  Matches the adafruit_feather_can NEOPIXEL_POWER exclusion precedent
+  (same Feather RP2040 module design).
+
+GPIO21 (PIN_NEOPIXEL) — tagged led_neopixel. Onboard single status
+  WS2812, output-only data line (source 1, source 3). Depends on GPIO20
+  being driven HIGH to actually receive power.
+
+GPIO22 (PIN_EPD_SCK / PIN_SPI1_SCK) — capabilities emptied. Dedicated
+  SPI clock line for the e-Ink display connector's own SPI bus (source
+  1, source 3). No spi_sck auto-append risk (source 6).
+
+GPIO23 (PIN_EPD_MOSI / PIN_SPI1_MOSI) — capabilities emptied. Dedicated
+  SPI MOSI line for the e-Ink display connector's own SPI bus (source 1,
+  source 3). No spi_mosi auto-append risk (source 6). PIN_SPI1_MISO is
+  left "not pinned out" (31u) in this board's pins_arduino.h, consistent
+  with an e-Ink display being write-only over SPI (no MISO line needed).
+
+GPIO8, GPIO14, GPIO15 (SPI0 MISO/SCK/MOSI, Arduino-facing "SPI0" object)
+  — NO CHANGE. Confirmed via source 1 to be the board's general-purpose
+  "main exposed SPI" header pins, not consumed by the EPD or any onboard
+  peripheral — left at full default capability, matching the scorpio/can
+  precedent's treatment of their own shared SPI0 MISO/MOSI/SCK.
+
+GPIO0-6, 9-12, 24-29 (D0-D6/D9-D12/D24-D29, A0-A3, Serial1 TX/RX, Wire0
+  SDA/SCL) — NO CHANGE. Ordinary broken-out Feather header pins with no
+  onboard-dedicated-hardware conflict found.
+
+BUG FOUND AND FIXED
+--------------------
+GPIO13 (confirmed onboard status LED) was ALSO declared as this board's
+vendor-default PIN_SPI0_SS (13u) in pins_arduino.h. build_boards.js
+unconditionally auto-appends the matching bus-role capability (spi_ss
+here) for whatever GPIO the resolved SS/MOSI/MISO/SCK bare aliases equal,
+regardless of any chipGpios override — so without a fix, the confirmed
+LED pin would have been contaminated with a spurious spi_ss capability in
+the Designer's pin picker.
+
+Investigation confirmed no onboard device uses this default SS pin — the
+EPD connector has its own separate dedicated SPI1 bus (SS=GPIO19,
+source 1/3) — so GPIO13's PIN_SPI0_SS alias was vendor boilerplate left
+over from the generic RP2040 pin-map template, not a real hardware role.
+
+Fix (matching the identical bug/fix already applied to
+adafruit_feather_scorpio/pins_arduino.h on 2026-07-12 and
+adafruit_feather_can/pins_arduino.h on 2026-07-13): removed the
+`#define PIN_SPI0_SS (13u)` line from
+variants/rp2040/rp2040/adafruit_feather_thinkink/pins_arduino.h, with an
+explanatory pfodWeb NOTE comment left in its place. MISO/MOSI/SCK
+aliases (GPIO8/15/14) were left untouched, since source 1 independently
+confirms those three ARE genuine general-purpose header pins.
+
+Note: this file's bottom section still contains a bespoke (non-
+common.h) `static const uint8_t SS = PIN_SPI0_SS;` line, matching the
+same file's own pre-existing D0-D29/A0-A3/SDA/SCL block. With the
+PIN_SPI0_SS macro removed, this line's build_boards.js parser resolution
+simply fails to resolve (SS ends up unresolved/undefined in the parser's
+alias table), which safely prevents any GPIO from being mismatched
+against it — same reasoning independently verified for the identical fix
+on adafruit_feather_can (see that board's notes.txt). This line was
+deliberately left as-is (not further edited) to match the scorpio/can
+precedent's minimal-footprint fix and this project's "don't refactor
+beyond the specific requested change" guideline; it has no effect on the
+generated board.json.
+
+VALIDATION
+----------
+board.json validated as syntactically correct JSON-with-comments via a
+manual `//`-comment-stripping script + JSON.parse() (no build commands
+run, per task instructions). Confirmed: 10 chipGpios entries, all
+required top-level fields present, no extra fields.

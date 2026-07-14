@@ -714,9 +714,14 @@ function _parseItemTolerant(input, path, warnings) {
 
   // Pin assignment — applies to on/off, PWM, and data display items.
   // Stored as null (not connected) or { name, type, invertOutput }.
+  // invertOutput only applies to onoff (output drive polarity) —
+  // onoffdisplay/pwm/datadisplay pins never get it set via the UI, so
+  // it's omitted for those types rather than stamping a meaningless
+  // invertOutput: false onto them.
   if (input.type === ITEM_TYPE_ONOFF || input.type === ITEM_TYPE_PWM || input.type === ITEM_TYPE_ONOFFDISPLAY
       || input.type === ITEM_TYPE_DATADISPLAY) {
     used.add('pin');
+    const usesInvert = input.type === ITEM_TYPE_ONOFF;
     if (input.pin === null || input.pin === undefined) {
       out.pin = null;
     } else if (typeof input.pin === 'object') {
@@ -724,7 +729,9 @@ function _parseItemTolerant(input, path, warnings) {
       const pinType   = typeof input.pin.type         === 'string'  ? input.pin.type         : null;
       const pinInvert = typeof input.pin.invertOutput === 'boolean' ? input.pin.invertOutput : false;
       if (pinName && pinType) {
-        out.pin = { name: pinName, type: pinType, invertOutput: pinInvert };
+        out.pin = usesInvert
+          ? { name: pinName, type: pinType, invertOutput: pinInvert }
+          : { name: pinName, type: pinType };
       } else {
         warnings.push(path + '.pin: missing name or type — defaulted to null');
         out.pin = null;
@@ -1124,7 +1131,8 @@ class DesignerState {
     this.contextStack   = [];
   }
 
-  /// Walk the entire menu tree and repair or clear item.pin:
+  /// Walk the entire menu tree and repair or clear item.pin (and, for
+  /// chart items, each plot's pin):
   ///  - null out pins whose name is no longer on the current board
   ///  - repair missing codeName (pre-codeName saved designs)
   ///  - upgrade type from pwm_output → dac_output when the board pin
@@ -1132,20 +1140,48 @@ class DesignerState {
   /// Called after every _tryLoad and importFromObject.
   _clearInvalidPins() {
     const pinByName = new Map(this.board.pins.map(p => [p.name, p]));
+    // Repairs `pin` in place against the current board, or returns null
+    // when the board no longer has a pin of that name (e.g. switching
+    // to a board with fewer/no pins, or to Unlisted Board/Minimal C).
+    const repairPin = (pin) => {
+      // True while the `?` placeholder (see editMenuItem.js / editChart.js's
+      // canPlaceholder toggle) is meaningful: a non-ccode board that
+      // genuinely has no real pins to offer.  Minimal C Code has no
+      // Arduino pin API and no placeholder toggle at all.
+      const noRealPins = this.board.pins.length === 0 && this.board.family !== 'ccode';
+      if (pin.name === PLACEHOLDER_PIN_NAME) {
+        // If the board now has real pins, or switched to Minimal C
+        // Code, the placeholder no longer applies — clear it.
+        return noRealPins ? pin : null;
+      }
+      if (noRealPins) {
+        // Switching to a non-ccode, zero-pin board (e.g. Unlisted
+        // Board) shouldn't silently disconnect an item that WAS pin-
+        // connected on the previous board — downgrade the real pin
+        // reference to the `?` placeholder instead, preserving the
+        // "this item drives/reads a pin" intent across the switch.
+        // The user can toggle it off like any other placeholder.
+        return { name: PLACEHOLDER_PIN_NAME, codeName: PLACEHOLDER_PIN_NAME, type: pin.type };
+      }
+      const bp = pinByName.get(pin.name);
+      if (!bp) return null;
+      if (typeof pin.codeName !== 'string' || !pin.codeName) {
+        pin.codeName = bp.codeName;
+      }
+      if (pin.type === PinType.PWM_OUTPUT
+          && bp.capabilities.supports(PinType.DAC_OUTPUT)) {
+        pin.type = PinType.DAC_OUTPUT;
+      }
+      return pin;
+    };
     const walk = (menu) => {
       for (const item of menu.items) {
         if (item.pin) {
-          const bp = pinByName.get(item.pin.name);
-          if (!bp) {
-            item.pin = null;
-          } else {
-            if (typeof item.pin.codeName !== 'string' || !item.pin.codeName) {
-              item.pin.codeName = bp.codeName;
-            }
-            if (item.pin.type === PinType.PWM_OUTPUT
-                && bp.capabilities.supports(PinType.DAC_OUTPUT)) {
-              item.pin.type = PinType.DAC_OUTPUT;
-            }
+          item.pin = repairPin(item.pin);
+        }
+        if (item.type === ITEM_TYPE_CHART && Array.isArray(item.plots)) {
+          for (const p of item.plots) {
+            if (p.pin) p.pin = repairPin(p.pin);
           }
         }
         if (item.subMenu) walk(item.subMenu);

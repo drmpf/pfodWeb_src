@@ -1,0 +1,144 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+// Board: Valetron Systems VALTRACK-V4-VTS-ESP32-C3, a real commercial
+// 4G-LTE/2G vehicle GPS tracking system (ESP32-C3FH4 + SIMCom A7672S
+// cellular/GNSS modem + LIS3DH accelerometer + MP2617A Li-ion charger +
+// TPS54240 buck converter, IP67 12-42V DC vehicle-powered enclosure).
+// Sibling board VALTRACK_V4_MFW_ESP32_C3 (mobile-field-worker variant)
+// shares byte-identical GPIO_* declarations in its own pins_arduino.h
+// (verified independently by grepping that file in this session) but is
+// being audited separately since it's a different physical product.
+//
+// Sources consulted:
+//  - https://github.com/ValetronSystems/VALTRACK-V4-ESP32-C3 (official
+//    vendor firmware repo for both VTS and MFW designs) - confirms the
+//    Arduino sketch's GPIO table: GPIO_LED_SIGNAL (GPIO8) drives 3 cascaded
+//    NeoPixel/WS2812 RGB LEDs (U51/52/53) via Adafruit_NeoPixel
+//    (NEO_GRB+NEO_KHZ800); TX1/RX1 (GPIO0/1) is a second UART distinct from
+//    the main UART0 TX/RX (GPIO21/20).
+//  - https://docs.valetron.com/wiki/products/valtrack-v4-vts-esp32-c3/specifications
+//    Vendor hardware spec page: confirms onboard LIS3DH 3-axis accelerometer
+//    (I2C), SIMCom A7672 series 4G-LTE-CAT1/2G modem with inbuilt GNSS,
+//    MP2617 Li-ion charger IC, 12-42V DC main input with reverse-polarity
+//    protection, 3.7-4.2V Li-Po/Li-Ion backup battery.
+//  - https://pallavaggarwal.in/2023/12/19/valtrack-v4-vehicle-tracking-system/
+//    Independent hardware teardown (photos + component IDs): SIMCOM A7672S
+//    modem behind a level-translator IC (1.8V modem <-> 3.3V ESP32 - directly
+//    explains why a dedicated second UART, TX1/RX1, exists); LIS3DH
+//    accelerometer on I2C; TPS54240 buck converter; MIC94060YC6 load switch
+//    used for modem power control; MP2617A charger with power-path
+//    management; addressable RGB LEDs for status.
+//  - https://docs.valetron.com/wiki/products/valtrack-v4-vts-esp32-c3/firmware
+//    and https://www.espboards.dev/esp32/valtrack-v4-vts-esp32-c3/ - both
+//    corroborate the same GPIO table already present in this board's own
+//    pins_arduino.h (auto-generated from the same source, so treated as
+//    confirming-but-not-independent for the numeric assignments themselves).
+//  - AIS-140 (India MORTH Nov-2016 mandate) background research: Indian
+//    commercial-vehicle trackers ("VTS") are legally required to have a
+//    physical, hard-wired panic/SOS button generating an immediate alert
+//    event. This is circumstantial corroboration (not a Valetron-specific
+//    schematic citation) for GPIO_SOS being a genuine physical button input
+//    on this VTS product, consistent with the pin's own name and this
+//    product's regulatory market (India, per teardown's INR pricing).
+//  - No vendor schematic PDF or source file was found that explicitly
+//    labels which of GPIO_TPS_ENABLE / GPIO_CHG_IN (both aliased to GPIO4)
+//    is the "real" active declaration in the compiled firmware - see GPIO4
+//    reasoning below and notes.txt for full discussion.
+//
+// Per-pin decisions (all EXCLUDED pins also had their static const alias,
+// AND every blanket-identity A<n>/D<n>/SPI-boilerplate alias of the same
+// GPIO number, deleted from this board's pins_arduino.h - see that file's
+// own pfodWeb NOTE comment):
+//
+// GPIO0/GPIO1 (TX1/RX1): EXCLUDED. Second UART, distinct from the main
+// UART0 TX/RX (GPIO21/20) used for the pfod Serial connection. Vendor
+// firmware repo confirms two independent UARTs exist; teardown confirms a
+// SIMCom A7672S cellular modem behind a level-translator IC is the only
+// other UART-capable onboard peripheral - near-certainly the modem's AT
+// command interface. Vendor-corroborated (repo + teardown), not a pure name
+// guess, though no single source explicitly labels "TX1/RX1 -> modem".
+//
+// GPIO3 (GPIO_INT1): EXCLUDED. LIS3DH accelerometer confirmed onboard via
+// vendor spec page and teardown; "INT1" is the LIS3DH datasheet's own pin
+// name for its first programmable interrupt output. Vendor-corroborated.
+//
+// GPIO4 (GPIO_TPS_ENABLE / GPIO_CHG_IN - both declared, unclear which the
+// compiled firmware actually uses): EXCLUDED regardless of which wins.
+// Teardown independently confirms both a TPS54240 buck converter (matches
+// "TPS_ENABLE" - an enable line for this regulator) and an MP2617A battery
+// charger IC with power-path management (matches "CHG_IN" - a
+// charge-input/status line for this charger) are both real onboard chips.
+// Whichever declaration the vendor's actual firmware compiles with, GPIO4
+// is dedicated to one of these two onboard power-management ICs either
+// way, so the KEEP/EXCLUDE outcome is the same regardless of which name is
+// authoritative - not resolved from firmware source, but the ambiguity does
+// not change the decision.
+//
+// GPIO5/GPIO6 (GPIO_IIC_DATA/GPIO_IIC_CLOCK, also declared as the standard
+// SDA/SCL aliases): EXCLUDED. This is the I2C bus to the onboard LIS3DH
+// accelerometer (vendor-confirmed). Sealed IP67 enclosure with no external
+// I2C header - no evidence of a general-purpose/multi-drop use, unlike the
+// playbook's default "keep I2C available" guidance for boards with an
+// exposed header.
+//
+// GPIO7 (GPIO_PWRKEY): EXCLUDED. Standard SIMCom-modem PWRKEY control line
+// name; A7672S modem confirmed onboard. Vendor-corroborated by name-pattern
+// match to a real, confirmed chip (SIMCom modules universally expose a
+// PWRKEY control line in their reference designs).
+//
+// GPIO8 (GPIO_LED_SIGNAL): KEPT, tagged led_neopixel. Vendor firmware repo
+// explicitly confirms this drives 3 cascaded WS2812/NeoPixel-style
+// addressable RGB LEDs via Adafruit_NeoPixel (NEO_GRB+NEO_KHZ800). Not the
+// board's TX/RX/TX1/RX1 (21/20/0/1) - no conflict. pwm_output kept since
+// GPIO8 supports the chip's LEDC peripheral at the silicon level (matches
+// this repo's existing led_neopixel precedent, e.g. waveshare_esp32_s3_zero
+// GPIO21).
+//
+// GPIO9 (GPIO_SOS): KEPT, tagged button. Name directly states its function;
+// corroborated circumstantially by AIS-140's mandatory hard-wired panic
+// button requirement for Indian commercial vehicle trackers (see sources
+// above) and by this being a real, purpose-built VTS product rather than a
+// generic dev board. No vendor schematic/photo was found explicitly
+// pointing at a physical SOS button component, so this is a
+// well-corroborated judgment call, not a fully vendor-schematic-confirmed
+// tag - flagged clearly in notes.txt. Not the board's TX/RX/TX1/RX1
+// (21/20/0/1) - no conflict.
+//
+// GPIO10 (GPIO_GSM_ENABLE): EXCLUDED. Teardown confirms a MIC94060YC6 load
+// switch used for modem power control; "GSM_ENABLE" directly matches this
+// function (gating power to the A7672S modem). Vendor-corroborated.
+//
+// GPIO2 (GPIO_ANALOG_IN): KEPT, capabilities left at the chip-level default
+// (analog_input/digital_input/digital_output/pwm_output - not a button/LED
+// tag). No vendor source found that states exactly what this pin measures.
+// Given the product is a 12-42V-DC vehicle-powered tracker with a Li-ion
+// backup battery, a general-purpose analog sensing input (e.g. external
+// voltage/ignition sense, or backup-battery level) is plausible and matches
+// the playbook's KEEP category for analog sensor readings, but this is a
+// name-based judgment call, not vendor-confirmed - documented in
+// notes.txt.
+//
+// GPIO11: not aliased anywhere in this board's pins_arduino.h - left at the
+// chip-level default, unlabeled, no note needed.
+{
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"], "note": "GPIO_ANALOG_IN in vendor pins_arduino.h - likely external voltage/battery sensing input on this vehicle tracker; exact function not vendor-confirmed, see boardsDetails notes.txt." },
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

@@ -1,0 +1,48 @@
+Board: waveshare_esp32_s3_touch_lcd_43b (Waveshare ESP32-S3-Touch-LCD-4.3B)
+Task: confirm onboard user button and/or onboard LED (single-color or NeoPixel/RGB), tag GPIO(s) if confirmable.
+
+Sources consulted:
+- https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4.3B
+  Attempted WebFetch directly: returned HTTP 403 Forbidden (blocked). Not used as direct evidence.
+- https://docs.waveshare.com/ESP32-S3-Touch-LCD-4.3B
+  Fetched successfully (twice, for cross-check). "Onboard Resources" section lists only
+  BOOT and RESET as onboard buttons (no separate user/boot-purpose GPIO button beyond
+  the standard BOOT pin). Status indicators are DONE (battery charge complete), CHG
+  (battery charging), PWR (power) - explicitly described as driven by the onboard
+  CS8501 lithium battery charge/discharge management chip, NOT by ESP32 GPIOs. No
+  mention of any onboard single-color user LED or WS2812/NeoPixel RGB LED anywhere on
+  this page.
+- WebSearch "Waveshare ESP32-S3-Touch-LCD-4.3B wiki onboard button RGB LED"
+  Search snippets corroborated the docs.waveshare.com content (PWR/CHG/DONE indicators,
+  no RGB LED / button feature mentioned).
+- WebSearch "ESP32-S3-Touch-LCD-4.3B" WS2812 neopixel RGB LED GPIO
+  No WS2812/NeoPixel found on this specific board. Search surfaced that a DIFFERENT
+  sibling Waveshare board, ESP32-S3-Zero, has a WS2812 on GPIO21 - that is NOT this
+  board and must not be confused with it (this is exactly the kind of cross-board
+  hallucination risk flagged for this vendor's boards this session).
+- https://github.com/Westcott1/Waveshare-ESP32-S3-Touch-LCD-4.3-and-Arduino
+  Community Arduino repo for the (non-B) sibling board. No LED_BUILTIN/LED_PIN/
+  BUTTON_PIN definitions found; only documents RGB display panel, GT911 touch
+  controller, and IO expander GPIO mappings.
+- Local file: variants/esp32/esp32s3/waveshare_esp32_s3_touch_lcd_43b/pins_arduino.h
+  No LED_BUILTIN or BUTTON alias declared anywhere in this board's own pins_arduino.h
+  (unlike many other boards). TX=43, RX=44 (RS485 UART0 pins, hard-reserved by
+  build_boards.js).
+
+Pins considered but NOT tagged:
+- GPIO0 (BOOT button): This is the ESP32-S3's standard serial-bootloader-entry BOOT
+  button, not a general-purpose user button, and per this board's own board.json it is
+  already excluded from chipGpios as the dedicated ST7262 LCD "G3" RGB data line
+  (WS_LCD_G3 = GPIO0 in pins_arduino.h). Re-adding/tagging it would reverse an existing,
+  deliberate pin-exclusion, which is out of scope for this task. No guess made - this is
+  a clear "leave alone" case, not a judgment call.
+- PWR/CHG/DONE status indicators: confirmed by vendor docs to be driven by the CS8501
+  battery charge-management chip, independent of any ESP32 GPIO. There is no GPIO to
+  tag for these at all - they are not MCU-controllable outputs. No judgment call needed;
+  this is definitively out of scope for GPIO capability tagging.
+- No other candidate GPIOs were found for a button or LED (single-color or NeoPixel).
+  No best-guess tagging was made anywhere.
+
+Summary of what was tagged: NOTHING. No confirmable onboard user button or onboard LED
+(single-color or NeoPixel/RGB) exists on this board that maps to an ESP32 GPIO available
+for tagging. board.json and pins_arduino.h were left unmodified.

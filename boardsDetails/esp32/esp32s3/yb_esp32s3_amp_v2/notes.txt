@@ -1,0 +1,106 @@
+Board: yb_esp32s3_amp_v2 (YelloByte YB-ESP32-S3-AMP, hardware Rev 2.1 - audio dev
+board with ESP32-S3, microSD, 2x MAX98357A 3W I2S Class-D amplifiers, PSRAM,
+WiFi, USB-C)
+Researched: 2026-07-12
+
+SOURCES CONSULTED
+-----------------
+- https://github.com/yellobyte/YB-ESP32-S3-AMP
+  Board's dedicated GitHub repo (vendor: YelloByte / Thomas J.). Main branch
+  README/schematics describe the current-production board design.
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/Readme.md
+  Confirms two onboard LEDs: "One LED labeled 'P' is connected to the 3.3V
+  rail to indicate board power" (not GPIO-driven) and "the other LED labeled
+  'IO47' is connected to GPIO47 which can be used as status LED... If solder
+  bridge DAC_MUTE is closed [default open] this pin can be used for muting
+  the two audio amplifiers: active when GPIO47 is HIGH or muted when GPIO47
+  is LOW." Confirms two onboard pushbuttons: 'R' (resets ESP32-S3, shorts EN
+  to ground) and 'B' ("shorts GPIO0 to ground when pressed... needed to
+  force the board into boot mode"). No differences between V1/V2/V3 revisions
+  mentioned in this top-level doc (it describes the current/retired boards
+  generically); board-specific schematics were needed to confirm V2 (Rev 2)
+  wiring/polarity specifically - see below.
+
+- https://api.github.com/repos/yellobyte/YB-ESP32-S3-AMP/contents/doc
+  Directory listing revealed a "retired_board_versions_V2_&_V3" subfolder
+  containing revision-specific schematics distinct from the current
+  mainline schematic.
+
+- https://api.github.com/repos/yellobyte/YB-ESP32-S3-AMP/contents/doc/retired_board_versions_V2_%26_V3
+  Listed YB-ESP32-S3-AMP_Rev2_schematic_1-2.jpg and _2-2.jpg (plus Rev3
+  equivalents) - the actual per-revision schematics matching this repo's
+  yb_esp32s3_amp_v2 / yb_esp32s3_amp_v3 variant split.
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/doc/retired_board_versions_V2_%26_V3/YB-ESP32-S3-AMP_Rev2_schematic_1-2.jpg
+  Viewed directly as an image (title block confirms "TITLE: YB-ESP32-S3-AMP",
+  "REV: 2.1", dated 22.10.2024 - i.e. this IS the schematic for the v2
+  hardware revision, not a generic/other-revision doc). Three labeled
+  sub-circuits directly relevant to this audit:
+    * "Reset Button": EN pin, R8 10k pull-up to 3V3, switch shorts EN to
+      GND via C5 220n debounce cap. EN is not an exposed GPIO - no capability
+      tag applies.
+    * "GPIO0 Button": GPIO0 -> switch (BOOT_S1) -> GND. Standard
+      active-low-to-ground pushbutton on the GPIO0 strapping/boot pin -
+      matches this project's existing convention (tagged "button" on
+      sibling boards yb_esp32s3_drv and yb_esp32s3_eth, both same vendor,
+      same "GPIO0 Button" schematic label).
+    * "Status LED (GPIO047)": GPIO47 -> LED (labeled "IO47 LED", anode
+      toward GPIO47) -> R7 1k5 -> GND. Anode-to-GPIO/cathode-to-GND
+      topology means the LED lights when GPIO47 is driven HIGH =>
+      active-high (led_high). Identical topology/labeling to sibling boards
+      yb_esp32s3_drv, yb_esp32s3_dac, yb_esp32s3_eth (same vendor, same
+      "Status LED (GPIO47)" circuit, same R-value family).
+
+- https://raw.githubusercontent.com/yellobyte/YB-ESP32-S3-AMP/main/doc/retired_board_versions_V2_%26_V3/YB-ESP32-S3-AMP_Rev2_schematic_2-2.jpg
+  Sheet 2/2, same Rev 2.1 title block. Shows the MAX98357A I2S amplifier
+  section (GPIO47 also routed here as "DAC_MUTE" through a normally-open
+  solder-bridge jumper to the MODE pin of both amplifier ICs - confirms the
+  README's dual-function description, does not change the LED tag) and the
+  microSD slot (SD_D0/SD_CMD/SD_CLK on FSPI + GPIO10 as SD_CS). No
+  additional LEDs or buttons found on this sheet. Confirms the already
+  -excluded GPIO5/6/7 (I2S) and GPIO10/11/12/13 (microSD SPI) pins from the
+  earlier dedicated-hardware pin-audit pass are correctly excluded - no
+  change needed there.
+
+- Local file: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\yb_esp32s3_amp_v2\pins_arduino.h
+  Confirms LED_BUILTIN=47 and PIN_DAC_MUTE=47 (matches vendor schematic/
+  README dual-function description above). Confirms TX=43, RX=44, SDA=8,
+  SCL=9, and the "SPI2 for public usage" aliases SS2=38/MOSI2=39/MISO2=41/
+  SCK2=40 (non-standard alias names, not the bus-alias names build_boards.js
+  auto-appends capabilities for). None of SDA/SCL/SS2/MOSI2/MISO2/SCK2/TX/RX
+  equal 0 or 47, so no bus-alias collision exists for either tagged pin -
+  no alias line needed to be deleted.
+
+- Compared against sibling variants in this repo (same audit wave):
+  yb_esp32s3_amp (base/current, unversioned) and yb_esp32s3_amp_v3 both
+  have byte-for-byte identical pins_arduino.h to this v2 variant (same
+  LED_BUILTIN=47, same PIN_DAC_MUTE=47). Each was independently verified
+  against its own vendor schematic per the audit instructions rather than
+  assumed identical - v2's Rev 2.1 schematic and v3's Rev 3 schematic (and
+  the mainline board's current schematic) were checked separately; all
+  three happen to share the same GPIO47 status-LED / GPIO0 boot-button
+  design in this instance, but this was confirmed rather than assumed.
+
+WHAT WAS TAGGED
+----------------
+GPIO0: ["digital_input","digital_output","pwm_output"] -> ["digital_input",
+"button"] (onboard "GPIO0 Button", confirmed via vendor Rev 2.1 schematic;
+digital_output/pwm_output dropped to match this project's existing
+button-tagging convention on sibling boards).
+
+GPIO47: ["digital_input","digital_output","pwm_output"] -> ["digital_output",
+"pwm_output","led_high"] (onboard "Status LED (GPIO47)", active-high,
+confirmed via vendor Rev 2.1 schematic; digital_input dropped, pwm_output
+retained, to match sibling-board convention).
+
+No alias-collision deletions needed (see pins_arduino.h check above - GPIO0
+and GPIO47 are not aliased as SDA/SCL/SS/MOSI/MISO/SCK/TX/RX anywhere in
+this file).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- Power LED 'P' (3.3V rail, not GPIO-connected): no GPIO drives it, so no
+  capability tag applies.
+- Reset button 'R' (shorts EN to ground): EN is not a GPIO exposed in
+  chipGpios/pins_arduino.h, so no capability tag applies.

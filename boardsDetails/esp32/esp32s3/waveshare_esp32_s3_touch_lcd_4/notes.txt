@@ -1,0 +1,87 @@
+Board: waveshare_esp32_s3_touch_lcd_4 (Waveshare ESP32-S3-Touch-LCD-4, 4.0 inch model)
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_lcd_4
+Research date: 2026-07-11
+
+IMPORTANT: Do not confuse with sibling boards waveshare_esp32_s3_touch_lcd_43,
+waveshare_esp32_s3_touch_lcd_43b, or the distinct "ESP32-S3-Touch-LCD-4B" product
+(different board, has "PWR and BOOT two side buttons" per its own wiki page).
+Those were NOT researched/touched here.
+
+SOURCES CONSULTED
+-----------------
+https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4
+  - direct WebFetch returned HTTP 403 (blocked); worked around via r.jina.ai proxy (below).
+
+https://r.jina.ai/https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4
+  - Proxy-rendered text of the vendor wiki page. Confirms two physical buttons:
+    "BAT_PWR" (power on/off button, double-click to power off) and a "BOOT" button
+    referenced in the flashing-troubleshooting FAQ ("press and hold BOOT and then
+    power on to enter the strong download mode"). Confirms a "PWR light" mentioned
+    only in a battery/power FAQ context (no GPIO number given). No mention anywhere
+    of an RGB/WS2812/NeoPixel LED. No comprehensive GPIO pinout table on the page.
+    Lists downloadable resources incl. schematic PDFs and the official GitHub demo repo.
+
+https://r.jina.ai/https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-4/ESP32-S3-Touch-LCD-4_V3.0.pdf
+  - Proxy text-extraction of the V3.0 schematic PDF. Found:
+    * Pushbutton "KEY1" wired to net IO0/GPIO0 - the standard ESP32 BOOT/download
+      button circuit (matches the wiki's BOOT-button FAQ text above).
+    * EN (chip reset) pin tied to a separate reset pushbutton net - not a GPIO,
+      it's the CHIP_PU/EN reset line.
+    * One SMD LED, described as "贴片 LED 侧面红光 0602" (red, 0602 package),
+      wired between GND and the 3V3 rail through resistor R58 (10K) - i.e. a
+      simple always-on-when-powered power-indicator LED with NO GPIO connection
+      at all (not driven by any ESP32 pin, so there is nothing to tag/exclude).
+    Caveat: PDF text extraction via a third-party proxy can be imperfect/garbled;
+    treated as corroborating evidence alongside the wiki FAQ text, not sole proof.
+
+https://github.com/waveshareteam/ESP32-S3-Touch-LCD-4
+  - Official demo/README repo. No explicit button/LED GPIO defines found in the
+    README. Notes a "CH32V003 helper chip" (a separate I2C-controlled
+    co-processor) manages LCD backlight PWM, LCD reset, touch reset, buzzer,
+    system power enable, and battery ADC - i.e. any "LED-like" or power-control
+    behaviour on this board is mediated through an I2C IO-expander chip, not a
+    direct ESP32 GPIO, so it is outside pfodWeb's direct-GPIO capability model.
+
+https://github.com/HASwitchPlate/openHASP/discussions/835
+  - Community pin-mapping discussion for this exact board. Lists TFT_*/TOUCH_*
+    display and touch pins only; no button or LED GPIO references at all.
+
+WebSearch: "Waveshare ESP32-S3-Touch-LCD-4 onboard button LED GPIO schematic"
+  - AI summary conflated this board with the different "ESP32-S3-Touch-LCD-4B"
+    product ("onboard PWR and BOOT two side buttons") - noted per the task's
+    warning about cross-checking AI summaries against real page content; the 4B
+    board is a different product and was not used as evidence for this board.
+
+pins_arduino.h (already in repo, read directly, not web research)
+  - Confirms TX=43, RX=44. No LED_BUILTIN or BUTTON alias defined anywhere in
+    this file (unlike many other variants) - consistent with no dedicated
+    onboard LED/button broken out as an Arduino-level alias here.
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- BAT_PWR / "PWR button": wired into the SW6106 battery-management IC's SYS_EN
+  control line per the wiki FAQ text, not to any ESP32-S3 GPIO. No GPIO exists
+  to tag. Not a guess - directly stated by the vendor wiki text that this is a
+  power-management-IC function, not a GPIO-readable button.
+- Red 0602 SMD "PWR light" LED: per schematic, wired directly between 3V3 and
+  GND through R58 (10K) with no transistor/GPIO switching. Hardwired always-on
+  power indicator - no GPIO exists to tag. Not a guess.
+- RESET/EN pushbutton: tied to the ESP32-S3's CHIP_PU/EN pin, which is a reset
+  input, not a GPIO - correctly out of scope for capability tagging (same
+  pattern already established on this board's siblings, e.g.
+  waveshare_esp32_s3_touch_lcd_185).
+- No other candidate LED/button pins were found. No best-guess judgment calls
+  were made for anything left untagged above - each was ruled out by explicit
+  vendor documentation/schematic evidence.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 tagged ["digital_input","button"] - confirmed as pushbutton "KEY1" on the
+ESP32-S3-Touch-LCD-4 V3.0 schematic (standard BOOT/download button, active
+low), corroborated by the vendor wiki's own FAQ instructions referencing a
+"BOOT" button on this board. Not TX/RX (TX=43, RX=44), so no reservation
+conflict. This matches the precedent already set on sibling boards
+waveshare_esp32_s3_touch_lcd_185 and waveshare_esp32_s3_lcd_147, which tag a
+confirmed BOOT pushbutton the same way. No board.json previously existed for
+this board; one was created as a full copy of the esp32s3 chip-level default
+board.json with only GPIO0's capabilities changed plus this NOTE.

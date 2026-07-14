@@ -1,0 +1,235 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "iLabs Challenger RP2040 SD/RTC" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. This board has no onboard WiFi/BLE
+  // radio (its onboard peripherals are a microSD card reader and an
+  // MCP79410 I2C real-time clock, neither a network transport), so plain
+  // "rp2040" (not "rp2040w") is correct — same reasoning as every other
+  // non-WiFi Challenger sibling already audited (lora, subghz, nfc, uwb).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/NeoPixel tagging
+  // audit, 2026-07-13):
+  //
+  // Board: iLabs "Challenger RP2040 SD/RTC" (Adafruit Feather form
+  // factor) — an RP2040 board with an onboard microSD card slot (wired
+  // to the RP2040's second SPI bus, SPI1) and an onboard Microchip
+  // MCP79410 I2C real-time-clock/calendar chip, aimed at data-logging
+  // use cases.
+  //
+  // Sources consulted:
+  // 1. https://ilabs.se/challenger-rp2040-sd-rtc-datasheet/ (official
+  //    iLabs datasheet, authoritative) — quotes verbatim:
+  //      "GPIO9 is the SD Card chip select signal (#CS)"
+  //      "GPIO10 is the serial clock (SCK)"
+  //      "GPIO11 is the serial data output (SDO)"
+  //      "GPIO12 is the serial data input (SDI)"
+  //      "D14/GPIO13 card detect (Has a weak external pull (220K) up for
+  //       low power consumption)"
+  //      "[The MCP79410 RTC] Uses I2C0 (Wire) for communication... The
+  //       MFP pin (Multi function pin) is connected to the RP2040,
+  //       GPIO25 (Logical name PIN_RTC_INTERRUPT)"
+  //      "On the other side of the USB connector there is a user
+  //       programmable green LED. This LED is connected to pin D18 and
+  //       can easily be controlled by the user program." (D18 = GPIO24
+  //       per this board's own pins_arduino.h: PIN_LED=(24u), D18=(24u),
+  //       LED_BUILTIN=PIN_LED). Active level (high/low) is NOT stated
+  //       anywhere on this specific datasheet page — confirmed by a
+  //       full-page re-search for "Active"/"active level" text, which
+  //       returned no hits.
+  //      Explicitly confirmed ABSENT from this datasheet: any NeoPixel/
+  //      WS2812/addressable-RGB-LED mention, and any pushbutton/button
+  //      mention (the only other onboard LED found is the "CHG" battery-
+  //      charge-status indicator, a passive hardware indicator not
+  //      RP2040-GPIO-driven, out of scope).
+  // 2. https://ilabs.se/challenger-rp2040-wifi-datasheet/ and
+  //    https://ilabs.se/challenger-rp2040-nfc-datasheet/ (sibling boards
+  //    in the same iLabs Challenger RP2040 product line, already audited
+  //    in this repo — see variants/rp2040/rp2040/challenger_2040_wifi/
+  //    board.json and .../challenger_2040_nfc/board.json). The WiFi
+  //    board's own datasheet explicitly states "Active level: High" for
+  //    its own onboard "user programmable green LED" (same "D15"/"user
+  //    programmable green LED" phrasing pattern reused verbatim in this
+  //    board's own datasheet for its LED). The NFC board's LED is wired
+  //    to the IDENTICAL GPIO24 ("D18") as this board's LED — same silicon
+  //    pin, same Feather PCB family, near-certainly the same reference
+  //    GPIO->resistor->LED->GND circuit reused across the product line.
+  //    Given every RP2040 board audited in this family to date has been
+  //    confirmed or cross-reference-inferred active-high (rpipico,
+  //    wiznet_5500_evb_pico, adafruit_feather_scorpio, challenger_2040_
+  //    lora, challenger_2040_wifi, challenger_2040_nfc, challenger_2040_
+  //    subghz — none active-low), GPIO24 is tagged led_high here on the
+  //    same cross-referenced basis already used for the challenger_2040_
+  //    nfc and challenger_2040_subghz siblings.
+  // 3. github.com/earlephilhower/arduino-pico
+  //    variants/challenger_2040_sdrtc/pins_arduino.h (upstream source of
+  //    this board's own local pins_arduino.h, fetched directly) —
+  //    confirmed byte-identical pin assignments to the local copy in
+  //    this repo (PIN_LED=24, SPI1 MISO/MOSI/SCK/SS=12/11/10/9,
+  //    SD_CARD_DETECT=13, Wire0 SDA/SCL=0/1); no PIN_RTC_INTERRUPT
+  //    macro or any other GPIO25 reference exists in the upstream file
+  //    either — GPIO25 is a real, physically-wired signal per the
+  //    datasheet's own "Logical name PIN_RTC_INTERRUPT" text, but that
+  //    name was apparently never actually added to arduino-pico's header
+  //    (confirmed absent, not just absent from this repo's local copy).
+  // 4. Local codebase: this board's own pins_arduino.h — confirmed no
+  //    `static const uint8_t` alias exists anywhere for GPIO9, 10, 11,
+  //    12, or 25 (the only aliases are D0-D14, D18, and A0-A5, resolving
+  //    to GPIOs {16,17,20,23,22,2,3,0,1,4,5,6,7,8,13,24,26,27,28,29,19,
+  //    21} — none of {9,10,11,12,25} appear). GPIO13 DOES carry a D14
+  //    alias (in addition to being SD_CARD_DETECT), so it is already
+  //    visible in the Designer's pin list and needs an explicit
+  //    capability override (see per-pin reasoning below). Also confirmed
+  //    this file declares NO bare-named `static const uint8_t SS/MOSI/
+  //    MISO/SCK/SDA/SCL` aliases anywhere (only the numeric PIN_SPI0_*/
+  //    PIN_SPI1_*/PIN_WIRE0_*/PIN_SERIAL1_* #defines, plus a `#define SS
+  //    SD_SS` macro chain — a #define, NOT a peer `static const uint8_t`
+  //    declaration, so build_boards.js's parseEsp32Consts() does not
+  //    harvest it per its own documented rule that only `static const/
+  //    constexpr uint8_t NAME = ...;` lines are parsed). This means
+  //    build_boards.js's unconditional spi_ss/spi_mosi/spi_miso/spi_sck/
+  //    i2c_sda/i2c_scl bus-role auto-append (~pfodWeb_src/build_boards.js
+  //    line 697-703) cannot fire for ANY pin on this board, dedicated or
+  //    general-purpose — same pre-existing pins_arduino.h gap already
+  //    flagged (out of scope) on the challenger_2040_lora/subghz
+  //    siblings' notes.txt. No SS/SDA/SCL/etc collision-bug-class fix
+  //    was needed here since there is no bare-named alias to collide in
+  //    the first place.
+  // 5. pfodWeb_src/build_boards.js (read directly, lines 439-492 and
+  //    515-724) — confirmed the exact allGpios/chipGpios visibility
+  //    mechanism and the "Check if available on board" auto-note
+  //    behavior for the rp2040 family, matching the mechanism already
+  //    documented in the challenger_2040_lora and adafruit_feather_
+  //    adalogger sibling notes.
+  // 6. Precedent/schema reference: variants/rp2040/rp2040/
+  //    adafruit_feather_adalogger/board.json (closest precedent — also
+  //    an RP2040 Feather board with an onboard microSD card + card-
+  //    detect pin, already using the exact tagging pattern followed
+  //    here) and .../challenger_2040_nfc/board.json (LED cross-reference
+  //    + I2C-dedicated-peripheral tagging pattern) — both read in full
+  //    before writing this board.json.
+  //
+  // Per-pin reasoning:
+  //   GPIO9  - PIN_SPI1_SS / SD Card #CS - onboard microSD card
+  //            connector's dedicated SPI1 chip-select line. Not general-
+  //            purpose. No bare-named SS alias exists in this board's
+  //            pins_arduino.h (see source #4), so there is no spi_ss
+  //            auto-append to strip either way — capabilities left
+  //            empty outright. This GPIO has zero pins_arduino.h alias,
+  //            so this entry also makes it visible in the Designer pin
+  //            list (with an auto-appended "Check if available on
+  //            board" note alongside this one, per the rp2040 family's
+  //            note-suppression rule) rather than fully concealed —
+  //            matching the adafruit_feather_adalogger precedent's
+  //            choice to surface dedicated SD-card GPIOs with an
+  //            explanatory note, per this audit's own instruction to add
+  //            chipGpios entries for every confirmed dedicated-hardware
+  //            GPIO.
+  //   GPIO10 - PIN_SPI1_SCK - onboard microSD card connector's dedicated
+  //            SPI1 clock line. Same reasoning as GPIO9.
+  //   GPIO11 - PIN_SPI1_MOSI - onboard microSD card connector's dedicated
+  //            SPI1 data-out line (datasheet's "SDO", RP2040-to-card
+  //            direction). Same reasoning as GPIO9.
+  //   GPIO12 - PIN_SPI1_MISO - onboard microSD card connector's dedicated
+  //            SPI1 data-in line (datasheet's "SDI", card-to-RP2040
+  //            direction). Same reasoning as GPIO9.
+  //   GPIO13 - SD_CARD_DETECT (also aliased D14) - onboard microSD
+  //            connector's card-presence-detect switch, with a weak
+  //            external 220K pull-up per the vendor datasheet.
+  //            digital_output/pwm_output dropped: driving this pin as an
+  //            output could contend with the card socket's own switch
+  //            state and the external pull-up. digital_input retained
+  //            since reading card presence is a genuine, safe, useful
+  //            operation. This GPIO DOES carry a D14 alias (unlike GPIO9-
+  //            12/25), so without this override it would default to full
+  //            digital_input/digital_output/pwm_output capability via
+  //            the chip-level chipGpios:{} fallback — matches this
+  //            repo's adafruit_feather_adalogger PIN_CARD_DETECT and
+  //            solderparty_rp2350_stamp PIN_CARD_DETECT precedent
+  //            exactly.
+  //   GPIO24 - PIN_LED / LED_BUILTIN (D18 alias) - onboard user-
+  //            programmable green LED, confirmed present via the
+  //            official iLabs datasheet ("This LED is connected to pin
+  //            D18"). Tagged active-high (led_high) on the cross-
+  //            referenced basis described in source #2 above (sibling
+  //            challenger_2040_wifi board's own datasheet states "Active
+  //            level: High" for the same shared reference LED circuit
+  //            reused across this product line; sibling challenger_2040_
+  //            nfc uses the identical GPIO24/"D18" pin). digital_input
+  //            dropped to match this repo's established led_high
+  //            precedent for dedicated onboard LED pins; pwm_output kept
+  //            since arduino-pico's analogWrite() works on any RP2040
+  //            GPIO, enabling brightness dimming.
+  //   GPIO25 - MCP79410 RTC's MFP (multi-function pin), documented by
+  //            iLabs as "PIN_RTC_INTERRUPT" (a logical/datasheet name,
+  //            not an actual macro in arduino-pico's pins_arduino.h -
+  //            confirmed absent from both the local and upstream copies,
+  //            see source #3). This is the RTC chip's open-drain
+  //            interrupt/alarm output, driven by the RTC and merely read
+  //            by the RP2040 - not general-purpose, and not safely
+  //            drivable as an output from the RP2040 side without
+  //            fighting the RTC's own drive of the pin. Tagged
+  //            digital_input only, matching this repo's wiznet_5100s_
+  //            evb_pico INTn ("dedicated onboard interrupt line...
+  //            input-only since it is chip-driven") precedent. Zero
+  //            pins_arduino.h alias exists for this GPIO (see source #4),
+  //            so this entry also makes it visible in the Designer pin
+  //            list with an auto-appended "Check if available on board"
+  //            note, same reasoning as GPIO9-12 above.
+  //
+  // The RTC's I2C0 (Wire0, SDA=GPIO0/SCL=GPIO1) bus is explicitly
+  // documented by iLabs as the same general-purpose "Wire" bus (not a
+  // second, RTC-exclusive I2C channel like challenger_2040_nfc's Wire1-
+  // dedicated-to-PN7150 arrangement) - GPIO0/1 already carry general D7/
+  // D8 aliases and remain ordinary general-purpose/I2C header pins,
+  // sharable with other I2C peripherals a user might wire up (e.g. via a
+  // STEMMA QT connector, matching the adafruit_feather_adalogger
+  // precedent's treatment of its own shared Wire1 bus). No override
+  // applied to GPIO0/1.
+  //
+  // No onboard NeoPixel and no onboard user pushbutton (beyond the
+  // standard RP2040 BOOTSEL, not a normal GPIO, out of scope per the
+  // rpipico/board.json precedent) - confirmed absent by a full re-search
+  // of the official iLabs datasheet page text (see source #1). No
+  // chipGpios tag applied for either.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/challenger_2040_sdrtc/notes.txt
+  "chipGpios": {
+    "9":  { "capabilities": [], "note": "PIN_SPI1_SS / SD Card #CS - onboard microSD card connector's dedicated SPI1 chip-select line, driven by the SD library. Not general-purpose. Confirmed via ilabs.se's official datasheet (\"GPIO9 is the SD Card chip select signal (#CS)\")." },
+    "10": { "capabilities": [], "note": "PIN_SPI1_SCK - onboard microSD card connector's dedicated SPI1 clock line. Not general-purpose. Confirmed via ilabs.se's official datasheet (\"GPIO10 is the serial clock (SCK)\")." },
+    "11": { "capabilities": [], "note": "PIN_SPI1_MOSI - onboard microSD card connector's dedicated SPI1 data-out line. Not general-purpose. Confirmed via ilabs.se's official datasheet (\"GPIO11 is the serial data output (SDO)\")." },
+    "12": { "capabilities": [], "note": "PIN_SPI1_MISO - onboard microSD card connector's dedicated SPI1 data-in line. Not general-purpose. Confirmed via ilabs.se's official datasheet (\"GPIO12 is the serial data input (SDI)\")." },
+    "13": { "capabilities": ["digital_input"], "note": "SD_CARD_DETECT (also aliased D14) - onboard microSD card connector's card-presence-detect switch, with a weak external 220K pull-up per the vendor datasheet. digital_output/pwm_output dropped since driving this pin could contend with the socket's own switch state; digital_input retained since reading card presence is a genuine, safe, useful operation. Matches this repo's adafruit_feather_adalogger / solderparty_rp2350_stamp PIN_CARD_DETECT precedent." },
+    "24": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN (D18 alias) - onboard user-programmable green LED. Confirmed present via ilabs.se's official datasheet (\"This LED is connected to pin D18\"). Active-high polarity is a cross-referenced inference: sibling board challenger_2040_wifi's own datasheet states \"Active level: High\" for the identical shared reference LED circuit reused across this iLabs product line, and sibling challenger_2040_nfc uses the identical GPIO24 pin for its own led_high-tagged LED. digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming." },
+    "25": { "capabilities": ["digital_input"], "note": "MCP79410 RTC's MFP (multi-function pin) / \"PIN_RTC_INTERRUPT\" per iLabs' own datasheet wording (a logical/documentation name only - no such macro exists in arduino-pico's actual pins_arduino.h, local or upstream). Onboard RTC chip's open-drain interrupt/alarm output, driven by the RTC and merely read by the RP2040. digital_output/pwm_output dropped since driving this pin from the RP2040 side would fight the RTC's own drive of the line; digital_input retained since reading the RTC's interrupt/alarm flag is a genuine, safe, useful operation. Matches this repo's wiznet_5100s_evb_pico INTn precedent (dedicated onboard interrupt line, input-only since chip-driven)." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Matches this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS=4, ADC_RESOLUTION=12u).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

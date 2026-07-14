@@ -1,0 +1,52 @@
+Board: Pimoroni Plasma 2350 (RP2350 successor to Plasma 2040)
+Date: 2026-07-13
+
+Note: the audit agent for this board hit a mid-response API server error
+after completing the pins_arduino.h fix but before writing board.json/
+notes.txt. Completed manually from the verified partial work rather than
+re-running the agent, per user instruction not to rerun cut-off agents.
+
+Sources consulted:
+- This board's own pins_arduino.h, which cites the EXACT SAME upstream
+  source as the already-audited RP2040 sibling:
+  https://github.com/rp-rs/rp-hal-boards/blob/main/boards/pimoroni-plasma-2040/src/lib.rs
+- Every pin this file declares (PIN_LED_R=16, PIN_LED_G=17, PIN_LED_B=18,
+  PIN_NEOPIXEL/DAT=15, PIN_WIRE0_SDA=20, PIN_WIRE0_SCL=21) is byte-identical
+  to the RP2040 sibling's already-confirmed values.
+- Full sibling research trail (rp-hal-boards lib.rs, shop.pimoroni.com,
+  learn.pimoroni.com, forums.pimoroni.com, pimoroni-pico MicroPython
+  examples) at
+  boardsDetails/rp2040/rp2040/pimoroni_plasma2040/notes.txt — reused by
+  direct analogy for the pins this RP2350 board's own header omits
+  (BUTTON_A/BUTTON_B/USER_SW/CLK), on the strength of the identical
+  source citation and identical values for every pin that IS declared.
+
+Per-pin findings (mirrors the Plasma 2040 sibling):
+- GPIO12 (BUTTON_A), GPIO13 (BUTTON_B) — onboard pushbuttons, active-low.
+  Tagged ["digital_input","digital_output","pwm_output","button"].
+- GPIO23 (USER_SW/BOOT) — third onboard button, freely reusable as plain
+  input, no diode isolation documented. Same full-capability tagging.
+- GPIO14 (CLK), GPIO15 (DAT/PIN_NEOPIXEL) — external LED-strip
+  screw-terminal output pins, confirmed general-purpose (not the board's
+  own onboard LED, despite the PIN_NEOPIXEL alias name). Plain
+  ["digital_input","digital_output","pwm_output"], no led_neopixel tag.
+- GPIO16/17/18 (LED_R/G/B) — onboard status RGB LED, active-low. Tagged
+  ["digital_output","pwm_output","led_r_low"/"led_g_low"/"led_b_low"].
+
+Bug fixed (already done in the partial pins_arduino.h edit before the
+agent failed): a dead `#if 0 ... #endif`-disabled "Digital pins" block
+(D0-D10) was removed entirely — the parser is preprocessor-blind and was
+still picking up those static-const declarations, re-leaking GPIO29 (the
+deliberately-excluded current-sense/A3 pin) as a phantom pin. Verified
+this fix is complete and correct: no D0-D10 block remains in the file,
+and the file's existing A3/current-sense exclusion note is intact.
+
+No SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies — none of the
+tagged GPIOs coincide with this board's only bus aliases (Wire0 SDA=20/
+SCL=21); it declares no SPI at all.
+
+Summary: Pimoroni Plasma 2350 — 3 buttons + 3-channel RGB LED confirmed
+by direct analogy to the already-verified RP2040 sibling (identical
+source citation, identical declared-pin values); 2 external strip-output
+terminals correctly left general-purpose; 1 phantom-pin bug fixed in
+pins_arduino.h.

@@ -1,0 +1,93 @@
+Board: waveshare_esp32_s3_touch_lcd_169 (Waveshare "ESP32-S3-Touch-LCD-1.69")
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_lcd_169
+NOTE: this is a DIFFERENT product from the non-touch "ESP32-S3-LCD-1.69"
+already audited earlier this session (no confirmable button/LED found there).
+
+SOURCES CONSULTED
+-----------------
+1. https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.69
+   Fetched successfully (WebFetch). Onboard Resources / GPIO Allocation
+   section states: "GPIO0 is the BOOT pin", labeled "Key1 / BOOT" -
+   "hold while powering on, then release to enter download mode."
+   Also states RST is a separate onboard reset button (not a GPIO-
+   controllable button - it drives EN/CHIP_PU, not a pfodWeb-taggable
+   digital input). Page explicitly does NOT list any onboard status
+   LED / NeoPixel / RGB LED in its Onboard Resources table.
+   Also mentioned a "PWR / Key2 power circuit" tied to a "system power
+   control network" (SYS_EN/SYS_OUT), and a buzzer driver - see below,
+   numbers given by this fetch (GPIO40/41/42) conflict with the
+   project's own pins_arduino.h (see discrepancy note below).
+
+2. https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.69 (via WebSearch,
+   direct WebFetch returned HTTP 403)
+   Search summary corroborated: "GPIO0 is the BOOT pin and CHIP_PU is
+   the reset signal", "onboard BOOT and RST function buttons, easy to
+   reset and enter download mode", and separately "a programmable PWM
+   button" (buzzer/power key, not a plain digital button - see below).
+   No mention of any onboard status LED/NeoPixel/RGB LED anywhere in
+   the search results for this specific 1.69" Touch model (contrasted
+   explicitly with the larger ESP32-S3-Touch-LCD-7B, which DOES have
+   power/battery status LEDs - confirmed NOT applicable to this board).
+
+3. Buzzer/SYS_EN/SYS_OUT WebSearch summary (waveshare.com/files schematic
+   PDF + wiki, not directly fetchable - 403/PDF): "The buzzer is
+   controlled via GPIO33, and GPIO35 controls power (SYS_EN) while
+   GPIO36 controls power output (SYS_OUT)." This matches the project's
+   own pins_arduino.h exactly (WS_BUZZ=33, WS_SYS_EN=35, WS_SYS_OUT=36),
+   so treated as the authoritative numbering for this exact board
+   revision/BSP. The GPIO40/41/42 numbers returned by source #1's
+   WebFetch summary for the same signals are inconsistent with this and
+   with the project's pins_arduino.h; likely a fetch/summarization
+   mismatch (e.g. wrong table row) rather than a real second pin set -
+   not used for any tagging decision either way since these pins were
+   never a tagging candidate (see below).
+
+4. https://www.waveshare.com/esp32-s3-touch-lcd-1.69.htm - product page,
+   direct WebFetch returned HTTP 403, not consulted further (source #1
+   and #2 already gave concordant BOOT-button confirmation from two
+   independent vendor pages).
+
+5. Project's own pins_arduino.h (already in repo, not fetched from web) -
+   confirms TX=43, RX=44 (UART0), and the WS_BUZZ/WS_SYS_OUT/WS_SYS_EN
+   GPIO33/36/35 assignments referenced above, plus the existing
+   board.json pin-exclusion notes (display/touch/IMU/RTC/buzzer pins
+   already removed from chipGpios in an earlier audit pass - untouched
+   here).
+
+PINS CONSIDERED BUT NOT TAGGED
+-------------------------------
+- GPIO35 (WS_SYS_EN) and GPIO36 (WS_SYS_OUT): these implement the
+  board's "PWR / Key2" power-button circuit (per source #1/#2 - a
+  power-on-detect/single-click/double-click/long-press power key network,
+  not a simple momentary GPIO button). They ALREADY have no chipGpios
+  entry in this board's board.json - excluded in the prior pin-exclusion
+  audit pass under the vendor's own "GPIO and PSRAM conflict" caution
+  (grouped with GPIO33/buzzer in that exclusion). Per task rules, pins
+  with no existing chipGpios entry from a pre-existing exclusion range
+  are NOT to be re-added even if plausibly a button, so left untagged.
+  This is a judgment call worth a human's attention: if a reviewer
+  decides the PWR/Key2 network is a genuine user-facing button and
+  wants it exposed, GPIO35/36 would need to be deliberately re-added to
+  chipGpios (reversing part of the prior exclusion) - not done here as
+  out of scope for this pass.
+- GPIO33 (WS_BUZZ): buzzer driver output, not a button or LED - not a
+  candidate under the allowed capability tags at all. No chipGpios entry
+  (same pre-existing exclusion as above). Not tagged, no ambiguity.
+- No onboard LED (single-color, RGB, or NeoPixel) was found in any
+  source for this specific 1.69" Touch model. No guess made - this is a
+  confident "board has no onboard LED", not an uncertain judgment call,
+  based on the Onboard Resources tables in sources #1 and #2 explicitly
+  omitting any LED, and the explicit contrast drawn with the LED-equipped
+  7B sibling in source #2's results.
+- RST button: drives EN/CHIP_PU (hardware reset), not a GPIO digital
+  input pfodWeb can read - not a taggable "button" under this scheme,
+  and no GPIO number applies. Not tagged.
+
+WHAT WAS TAGGED
+----------------
+GPIO0 -> ["digital_input","button"] (was
+["digital_input","digital_output","pwm_output"]). Confirmed onboard
+BOOT/Key1 pushbutton via two independent Waveshare vendor pages (sources
+#1 and #2 above). No TX/RX conflict (this board's TX=43, RX=44). Matches
+the same GPIO0-BOOT-button pattern already used elsewhere in this
+codebase for other ESP32-S3 boards (e.g. adafruit_metro_esp32s3).

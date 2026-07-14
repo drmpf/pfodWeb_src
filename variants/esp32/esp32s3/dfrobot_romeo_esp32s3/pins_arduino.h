@@ -9,10 +9,9 @@ static const uint8_t RX = 44;
 static const uint8_t SDA = 1;
 static const uint8_t SCL = 2;
 
-static const uint8_t MOSI = 15;
-static const uint8_t MISO = 16;
-static const uint8_t SCK = 17;
-static const uint8_t SS = 18;
+// pfodWeb NOTE: MOSI/MISO/SCK/SS not declared — this whole bus is the
+// onboard GDI display FPC connector's SPI (GDI_SPI_SCLK/MOSI/MISO/CS
+// below), not general-purpose (see board.json).
 
 #define GDI_DISPLAY_FPC_INTERFACE
 #ifdef GDI_DISPLAY_FPC_INTERFACE

@@ -1,0 +1,144 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Waveshare "RP2040-LoRa" (LF/HF SKUs) — a bare RP2040 module
+  // (USB-C, RESET button, and BOOT button all live on a *separate*
+  // carrier/adapter board per this board's own pins_arduino.h comment,
+  // not on this module itself) with an onboard SX1262 LoRa radio chip
+  // wired via 8 dedicated GPIO lines (SPI CS/CLK/MOSI/MISO + RESET +
+  // BUSY + DIO1 + antenna-switch control), and a single onboard status
+  // LED.
+  //
+  // Sources consulted:
+  // 1. This board's own pins_arduino.h (local copy, already carries a
+  //    detailed schematic-derived pin table and a prior "bespoke pin
+  //    set (not the shared common.h)" note at the bottom) — declares
+  //    SX1262_CS=13, SX1262_CLK=14, SX1262_MOSI=15, SX1262_DIO1=16,
+  //    SX1262_ANT_SW=17, SX1262_BUSY=18, SX1262_RST=23, SX1262_MISO=24,
+  //    PIN_LED=25. Its own pin-table comment (drawn from the vendor
+  //    pinout diagram) confirms GPIO13-18, 23, 24 and GPIO25 are ALL
+  //    absent from the 8-pin FPC connector's broken-out signal list —
+  //    i.e. genuinely internal-only, not general-purpose GPIOs a user
+  //    sketch could repurpose.
+  // 2. raw.githubusercontent.com/earlephilhower/arduino-pico (master)
+  //    variants/waveshare_rp2040_lora/pins_arduino.h — fetched directly;
+  //    confirmed byte-for-byte identical pin assignments to the local
+  //    copy (SX1262_CS=13, CLK=14, MOSI=15, DIO1=16, ANT_SW=17, BUSY=18,
+  //    RST=23, MISO=24, PIN_LED=25) — this is the upstream arduino-pico
+  //    source the local file was copied from verbatim, same precedent
+  //    pattern as challenger_2040_lora/adafruit_feather_rfm.
+  // 3. nwgat.ninja/rp2040-lora/ ("Quick & Easy: Setting up WaveShare
+  //    RP2040-LoRa-LF and Lora-HF Module in Arduino", independent
+  //    third-party guide) — publishes an explicit pin table for this
+  //    exact board: SCK=GP14, MISO=GP24, MOSI=GP15, CS=GP13, Reset=GP23,
+  //    DIO1=GP16, Busy=GP18, Antenna Switch=GP17 — exact match to
+  //    sources #1/#2 on all 8 LoRa control lines.
+  // 4. Waveshare's own wiki (www.waveshare.com/wiki/RP2040-LoRa) blocks
+  //    direct automated fetch (HTTP 403), but a search-engine cache
+  //    snippet of that exact page independently corroborates the
+  //    antenna-switch line verbatim: "SX1262_ANT_SW is a transceiver
+  //    switching pin connected to pin GPIO17 of RP2040, when SX1262 is
+  //    in transmitting state, pin GPIO17 should be kept low, and in
+  //    other states it should be kept high."
+  // 5. forums.raspberrypi.com/viewtopic.php?t=373729 (community thread
+  //    quoting Waveshare's own example/docs) — independently lists
+  //    SCK_PIN=14, MOSI_PIN=15, MISO_PIN=24, NSS_PIN=13, LED_PIN=25 —
+  //    matches sources #1-#3 on both the LoRa SPI pins and the LED pin.
+  // 6. Search-engine cache of the Waveshare wiki's MicroPython example
+  //    and ping-pong demo confirms GPIO25 as "LED_PIN" and that "the
+  //    onboard LED will blink when receiving" in the wiki's own
+  //    ping-pong LoRa demo — confirms GPIO25 is a genuine, documented,
+  //    user-controllable status LED (not merely an internal test point).
+  //
+  // WHY NO chipGpios ENTRIES ARE ADDED FOR THE LORA PINS
+  // (GPIO13-18, 23, 24): this board's own pins_arduino.h already
+  // declares NO `static const uint8_t D<n>` alias at all for any of
+  // GPIO13, 14, 15, 16, 17, 18, 23, or 24 (confirmed: the alias block
+  // only defines D0-D12, D19-D22, D25-D29, A0-A3, SS/MOSI/MISO/SCK,
+  // SDA/SCL — none of which resolve to those 8 numbers), and the file
+  // already carries a "pfodWeb NOTE" recording this exclusion as
+  // deliberate. build_boards.js's buildEsp32Board() (the parser this
+  // "rp2040" family routes through) only lists a GPIO in the Designer's
+  // pin picker if it appears either (a) as a `static const uint8_t`
+  // alias in pins_arduino.h, or (b) as a key in this file's chipGpios
+  // object (`const allGpios = new Set(aliasesByGpio.keys()); for (const
+  // key of Object.keys(chipGpiosMap)) allGpios.add(n);`). Since those 8
+  // GPIOs are already fully absent from pins_arduino.h's alias set, they
+  // are already 100% absent from the Designer's pin list with no
+  // board.json changes needed. Adding chipGpios entries for them here
+  // would be COUNTERPRODUCTIVE: it would re-add each one to allGpios as
+  // a bare, visible "GPIO<n>" row carrying an auto-appended "Check if
+  // available on board" note, undoing the concealment the existing
+  // pins_arduino.h exclusion already achieves and misleadingly
+  // suggesting the pin's availability is merely unverified rather than
+  // physically dedicated to the LoRa radio. Matches this repo's
+  // challenger_2040_lora and adafruit_feather_rfm precedent exactly
+  // (same reasoning, same class of onboard SPI radio module).
+  //
+  // WHY A chipGpios ENTRY IS ADDED FOR GPIO25 (LED): unlike the LoRa
+  // pins, this board's pins_arduino.h DOES declare a `D25` alias for
+  // GPIO25 (alongside PIN_LED=25), so it already appears in the
+  // Designer's pin list as an ordinary D25 GPIO with full default
+  // capability. The chipGpios entry below overrides that default
+  // capability set to correctly tag it as the confirmed onboard LED
+  // (led_high) instead. No vendor documentation found describing a
+  // reversed/active-low wiring for this LED; tagged active-high by the
+  // same standard arduino-pico Blink idiom already established for
+  // every other RP2040 board in this family (rpipico,
+  // wiznet_5500_evb_pico, adafruit_feather_scorpio, challenger_2040_lora,
+  // adafruit_feather_rfm).
+  //
+  // Also confirmed: no onboard NeoPixel/WS2812 and no onboard
+  // GPIO-controllable user button on this module — none of the sources
+  // above (official wiki cache snippets, upstream arduino-pico source,
+  // third-party guide, forum thread) mention either, and this board's
+  // own pins_arduino.h explicitly states "USB C connector, RESET
+  // button, and BOOT button are on a separate board" — i.e. the only
+  // buttons associated with this product are the standard BOOTSEL/RESET
+  // pair on a physically separate FPC carrier/adapter board, out of
+  // scope per this audit's convention (not a normal GPIO on this
+  // module's own board.json).
+  //
+  // BUG-CLASS CHECK (button/LED aliased onto a bus pin): GPIO25 does
+  // not coincide with this board's SS/MOSI/MISO/SCK (GPIO5/3/4/2) or
+  // SDA/SCL (GPIO4/5) aliases, so no spurious bus-capability
+  // auto-append applies here — no pins_arduino.h edit needed.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/waveshare_rp2040_lora/notes.txt
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED (also aliased D25) — onboard status LED, active-high. Confirmed present on GPIO25 via this board's own pins_arduino.h (PIN_LED define, matching the upstream earlephilhower/arduino-pico source verbatim), an independent third-party setup guide (nwgat.ninja/rp2040-lora/) and a Raspberry Pi forum thread both citing Waveshare's own LED_PIN=25 example code, and the Waveshare wiki's own ping-pong LoRa demo description of the onboard LED blinking on receive. digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins; pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. Not affected by this LoRa/LED audit.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

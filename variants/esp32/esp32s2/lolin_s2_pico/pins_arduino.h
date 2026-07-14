@@ -49,7 +49,8 @@ static const uint8_t A13 = 14;
 static const uint8_t A14 = 15;
 static const uint8_t A15 = 16;
 static const uint8_t A16 = 17;
-static const uint8_t A17 = 18;
+// pfodWeb NOTE: A17 (GPIO18) deliberately NOT declared - same dedicated
+// onboard OLED reset pin as S2_PICO_OLED_RESET below.
 static const uint8_t A18 = 19;
 static const uint8_t A19 = 20;
 
@@ -71,6 +72,7 @@ static const uint8_t T14 = 14;
 static const uint8_t DAC1 = 17;
 static const uint8_t DAC2 = 18;
 
-static const uint8_t S2_PICO_OLED_RESET = 18;
+// pfodWeb NOTE: S2_PICO_OLED_RESET (GPIO18) deliberately NOT declared -
+// dedicated onboard OLED reset pin (see board.json chipGpios override).
 
 #endif /* Pins_Arduino_h */

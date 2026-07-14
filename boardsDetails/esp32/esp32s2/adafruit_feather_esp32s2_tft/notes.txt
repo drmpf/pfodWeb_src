@@ -1,0 +1,69 @@
+Board: Adafruit ESP32-S2 TFT Feather (adafruit_feather_esp32s2_tft), chip esp32s2
+Date: 2026-07-14 (independent verification pass - real vendor sources checked)
+
+SOURCES CONSULTED
+-----------------
+1. https://learn.adafruit.com/adafruit-esp32-s2-tft-feather/pinouts -
+   official Adafruit Learning System pinout guide. Confirms red LED
+   "labeled #13 on the board", `LED_BUILTIN`/`board.LED`. NeoPixel via
+   `PIN_NEOPIXEL`/`board.NEOPIXEL` with NEOPIXEL_POWER pull-high.
+   TFT_I2C_POWER controls power to the TFT display, BME280 sensor, and
+   STEMMA QT connector.
+2. https://learn.adafruit.com/adafruit-esp32-s2-tft-feather/read-a-push-button -
+   official Adafruit tutorial. Confirms an onboard physical pushbutton:
+   "This example uses the board's built-in push-button ... The ESP32-S2
+   TFT Feather's push button we're using in this example is located
+   directly next to the TFT" and identified on the silkscreen as "BOOT".
+3. https://github.com/espressif/arduino-esp32/blob/master/variants/adafruit_feather_esp32s2_tft/pins_arduino.h -
+   vendor pins_arduino.h (fetched directly). Confirms: LED_BUILTIN=13,
+   PIN_NEOPIXEL=33, NEOPIXEL_POWER=34, TFT_CS=7, TFT_RST=40, TFT_DC=39,
+   TFT_BACKLITE=45, TFT_I2C_POWER=21, SPI MOSI=35/SCK=36/MISO=37/SS=7,
+   I2C SDA=42/SCL=41, UART TX=1/RX=2. No BUTTON/PIN_BUTTON macro defined
+   - the BOOT button is documented only via source #2.
+
+PER-PIN FINDINGS
+----------------
+- GPIO7: excluded (not present in chipGpios). CONFIRMED - TFT_CS=7 per
+  vendor pins_arduino.h (source #3), part of the dedicated TFT/SPI bus.
+  Matches the earlier claim.
+- GPIO35, 36, 37, 39, 40, 45: excluded (not present in chipGpios).
+  CONFIRMED - exactly MOSI/SCK/MISO/TFT_DC/TFT_RST/TFT_BACKLITE per
+  source #3. Matches the earlier claim.
+- GPIO21, GPIO34: excluded (not present in chipGpios). CONFIRMED -
+  TFT_I2C_POWER=21 and NEOPIXEL_POWER=34 per source #3 (note: on this
+  board these two power-gate roles are swapped relative to the plain
+  Feather and Reverse TFT Feather, where I2C_POWER/TFT_I2C_POWER=7/21
+  and NEOPIXEL_POWER=21/21 differ - each board's own pins_arduino.h was
+  checked individually rather than assumed from a sibling). Matches the
+  earlier claim.
+- GPIO13: capabilities ["digital_output","pwm_output","led_high"].
+  CONFIRMED - LED_BUILTIN=13 (source #3), documented red LED "labeled
+  #13" (source #1), same active-high circuit as the rest of the Feather
+  ESP32-Sx line. Matches the earlier claim.
+- GPIO33: capabilities ["digital_output","pwm_output","led_neopixel"].
+  CONFIRMED - PIN_NEOPIXEL=33 (source #3), documented onboard NeoPixel
+  (source #1). Matches the earlier claim.
+- GPIO0: capabilities changed from ["digital_input","digital_output",
+  "pwm_output"] to ["digital_input","button"]. CORRECTION (addition) -
+  the previous audit pass missed this. Source #2 explicitly documents a
+  real onboard BOOT pushbutton "located directly next to the TFT",
+  confirmed usable in application code (the whole point of the tutorial
+  page is reading it as a digital input). pinNotes retains the
+  chip-level strapping warning "Must be HIGH for normal boot", unchanged
+  - dual-purpose pin, same pattern as the plain Feather and Reverse TFT
+  Feather siblings.
+- GPIO1-6, 8-12, 14-18: kept at chip-level default - I2C (SDA=42/SCL=41)
+  and UART (TX=1/RX=2) pins are broken out to headers/STEMMA QT for user
+  reuse, not internally dedicated, consistent with this repo's treatment
+  of exposed-but-labeled interface pins on other boards.
+- GPIO38, 41-44: kept at chip-level default - no change.
+- GPIO46: kept at chip-level default (input-only) - no change.
+
+SUMMARY
+-------
+Independently confirmed via learn.adafruit.com and vendor pins_arduino.h:
+the TFT+SPI-bus exclusion (GPIO7/35-37/39/40/45), the power-gate
+exclusion (GPIO21/34), GPIO13 led_high, and GPIO33 led_neopixel are all
+correct as previously found. One correction (addition): GPIO0 is a real,
+application-usable onboard BOOT pushbutton per Adafruit's own tutorial
+page and was missing the "button" tag; it has now been added.

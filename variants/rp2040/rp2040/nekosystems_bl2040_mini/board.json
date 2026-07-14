@@ -1,0 +1,143 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Neko Systems BL2040 Mini" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) RP2040 board.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: NekoSystems "BL2040 Mini" (Alpha V3) — a SimpleFOC/Arduino-
+  // compatible RP2040-powered BRUSHLESS SERVO/MOTOR DRIVER board, NOT a
+  // general-purpose dev-kit. It integrates a 3-phase 6-PWM gate driver
+  // stage, 2x Hall-effect current sensors (+/-20A), an onboard 14-bit
+  // magnetic angle sensor (SPI0, solder-on daughterboard), and VBUS/VCC
+  // sense inputs — this repo's local pins_arduino.h for this board
+  // already carries a pre-existing "pfodWeb NOTE" comment (added in an
+  // earlier session, before per-board board.json files existed for this
+  // family) correctly identifying GPIO0-5 and GPIO16-18 as dedicated to
+  // this onboard hardware, not general-purpose.
+  //
+  // RESULT OF THIS AUDIT: NO CHANGE to chipGpios. Every avenue checked
+  // below for the two things this audit tags — an onboard user LED
+  // (PIN_LED, GPIO6) and any onboard button/NeoPixel — came up without
+  // authoritative confirmation, or confirmed the feature does not exist.
+  // Per this audit's explicit "never guess" instruction, no capability
+  // tags were added rather than assume LED color/polarity from the
+  // alias name alone.
+  //
+  // Sources consulted:
+  // 1. This board's own pins_arduino.h
+  //    (variants/rp2040/rp2040/nekosystems_bl2040_mini/pins_arduino.h) —
+  //    `#define PIN_LED (6u)` under a "STANDARD SECTION" heading, no
+  //    color/polarity comment. No button/key/BOOT alias of any kind
+  //    anywhere in the file. No PIN_NEOPIXEL/WS2812 alias anywhere.
+  //    GPIO16/17/18 declared BOTH as PIN_HALL_RX/PIN_HALL_CS/PIN_HALL_SCK
+  //    AND as PIN_SPI0_MISO/PIN_SPI0_SS/PIN_SPI0_SCK, with an explicit
+  //    vendor comment: "SPI0 is used by the on-board magnetic angle
+  //    sensor, do not change the pins assigned to this SPI object!" — a
+  //    genuinely dedicated onboard peripheral, not a spare/accidental bus
+  //    collision (the exact bug class this audit checks for), so no
+  //    #define removal is warranted here — matches the redscorp_rp2040_
+  //    promini / arduino_nano_connect precedent of "deliberate dual-role,
+  //    not a bug" but here it's dedicated-sensor-vs-bus rather than
+  //    LED-vs-bus, and PIN_LED (GPIO6) itself has no bus alias at all, so
+  //    the bug class doesn't even apply to the LED pin.
+  // 2. WebSearch + WebFetch of https://oshwlab.com/nekosystems/bl2040-mini-alpha-v3
+  //    (the board's official OSHWLab open-source-hardware project page —
+  //    the only public project page found for this board). Verbatim
+  //    hardware description: "RP2040 32-bit microcontroller, with 4MB of
+  //    flash; 2x Hall effect current sensors, +/-20A range; 14-bit hall
+  //    effect angle sensor on the back (requires soldering); All IO
+  //    broken out to headers, including allocated pins." Only LED
+  //    mentioned anywhere on the page is an errata note: "The green LED
+  //    for +5V power rail is a bit too bright, might want to add a
+  //    slightly higher resistor value" — this is a power-rail-presence
+  //    indicator hard-wired directly across the +5V rail (same category
+  //    as the redscorp_rp2040_promini precedent's D2 buck-boost
+  //    power-good LED), NOT connected to any RP2040 GPIO, and NOT the
+  //    same LED as PIN_LED/GPIO6 — out of scope. No button of any kind,
+  //    no NeoPixel/RGB LED, mentioned anywhere on this page. Page had "No
+  //    data" in its Attachments/BOM section and no schematic could be
+  //    retrieved through WebFetch (JS-rendered viewer, not a static
+  //    file/PDF link like the redscorp_rp2040_promini precedent's
+  //    downloadable schematic PDF).
+  // 3. WebFetch of raw.githubusercontent.com/earlephilhower/arduino-pico
+  //    master variants/nekosystems_bl2040_mini/pins_arduino.h — confirms
+  //    this repo's local file matches upstream arduino-pico's own copy
+  //    exactly for every #define (PIN_LED=6, hall/SPI0 pins, etc.); the
+  //    only difference is this repo's local copy additionally inlines
+  //    ../generic/common.h's D-pin/bus-alias boilerplate that upstream
+  //    reaches via #include (a pre-existing repo convention, not part of
+  //    this audit).
+  // 4. Checked for a CircuitPython board port (raw.githubusercontent.com
+  //    adafruit/circuitpython main ports/raspberrypi/boards/
+  //    nekosystems_bl2040_mini/pins.c) — 404, does not exist. Checked for
+  //    a MicroPython board port, a Zephyr devicetree port, and a
+  //    Hackaday feature/review — none found. This board has essentially
+  //    no independent community documentation beyond the OSHWLab project
+  //    page and its own arduino-pico core support; it is a niche,
+  //    Arduino-only motor-controller board.
+  //
+  // Per-pin findings:
+  //   GPIO6 (PIN_LED): a real onboard LED exists (per the "STANDARD
+  //     SECTION" heading grouping it with Serial/SPI/Wire — i.e. a
+  //     general-purpose board feature, not motor-control-specific), but
+  //     NO source found documents its color or polarity (active-high vs
+  //     active-low). Per this audit's explicit instruction, left
+  //     UNTAGGED (no led_high/led_low) rather than guess from the alias
+  //     name — reported as NO CHANGE, not a missed tag. GPIO6 carries no
+  //     bus alias of any kind in this board's pins_arduino.h, so the
+  //     "LED pin also aliased as SPI/I2C bus role" bug class does not
+  //     apply here regardless.
+  //   No button/key/BOOT GPIO alias exists anywhere in this board's
+  //     pins_arduino.h, and none is mentioned in the only available
+  //     project documentation (OSHWLab page) — genuinely absent, not
+  //     under-researched.
+  //   No NeoPixel/WS2812 GPIO alias exists anywhere in this board's
+  //     pins_arduino.h, and none is mentioned in the OSHWLab page —
+  //     genuinely absent.
+  //   GPIO16/17/18 (PIN_HALL_RX/CS/SCK = PIN_SPI0_MISO/SS/SCK): confirmed
+  //     genuinely dedicated to the onboard magnetic angle sensor by the
+  //     vendor's own pins_arduino.h comment ("do not change the pins
+  //     assigned to this SPI object") — not a spare/unused bus, so not
+  //     the "remove a colliding #define" bug class. No button/LED
+  //     capability is at stake on these pins either way (they carry no
+  //     button/LED alias), so this is a documentation-only observation,
+  //     not a chipGpios change — consistent with this audit's scope
+  //     being button/LED/NeoPixel tagging plus the specific bus-collision
+  //     bug class (a confirmed button/LED pin ALSO aliased as a bus
+  //     role), neither of which applies to these three pins.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/nekosystems_bl2040_mini/notes.txt
+  "chipGpios": {},
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as every other RP2040/RP2350 board (this board's
+  // pins_arduino.h declares PIN_IOUT_A/B and PIN_VCC_SENSE as its analog
+  // inputs, all within the standard GPIO26-29 ADC-capable range).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

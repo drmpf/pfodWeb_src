@@ -1,0 +1,117 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only. Plain (non-WiFi) RP2350 board,
+  // no onboard radio.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family audit, button/LED/NeoPixel
+  // tagging, 2026-07-13):
+  //
+  // Board: Pimoroni "Plasma 2350" — the RP2350 successor to the already-
+  // audited Plasma 2040 sibling (variants/rp2040/rp2040/pimoroni_plasma2040),
+  // an all-in-one USB-C-powered driver for external WS2812/Neopixel and
+  // APA102/Dotstar addressable LED strips, plus its own onboard status
+  // RGB LED and three buttons.
+  //
+  // This board's own pins_arduino.h header comment cites the IDENTICAL
+  // upstream source as the Plasma 2040 sibling:
+  // https://github.com/rp-rs/rp-hal-boards/blob/main/boards/pimoroni-plasma-2040/src/lib.rs
+  // — and every pin this file DOES declare (PIN_LED_R=16, PIN_LED_G=17,
+  // PIN_LED_B=18, PIN_NEOPIXEL/DAT=15, PIN_WIRE0_SDA=20, PIN_WIRE0_SCL=21)
+  // matches the RP2040 sibling's confirmed values exactly. Combined with
+  // Pimoroni's well-established pattern of reusing an identical PCB
+  // layout/screw-terminal position across a chip refresh (same practice
+  // seen on this repo's other 2040->2350 sibling pairs, e.g.
+  // waveshare_rp2040_zero/waveshare_rp2350_zero, pimoroni_tiny2040/2350),
+  // this is treated as very strong (though not independently re-fetched
+  // per-source) evidence that the undeclared BUTTON_A/BUTTON_B/CLK/USER_SW
+  // pins carry over identically from the RP2040 sibling's own
+  // rp-hal-boards-sourced findings (see
+  // boardsDetails/rp2040/rp2040/pimoroni_plasma2040/notes.txt for that
+  // sibling's full per-source research trail: rp-hal-boards lib.rs,
+  // shop.pimoroni.com, learn.pimoroni.com, forums.pimoroni.com, and
+  // pimoroni-pico's own MicroPython examples).
+  //
+  // Per-pin findings (mirrors the Plasma 2040 sibling exactly):
+  //   GPIO12 (BUTTON_A), GPIO13 (BUTTON_B) — onboard general-purpose
+  //     pushbuttons, active-low, no special circuitry documented on the
+  //     RP2040 sibling. Full digital_input/digital_output/pwm_output +
+  //     button, matching adafruit_feather_scorpio's GPIO7 precedent.
+  //   GPIO23 (USER_SW/BOOT) — third onboard button, doubles as BOOT-select
+  //     but freely reusable as a plain input by running code per the
+  //     sibling's confirmed sources, no diode-isolation caveat found. Same
+  //     full-capability + button treatment.
+  //   GPIO14 (CLK, APA102-only), GPIO15 (DAT/PIN_NEOPIXEL, APA102+WS2812)
+  //     — external LED-strip screw-terminal output pins, confirmed
+  //     general-purpose GPIO on the sibling (not dedicated silicon, not
+  //     the board's own onboard LED). Plain digital_input/digital_output/
+  //     pwm_output, no led_neopixel tag (reserved for the board's OWN
+  //     addressable LED, which this pin is not — it drives an external
+  //     user-attached strip).
+  //   GPIO16 (LED_R), GPIO17 (LED_G), GPIO18 (LED_B) — the board's own
+  //     onboard status RGB LED, active-low (matches sibling). digital_output
+  //     + pwm_output + led_r_low/led_g_low/led_b_low.
+  //
+  // Same missing-include gap as the RP2040 sibling: this board's
+  // pins_arduino.h does not #include ../generic/common.h (or an RP2350
+  // equivalent), so none of the static-const aliases the parser scans for
+  // exist for these pins without the explicit chipGpios entries below —
+  // same mechanism already documented on the sibling and on
+  // pimoroni_tiny2040/2350.
+  //
+  // A dead `#if 0 ... #endif`-disabled "Digital pins" block (D0-D10,
+  // including a re-leak of GPIO29/A3's "not pinned out" sentinel) was
+  // found and removed entirely from this board's own pins_arduino.h
+  // during this same pass — see the pfodWeb NOTE directly in that file.
+  // Same bug class as the RP2040 sibling's SS/MOSI/MISO/SCK comment-removal
+  // fix (parser is preprocessor- and comment-blind, plain regex scan).
+  //
+  // No SDA/SCL/SS/MOSI/MISO/SCK bus-collision bug applies to any tagged
+  // pin — GPIO12/13/14/15/16/17/18/23 don't coincide with this board's
+  // only bus aliases (PIN_WIRE0_SDA=20/PIN_WIRE0_SCL=21); it declares no
+  // SPI at all (PIN_SPI0_* / PIN_SPI1_* are all the 31u "not pinned out"
+  // sentinel).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/pimoroni_plasma2350/notes.txt
+  "chipGpios": {
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "BUTTON_A — onboard general-purpose pushbutton, active-low. Not declared in this board's own pins_arduino.h (no static-const alias); confirmed by direct analogy to the RP2040 sibling pimoroni_plasma2040 (identical GPIO12/rp-hal-boards-sourced finding, same upstream lib.rs cited by both files' header comments, identical pin layout carried over from the 2040 board)." },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "BUTTON_B — onboard general-purpose pushbutton, active-low. Same rationale/sourcing as GPIO12 (see pimoroni_plasma2040 sibling)." },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "CLK — screw-terminal clock line for external APA102/Dotstar LED strip output. Confirmed general-purpose (not dedicated silicon) on the RP2040 sibling; not declared in this board's own pins_arduino.h, added via chipGpios by direct analogy to the sibling." },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "DAT — screw-terminal data line for external WS2812/Neopixel and APA102/Dotstar LED strip output. This board's own pins_arduino.h PIN_NEOPIXEL(15) alias, but despite the name it drives the EXTERNAL strip connector (confirmed on the RP2040 sibling), not an onboard NeoPixel. No led_neopixel tag." },
+    "16": { "capabilities": ["digital_output", "pwm_output", "led_r_low"], "note": "LED_R — onboard status RGB LED red channel, active-low. Confirmed via this board's own pins_arduino.h PIN_LED_R(16), matching the RP2040 sibling's rp-hal-boards-confirmed value/polarity exactly." },
+    "17": { "capabilities": ["digital_output", "pwm_output", "led_g_low"], "note": "LED_G — onboard status RGB LED green channel, active-low. Same sourcing as GPIO16." },
+    "18": { "capabilities": ["digital_output", "pwm_output", "led_b_low"], "note": "LED_B — onboard status RGB LED blue channel, active-low. Same sourcing as GPIO16." },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "USER_SW — third onboard button, doubles as the BOOT-select switch but confirmed freely reusable as a plain input by running code on the RP2040 sibling, no diode-isolation documented. Not declared in this board's own pins_arduino.h; added via chipGpios by direct analogy to the sibling." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2350's one 12-bit ADC (0-4095), ~3.3V reference. This board's own
+  // pins_arduino.h declares A0-A2 (GPIO26-28) directly via static const,
+  // so those parse correctly without chipGpios help; A3/GPIO29
+  // (current-sense) is deliberately excluded, matching the RP2040
+  // sibling's identical treatment.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

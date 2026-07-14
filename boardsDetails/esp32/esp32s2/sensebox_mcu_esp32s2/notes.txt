@@ -1,0 +1,87 @@
+senseBox MCU-S2 (ESP32-S2) - button/LED research notes
+========================================================
+
+Sources consulted (WebSearch + WebFetch):
+
+1. https://github.com/sensebox/senseBox-MCU-S2-ESP32S2
+   Official senseBox MCU-S2 GitHub repo (board support source). Located via
+   WebSearch; used as the pointer to the README below.
+
+2. https://github.com/sensebox/senseBox-MCU-S2-ESP32S2/blob/main/README.md
+   Confirms: board has a built-in "verbaute WS2812-LED" (built-in WS2812 LED)
+   that alternates red/green/blue in the example sketch - confirms the onboard
+   RGB LED is a WS2812/NeoPixel-type addressable LED. Also confirms the board's
+   only physical buttons are "Reset" (reset knob) and "Boot-Switch" (used to
+   enter the ROM bootloader / DFU mode) - no separate dedicated "user" button
+   is documented. No explicit GPIO numbers given for either the LED or the
+   buttons in this README.
+
+3. https://docs.sensebox.de/en/docs/hardware/accessoires/rgb-led-esp32/
+   senseBox official docs "RGB-LED" page for the ESP32 MCU family. States
+   "The RGB-LED is built on the MCU S2! You don't have to connect anything
+   else here," and gives an Arduino example using the Adafruit_NeoPixel
+   library (rgb_led_1.setPixelColor / .show()) - confirms addressable/NeoPixel
+   type and that it is pre-wired on-board using the board's built-in pin
+   definitions. Does not spell out the literal GPIO number in the fetched
+   excerpt (relies on the board's own PIN_RGB_LED macro).
+
+4. https://docs.sensebox.de/en/docs/boards/mcus2/mcu-s2-overview/
+   senseBox MCU-S2 overview page. General overview only (processor, IO count,
+   connectivity) - did not mention specific GPIO assignments for LED or
+   buttons.
+
+5. https://sensebox.github.io/books-v2/home/en/komponenten/sensebox-mcu.html
+   senseBox "components" book page for the MCU. General feature list only -
+   no GPIO-level detail on LED or buttons.
+
+6. WebSearch "senseBox MCU-S2 ESP32 schematic RGB LED GPIO1" - aggregate
+   search summary independently stated "The NeoPixel RGB LED on the senseBox
+   MCU-S2 is connected to GPIO 1," corroborating the board's own
+   pins_arduino.h (PIN_RGB_LED / RGBLED_PIN = 1, RGBLED_NUM = 1).
+
+7. WebSearch "senseBox MCU-S2 board button GPIO" - aggregate search summary
+   confirmed the only documented buttons are Reset and DFU/Boot0
+   ("Boot-Switch"), consistent with the GitHub README.
+
+In-repo evidence used alongside the above (not relied on alone, per task
+rules - used only as corroboration for the independently-sourced vendor
+docs):
+ - variants/esp32/esp32s2/sensebox_mcu_esp32s2/pins_arduino.h:
+   PIN_RGB_LED=1 / RGBLED_PIN=1 / RGBLED_NUM=1 (matches vendor docs' GPIO1
+   WS2812 claim). No BOOT/button macro is defined in this file at all - the
+   Boot-Switch button's GPIO0 tie is inferred from ESP32-S2 silicon-level
+   boot-strap behaviour (GPIO0 must be pulled low to enter download/DFU mode
+   on all ESP32-S2 designs), which is also reflected in this board.json's own
+   pre-existing pinNotes: "0": "Must be HIGH for normal boot".
+ - variants/esp32/esp32s2/sensebox_mcu_esp32s2/board.json (pre-existing,
+   chip-level, before this task's edits) already carried this pinNotes entry,
+   sourced originally from Espressif's own ESP32-S2 documentation.
+ - variants/esp32/esp32/espea32/board.json - existing precedent in this
+   codebase for tagging a boot/flash pushbutton on GPIO0 as "button"
+   (confirmed onboard FLASH pushbutton K2), used as a style/precedent
+   reference for treating an ESP32(-S2) BOOT button as a valid "button" tag
+   target.
+
+Pins considered but NOT tagged, and why:
+ - None. Both candidate pins (GPIO0 button, GPIO1 RGB LED) were tagged; see
+   summary below. No other GPIO on this board had any credible LED/button
+   evidence (no other GPIO defines relate to an LED or a pushbutton anywhere
+   in pins_arduino.h or the vendor docs reviewed).
+ - Note for reviewer: the GPIO0 "Boot-Switch" button is a boot-mode strapping
+   pin (must be HIGH at reset for normal boot). It was tagged "button" only
+   because there is a directly analogous, already-approved precedent in this
+   codebase (esp32/espea32/board.json GPIO0 FLASH button) and because GPIO0
+   is universally the ESP32-S2 boot-select pin, so the vendor-documented
+   physical "Boot-Switch" button is certainly wired there. If a human
+   reviewer considers boot-strap buttons out of scope for the "button"
+   capability (since holding it captures boot mode, not free-running
+   application input), this tag should be reconsidered/reverted.
+ - No TX/RX conflict: this board's UART TX/RX are GPIO43/GPIO44
+   (pins_arduino.h), so neither GPIO0 nor GPIO1 collides with the
+   hard-reserved serial pins.
+
+Summary of what was tagged:
+ - GPIO1 -> ["digital_output","led_neopixel","pwm_output"] (onboard WS2812/
+   NeoPixel RGB LED, pwm_output kept because it was already present).
+ - GPIO0 -> ["digital_input","button"] (onboard Boot-Switch pushbutton;
+   analog/digital_output/pwm_output stripped per the button-tag spec).

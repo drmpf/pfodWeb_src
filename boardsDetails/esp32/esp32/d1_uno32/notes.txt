@@ -1,0 +1,165 @@
+Board: d1_uno32 (chip: esp32) — Wemos/LOLIN D1 R32 (Uno-shield-shaped ESP32 board)
+Audit date: 2026-07-12 (updated same day, follow-up pass)
+Outcome: board.json override CREATED — GPIO2 tagged ["digital_output", "led_high",
+"pwm_output"] for the confirmed real onboard LED (LED_BUILTIN). pins_arduino.h
+left unmodified.
+
+FOLLOW-UP CORRECTION (same-day)
+--------------------------------
+The initial pass of this audit under-reported this finding: it correctly
+identified GPIO2/LED_BUILTIN as a real, confirmed onboard LED via multiple
+independent sources, but then incorrectly concluded "already correctly
+covered by the chip-level board.json" and took no action. That was wrong —
+the chip-level default only assigns GPIO2 the generic capability set
+(analog_input_serial, digital_input, digital_output, pwm_output); it does
+not and cannot know about board-specific onboard LEDs, so it never applies
+a led_high/led_low tag. Per this session's mandate (opportunistic
+button/LED tagging wherever a real onboard LED is confirmed), a
+board-specific board.json override was required. This has now been done
+(see "board.json OVERRIDE CREATED" section below).
+
+LED POLARITY DETERMINATION
+----------------------------
+Searched specifically for D1 R32 / d1_uno32 LED_BUILTIN polarity evidence
+(vendor PDFs, "active low" search, blink examples). The vendor spec PDFs
+(handsontec.com, halloweenfreak.de) remained undecodable binary content on
+this pass too and gave no usable polarity text.
+
+However, a decisive precedent already exists in this same codebase:
+C:\ai\aicode\pfodWeb\variants\esp32\esp32\doitESPduino32\board.json carries
+a pfodWeb NOTE stating GPIO2 is tagged "led_high", confirmed active-high,
+explicitly citing "WeMos D1 R32 clone reference designs this board is
+based on" as one of the reference designs for that determination. The
+doitESPduino32 board and this d1_uno32 board are both DOIT ESP32 DEVKIT V1
+/ D1 R32-style clone designs sharing the same GPIO2 onboard LED placement.
+Combined with:
+- espboards.dev/esp32/d1-uno32/ and teachmemicro.com both confirming the
+  onboard LED is on GPIO2 for this exact board,
+- the general convention across ESP32 DEVKIT V1-style clone boards (the
+  dominant design family GPIO2 LEDs use) being active-high (digitalWrite
+  HIGH turns the LED on) per multiple independent blink-example sources
+  found in this session's web search,
+this is judged solid enough evidence to tag GPIO2 as active-high
+("led_high") rather than leaving it untagged.
+
+board.json OVERRIDE CREATED
+------------------------------
+C:\ai\aicode\pfodWeb\variants\esp32\esp32\d1_uno32\board.json — full copy
+of the chip-level esp32/esp32/board.json default, with one change: GPIO2's
+"capabilities" list changed from
+  ["analog_input_serial", "digital_input", "digital_output", "pwm_output"]
+to
+  ["digital_output", "led_high", "pwm_output"]
+(analog_input_serial and digital_input dropped, matching the exclusivity
+convention established elsewhere in this session/codebase, e.g.
+doitESPduino32). A pfodWeb NOTE comment at the top of the file records the
+sources and reasoning. pinNotes and all other GPIO entries are unchanged
+from the chip-level default.
+
+GPIO2 bus-alias collision check (repeated for this override): GPIO2 is not
+aliased anywhere in pins_arduino.h to SDA/SCL/SS/MOSI/MISO/SCK/TX/RX (those
+are GPIO 21/22/5/23/19/18/1/3 respectively), so tagging it led_high does
+not conflict with build_boards.js's unconditional bus-capability
+appending.
+
+FILE REVIEWED
+-------------
+C:\ai\aicode\pfodWeb\variants\esp32\esp32\d1_uno32\pins_arduino.h (56 lines, read in full).
+
+FLAGGED ITEM: `#define PIN_A0 A0  // backward compatibility` (line 53)
+--------------------------------------------------------------------
+A0 is declared on line 19 as `static const uint8_t A0 = 2;`, so PIN_A0 is a
+plain alias-of-an-alias for GPIO2 — it introduces no new pin identity and
+carries no bus-capability side effect. Confirmed harmless as suspected.
+
+OTHER DECLARATIONS CHECKED
+---------------------------
+- LED_BUILTIN = 2 (line 26), also aliased as BUILTIN_LED. This is a real,
+  confirmed onboard LED (see external research below) and is now tagged
+  "led_high" in the new board.json override — see "board.json OVERRIDE
+  CREATED" above. Pin 2 still keeps its boot-strapping pinNote ("Must be
+  LOW or floating at boot"), unchanged. GPIO2 is not aliased to
+  SDA/SCL/SS/MOSI/MISO/SCK/TX/RX anywhere in this file, so the led_high tag
+  does not collide with build_boards.js's unconditional bus-capability
+  appending.
+- SDA=21, SCL=22, SS=5, MOSI=23, MISO=19, SCK=18, TX=1, RX=3 — all standard
+  bus aliases already present in the stock file; none of them coincide with
+  the LED pin (GPIO2) or any other candidate special-purpose pin, so no
+  collision to fix.
+- No button, no reset-pin, no battery-sense pin, no other special hardware
+  constant declared anywhere in this pins_arduino.h.
+
+EXTERNAL RESEARCH (Wemos/LOLIN D1 R32 real hardware)
+------------------------------------------------------
+- This board does not have a dedicated page in WEMOS's own documentation
+  site (wemos.cc/en/latest) — it appears to be a third-party-manufactured
+  "Uno-shield ESP32" board (sometimes sold as ESPDuino-32) rather than an
+  officially documented WEMOS product line member (unlike D1 mini / D32 /
+  D32 Pro, which do have wemos.cc pages).
+- espboards.dev/esp32/d1-uno32/ : only onboard peripheral documented is the
+  built-in LED on GPIO2 (matches LED_BUILTIN already in the file). No
+  button or battery-sense pin listed.
+- teachmemicro.com "Getting Started with WEMOS D1 R32": confirms onboard
+  LED on GPIO2, shared with the A0 silkscreen label. Only button described
+  is the RST/EN reset button (tied to the ESP32 EN pin via an RC network,
+  which is a chip enable line, not a user GPIO — not something
+  chipGpios/pinNotes tags). No evidence of a separate GPIO0 "boot/flash"
+  push-button distinct from the RST/EN button; some auto-program boards of
+  this style rely on USB-serial DTR/RTS auto-reset instead of a manual
+  button, consistent with the absence of a second button in every source
+  checked.
+- No source (espboards.dev, teachmemicro.com, handsontec.com spec sheet,
+  general WEMOS documentation) mentions a battery connector or a
+  battery-voltage-divider ADC pin on this board — unlike the Wemos
+  Lolin32/D32 family, which does have a JST battery connector and a
+  documented divider on GPIO35. The D1 R32 is a shield-form-factor board
+  powered via USB or Vin/barrel jack, not battery-first, so this is
+  consistent with expectations.
+- Two vendor PDFs (handsontec.com WeMos D1 R32 spec sheet,
+  halloweenfreak.de D1_R32_ENG.pdf) were fetched but both returned
+  corrupted/undecoded binary PDF content and yielded no usable text.
+  Judged non-blocking since two independent readable web sources
+  (espboards.dev, teachmemicro.com) agreed on the same facts (LED on GPIO2
+  only, no button/battery pin), and those facts already match what is in
+  pins_arduino.h and board.json.
+
+REASONING / CONCLUSION
+-----------------------
+- PIN_A0 flag: confirmed false positive, harmless alias, left in place
+  (not deleted — deleting it would remove a real backward-compatibility
+  macro used by no-op-equivalent code elsewhere, and it has no capability
+  side effect since it aliases an already-tagged pin with the same value).
+- LED_BUILTIN/GPIO2: confirmed real onboard LED via espboards.dev and
+  teachmemicro.com, polarity determined active-high via the doitESPduino32
+  precedent (which explicitly names D1 R32 clone reference designs) plus
+  the general DEVKIT V1-clone-family convention. Tagged "led_high" in a
+  new board.json override, dropping analog_input_serial/digital_input per
+  the established exclusivity convention. No bus-alias collision.
+- No button, no battery-sense pin found on real hardware to tag or
+  exclude.
+- Result: board.json override CREATED for d1_uno32 (GPIO2 only change);
+  pins_arduino.h left unmodified.
+
+SOURCES CONSULTED
+------------------
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32\d1_uno32\pins_arduino.h (read in full)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32\board.json (chip-level default, read in full)
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32\doitESPduino32\board.json (in-codebase
+  precedent for GPIO2 led_high polarity on D1 R32-style clone designs)
+- https://www.espboards.dev/esp32/d1-uno32/
+- https://www.teachmemicro.com/getting-started-with-wemos-d1-r32/
+- https://docs.platformio.org/en/latest/boards/espressif32/wemos_d1_uno32.html
+- https://handsontec.com/dataspecs/module/ESP/WeMos%20D1%20R32.pdf (fetched, unreadable binary — non-blocking, corroborated elsewhere)
+- https://www.halloweenfreak.de/arduino/pdfs/D1_R32_ENG.pdf (fetched, unreadable binary — non-blocking, corroborated elsewhere)
+- wemos.cc documentation site search (no dedicated D1 R32/uno32 page found)
+- web search for D1 R32 / d1_uno32 LED_BUILTIN active-low evidence and blink
+  examples (no board-specific polarity source found; relied on the
+  doitESPduino32 precedent + DEVKIT V1-clone-family convention instead)
+
+ONE-LINE SUMMARY
+------------------
+d1_uno32: PIN_A0 confirmed harmless alias-of-alias; real onboard LED
+confirmed at GPIO2 (LED_BUILTIN), active-high per doitESPduino32 precedent
+and DEVKIT V1-clone convention — board.json override created tagging GPIO2
+["digital_output", "led_high", "pwm_output"]; no battery pin, no dedicated
+button found; pins_arduino.h left unmodified.

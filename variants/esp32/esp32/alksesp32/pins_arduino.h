@@ -67,10 +67,14 @@ static const uint8_t S5 = 21;
 static const uint8_t SDA = 27;
 static const uint8_t SCL = 14;
 
+// pfodWeb NOTE: the default MOSI/MISO/SCK aliases were deleted - they
+// pointed at the same GPIOs as this board's confirmed onboard RGB LED
+// channels, and build_boards.js unconditionally attaches
+// spi_mosi/spi_miso/spi_sck capabilities to any GPIO matching those
+// aliases, which was silently contaminating the LED channels'
+// capability lists. SS (GPIO19) is left as-is since it doesn't collide
+// with anything tagged on this board.
 static const uint8_t SS = 19;
-static const uint8_t MOSI = 21;
-static const uint8_t MISO = 22;
-static const uint8_t SCK = 23;
 
 static const uint8_t DAC1 = 25;
 static const uint8_t DAC2 = 26;

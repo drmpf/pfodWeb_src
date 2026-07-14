@@ -1,0 +1,75 @@
+um_tinypico (Unexpected Maker TinyPICO) - button/LED capability research notes
+================================================================================
+
+Sources consulted:
+- https://unexpectedmaker.com/tinypico
+  Product/comparison page fetched; did not contain TinyPICO-specific button/LED
+  GPIO details (page content was an ESP32-S3 board comparison matrix, not
+  useful for this board).
+- https://github.com/UnexpectedMaker/tinypico-helper
+  Official TinyPICO-Helper Arduino library. Confirms:
+    #define DOTSTAR_PWR  13   (power gate for onboard APA102 DotStar LED)
+    #define DOTSTAR_DATA 2
+    #define DOTSTAR_CLK  12
+  Also defines battery pins: charge status on GPIO34, battery voltage
+  monitoring (ADC) on GPIO35. No GPIO is defined for a battery charge LED
+  (library text notes a charge LED exists on the board and "flashes", but it
+  is wired directly to the charge IC, not to any MCU GPIO). No onboard
+  general-purpose pushbutton GPIO is defined anywhere in the library.
+- WebSearch "Unexpected Maker TinyPICO onboard button GPIO"
+  Multiple retailer/doc pages (Crowd Supply, Adafruit, PlatformIO,
+  espboards.dev) surfaced. Consistent finding: TinyPICO V2 added a RESET
+  button (tied to EN/reset line, not a GPIO available for user input). The
+  optional "Proto Shield" accessory has two buttons wired to GPIO14/GPIO15,
+  but that is a separate add-on shield, not a feature of the TinyPICO board
+  itself, so it is out of scope.
+- WebSearch "unexpectedmaker.com tinypico specification DotStar APA102
+  GPIO2 GPIO12 GPIO13"
+  Corroborates DOTSTAR_DATA=GPIO2, DOTSTAR_CLK=GPIO12, DOTSTAR_PWR=GPIO13
+  (PNP high-side power switch) from multiple independent sources (GitHub
+  gist ESPHome config, tinypico-helper repo, MicroPython tinypico library).
+- https://www.crowdsupply.com/unexpected-maker/tinypico
+  Fetch blocked (HTTP 403 Forbidden) - could not retrieve directly; relied
+  on WebSearch snippets referencing this page instead.
+- https://www.espboards.dev/esp32/tinypico/
+  Fetched. Text extraction was garbled ("GPIO2220ΩLEDGND") and appears to be
+  OCR/parsing noise from a pinout diagram legend, possibly reused across
+  multiple board pages on that site. It weakly suggested a plain LED on
+  GPIO22, but this is NOT corroborated by any other source (official
+  UnexpectedMaker docs/library make no mention of a GPIO22 LED). Treated as
+  unreliable and NOT used as confirmation.
+
+Pins considered but NOT tagged, with reasoning:
+- GPIO13 (APA_POWER / DOTSTAR_PWR): Confirmed as the power-gate transistor
+  control for the onboard APA102 DotStar LED. This pin was already excluded
+  from chipGpios by a prior pin-exclusion audit pass (see existing NOTE at
+  top of board.json and pins_arduino.h comments). Per task rules, an
+  existing pin-exclusion must not be reversed, so left as-is/untouched.
+- GPIO2 (APA_DATA / DOTSTAR_DATA) and GPIO12 (APA_CLK / DOTSTAR_CLK): These
+  drive the onboard APA102 DotStar RGB LED. Confirmed via multiple
+  independent sources this is a DotStar/APA102, which requires BOTH a
+  separate data pin AND a separate clock pin (two-wire, SPI-like protocol) -
+  it is NOT a WS2812/NeoPixel (single-wire). Per task instructions, this
+  does not fit the led_neopixel capability tag, and no capability tag exists
+  for two-wire addressable LEDs. Made NO guess/tag here - explicitly leaving
+  for human review as instructed, in case a future capability tag for
+  DotStar/APA102-style LEDs is added.
+- GPIO34 (battery charge status) / GPIO35 (battery voltage ADC monitoring):
+  These are informational/monitoring inputs from the battery charge IC, not
+  a user button or LED. Not tagged.
+- GPIO22: One low-confidence, garbled web source suggested a possible plain
+  LED here, but this is contradicted by (i.e. not mentioned in) the
+  authoritative UnexpectedMaker TinyPICO-Helper library or product specs.
+  No confirming evidence found. NOT tagged - explicitly a case of finding no
+  solid evidence rather than a judgment-call guess.
+- No onboard general-purpose pushbutton GPIO was found anywhere in official
+  TinyPICO documentation/library. The only physical button confirmed
+  (TinyPICO V2 onward) is a RESET button wired to EN, not a GPIO, so it is
+  not user-controllable/readable and does not qualify for the "button"
+  capability tag. Not tagged.
+
+Summary of action taken: NO CHANGE. No GPIO on um_tinypico could be
+confirmed, per the task's evidentiary bar, as a taggable onboard user
+button or single-color/NeoPixel LED. The onboard RGB LED is a DotStar
+(APA102, two-wire) which has no matching capability tag and was
+deliberately left untagged per instructions. board.json was not modified.

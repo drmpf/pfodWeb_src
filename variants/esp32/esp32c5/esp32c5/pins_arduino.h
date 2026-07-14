@@ -16,8 +16,13 @@ static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
 static const uint8_t TX = 11;
 static const uint8_t RX = 12;
 
-// static const uint8_t USB_DM = 13;
-// static const uint8_t USB_DP = 14;
+// pfodWeb NOTE: the native USB D-/D+ pin aliases for this chip were removed
+// entirely during the 2026-07-12 audit (a prior pass had only commented
+// them out, which does NOT work: build_boards.js's ESP32 alias parser does
+// not strip comments before matching pin declarations, so a commented-out
+// declaration of the same shape still gets parsed and leaks the two GPIOs,
+// already excluded from chipGpios, back into the routable pin list). See
+// boardsDetails/esp32/esp32c5/sparkfun_esp32c5_thing_plus/notes.txt.
 
 static const uint8_t SDA = 0;
 static const uint8_t SCL = 1;

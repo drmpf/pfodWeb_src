@@ -1,0 +1,121 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+// Board: Olimex "ESP32-C6-EVB" — a real, open-source-hardware industrial
+// I/O evaluation board (WiFi6/BLE5/802.15.4, 4x 10A/240VAC relay outputs,
+// 4x opto-isolated 5-30VDC digital inputs, onboard user button, UEXT/pUEXT
+// expansion headers). Board name + REL1-4/DIN1-4 naming in this variant's
+// own pins_arduino.h is an exact match for this product.
+//
+// Sources consulted (see boardsDetails/esp32/esp32c6/esp32c6-evb/notes.txt
+// for the full research trail):
+//  - https://github.com/OLIMEX/ESP32-C6-EVB (official open-source-hardware
+//    repo, CERN OHL v1.2, KiCad schematics + user manual PDF)
+//  - https://www.mouser.com/catalog/specsheets/Olimex_12-4-2023_ESP32-C6-EVB-user-manual.pdf
+//    and https://store.comet.bg/download-file.php?id=30743 (mirrored user
+//    manual revisions)
+//  - https://www.olimex.com/Products/IoT/ESP32-C6/ESP32-C6-EVB/open-source-hardware
+//    (product page: confirms 4x relay 10A/240VAC, 4x opto-isolated input
+//    5-30VDC, dual UEXT connectors - 0.1" pitch and JST)
+//  - https://templates.blakadder.com/ESP32-C6-EVB.html (independent Tasmota
+//    community pin table: GPIO9=Button1, GPIO10/11/22/23=Relay1-4,
+//    GPIO1/2/3/15=Switch1-4/DIN1-4, GPIO8=Led1 - corroborates this board's
+//    own pins_arduino.h exactly)
+//
+// Per-pin decisions:
+//
+// GPIO9 (BUT_BUILTIN): KEPT, tagged button. Confirmed onboard user button
+// ("Button1" per Tasmota template; user manual). Per playbook section 7a,
+// tagged with the restricted set ["digital_input","button"] only - not the
+// chip-level default full capability set. Not the board's TX/RX/TX1/RX1
+// (16/17/5/4) - no conflict; also not SDA/SCL/SS/MOSI/MISO/SCK (6/7/21/18/
+// 20/19) - checked explicitly this session, no alias collision found.
+//
+// GPIO10/11/22/23 (REL1/REL2/REL3/REL4): KEPT at full chip-level default
+// capabilities (digital_input/digital_output/pwm_output). Per playbook
+// section 3's explicit relay-outputs KEEP policy ("a relay is a simple
+// digital on/off actuator, and controlling it from pfodWeb IS the point of
+// using such a board with pfodWeb - do not exclude"). User manual/product
+// page confirm 4x 10A/240VAC relay outputs. Each tagged with an
+// informational "note" identifying its relay-channel role (not a
+// capability restriction - matches the existing waveshare_esp32_s3_relay_6ch
+// precedent of leaving relay-drive GPIOs at full default capabilities).
+// None of these GPIOs equal TX/RX/SDA/SCL/SS/MOSI/MISO/SCK (16/17/6/7/21/
+// 18/20/19) - checked explicitly, no collision.
+//
+// GPIO1/2/3/15 (DIN1/DIN2/DIN3/DIN4): KEPT but capabilities trimmed to
+// ["digital_input"] only (dropping the chip-level default's analog_input/
+// digital_output/pwm_output). Confirmed opto-isolated digital inputs
+// (5-30VDC per Olimex product page/user manual) - the GPIO pin is wired
+// only to an optocoupler's phototransistor output, an input-only signal
+// path at the board level even though the chip's own inputOnlyGpios list
+// is empty (ESP32-C6 has no input-only-at-silicon pins; this is a
+// board-wiring restriction, not a chip restriction - matches the task's
+// requested check, confirmed no chip-level input-only conflict). Matches
+// playbook section 3's KEEP policy for sensor/status-reading pins ("a
+// legitimate pfodWeb data-display use case"). Each tagged with an
+// informational "note" identifying its DIN-channel role. None of these
+// GPIOs equal TX/RX/SDA/SCL/SS/MOSI/MISO/SCK (16/17/6/7/21/18/20/19) -
+// checked explicitly, no collision.
+//
+// GPIO5/GPIO4 (TX1/RX1): KEPT at chip-level default capabilities, NO
+// board.json entry needed (falls through to the full chip-level default
+// unmodified). This file's own pins_arduino.h comment brackets TX1/RX1
+// together with SDA/SCL/SS/MOSI/MISO/SCK as "available at UEXT and pUEXT"
+// - i.e. this is the standard Olimex UEXT/pUEXT general-purpose expansion
+// header (UART+I2C+SPI+power), not a UART wired to a specific onboard
+// peripheral. Confirmed general-purpose, not dedicated hardware - no
+// exclusion warranted. GPIO5/GPIO4 are also aliased A5/A4 (analog) in this
+// board's pins_arduino.h, which is expected/harmless (already covered by
+// the chip-level default's analog_input capability on those pins) and is
+// NOT a primary-UART/bus alias collision - checked explicitly, TX/RX/SDA/
+// SCL/SS/MOSI/MISO/SCK are 16/17/6/7/21/18/20/19, none of which equal 4 or 5.
+//
+// Alias-collision check (explicitly performed, per this session's new
+// checklist item): grepped every static-const declaration in this board's
+// pins_arduino.h for the primary-UART/bus names build_boards.js
+// unconditionally consumes (consts.TX/RX/SDA/SCL/SS/MOSI/MISO/SCK, matched
+// by exact identifier name only - see build_boards.js parseEsp32Consts/
+// buildEsp32Board ~L541-548). Their values are TX=16, RX=17, SDA=6, SCL=7,
+// SS=21, MOSI=18, MISO=20, SCK=19 - NONE of these coincide with GPIO9
+// (button), GPIO10/11/22/23 (relays), GPIO1/2/3/15 (DIN), or GPIO5/4
+// (TX1/RX1, a DIFFERENT declared name from the primary TX/RX and therefore
+// never matched by the parser's exact-name lookup). No contaminating alias
+// found; no deletions required.
+{
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["digital_input"], "note": "DIN1 - opto-isolated digital input channel (5-30VDC per Olimex ESP32-C6-EVB user manual/product page)." },
+    "2":  { "capabilities": ["digital_input"], "note": "DIN2 - opto-isolated digital input channel (5-30VDC per Olimex ESP32-C6-EVB user manual/product page)." },
+    "3":  { "capabilities": ["digital_input"], "note": "DIN3 - opto-isolated digital input channel (5-30VDC per Olimex ESP32-C6-EVB user manual/product page)." },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "REL1 - relay output channel (10A/240VAC per Olimex ESP32-C6-EVB user manual/product page)." },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "REL2 - relay output channel (10A/240VAC per Olimex ESP32-C6-EVB user manual/product page)." },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input"], "note": "DIN4 - opto-isolated digital input channel (5-30VDC per Olimex ESP32-C6-EVB user manual/product page)." },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "REL3 - relay output channel (10A/240VAC per Olimex ESP32-C6-EVB user manual/product page)." },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "REL4 - relay output channel (10A/240VAC per Olimex ESP32-C6-EVB user manual/product page)." }
+  }
+}

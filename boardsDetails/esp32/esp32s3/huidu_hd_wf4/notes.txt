@@ -1,0 +1,111 @@
+Huidu HD-WF4 (esp32s3) - onboard button/LED research notes
+=============================================================
+
+Sources consulted
+------------------
+https://www.colorlitled.com/huidu-hd-wf4-specification/
+  Reseller reproduction of the official Huidu HD-WF4 vendor spec "appearance"
+  section. Numbered item 3: "Test button, click to switch screen test
+  status." Confirms a real physical test button exists on the board. The
+  9-item appearance list (USB port, power connector, test button, S2/S3/S4
+  switch connectors, P7 brightness sensor port, HUB75E port, P12 air-quality
+  sensor port, P5 temperature sensor port, P11 IR port) does NOT mention any
+  status/indicator LED.
+
+https://buyledcard.com/product/huidu-hd-wf4-single-dual-color-controller/
+  Second, independent reseller reproduction of the same official appearance
+  list. Confirms: "Test button, click to switch screen test status." Also
+  explicitly states the product description "does not include any mention
+  of status LEDs or LED indicators on the controller card itself."
+
+https://www.hdwell.com/Product/index46.html
+  Official Huidu product page for the HD-WF1/WF2/WF4 family. Gave general
+  specs (resolution, HUB75E interface, WiFi+USB control) but no board
+  component/LED/button detail beyond linking a spec PDF.
+
+https://huidu-cn.oss-ap-southeast-1.aliyuncs.com/eData/File/Specifications/Single_color/WFX_series/HD-WF4%20Specification%20V6.0.1.pdf
+  Official Huidu HD-WF4 spec PDF (image-based/scanned, not text-extractable
+  by the tools available). Could not be read for LED/button confirmation
+  beyond what the two reseller pages above already reproduce from it.
+
+https://github.com/espressif/arduino-esp32/pull/10779
+  Upstream, maintainer-reviewed and merged PR (by contributor vortigont,
+  approved by P-R-O-C-H-Y, merged by me-no-dev) that added the official
+  Huidu HD-WF2/HD-WF4 board definitions to the arduino-esp32 core - this is
+  the same pins_arduino.h our variant is based on. PR description explicitly
+  lists board features for both boards including "button, status LED" (WF2)
+  and "button, status LED" (WF4). This is a second, independent
+  confirmation (from the board's own upstream hardware-definition author)
+  that a physical status LED exists on the board, not just a naming
+  artifact. Does NOT give GPIO polarity (active-high/low) for the LED.
+
+https://github.com/espressif/arduino-esp32/pull/10957
+  Follow-up PR by the same author correcting flash mode / GPIO mapping
+  defines for the same board files. No new button/LED detail; no polarity
+  information.
+
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/huidu_hd_wf4/pins_arduino.h
+  Confirmed this is the same upstream source as our local pins_arduino.h
+  (WF4_S1_DATA_PIN=17 "S1 Button"; WF4_LED_RUN_PIN=40 "Status LED on PCB").
+  No polarity comment for the LED. Button comment: "1=normal, 0=pressed"
+  (this describes button-read logic, not an LED).
+
+https://github.com/kreier/huidu_hd-wf4
+  Independent reverse-engineering repo specifically for HD-WF4. Reproduces
+  the same GPIO17 test-button / GPIO40 LED_RUN pin assignments. States pin
+  map is reverse-engineered by community members, not from an official
+  schematic, and does not give LED polarity.
+
+https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/discussions/667
+  Community discussion "Huidu HD-WF2 ESP32-S3 / Huidu HD-WF1 ESP32-S2
+  controller card". General hardware discussion (resolution limits, DMA
+  bit-width) and board photos; no explicit button/LED polarity detail in
+  the fetched text.
+
+https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/discussions/613
+  Community discussion "More information about huidu WF series". Datasheet
+  links and photos referenced; no explicit LED/button polarity text found
+  in the fetched content.
+
+https://github.com/mrcodetastic/HD-WF1-WF2-LED-MatrixPanel-DMA
+  Proof-of-concept firmware repo for the WF1/WF2 boards. Checked for example
+  code using LED_RUN_PIN/digitalWrite to infer LED polarity - none found.
+  (Note: this repo's README mentions an unrelated generic "push button
+  connected to GPIO 11" example that does NOT match this board's pinout -
+  disregarded as not applicable to HD-WF4.)
+
+Pins considered but NOT tagged, and why
+-----------------------------------------
+GPIO40 (WF4_LED_RUN_PIN, "Status LED on PCB"):
+  Physical existence of a status LED is corroborated by TWO independent
+  sources (upstream arduino-esp32 merged PR feature list, twice - for WF2
+  and WF4). However, no source found (vendor spec, upstream PR, community
+  reverse-engineering repos, or example firmware) states the LED's on/off
+  polarity (active-high vs active-low), which is required to choose between
+  the led_high and led_low capability tags. Per task rules, tagging without
+  confirmed polarity would be a guess, so this pin was deliberately left
+  UNTAGGED. This is a genuine "unsure" case, not a no-guess-needed case -
+  a human reviewer with access to a real board (to probe the LED_RUN pin
+  with a multimeter while toggling it) or the actual vendor schematic
+  could resolve this quickly. No TX/RX conflict applies to GPIO40 (TX=43,
+  RX=44).
+
+GPIO17 (WF4_S1_DATA_PIN, S1 test button) - for contrast, NOT left
+  untagged: this one WAS tagged (see summary below). Checked against TX/RX
+  (TX=43, RX=44) - no conflict. Existing chipGpios entry already present in
+  the board-specific board.json (not excluded by a chip-level range), so
+  no exclusion-reversal concern.
+
+No other candidate pins (S2/S3/S4 PCB-hole switch connectors, P-series
+sensor/IR/temperature connectors) were considered onboard buttons or LEDs -
+the vendor appearance list itself describes S2/S3/S4 as external
+"point switch" connection points, not populated onboard buttons, consistent
+with this board's own pins_arduino.h comment "S2-S3 PCB holes".
+
+Summary of what was tagged
+----------------------------
+Tagged GPIO17 -> ["digital_input","button"] (S1 test button, confirmed via
+official Huidu vendor spec + upstream arduino-esp32 PR description).
+GPIO40 (status LED) was investigated, confirmed to physically exist, but
+left untagged due to unconfirmed polarity - flagged above for human
+review.

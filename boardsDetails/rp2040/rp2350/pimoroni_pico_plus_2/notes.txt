@@ -1,0 +1,212 @@
+Board: Pimoroni Pico Plus 2 (PIM724)
+Chip bucket: variants/rp2040/rp2350/pimoroni_pico_plus_2/
+Audit: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion, 2026-07-13.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2350/pimoroni_pico_plus_2/board.json (did not
+exist before this audit). Added chipGpios overrides for GPIO25 (onboard
+user LED, active-high) and GPIO45 (BOOT button, usable as a general user
+button, active-low). No NeoPixel confirmed on this board — the task
+description mentioned one, but no vendor source found supports it (see
+below); no led_neopixel tag was added, per this audit's "report NO CHANGE
+rather than guess" policy. GPIO47 (onboard PSRAM chip-select) requires NO
+board.json change: it's a bare #define with no static-const alias, so
+build_boards.js's pin-sweep never picks it up in the first place — adding
+an explicit chipGpios override would actually be counter-productive (see
+reasoning below).
+
+FILES READ
+----------
+- variants/rp2040/rp2350/pimoroni_pico_plus_2/pins_arduino.h (full file,
+  33 pins, RP2350B / PICO_RP2350A 0)
+- variants/rp2040/rp2350/board.json (chip-level defaults, chipGpios: {})
+- variants/rp2040/rp2040/rpipico/board.json (precedent: GPIO25 LED_BUILTIN
+  chipGpios override mechanism)
+- variants/rp2040/rp2040/pimoroni_tiny2040/board.json (precedent: GPIO
+  absent from pins_arduino.h added purely via chipGpios, for a Pimoroni
+  BOOT-button-as-user-button case)
+- variants/rp2040/rp2350/rpipico2/board.json (RP2350-bucket sibling,
+  confirms same GPIO25/led_high pattern carries over to RP2350)
+- variants/rp2040/rp2350/pimoroni_tiny2350/board.json (RP2350-bucket
+  Pimoroni sibling, same BOOT-button-via-chipGpios pattern)
+- variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json (PSRAM CS
+  precedent from wave 1 — GPIO8 there needed an explicit empty-capability
+  chipGpios override because it WAS auto-swept via a D<n> alias in shared
+  generic/common.h; this board's situation is different, see below)
+- pfodWeb_src/build_boards.js (read parseEsp32Consts() and
+  buildEsp32Board(), lines ~430-640, to understand exactly which GPIOs
+  get auto-swept into the routable pin set: only GPIOs reachable via a
+  resolved `static const uint8_t NAME = ...` alias chain, or explicit
+  chipGpios keys — plain #defines with no static-const peer alias are
+  invisible to the sweep)
+
+pins_arduino.h KEY FACTS
+-------------------------
+- PINS_COUNT / NUM_DIGITAL_PINS = 33
+- PIN_LED = 25 (LED_BUILTIN) — declared as `#define` only, NOT as a
+  `static const uint8_t` — same situation as rpipico/rpipico2/
+  pimoroni_tiny2350, all of which needed an explicit chipGpios override
+  for their LED pin for the same reason.
+- SPI0: MISO=32, MOSI=35, SCK=34, SS=33 (aliased via `static const
+  uint8_t SS/MOSI/MISO/SCK = PIN_SPI0_*;`)
+- SPI1: MISO=12, MOSI=15, SCK=14, SS=13 (declared via #define only, not
+  aliased to bare SS/MOSI/MISO/SCK — those bare names bind to SPI0)
+- Wire0: SDA=4, SCL=5; Wire1: SDA=6, SCL=7
+- RP2350_PSRAM_CS = 47 — `#define` only, no static-const peer alias
+  anywhere in the file.
+- DVI connector pins (CKN/CKP/D0N/D0P/D1N/D1P/D2N/D2P) declared via
+  #define, overlapping GPIO12-19 (shared with SPI1 and D12-D19) — these
+  are ordinary header-exposed dual-purpose pins already covered by the
+  D<n> aliases; no vendor source flags them as needing exclusion, and
+  they're outside this task's LED/button/PSRAM scope, so left untouched.
+- No PIN_NEOPIXEL / NUM_NEOPIXEL define anywhere in the file.
+- No PIN_BUTTON alias anywhere in the file.
+
+VENDOR SOURCES CONSULTED
+-------------------------
+1. https://shop.pimoroni.com/en-us/products/pimoroni-pico-plus-2
+   (official product page, fetched directly via WebFetch). Quotes:
+   "The user LED is wired to GP25, just like on an ordinary Pico."
+   "The BOOT button can be used as a user button and is wired to GP45
+   and active low."
+   Also confirms: RP2350B, 8MB PSRAM, 16MB flash, USB-C, Qw/ST (I2C)
+   connector, SP/CE (SPI) connector, 3-pin debug connector, separate
+   Reset button. No NeoPixel / addressable RGB LED mentioned anywhere.
+
+2. https://www.adafruit.com/product/6244 (PIM724 US distributor page,
+   fetched directly). Independently corroborates both facts verbatim:
+   "wired to GP25, just like an ordinary Pico" / "wired to GP45 and
+   active low." Lists only a plain "User LED" among controls/
+   indicators — no NeoPixel/RGB LED.
+
+3. https://www.pishop.us/product/pimoroni-pico-plus-2/ (reseller mirror
+   of Pimoroni's own product copy, fetched directly). Confirms feature
+   list: "Reset button / BOOT button (also functions as user button) /
+   User LED indicator" — again a single plain LED, no addressable/RGB
+   LED mentioned.
+
+4. WebSearch queries covering Kiwi Electronics, The Pi Hut, Botland,
+   element14 "first look" article, forums.pimoroni.com, and Zephyr
+   project's pico_plus2 board docs. All results consistent with the
+   above (GP25 LED, GP45 BOOT/user button, active-low, 8MB PSRAM). None
+   surfaced a NeoPixel/WS2812 pin for this specific (non-W) board.
+   Zephyr docs mention only "Group of GPIO-controlled LEDs" / "Group of
+   PWM-controlled LEDs" generically, without exact GPIO numbers,
+   consistent with (not contradicting) the single GP25 LED already
+   confirmed by sources 1-3.
+
+5. shop.pimoroni.com/en-us/products/pimoroni-pico-plus-2-w (the
+   separate WiFi-equipped "W" sibling board, in the rp2040w chip bucket
+   — checked only to make sure a NeoPixel claim wasn't being confused
+   between the two variants; not otherwise investigated as part of
+   this task, which is scoped to the non-W pimoroni_pico_plus_2).
+
+NEOPIXEL — NOT FOUND, NO CHANGE
+--------------------------------
+The task description handed down for this audit stated the board has
+"a NeoPixel." No vendor source (shop.pimoroni.com, adafruit.com,
+pishop.us, or any WebSearch result) confirms a NeoPixel/WS2812/
+addressable RGB LED on the plain (non-W) Pimoroni Pico Plus 2 — every
+source instead describes a single-color "User LED" on GP25. This
+board's own pins_arduino.h also declares no PIN_NEOPIXEL/NUM_NEOPIXEL
+define, unlike boards that do have one (e.g.
+sparkfun_thingplusrp2350's `#define PIN_NEOPIXEL (14)`). Per this
+audit's explicit instruction to "confirm via real vendor documentation
+— never guess. Report NO CHANGE rather than guess," no led_neopixel
+tag was added anywhere. If Pimoroni ships a NeoPixel on this board
+that these sources simply didn't mention, a future audit with better
+source access should revisit this.
+
+PER-PIN FINDINGS
+-----------------
+GPIO25 (PIN_LED / LED_BUILTIN):
+  Onboard user LED. Confirmed active-high ("just like on an ordinary
+  Pico" — matches the standard non-inverted rpipico/rpipico2 polarity).
+  #define-only in pins_arduino.h, no static-const alias, so
+  build_boards.js's alias-sweep regex never picks it up automatically
+  — added via chipGpios, same mechanism already used for rpipico/
+  rpipico2/pimoroni_tiny2350 GPIO25.
+  Capabilities: digital_output, pwm_output, led_high.
+  No SPI/I2C bus-alias collision (SPI0/SPI1/Wire0/Wire1 pins are
+  GPIO32-35, 12-15, 4-5, 6-7 — none touch GPIO25).
+
+GPIO45 (BOOT button):
+  Not declared anywhere in pins_arduino.h (no PIN_BUTTON alias, and
+  outside the file's own NUM_DIGITAL_PINS=33 range). Confirmed via all
+  three vendor/reseller sources: "wired to GP45 and active low," usable
+  as a general user button in addition to its bootloader-select role.
+  Added purely via chipGpios (GPIO absent from pins_arduino.h but
+  present in chipGpios is an established, supported pattern in this
+  repo — see pimoroni_tiny2040/pimoroni_tiny2350 GPIO23).
+  Capabilities: digital_input, button only. digital_output/pwm_output
+  deliberately omitted — no vendor source confirms it's electrically
+  safe to drive this BOOT/DFU-select line as an output; matches the
+  conservative precedent already set for pimoroni_tiny2040 GPIO23,
+  pimoroni_tiny2350 GPIO23, and u-blox EVK-NORA-W10 GPIO0.
+  No SPI/I2C bus-alias collision (same pin list as GPIO25 above).
+
+GPIO47 (RP2350_PSRAM_CS) — NO CHANGE, and deliberately no chipGpios
+entry either:
+  Onboard 8MB PSRAM chip-select, confirmed by this board's own
+  pins_arduino.h (`#define RP2350_PSRAM_CS (47u)`) and the vendor-
+  documented "8MB of PSRAM" spec. This is NOT the same situation as
+  the sparkfun_thingplusrp2350 PSRAM precedent from wave 1
+  (variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json), where
+  the PSRAM CS pin (GPIO8) was ALSO exposed via a D<n> alias in the
+  shared generic/common.h, causing build_boards.js to auto-sweep it in
+  with full digital_input/digital_output/pwm_output capabilities — that
+  bug required an explicit chipGpios override with capabilities: []
+  to suppress.
+  Here, RP2350_PSRAM_CS is declared ONLY as a bare #define with no
+  static-const uint8_t peer alias anywhere in this board's
+  pins_arduino.h. build_boards.js's buildEsp32Board()/parseEsp32Consts()
+  (pfodWeb_src/build_boards.js, ~lines 430-640) only adds a GPIO number
+  to the routable "allGpios" pin set from (a) a resolved
+  `static const uint8_t NAME = <number-or-alias-chain>;` declaration, or
+  (b) an explicit chipGpios key. GPIO47 satisfies neither, so it is
+  already absent from the generated Designer pin list with zero
+  board.json changes needed.
+  IMPORTANT: adding a chipGpios entry for GPIO47 here (even with
+  capabilities: []) would be actively counter-productive, not merely
+  redundant — chipGpios keys are unconditionally unioned into
+  "allGpios" (`for (const key of Object.keys(chipGpiosMap)) allGpios.add(n)`
+  in build_boards.js), so doing so would newly INTRODUCE a "GPIO47"
+  pin entry into the Designer (inert, no capabilities, but visible)
+  where none exists today. The correct fix here is the absence of any
+  override, which is what this board.json does. Documented at length
+  both in board.json's own comment and here so a future auditor
+  doesn't mistake this deliberate omission for a missed finding.
+  Also note: this board's own SPI0 pins (GPIO32/33/34/35) and
+  NUM_DIGITAL_PINS=33 both sit at/above this same "extended" GPIO-
+  numbering range as GPIO47 — consistent with the RP2350B's 48-GPIO
+  physical pad count (0-47), of which only roughly GPIO0-29 are broken
+  out to the Pico-shape header; GPIO30-47 are used internally for
+  QSPI flash/PSRAM signalling and are not meant to be routable
+  general-purpose pins at all.
+
+BUS-COLLISION CHECK (per task's known bug class)
+--------------------------------------------------
+Confirmed board's SPI0 (32/33/34/35), SPI1 (12/13/14/15), Wire0 (4/5),
+Wire1 (6/7) pin numbers do not coincide with GPIO25 (LED) or GPIO45
+(button). build_boards.js's unconditional SS/SDA/SCL/MOSI/MISO/SCK
+alias auto-append therefore never contaminates either tagged pin here
+— no #define removal needed (unlike the adafruit_feather_scorpio
+precedent).
+
+RESULT
+------
+- variants/rp2040/rp2350/pimoroni_pico_plus_2/board.json: CREATED (new
+  file — full chip-level defaults copied verbatim + chipGpios overrides
+  for GPIO25 and GPIO45).
+- JSON validity confirmed via manual `//`-comment-stripping + JSON.parse
+  (no build_boards.js invocation), per task instructions.
+- No pins_arduino.h edits needed (no bus-collision bug found on this
+  board).
+- No NeoPixel tag added (not found in any vendor source — reported as
+  NO CHANGE per audit policy, despite being mentioned in the task
+  description).
+- No chipGpios entry added for GPIO47/PSRAM CS (already correctly
+  excluded by the parsing mechanism itself; an explicit override would
+  have been counter-productive — see GPIO47 finding above).

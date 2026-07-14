@@ -1,0 +1,271 @@
+// pfodWeb NOTE (button/LED/NeoPixel tagging + dedicated-hardware pin
+// exclusion audit, 2026-07-13):
+//
+// Board: DatanoiseTV "PicoADK v2" (Pico Audio Dev Kit, second-generation
+// hardware) - an RP2350A-based audio-DSP/synthesizer development board,
+// successor to the RP2040-based "datanoisetv_picoadk" (v1) already
+// audited this session (see variants/rp2040/rp2040/datanoisetv_picoadk/
+// board.json and boardsDetails/rp2040/rp2040/datanoisetv_picoadk/notes.txt).
+// v2 adds onboard 8MB QSPI PSRAM and a microSD card slot (SDIO 4-bit
+// mode) not present on v1, and simplifies the LED story down to a single
+// "user LED" (no confirmed 4-LED debug bank or WS2812 "Big Debug LED"
+// like v1 - see GPIO2 finding below).
+//
+// Sources consulted (WebSearch/WebFetch, 2026-07-13):
+//  1. https://www.cnx-software.com/2024/10/28/picoadk-v2-music-synthesizer-raspberry-pi-rp2350-board-audio-experimentation/
+//     - CNX Software launch article. Quoted: "4 MB QSPI Flash for your
+//     Code and Data"; "Optional 8MB QSPI PSRAM for applications which
+//     needs more RAM (e.g. Long Delays)"; "TF-Card (Micro) on the bottom
+//     of the PCB (SPI or SDIO 4-bit Mode capable)"; "I2S Pins exposed on
+//     the headers, to allow for connecting an ADC"; "MIDI In Circuit with
+//     Optocoupler"; "Power and user LEDs"; "SWD Debug Port".
+//  2. https://circuitpython.org/board/datanoise_picoadk_v2/ - official
+//     CircuitPython board listing for this exact board id. Confirms
+//     "Power and user LEDs" (i.e. two LEDs total: a power-indicator LED
+//     and a single software-controllable user LED) - no WS2812/NeoPixel/
+//     addressable-RGB LED mentioned anywhere for v2, unlike v1's
+//     ambiguous "Big Debug LED (WS2812 on v1.1a)".
+//  3. https://github.com/DatanoiseTV/PicoADK-Firmware-Template - firmware
+//     template README (fetched via WebFetch) explicitly contrasts v1 vs
+//     v2 hardware: PSRAM "None (v1)" vs "8 MB QSPI (v2)"; SD Card "SPI
+//     (v1)" vs "SDIO 4-bit (v2)"; MIDI "USB + DIN (v1)" vs "USB + DIN +
+//     USB host (PIO USB) (v2)". Corroborates this board's own
+//     pins_arduino.h PSRAM/SDIO/MIDI definitions independently of the
+//     CNX Software article.
+//  4. This board's own variants/rp2040/rp2350/datanoisetv_picoadk_v2/
+//     pins_arduino.h - already carries a pre-existing "pfodWeb NOTE"
+//     comment (present before this audit) stating D0/D15-D18/D20-D22 are
+//     "deliberately NOT declared... all dedicated to onboard hardware,
+//     not general-purpose" (PSRAM CS / I2S bus to the onboard DAC / SDIO
+//     SD-card lines respectively), and that D1 (MIDI_RX) "is kept - it's
+//     a normal external MIDI-in connector, not an internal bus." This
+//     audit independently verified each of these claims against sources
+//     #1-#3 above rather than taking the pre-existing comment at face
+//     value, and found no discrepancy - only extended it with explicit
+//     chipGpios documentation entries (GPIO23-25 SDIO D1-D3 were not yet
+//     covered by an explicit entry) and the GPIO2 LED tagging (not yet
+//     assessed at all).
+//  5. rp2040/rp2040/datanoisetv_picoadk (v1 sibling) board.json + notes.txt
+//     - structural precedent (capabilities:[] entries added purely for
+//     documentation on already-excluded/alias-less GPIOs) and the direct
+//     source of the "same vendor, same GPIO2 number" inference used below
+//     for polarity (v1's PIN_LED0/GPIO2 was independently confirmed
+//     active-high via github.com/DatanoiseTV/PicoADK-Hardware's
+//     GettingStarted_Arduino.md: `digitalWrite(PIN_LED0, 1)` turns it on).
+//  6. rp2040/rp2040/rpipico/board.json and rp2040/rp2350/rpipico2/board.json
+//     - established precedent of checking the official Raspberry Pi
+//     pico-sdk board header (boards/include/boards/pico.h, pico2.h) for
+//     PICO_DEFAULT_LED_PIN / PICO_DEFAULT_LED_PIN_INVERTED as a direct
+//     polarity source. Checked for this board: neither
+//     raspberrypi/pico-sdk nor earlephilhower/arduino-pico's bundled
+//     pico-sdk copy contains a "datanoisetv_picoadk_v2.h" (or similarly
+//     named) board header (both raw-file fetches 404'd) - this
+//     third-party board has no pico-sdk-level board definition, only the
+//     arduino-pico pins_arduino.h/boards.txt entry. No direct-datasheet
+//     polarity confirmation available for GPIO2 on v2 specifically (see
+//     GPIO2 finding below for how this gap was handled).
+//  7. pfodWeb_src/build_boards.js (parseEsp32Consts()/buildEsp32Board(),
+//     read directly, not required/executed) - re-confirmed for this board
+//     that (a) the pin sweep is driven purely by `static const uint8_t`
+//     alias declarations found anywhere in the .h file, unioned with
+//     chipGpios keys - NOT bounded by PINS_COUNT/NUM_DIGITAL_PINS (that
+//     bound only applies to the separate AVR-style parser) - so GPIO23-25
+//     (SDIO D1-D3) needed their own explicit chipGpios entries below to
+//     stay properly documented/excluded, contrary to this board's own
+//     pins_arduino.h comment's claim that they're "already excluded by
+//     the conservative default pin range" (that claim does not hold for
+//     this rp2040-family parser path); and (b) the
+//     i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck auto-append only
+//     fires off the UNQUALIFIED `consts.SDA`/`SCL`/`SS`/`MOSI`/`MISO`/
+//     `SCK` static-const aliases. GPIO2 (this board's only confirmed LED)
+//     carries no such alias (SPI0_SS=GPIO5, SPI0_SCK=GPIO6,
+//     SPI0_MOSI=GPIO7, SPI0_MISO=GPIO8/WIRE0_SDA, WIRE0_SCL=GPIO9,
+//     WIRE1_SDA=GPIO6, WIRE1_SCL=GPIO7, SPI1_SCK/MOSI/MISO/SS=GPIO10-13) -
+//     so the "confirmed button/LED pin also aliased as
+//     SDA/SCL/SS/MOSI/MISO/SCK" bug class flagged in this audit's task
+//     brief was checked and does NOT fire on this board - no pins_arduino.h
+//     edit was made or needed.
+//
+// GPIO0 (RP2350_PSRAM_CS / PIN_PSRAM_CS): CHANGED (excluded).
+// capabilities: []. Dedicated chip-select line to the onboard 8MB QSPI
+// PSRAM chip, confirmed via sources #1/#3 (v2-exclusive feature vs v1).
+// No static-const alias in this board's pins_arduino.h (already
+// invisible/excluded by default per its own pre-existing comment) -
+// entry added purely for documentation, matching v1's established
+// pattern (source #5).
+//
+// GPIO1 (PIN_MIDI_RX): NO CHANGE. Kept - D1 alias already declared. A
+// normal external MIDI-In DIN-connector signal routed through an
+// optocoupler ("MIDI In Circuit with Optocoupler" per source #1), not an
+// onboard-hardware control line - matches this board's own pre-existing
+// pins_arduino.h comment and the analogous treatment of v1's
+// header-exposed external signals (source #5).
+//
+// GPIO2 (PIN_LED / LED_BUILTIN): CHANGED. Tagged
+// ["digital_output","pwm_output","led_high"]. Confirmed as a genuine
+// onboard software-controllable "user LED" (as distinct from a separate,
+// presumably-hardwired "power LED" with no GPIO) via source #1's "Power
+// and user LEDs" and source #2's identical wording on the official
+// CircuitPython board page for this exact board id. Critically, no
+// source found for v2 mentions WS2812/NeoPixel/addressable RGB for this
+// LED (unlike v1's explicitly-flagged-ambiguous GPIO15 "Big Debug LED
+// (WS2812 on v1.1a)") - only a single plain "user LED" is documented for
+// v2, and this board's pins_arduino.h itself only ever aliases GPIO2 as
+// PIN_LED/LED_BUILTIN (no PIO/NeoPixel-library scaffolding referenced
+// anywhere), so led_neopixel is not a candidate here. Active-high
+// polarity could NOT be independently confirmed from a v2-specific
+// datasheet or vendor code sample (source #6 - no pico-sdk board header
+// exists for this third-party board to check
+// PICO_DEFAULT_LED_PIN_INVERTED against, and no v2-specific blink/LED
+// example was found in the vendor's firmware-template repo). Tagged
+// led_high anyway based on two converging, explicitly-flagged inferences
+// rather than a blind guess: (a) this is the exact same vendor
+// (DatanoiseTV) and the exact same GPIO number (GPIO2) used for v1's
+// PIN_LED0, which WAS independently confirmed active-high via the
+// vendor's own GettingStarted_Arduino.md (source #5) - a direct-successor
+// product reusing the pin number strongly suggests the same simple
+// GPIO-resistor-LED-GND direct-drive circuit; (b) every single RP2040/
+// RP2350 board's LED_BUILTIN pin audited in this session's family sweep
+// so far (rpipico, adafruit_macropad2040, akana_r1, rpipico2, v1
+// datanoisetv_picoadk) has been independently confirmed led_high with
+// zero led_low exceptions found for a plain (non-multiplexed,
+// non-WiFi-chip-routed) onboard LED - a 100% consistent chip-family
+// convention. digital_input dropped to match this repo's established
+// led_high precedent; pwm_output kept since analogWrite() works on any
+// RP2040/RP2350 GPIO. No SDA/SCL/SPI alias collision on GPIO2 (see
+// source #7) - nothing to fix in pins_arduino.h.
+//
+// GPIO15 (PIN_I2S_DIN): CHANGED (excluded). capabilities: []. I2S
+// data-IN line - new vs v1 (which had no DIN, being a playback-only I2S
+// DAC target). Consistent with source #1's "I2S Pins exposed on the
+// headers, to allow for connecting an ADC" and this board's own
+// pre-existing pins_arduino.h comment grouping D15-D18 together as "the
+// I2S bus to the onboard DAC". No static-const alias in pins_arduino.h -
+// already excluded by default; entry added purely for documentation.
+//
+// GPIO16 (PIN_I2S_DOUT), GPIO17 (PIN_I2S_BCLK), GPIO18 (PIN_I2S_LRCLK):
+// CHANGED (excluded). capabilities: [] each. Dedicated I2S data-out/
+// bit-clock/word-select lines to the onboard audio codec/DAC, per
+// sources #1/#3/#4 (same treatment as GPIO15 above - part of the same
+// 4-wire I2S bus). No static-const aliases in pins_arduino.h - already
+// excluded by default; entries added purely for documentation.
+//
+// GPIO20 (PIN_SDIO_CLK), GPIO21 (PIN_SDIO_CMD), GPIO22 (PIN_SDIO_D0),
+// GPIO23 (PIN_SDIO_D1), GPIO24 (PIN_SDIO_D2), GPIO25 (PIN_SDIO_D3):
+// CHANGED (excluded). capabilities: [] each. Dedicated microSD card SDIO
+// 4-bit-mode bus (CLK/CMD/D0-D3), confirmed v2-exclusive feature per
+// sources #1 ("TF-Card (Micro)... SDIO 4-bit Mode capable") and #3
+// ("SD Card:... SDIO 4-bit (v2)" vs "SPI (v1)"). No static-const aliases
+// anywhere in pins_arduino.h for any of these six GPIOs - already
+// excluded by default (this board's own pre-existing comment already
+// flagged D20-D22; GPIO23-25 lacked an explicit chipGpios entry before
+// this audit, added now per source #7's finding that the parser isn't
+// actually bounded by PINS_COUNT the way the pre-existing pins_arduino.h
+// comment assumed - added purely for documentation/completeness, no
+// functional change since they were already unreachable without an
+// alias).
+//
+// GPIO3, GPIO4 (D3, D4): NO CHANGE. Ordinary spare GPIOs. No source
+// consulted documents any onboard hardware on these two pins for v2 (v1's
+// GPIO3/4 were part of its 4-LED debug bank per source #5, but no
+// equivalent multi-LED bank is documented anywhere for v2 - see GPIO2
+// finding above). Left at full chip-default capability.
+//
+// GPIO5 (PIN_SPI0_SS), GPIO6 (PIN_SPI0_SCK / PIN_WIRE1_SDA), GPIO7
+// (PIN_SPI0_MOSI / PIN_WIRE1_SCL), GPIO8 (PIN_SPI0_MISO / PIN_WIRE0_SDA),
+// GPIO9 (PIN_WIRE0_SCL), GPIO10 (PIN_SPI1_SCK), GPIO11 (PIN_SPI1_MOSI):
+// NO CHANGE. Ordinary dual-role SPI0/SPI1/Wire0/Wire1 header-exposed
+// pins (D5-D11 all declared) - no internal-signal source consulted
+// mentions any of these as connected to fixed onboard hardware (unlike
+// v1's GPIO10-13, which the v1 vendor README explicitly documented as
+// also driving an onboard SPI ADC chip). Left at full chip-default
+// capability; the automatic i2c_sda/i2c_scl/spi_sck/spi_mosi/spi_miso/
+// spi_ss capability auto-append on GPIO6-9 (via build_boards.js's
+// unqualified SDA/SCL resolution) and GPIO5/10/11 is expected/correct
+// behaviour for general-purpose bus pins, not the alias-collision bug
+// class (see source #7 - none of these GPIOs is tagged button/LED).
+//
+// GPIO12 (PIN_SPI1_MISO / PIN_SERIAL1_TX), GPIO13 (PIN_SPI1_SS /
+// PIN_SERIAL1_RX): NO CHANGE. build_boards.js's TX/RX early-return path
+// (checked directly in source #7) forces these to serial_tx/serial_rx
+// capability only, taking priority over any SPI1 bus auto-append -
+// pre-existing default behaviour, not specific to this audit.
+//
+// GPIO14, GPIO19 (D14, D19): NO CHANGE. Ordinary spare GPIOs, no alias
+// beyond the plain D-number, not mentioned in any source consulted as
+// connected to onboard hardware (GPIO19 was part of v1's reused-SPI0/I2S
+// exclusion, but v2's I2S bus lives entirely on GPIO15-18 instead - see
+// pins_arduino.h; GPIO19 here is a genuine spare pin, not grouped with
+// any bus). Left at full chip-default capability.
+//
+// GPIO26 (A0), GPIO27 (A1 / PIN_SERIAL2_TX), GPIO28 (A2 /
+// PIN_SERIAL2_RX): NO CHANGE. Ordinary analog/dual-role UART2 header
+// pins, not mentioned in any source consulted as connected to onboard
+// hardware. Left at full chip-default capability.
+//
+// "Power LED" (per sources #1/#2): out of scope, not a missed tag. No
+// GPIO alias or internal-signal source suggests this is software-
+// controlled - power-indicator LEDs on dev boards are conventionally
+// hardwired directly across the supply rail through a series resistor,
+// not GPIO-driven, and no source consulted contradicts that default
+// assumption for this board. No pin exists in pins_arduino.h to attach a
+// capability to (same "out of scope" treatment as the BOOTSEL button on
+// rpipico/rpipico2 - source #6).
+//
+// Full findings/sources trail:
+// boardsDetails/rp2040/rp2350/datanoisetv_picoadk_v2/notes.txt
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases, and RP2350 boots from an internal ROM/BOOTSEL, not a
+  // GPIO-driven flash-mode strapping pin — no boot-time restrictions or
+  // button pin to flag at the chip level.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only (plain RP2350A audio board, no
+  // onboard WiFi chip).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  "chipGpios": {
+    "0":  { "capabilities": [], "note": "RP2350_PSRAM_CS / PIN_PSRAM_CS - dedicated chip-select line to the onboard 8MB QSPI PSRAM chip (v2-exclusive feature vs v1, per DatanoiseTV/PicoADK-Firmware-Template README). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "2":  { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN - onboard \"user LED\" per circuitpython.org/board/datanoise_picoadk_v2/ and the CNX Software v2 launch article (\"Power and user LEDs\" - no WS2812/NeoPixel mentioned for v2). Active-high polarity inferred (not independently confirmed for v2 - no pico-sdk board header exists for this third-party board): same vendor + same GPIO number as v1's PIN_LED0 (independently confirmed active-high), and 100% led_high precedent across every other RP2040/RP2350 LED_BUILTIN audited this session (rpipico, adafruit_macropad2040, akana_r1, rpipico2, v1 datanoisetv_picoadk)." },
+    "15": { "capabilities": [], "note": "PIN_I2S_DIN - I2S data-IN line to/from the onboard audio codec bus (new vs v1, which had no DIN). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "16": { "capabilities": [], "note": "PIN_I2S_DOUT - I2S data-out line, part of the onboard audio codec bus. No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "17": { "capabilities": [], "note": "PIN_I2S_BCLK - I2S bit-clock line, part of the onboard audio codec bus. No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "18": { "capabilities": [], "note": "PIN_I2S_LRCLK - I2S word-select (LR clock) line, part of the onboard audio codec bus. No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "20": { "capabilities": [], "note": "PIN_SDIO_CLK - onboard microSD card SDIO bus clock line (v2-exclusive feature vs v1's SPI-only SD wiring). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "21": { "capabilities": [], "note": "PIN_SDIO_CMD - onboard microSD card SDIO bus command line. No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "22": { "capabilities": [], "note": "PIN_SDIO_D0 - onboard microSD card SDIO bus data line 0. No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "23": { "capabilities": [], "note": "PIN_SDIO_D1 - onboard microSD card SDIO bus data line 1 (4-bit mode). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "24": { "capabilities": [], "note": "PIN_SDIO_D2 - onboard microSD card SDIO bus data line 2 (4-bit mode). No static-const alias in this board's pins_arduino.h; entry added for documentation." },
+    "25": { "capabilities": [], "note": "PIN_SDIO_D3 - onboard microSD card SDIO bus data line 3 (4-bit mode). No static-const alias in this board's pins_arduino.h; entry added for documentation." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2350 silicon itself (this board's 32-bit audio
+  // output goes through the onboard I2S audio codec/DAC chip via
+  // GPIO15-18, not the RP2350's own silicon).
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC - matches the
+  // chip-level default and this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS=3, ADC_RESOLUTION=12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

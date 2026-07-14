@@ -1,0 +1,167 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Adafruit QT Py ESP32 Pico (product #5395), a genuine official
+  // Adafruit product built on the ESP32-PICO-D4 SiP module. pins_arduino.h
+  // declares PIN_NEOPIXEL=5, NEOPIXEL_POWER=8, SDA1=22/SCL1=19 (STEMMA QT
+  // second I2C), BUTTON=0, TX1=32/RX1=7 (plus the usual SPI/I2C/UART/
+  // analog boilerplate). No board.json override existed before this audit
+  // (used the chip-level esp32/board.json default). Flagged by the
+  // discovery sweep for having these declarations never individually
+  // reviewed.
+  //
+  // Sources consulted:
+  //  - https://learn.adafruit.com/adafruit-qt-py-esp32-pico/pinouts
+  //    Official Adafruit Learn guide pinout page (authoritative vendor
+  //    source). Confirms: "BOOT button - can be read in code as SWITCH or
+  //    GPIO 0" (input-with-pullup) for the onboard user/BOOT button.
+  //    Confirms the addressable RGB NeoPixel LED is on PIN_NEOPIXEL with a
+  //    separate NEOPIXEL_POWER control pin ("necessary for the NeoPixel to
+  //    work"). Confirms the STEMMA QT connector breaks out a second I2C
+  //    bus on "Arduino pins 19 (SCL1) and 22 (SDA1), available on Wire1" -
+  //    exact match to this board's pins_arduino.h. Lists RX/TX (GPIO7/
+  //    GPIO32) as genuine broken-out header pins ("can do capacitive
+  //    touch"), not internal-only.
+  //  - https://learn.adafruit.com/adafruit-qt-py-esp32-pico/neopixel-led
+  //    and community-sourced Arduino NeoPixel example boilerplate used
+  //    across the QT Py/Feather line:
+  //      #if defined(NEOPIXEL_POWER)
+  //        pinMode(NEOPIXEL_POWER, OUTPUT);
+  //        digitalWrite(NEOPIXEL_POWER, HIGH);
+  //      #endif
+  //    Confirms NEOPIXEL_POWER must be driven HIGH by the sketch's own
+  //    setup() for the NeoPixel to light. This exact boilerplate is
+  //    identical to every other Adafruit NEOPIXEL_POWER board already
+  //    audited in this repo (adafruit_qtpy_esp32s2, adafruit_qtpy_
+  //    esp32s3_nopsram, adafruit_qtpy_esp32s3_n4r2, adafruit_itsybitsy_
+  //    esp32) - all of which exclude the power-gate pin from chipGpios
+  //    while keeping the NeoPixel data pin available. Excluded here too,
+  //    for consistency: it is a fixed-function internal power-enable line
+  //    the sketch sets once in setup() (identical to how LED_BUILTIN/
+  //    RGB_BUILTIN itself is not separately offered as a pin-picker
+  //    choice), not a pin meant to be freely assigned to arbitrary pfod
+  //    widgets.
+  //  - https://github.com/esphome/esphome/issues/3717
+  //    ("adafruit_qtpy_esp32 neopixel gpio8") - ESPHome's generic ESP32
+  //    pin-validation table rejects GPIO8 as "already used by the flash
+  //    interface (function: Flash Data 1)", which is correct for
+  //    WROOM/WROVER modules with external flash wired to GPIO6-11. This
+  //    board uses the ESP32-PICO-D4 SiP instead; Adafruit's own shipped
+  //    Arduino core deliberately assigns real onboard functions to GPIO7
+  //    (RX1) and GPIO8 (NEOPIXEL_POWER), and the official Learn guide
+  //    documents both as functioning pins on real hardware - trusted here
+  //    as the authoritative vendor source over ESPHome's generic (non-SiP-
+  //    aware) table. GPIO8 is still excluded per the NEOPIXEL_POWER
+  //    precedent above (fixed internal function); GPIO7 is added to
+  //    chipGpios (see below) since it is documented as a genuine broken-
+  //    out general-purpose header pin (RX/RX1), not an internal-only pin.
+  //  - https://www.adafruit.com/product/5395
+  //    Vendor product listing corroborating the board identity (QT Py
+  //    ESP32 Pico).
+  //
+  // GPIO5 (PIN_NEOPIXEL): CONFIRMED onboard status NeoPixel, directly
+  // stated by Adafruit's own Learn guide. Checked against this board's own
+  // pins_arduino.h aliases - SDA=4, SCL=33, SDA1=22, SCL1=19, SS=27,
+  // MOSI=13, MISO=12, SCK=14, TX=32, RX=7 - GPIO5 is not any of those, so
+  // no boilerplate alias conflict to strip. Tagged capabilities
+  // ["digital_output","led_neopixel"].
+  //
+  // GPIO8 (NEOPIXEL_POWER): EXCLUDED - internal power-gate MOSFET control
+  // line for the onboard NeoPixel, per the established repo-wide
+  // NEOPIXEL_POWER precedent (see sources above). Not present in the
+  // chip-level default either (GPIO6-11 excluded as flash pins on WROOM-
+  // style modules), so simply omitted from chipGpios - no entry added.
+  //
+  // GPIO22/GPIO19 (SDA1/SCL1): CONFIRMED general-purpose second I2C bus
+  // broken out to the STEMMA QT connector (Wire1), matching the "general
+  // I2C without documented exclusive consumer" KEEP policy - the STEMMA QT
+  // connector is a generic expansion header for user-attached sensors/
+  // breakouts, not dedicated onboard hardware. Left at chip-level default
+  // capabilities (already present: digital_input/digital_output/
+  // pwm_output) - no special i2c tag added since build_boards.js only
+  // auto-tags the *primary* SDA/SCL aliases (GPIO4/GPIO33 on this board),
+  // not SDA1/SCL1.
+  //
+  // GPIO0 (BUTTON): CONFIRMED onboard physical BOOT/user button, directly
+  // stated by Adafruit's own Learn guide ("can be read in code as SWITCH
+  // or GPIO 0"). Standard ESP32 strapping pin - the chip-level pinNotes
+  // entry "Must be HIGH or floating on reboot" is expected and retained
+  // unchanged. Checked against this board's own pins_arduino.h aliases -
+  // TX=32, RX=7, SDA=4, SCL=33, SS=27, MOSI=13, MISO=12, SCK=14 - none is
+  // 0, so no conflicting boilerplate alias to strip. Tagged capabilities
+  // ["digital_input","button"] only.
+  //
+  // GPIO32 (TX1) / GPIO7 (RX1): CONFIRMED these are literal aliases of the
+  // *same* physical pins as the primary TX/RX (TX1 == TX == GPIO32, RX1 ==
+  // RX == GPIO7 in pins_arduino.h - just also exposed under the Serial1
+  // naming), not a separate second UART. Adafruit's Learn guide pinout
+  // page lists RX/TX as genuine broken-out general-purpose header pins
+  // ("can do capacitive touch"). GPIO32 was already present in the chip-
+  // level default (general-purpose, unchanged). GPIO7 was NOT present in
+  // the chip-level default (chip-level excludes GPIO6-11 as WROOM/WROVER
+  // external-flash pins) - added as a new chipGpios entry with
+  // ["digital_input","digital_output","pwm_output"] (no analog_input:
+  // GPIO7 has no true ADC channel per the ESP32 datasheet's ADC1/ADC2
+  // channel tables, despite the file's cosmetic "A7 = 7" alias, which
+  // mirrors CircuitPython's A0-A10 board-pin numbering continuity rather
+  // than real analog hardware - consistent with how other non-ADC digital
+  // pins in the chip-level default, e.g. GPIO1/3/18/19/21/22/23, omit
+  // analog_input too).
+  //
+  // Alias-conflict check (per this session's playbook step): explicitly
+  // checked whether GPIO0, GPIO5, or GPIO8 is separately aliased anywhere
+  // else in this board's pins_arduino.h as the *primary* SDA/SCL/SS/MOSI/
+  // MISO/SCK (the build_boards.js mechanism that unconditionally appends
+  // i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck capabilities to any
+  // GPIO matching those primary alias values). Primary aliases on this
+  // board: SDA=4, SCL=33, SS=27, MOSI=13, MISO=12, SCK=14 - none of these
+  // is 0, 5, or 8. No conflict exists; no pins_arduino.h edit was
+  // necessary or performed.
+  //
+  // See boardsDetails/esp32/esp32/adafruit_qtpy_esp32/notes.txt for the
+  // full research trail.
+
+  "boardName": "ESP32",
+  "displayName": "ESP32 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": { "min": 0, "max": 255, "minVolts": "0.0", "maxVolts": "3.3", "method": "dacWrite" },
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [34, 35, 36, 37, 38, 39],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "0":  "Must be HIGH or floating on reboot",
+    "2":  "Must be LOW or floating at boot",
+    "5":  "Must be HIGH or floating on reboot",
+    "12": "Must be LOW or floating on reboot",
+    "15": "Must be HIGH or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "button"] },
+    "1":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_output", "led_neopixel"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "26": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output", "dac_output"] },
+    "27": { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "32": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "33": { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "34": { "capabilities": ["analog_input", "digital_input"] },
+    "35": { "capabilities": ["analog_input", "digital_input"] },
+    "36": { "capabilities": ["analog_input", "digital_input"] },
+    "37": { "capabilities": ["analog_input", "digital_input"] },
+    "38": { "capabilities": ["analog_input", "digital_input"] },
+    "39": { "capabilities": ["analog_input", "digital_input"] }
+  }
+}

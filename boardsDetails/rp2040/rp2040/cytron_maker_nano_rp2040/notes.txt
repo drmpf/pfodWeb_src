@@ -1,0 +1,125 @@
+Board: cytron_maker_nano_rp2040 (Cytron Maker Nano RP2040), chip family: rp2040
+Audit date: 2026-07-12
+Part of: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware pin exclusion audit.
+
+pins_arduino.h declares:
+  #define PIN_LED             (2u)
+  #define PIN_NEOPIXEL        (11u)
+  #define NUM_NEOPIXEL        (2u)
+  #define PIN_RGB             PIN_NEOPIXEL
+  #define PIN_BUZZER          (22u)   // no buzzer tagging vocabulary in this codebase -> out of scope, left untouched
+  #define PIN_BUTTON          (20u)
+  ... (Serial1/Serial2/SPI0/SPI1/Wire0/Wire1 aliases, then #include "../generic/common.h")
+
+Sources consulted
+------------------
+1. github.com/CytronTechnologies/MAKER-NANO-RP2040 (Cytron's own official
+   product repo for this exact board):
+   - "Out-of-the-box Demo Code/code.py" — the actual factory-shipped
+     CircuitPython demo program run on every board at power-up. Fetched via
+     raw.githubusercontent.com/CytronTechnologies/MAKER-NANO-RP2040/main/Out-of-the-box%20Demo%20Code/code.py.
+     Key evidence:
+       * LED_PINS list includes board.GP2 among the 14 GPIO-status LEDs;
+         each is set up as digitalio.DigitalInOut(..., Direction.OUTPUT)
+         and the demo does `LEDS[i].value = True` to light it / `False` to
+         turn it off during the running-lights sequence -> GPIO2 is
+         active-high.
+       * `pixels = neopixel.NeoPixel(board.GP11, 2)` -> confirms NeoPixel
+         data pin is GPIO11 with exactly 2 pixels, matching NUM_NEOPIXEL=2.
+       * Button setup: `btn1 = digitalio.DigitalInOut(board.GP20)`,
+         `btn1.direction = digitalio.Direction.INPUT`,
+         `btn1.pull = digitalio.Pull.UP`, then polled in the main loop as
+         `if not btn1.value: # button 1 pressed` -> GPIO20 is active-low
+         and requires the MCU's internal pull-up (no external pull-up used).
+   - "Examples/CircuitPython/RGBLED-Neopixel/RGBLED-Neopixel.py" —
+     independent second example, also uses `pixel_pin = board.GP11`,
+     `num_pixels = 2`, corroborating the NeoPixel pin/count.
+   - Listed via GitHub API (api.github.com/repos/CytronTechnologies/MAKER-NANO-RP2040/contents/...)
+     to enumerate Examples/CircuitPython, Examples/MicroPython, and the
+     "Out-of-the-box Demo Code" folder contents.
+
+2. github.com/adafruit/circuitpython
+   ports/raspberrypi/boards/cytron_maker_nano_rp2040/pins.c and board.c —
+   the upstream CircuitPython board definition, authored by Cytron itself
+   (SPDX-FileCopyrightText: Copyright (c) 2021 Wai Weng for Cytron
+   Technologies). Confirms the board.<name> alias table:
+     board.LED       -> GPIO2
+     board.RGB / board.NEOPIXEL -> GPIO11
+     board.BUTTON    -> GPIO20
+     board.BUZZER    -> GPIO22
+   This independently corroborates every pin identity in this board's own
+   pins_arduino.h (PIN_LED=2, PIN_NEOPIXEL=11, PIN_BUTTON=20,
+   PIN_BUZZER=22) via a second, unrelated authoritative source.
+
+3. General web search (WebSearch) for "Cytron Maker Nano RP2040" datasheet/
+   schematic/pinout — did not turn up a standalone PDF datasheet for this
+   specific board (only the sibling "Maker Pi RP2040" and "Maker Uno
+   RP2040" datasheets were found), so the GitHub sources above (both
+   Cytron's own official repo and Cytron's own CircuitPython board
+   contribution) were used as the authoritative sources instead — these
+   are first-party and arguably stronger evidence than a marketing
+   datasheet, since they are the literal firmware/pin-map source of truth
+   Cytron ships on every unit.
+
+Per-pin reasoning / findings
+------------------------------
+GPIO2 (PIN_LED / LED_BUILTIN):
+  Onboard status LED, active-high. Confirmed by the official demo code's
+  LEDS[i].value = True/False on/off pattern for the GPIO-status LED array
+  which includes GP2, and independently named `board.LED` in the upstream
+  CircuitPython pin map.
+  Capabilities applied: ["digital_output", "pwm_output", "led_high"]
+  (digital_input dropped; pwm_output kept for brightness dimming via
+  analogWrite(), matching this repo's established rpipico/
+  wiznet_5500_evb_pico/vccgnd_yd_rp2040 led_high precedent for dedicated
+  onboard LED pins).
+
+GPIO11 (PIN_NEOPIXEL / PIN_RGB):
+  Onboard 2-pixel WS2812 NeoPixel strip data line, output-only. Confirmed
+  by two independent official Cytron example files both instantiating
+  neopixel.NeoPixel(board.GP11, 2), matching NUM_NEOPIXEL=2 declared in
+  this board's own pins_arduino.h, and by board.RGB/board.NEOPIXEL ->
+  GPIO11 in the upstream CircuitPython pin map.
+  Capabilities applied: ["digital_output", "led_neopixel"]
+  (digital_input/pwm_output dropped, matching this repo's led_neopixel
+  precedent at vccgnd_yd_rp2040 GPIO23 — NeoPixel data is a bit-banged/
+  PIO protocol line, not a PWM brightness signal, and the strip is
+  addressed as a single data pin regardless of pixel count).
+
+GPIO20 (PIN_BUTTON):
+  Onboard programmable pushbutton, active-low, requires the MCU's internal
+  pull-up (no external pull-up resistor on the board). Confirmed by the
+  official demo code's explicit `btn1.pull = digitalio.Pull.UP` setup and
+  `if not btn1.value:` (pressed = LOW) polling logic, and independently
+  named `board.BUTTON` -> GPIO20 in the upstream CircuitPython pin map.
+  Capabilities applied: ["digital_input", "digital_output", "pwm_output", "button"]
+  (full capability set kept rather than reduced to input-only, since this
+  is an ordinary GPIO merely wired to a switch — not a dedicated/
+  capacitive-only pin — matching this repo's vccgnd_yd_rp2040 GPIO24
+  (PIN_USRKEY) precedent).
+
+PIN_BUZZER (GPIO22):
+  Out of scope per task instructions — no buzzer capability tag exists in
+  this codebase's tagging vocabulary yet. Left untouched (no chipGpios
+  entry added), so it keeps the chip-level default full digital_input/
+  digital_output/pwm_output capability set like any other unremarkable
+  GPIO.
+
+No dedicated-hardware pin exclusions were needed on this board beyond the
+three identity pins above — this board's pins_arduino.h declares no
+onboard SPI/I2C peripheral wired to fixed, non-overridable GPIOs the way
+wiznet_5500_evb_pico's onboard W5500 Ethernet chip does; the SPI0/Wire0/
+Wire1/Serial1 aliases declared are ordinary user-facing bus pinouts, not
+chip-dedicated lines, so no chipGpios exclusion entries were added for
+them (consistent with how this repo treats plain user-facing bus pinouts
+elsewhere in the RP2040 family).
+
+Summary
+-------
+Created variants/rp2040/rp2040/cytron_maker_nano_rp2040/board.json with
+chipGpios overrides tagging GPIO2 as led_high, GPIO11 as led_neopixel
+(2-pixel strip), and GPIO20 as an active-low button with internal pull-up
+— all three confirmed via Cytron's own official GitHub repo (factory demo
+firmware + example code) and independently corroborated via Cytron's own
+upstream CircuitPython board definition. PIN_BUZZER (GPIO22) left out of
+scope per task instructions (no tagging vocabulary exists for buzzers).

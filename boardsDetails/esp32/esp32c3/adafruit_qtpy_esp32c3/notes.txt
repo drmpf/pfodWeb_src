@@ -1,0 +1,99 @@
+adafruit_qtpy_esp32c3 board.json dedicated-hardware pin-exclusion audit research notes
+=======================================================================================
+
+Board: adafruit_qtpy_esp32c3 (variants/esp32/esp32c3/adafruit_qtpy_esp32c3), chip esp32c3.
+pins_arduino.h: BUTTON=9, PIN_NEOPIXEL=2, TX=21, RX=20, SDA=5, SCL=6, SS=6,
+MOSI=7, MISO=8, SCK=10, A0-A4=4/3/1/0/5. No board.json override existed
+before this audit (used the chip-level esp32c3/board.json default). Flagged
+by the discovery sweep for having BUTTON=9 and PIN_NEOPIXEL=2 declared but
+never individually reviewed. Genuine official Adafruit product (product
+#5405).
+
+Sources consulted
+------------------
+- https://learn.adafruit.com/adafruit-qt-py-esp32-c3-wifi-dev-board/pinouts
+  Official Adafruit Learn guide pinout page (authoritative vendor source).
+  States: "This button can be read as GPIO 9 (set it to be an
+  input-with-pullup)" describing the onboard BOOT/user button, which also
+  enables ROM bootloader mode when held during reset. States the
+  addressable RGB NeoPixel LED occupies GPIO2, accessible as
+  `board.NEOPIXEL` in CircuitPython or `PIN_NEOPIXEL` in Arduino. Lists
+  this board's I2C (SCL=GPIO6, SDA=GPIO5), SPI (SCK=GPIO10, MISO=GPIO8,
+  MOSI=GPIO7), and UART (RX=GPIO20, TX=GPIO21) pins - all of which match
+  this board's own pins_arduino.h exactly, and none of which overlap
+  GPIO9 or GPIO2.
+- https://www.adafruit.com/product/5405
+  Vendor product listing corroborating the board's identity (QT Py
+  ESP32-C3 WiFi Dev Board with STEMMA QT).
+- https://learn.adafruit.com/adafruit-qt-py-esp32-c3-wifi-dev-board/overview
+  Official Adafruit Learn guide overview page, general product
+  corroboration (RISC-V ESP32-C3, STEMMA QT connector, USB-C).
+- https://forums.adafruit.com/viewtopic.php?t=189325
+  Community forum pinout discussion, consistent with the official Learn
+  guide (GPIO9 boot button, GPIO2 NeoPixel).
+
+Reasoning per pin
+------------------
+GPIO9 (BUTTON) - CONFIRMED onboard physical BOOT/user button, directly
+  stated by Adafruit's own official Learn guide pinout page (the single
+  most authoritative source available for a vendor's own product). This
+  is also the ESP32-C3's standard strapping pin - the chip-level pinNotes
+  entry "Must be HIGH for normal boot" is expected and was retained
+  unchanged, not removed. Checked this board's own pins_arduino.h for any
+  I2C/SPI/UART alias landing on GPIO9: TX=21, RX=20, SDA=5, SCL=6, SS=6,
+  MOSI=7, MISO=8, SCK=10 - none is 9, so there is no boilerplate alias
+  contaminating this pin's capability list (unlike a sibling board found
+  earlier this session with GPIO9 aliased as SCL - not the case here).
+  Tagged capabilities ["digital_input","button"] only, per the playbook's
+  exclusion rule for button pins (no analog/output/pwm mixed in).
+
+GPIO2 (PIN_NEOPIXEL) - CONFIRMED onboard status NeoPixel (WS2812-style
+  addressable RGB LED), directly stated by Adafruit's own official Learn
+  guide pinout page. This is the real physical GPIO driven by the
+  rgbLedWrite()/RGB_BUILTIN mechanism in this board's pins_arduino.h
+  (LED_BUILTIN is defined as `SOC_GPIO_PIN_COUNT + PIN_NEOPIXEL`, a
+  virtual sentinel value the ESP32 Arduino core maps back to this real
+  GPIO2 pin for NeoPixel-protocol driving, not a plain digitalWrite()
+  pin). Checked against the same alias list as above - GPIO2 is not
+  SDA/SCL/SS/MOSI/MISO/SCK/TX/RX - no boilerplate alias conflict found.
+  Tagged capabilities ["digital_output","led_neopixel","pwm_output"],
+  matching this repo's existing led_neopixel precedent (e.g.
+  waveshare_esp32_s3_zero GPIO21: ["digital_output","led_neopixel",
+  "pwm_output"]; deneyapkart1Av2 GPIO48 same pattern).
+
+Alias-conflict check (per this session's new playbook step)
+-------------------------------------------------------------
+Explicitly checked whether GPIO9 or GPIO2 is separately aliased anywhere
+else in this board's pins_arduino.h as SDA/SCL/SS/MOSI/MISO/SCK (the
+build_boards.js bug that unconditionally appends i2c_sda/i2c_scl/spi_ss/
+spi_mosi/spi_miso/spi_sck capabilities to any GPIO matching those alias
+values, found on a sibling board this session where GPIO9 doubled as
+SCL). Result for this board: SDA=5, SCL=6, SS=6, MOSI=7, MISO=8, SCK=10 -
+none of these values is 9 or 2. No conflict exists; no pins_arduino.h
+edit was necessary or performed.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 20, 21) were
+left at the chip-level esp32c3/board.json default - no evidence found of
+any other dedicated onboard hardware beyond the BOOT button and the
+NeoPixel. SDA=5/SCL=6 and the SPI SS/MOSI/MISO/SCK aliases plus the A0-A4
+analog aliases are the standard boilerplate identity-mapped onto the same
+small GPIO set already covered by the chip-level default - no separate
+onboard I2C/SPI peripheral beyond the STEMMA QT connector (a generic
+exposed header, not dedicated onboard hardware) is documented for this
+board.
+
+What was tagged/changed
+-------------------------
+Created variants/esp32/esp32c3/adafruit_qtpy_esp32c3/board.json (none
+existed before) as a full copy of the chip-level esp32c3/board.json
+default, with:
+  - GPIO9 capabilities changed to ["digital_input","button"] (was
+    ["digital_input","digital_output","pwm_output"])
+  - GPIO2 capabilities changed to
+    ["digital_output","led_neopixel","pwm_output"] (was
+    ["analog_input","digital_input","digital_output","pwm_output"])
+plus a pfodWeb NOTE comment block at the top of the file citing the
+sources above. No GPIOs were excluded from chipGpios and no
+pins_arduino.h edit was needed (no alias conflict found on this board).

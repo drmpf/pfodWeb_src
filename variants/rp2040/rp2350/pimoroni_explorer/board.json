@@ -1,0 +1,146 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2350" -> designer/boards/RP2350/RP2350.json -> const RP2350Data = {...}
+  "boardName": "RP2350",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "Pimoroni Explorer" (variants/rp2040/boards.txt: pimoroni_explorer.name=).
+  "displayName": "Raspberry Pi Pico 2 (RP2350)",
+
+  // Same parser dialect as every other RP2040/RP2350 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only (plain non-WiFi "rp2350" chip
+  // bucket; the Pimoroni Explorer has no onboard WiFi radio).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: Pimoroni "Explorer" — an RP2350B-based ($/PIM720) learning/
+  // physical-computing board with an onboard 2.8" IPS LCD (320x240,
+  // ST7789V driver, parallel 8080-style bus — CS/RS(DC)/WR/RD/DB0-7,
+  // per this board's own pins_arduino.h header comment citing the
+  // vendor schematic PDF), six tactile buttons surrounding the screen
+  // (A/B/C/X/Y/Z), a separate User/Boot button, an onboard piezo
+  // speaker (PWM tone line + amplifier-enable line), four servo
+  // headers, a Qwiic/STEMMA-QT I2C connector, six analog/digital
+  // sensor input channels (crocodile-clip friendly), and a small
+  // breadboard area fed by GPIO0-5. This board's own pins_arduino.h is
+  // unusually well-commented and already cites its own authoritative
+  // sources (github.com/pimoroni/explorer explorer/ + examples/lib/
+  // explorer.py, plus the vendor schematic PDF) — every pin below was
+  // cross-checked against that file, against a live fetch of
+  // examples/lib/explorer.py (which defines SWITCH_A_PIN=16,
+  // SWITCH_B_PIN=15, SWITCH_C_PIN=14, SWITCH_X_PIN=17, SWITCH_Y_PIN=18,
+  // SWITCH_Z_PIN=19, SERVO_1..4_PIN=9,8,7,6, PWM_AUDIO_PIN=12,
+  // AMP_EN_PIN=13, ADC_0..5_PIN=40-45, GPIO_0..5_PIN=0-5 — an exact
+  // match), and against docs/reference.md + shop.pimoroni.com/
+  // learn.pimoroni.com product copy (confirms "six tactile buttons",
+  // "Active Low" button reading, "four Servo instances... pins 6-9",
+  // piezo speaker via PWM+amp-enable, Qw/St I2C connector, Reset and
+  // Boot buttons).
+  //
+  // Two real findings from this audit:
+  // 1. GPIO25 (`#define PIN_LED 25`, also `#define LED_BUILTIN
+  //    PIN_LED`) is NOT a real onboard LED — this board's own
+  //    pins_arduino.h says so explicitly: "// The LED will not blink,
+  //    but sketches will compile". It is a compile-compatibility
+  //    placeholder only (no vendor source describes any GPIO25 LED on
+  //    this board; product/pinout docs describe only the LCD, six
+  //    buttons, speaker, servos, and analog inputs). No led_high/
+  //    led_low tag applied — tagged capabilities:[] instead with a
+  //    note explaining why, matching this repo's "document a
+  //    non-functional pin rather than silently omit it" convention.
+  //    (Also a `#define` only, not a `static const uint8_t` alias, so
+  //    it was never routable as a Designer pin regardless.)
+  // 2. Many of this board's dedicated pins (servo headers, onboard
+  //    speaker, LCD bus, GPIO10/11/29 "NC") are declared as plain
+  //    `#define PIN_xxx (n)` macros, NOT `static const uint8_t`
+  //    aliases — build_boards.js's parser (parseEsp32Consts) only
+  //    harvests the latter, so none of these GPIOs were reaching the
+  //    Designer at all before this board.json existed. The chipGpios
+  //    entries below add them back in explicitly (with researched
+  //    capabilities/notes) so the Designer's pin picker shows *why*
+  //    each one is present/absent, matching the established
+  //    wiznet_5500_evb_pico / bigtreetech_SKR_Pico precedent, rather
+  //    than leaving them silently missing.
+  //
+  // Policy used for two ambiguous categories (both have direct
+  // same-repo precedent — see notes.txt for the full trail):
+  //   - Servo-header signal pins (GPIO6-9) and onboard-speaker pins
+  //     (GPIO12/13): each is a single, independently-useful PWM/
+  //     digital signal (drive one servo, or produce one tone) — NOT a
+  //     multi-pin coordinated bus. Matches this repo's
+  //     pimoroni_servo2040 precedent (servo-header outputs kept as
+  //     legitimate general-purpose PWM pins, not treated as
+  //     exclusionary dedicated hardware) and cytron_maker_pi_rp2040's
+  //     PIN_BUZZER precedent ("left untagged/general-purpose — no
+  //     buzzer capability vocabulary exists in this codebase").
+  //     Exposed here as digital_input+digital_output+pwm_output.
+  //   - LCD parallel-bus pins (GPIO26-28, 30-39): a multi-pin,
+  //     protocol-driven 8080-style bus (CS/RS/WR/RD + 8-bit data bus)
+  //     where toggling any single pin generically produces no useful
+  //     standalone effect and can desync the display driver — matches
+  //     this repo's bridgetek_idm2040_43a (EVE SPI bus) and
+  //     bigtreetech_SKR_Pico (stepper STEP/DIR/EN bus) precedent of
+  //     capabilities:[] for coordinated-bus dedicated hardware.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2350/pimoroni_explorer/notes.txt
+  "chipGpios": {
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_SERVO1 — onboard servo header 1 signal line. #define only in pins_arduino.h (no static-const alias), so added here to expose it as a usable general-purpose PWM/digital output for driving a hobby servo — confirmed via examples/lib/explorer.py (SERVO_1_PIN=const(9)... note vendor numbering is servo-1=GPIO9..servo-4=GPIO6, reversed from the header's own PIN_SERVO1..4=6..9 naming; both sources agree on the *set* {6,7,8,9} being the four servo headers) and product-page 'servo headers' feature. Matches pimoroni_servo2040 precedent (servo-header PWM outputs kept general-purpose, not exclusionary)." },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_SERVO2 — onboard servo header 2 signal line. Same reasoning as GPIO6." },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_SERVO3 — onboard servo header 3 signal line. Same reasoning as GPIO6." },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_SERVO4 — onboard servo header 4 signal line. Same reasoning as GPIO6." },
+    "10": { "capabilities": [], "note": "Not connected (NC) — this board's own pins_arduino.h explicitly comments \"Pin 10 is NC\". Also reused as the dummy target value for this file's 'make people happy' PIN_SERIAL1_TX/RX and PIN_SPI0/1_* placeholder #defines (none of which are real pins on this board)." },
+    "11": { "capabilities": [], "note": "Not connected (NC) — this board's own pins_arduino.h explicitly comments \"Pin 11 is NC\"." },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_PWM_AUDIO — onboard piezo speaker PWM drive line. #define only (no static-const alias), added here as general-purpose digital/PWM output so a Designer sketch can generate tones — confirmed via examples/lib/explorer.py (PWM_AUDIO_PIN=const(12)) and product copy ('integrated speaker'). No dedicated 'buzzer' capability vocabulary exists in this codebase; matches the cytron_maker_pi_rp2040 PIN_BUZZER precedent of leaving such a pin general-purpose rather than excluding it." },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"], "note": "PIN_SPEAKER_AMP_ENABLE — onboard speaker amplifier enable/mute line. #define only, added here as general-purpose digital output — confirmed via examples/lib/explorer.py (AMP_EN_PIN=const(13)). Same 'no buzzer-adjacent exclusion vocabulary' reasoning as GPIO12." },
+    "14": { "capabilities": ["digital_input", "button"], "note": "SWITCH_C — one of six onboard tactile buttons surrounding the LCD. Confirmed via this board's own pins_arduino.h alias, examples/lib/explorer.py (SWITCH_C_PIN=const(14)), and docs/reference.md ('The buttons are Active Low. So you'll read 0 when the button is being pressed'). Input-only (digital_input+button), matching this repo's adafruit_macropad2040 KEY1-12 precedent for simple ground-referenced tactile switches." },
+    "15": { "capabilities": ["digital_input", "button"], "note": "SWITCH_B — onboard tactile button. Same confirmation/reasoning as GPIO14 (SWITCH_C)." },
+    "16": { "capabilities": ["digital_input", "button"], "note": "SWITCH_A — onboard tactile button. Same confirmation/reasoning as GPIO14 (SWITCH_C)." },
+    "17": { "capabilities": ["digital_input", "button"], "note": "SWITCH_X — onboard tactile button. Same confirmation/reasoning as GPIO14 (SWITCH_C)." },
+    "18": { "capabilities": ["digital_input", "button"], "note": "SWITCH_Y — onboard tactile button. Same confirmation/reasoning as GPIO14 (SWITCH_C)." },
+    "19": { "capabilities": ["digital_input", "button"], "note": "SWITCH_Z — onboard tactile button. Same confirmation/reasoning as GPIO14 (SWITCH_C)." },
+    "22": { "capabilities": ["digital_input", "button"], "note": "SWITCH_BOOT — onboard User/Boot button, confirmed via this board's own pins_arduino.h alias (comment: \"Boot button, also referred to as the user switch\") and examples/lib/explorer.py/docs/reference.md, which read it identically (same Active-Low Pin mechanism) to SWITCH_A-Z alongside a separate 'Reset' button. No vendor source documents special diode/strap circuitry for this pin (unlike the RP2040 Pico's QSPI-CS-based BOOTSEL magic pin, which is out of scope entirely) — tagged input-only (digital_input+button), matching this repo's conservative adafruit_macropad2040 ENCODER_SWITCH/BOOT precedent rather than assuming full output safety." },
+    "25": { "capabilities": [], "note": "PIN_LED / LED_BUILTIN — NOT a real onboard LED. This board's own pins_arduino.h says so explicitly: \"#define PIN_LED 25 // The LED will not blink, but sketches will compile\". Compile-compatibility placeholder only, confirmed absent from every vendor hardware source consulted (product page, examples/lib/explorer.py, docs/reference.md — none mention a discrete status LED on this board). No led_high/led_low tag applied." },
+    "26": { "capabilities": [], "note": "PIN_LCD_BL — onboard 2.8\" IPS LCD (ST7789V) backlight control line. Dedicated display hardware, not general purpose. #define only in pins_arduino.h." },
+    "27": { "capabilities": [], "note": "PIN_LCD_CS — onboard LCD's dedicated parallel-bus chip-select line. Not general purpose." },
+    "28": { "capabilities": [], "note": "PIN_LCD_RS — onboard LCD's dedicated parallel-bus register-select (D/C) line. Not general purpose." },
+    "29": { "capabilities": [], "note": "Not connected (NC) — this board's own pins_arduino.h explicitly comments \"Pin 29 is NC\" (gap in the LCD control-signal block between PIN_LCD_RS=28 and PIN_LCD_WR=30)." },
+    "30": { "capabilities": [], "note": "PIN_LCD_WR — onboard LCD's dedicated parallel-bus write-strobe line. Not general purpose." },
+    "31": { "capabilities": [], "note": "PIN_LCD_RD — onboard LCD's dedicated parallel-bus read-strobe line. Not general purpose." },
+    "32": { "capabilities": [], "note": "PIN_LCD_DB0 — onboard LCD's dedicated 8-bit parallel data-bus line 0. Not general purpose." },
+    "33": { "capabilities": [], "note": "PIN_LCD_DB1 — onboard LCD's dedicated 8-bit parallel data-bus line 1. Not general purpose." },
+    "34": { "capabilities": [], "note": "PIN_LCD_DB2 — onboard LCD's dedicated 8-bit parallel data-bus line 2. Not general purpose." },
+    "35": { "capabilities": [], "note": "PIN_LCD_DB3 — onboard LCD's dedicated 8-bit parallel data-bus line 3. Not general purpose." },
+    "36": { "capabilities": [], "note": "PIN_LCD_DB4 — onboard LCD's dedicated 8-bit parallel data-bus line 4. Not general purpose." },
+    "37": { "capabilities": [], "note": "PIN_LCD_DB5 — onboard LCD's dedicated 8-bit parallel data-bus line 5. Not general purpose." },
+    "38": { "capabilities": [], "note": "PIN_LCD_DB6 — onboard LCD's dedicated 8-bit parallel data-bus line 6. Not general purpose." },
+    "39": { "capabilities": [], "note": "PIN_LCD_DB7 — onboard LCD's dedicated 8-bit parallel data-bus line 7. Not general purpose." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 6-channel 12-bit ADC (GPIO40-45 / ADC0-5) — matches this board's
+  // own pins_arduino.h (NUM_ANALOG_INPUTS=6, ADC_RESOLUTION=12). Left
+  // fully general-purpose (no chipGpios override): these are the
+  // board's advertised "analog-friendly crocodile clip terminals" /
+  // analog sensor inputs, a genuine user-facing expansion feature, not
+  // a fixed onboard sensor — matches this repo's established onboard-
+  // analog-sensor KEEP policy (e.g. bigtreetech_SKR_Pico GPIO26/27
+  // thermistors, esp32/esp32/oroca_edubot).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

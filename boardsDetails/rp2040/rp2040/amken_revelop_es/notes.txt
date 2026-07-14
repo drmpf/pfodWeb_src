@@ -1,0 +1,288 @@
+pfodWeb RP2040 family audit — board: amken_revelop_es ("Amken Revelop eS")
+Date: 2026-07-13
+Result: board.json CREATED with 9 chipGpios overrides (SPI0 accelerometer/
+MAX31865 bus x4, NeoPixel tag x1, NeoPixel power-gate x1, MAX31865 CS x1,
+accelerometer interrupt x1, CAN interrupt x1). pins_arduino.h NOT modified.
+
+FILES READ
+----------
+- variants/rp2040/rp2040/amken_revelop_es/pins_arduino.h (full file, 96
+  lines, including its own two pre-existing pfodWeb NOTE comments from an
+  earlier session)
+- variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {})
+- boardsDetails/rp2040/rp2040/amken_bunny/notes.txt (sibling board
+  audited immediately prior this session — same vendor, forward-notes
+  specifically flagged this board as "substantially different... do not
+  reuse Bunny's reasoning")
+- variants/rp2040/rp2040/amken_bunny/board.json (sibling board.json,
+  read as a structural/style precedent; NO CHANGE result — not directly
+  applicable here since this board has real defects to fix)
+- variants/rp2040/rp2040/bigtreetech_SKR_Pico/board.json (precedent for
+  representing dedicated 3D-printer-mainboard hardware pins via
+  chipGpios capabilities:[] + note, and for the led_neopixel capability
+  list used on a genuine onboard NeoPixel)
+- variants/rp2040/rp2040/adafruit_feather_can/board.json + notes.txt +
+  pins_arduino.h (key precedent — this board also has a PIN_NEOPIXEL +
+  NEOPIXEL_POWER pair at the exact same relative pattern, confirmed via
+  real Adafruit vendor documentation quoting "NeoPixel power pin...
+  needs to be set High for the NeoPixel to be powered"; used directly to
+  justify amken_revelop_es's own NEOPIXEL_POWER exclusion by structural
+  analogy, since no equivalent Amken-specific documentation exists)
+- variants/rp2040/rp2040w/sparkfun_thingplusrp2350/board.json (precedent
+  for leaving a dedicated pin's build_boards.js auto-appended SS/MOSI/
+  MISO/SCK bus-role tag in place while emptying chipGpios capabilities -
+  i.e. capabilities:[] does not suppress the separate bus-role
+  auto-append, and should not try to)
+
+BOARD IDENTIFICATION
+---------------------
+"Amken Revelop eS" is the arduino-pico variant/display name (directory
+amken_revelop_es); the vendor's own product name is "Revelop eS"
+(confirmed via raw.githubusercontent.com/earlephilhower/arduino-pico/
+master/tools/json/amken_revelop_es.json — PlatformIO board descriptor:
+"name": "Revelop eS", "vendor": "Amken", "url":
+"https://www.amken3d.com", usb_vid/pid 0x2E8A/0x00C0 and 0x2770/0x7306,
+16MB max flash, boot2 "w25q16jvxq").
+
+Vendor: Amken LLC / "Amken3D" (amken.us, amken3d.com — Springfield, VA,
+USA), same vendor as amken_bunny. Added to earlephilhower/arduino-pico
+in PR #2283 ("Add Amken boards", merged 2024-07-19, commit
+1f71135a2b31350e40370b84c54c3e19f5e7ba55), alongside three siblings:
+Amken Bunny, Amken Revelop, Amken Revelop Plus. Per the PR
+description/discussion (WebFetched directly this session): these boards
+were originally designed for Klipper firmware and are being adapted for
+Marlin via the Arduino-Pico core; no hardware description, datasheet,
+schematic, or pinout diagram is included anywhere in the PR, its review
+discussion, or the commit itself.
+
+Unlike Bunny, amken3d.com (WebFetched live 2026-07-13) DOES list
+"revelop" and "revelop e-S" as current products: "revelop e-S is small,
+but mighty. It is robust with all of the must-have features plus extra
+bells and whistles." However the site is a minimal one-page marketing
+landing page — only two hyperlinks exist on the entire site (the home
+page and /contact/); no shop page, documentation page, GitHub link,
+schematic, or pinout diagram was reachable from it. A direct guess at a
+product sub-page URL (amken3d.com/revelop-e-s) returned HTTP 404.
+github.com/amken3d's public repos (gopper — a TinyGo Klipper port
+targeting RP2040/RP2350/STM32 — and KliPiNP, a Klipper/OpenPNP
+adaptation) were also checked directly; neither contains a
+"Revelop eS"-specific board profile, pin table, or peripheral wiring
+documentation — gopper documents generic RP2040/RP2350 chip target
+support, not any specific commercial board's schematic.
+
+Despite "trying harder" per the task brief (WebSearch across multiple
+query phrasings, WebFetch of the live vendor homepage, WebFetch of the
+PR itself, WebFetch of a guessed product sub-page, WebFetch of both
+amken3d GitHub org repos), no schematic, datasheet, manual, or pinout
+diagram was found anywhere for this board — the practical documentation
+ceiling is the same one recorded for amken_bunny. The one meaningful
+difference from Bunny's audit is that this board's OWN pins_arduino.h is
+far more informative: every dedicated peripheral is called out under its
+own named comment section ("// LEDs", "// NeoPixel", "// CAN bus",
+"//Accelerometer", "//MAX31865"), which this audit treats as sufficient
+vendor-authored confirmation (not a guess from a bare GPIO number or
+alias name) for every finding below.
+
+PER-PIN REASONING
+------------------
+GPIO0 (PIN_SPI0_MISO, aliased to the file's generic `MISO` const):
+  grouped under this file's own "// Shared between LIS2D and MAX31865"
+  comment (line 32) — SPI0 is dedicated to the onboard LIS2D
+  accelerometer and MAX31865 RTD temperature sensor, not general
+  purpose. No static D-alias exists for GPIO0 (the D-alias block jumps
+  D... actually skips 0-3 entirely, confirmed by this file's own
+  pre-existing "pfodWeb NOTE" at line 59) so GPIO0 was already NOT
+  offered as a plain D-pin; however it IS still reachable via the
+  generic `MISO` alias (line 90: `static const uint8_t MISO =
+  PIN_SPI0_MISO;`), which without a chipGpios override would receive
+  full chip-default digital_input/digital_output/pwm_output capability
+  on top of the auto-appended spi_miso bus-role tag. FIXED: chipGpios
+  capabilities emptied for GPIO0. The spi_miso auto-append (driven by
+  build_boards.js's unconditional MISO-alias match, independent of
+  chipGpios) is intentionally left untouched — it correctly reflects
+  this pin's real hardware role, matching the sparkfun_thingplusrp2350
+  GPIO2/3/4 precedent's explicit reasoning for the same situation.
+
+GPIO1 (PIN_SPI0_SS = PIN_LIS_CS, aliased to `SS`): the accelerometer's
+  own SPI chip-select (line 17: `#define PIN_LIS_CS (1u)`) and the SPI0
+  bus's hardware SS line are the literal same GPIO. Dedicated. FIXED:
+  capabilities emptied (same reasoning/precedent as GPIO0; spi_ss
+  auto-append retained, matching sparkfun_thingplusrp2350 GPIO9).
+
+GPIO2 (PIN_SPI0_SCK, aliased to `SCK`): shared SPI0 clock for both
+  onboard chips. Dedicated. FIXED: capabilities emptied, spi_sck
+  auto-append retained.
+
+GPIO3 (PIN_SPI0_MOSI, aliased to `MOSI`): shared SPI0 data line.
+  Dedicated. FIXED: capabilities emptied, spi_mosi auto-append retained.
+
+GPIO4, GPIO6, GPIO7 (D4, D6, D7): no PIN_ macro or comment identifying
+  any board-specific role. KEPT general-purpose — no evidence of
+  dedicated use.
+
+GPIO5 (PIN_LED = PIN_NEOPIXEL, both literally "(5u)" per lines 5 and 8):
+  this board has no separate plain LED — its single onboard WS2812-style
+  NeoPixel doubles as the board's LED_BUILTIN (the same "PIN_LED equals
+  PIN_NEOPIXEL, no separate plain LED" pattern seen on other Pico-family
+  boards such as Pimoroni Plasma2040 and SparkFun Thing Plus RP2350).
+  GPIO5 already had a routable D5 alias (line 61) with no chipGpios
+  entry to give it a semantic tag, so it was previously offered only as
+  a plain, untagged digital output. FIXED: tagged
+  ["digital_output","led_neopixel","pwm_output"], matching this repo's
+  established led_neopixel capability list (bigtreetech_SKR_Pico GPIO24,
+  sparkfun_thingplusrp2350 GPIO14). digital_input dropped since the pin
+  is committed to driving the LED.
+  Bus-collision check: GPIO5 is NOT aliased as SDA/SCL/SS/MOSI/MISO/SCK
+  anywhere in this file (those all resolve to GPIO0-3), so the
+  auto-append collision bug class described in the task background does
+  NOT apply here — no pins_arduino.h edit needed.
+
+GPIO8, GPIO9, GPIO10, GPIO11 (PIN_SPI1_MOSI/PIN_CAN_CS/PIN_SPI1_SCK/
+  PIN_SPI1_MISO — the onboard CAN transceiver's SPI bus + chip-select):
+  none of these four GPIOs has ANY static-const alias anywhere in this
+  file — the D-alias block explicitly jumps from D7 straight to D12
+  (confirmed by direct inspection), and none of SS/MOSI/MISO/SCK
+  (already claimed by SPI0/GPIO0-3) or any other alias resolves to 8-11
+  either. Already correctly excluded from the Designer's routable pin
+  list by omission — this file's own pre-existing "pfodWeb NOTE" (line
+  59) already documents this. No chipGpios override needed or added;
+  there is nothing broken here to fix (same reasoning as the amken_bunny
+  GPIO4/5 TMC-UART finding).
+
+GPIO12-19, GPIO21, GPIO22 (D12-D19, D21, D22): no PIN_ macro or comment
+  identifying any board-specific role. KEPT general-purpose.
+
+GPIO20 (NEOPIXEL_POWER): grouped directly under this file's own
+  "// NeoPixel" comment header alongside PIN_NEOPIXEL (lines 7-9) —
+  vendor-labeled as the NeoPixel's power-enable/gate line, not general
+  purpose. This board's pins_arduino.h separately ALSO defines
+  PIN_SERIAL1_TX as (20u) later, under the "// Serial" section (line
+  25) — the identical GPIO number reused for two different-sounding
+  roles. Resolved by noting PIN_SERIAL1_RX is sentineled to (31u) (not
+  pinned out at all, confirmed by the "// Not pinned out" precedent used
+  elsewhere in this same file for genuinely-absent signals), so Serial1
+  cannot function as a real bidirectional UART on this board regardless
+  of what GPIO20 does — the NeoPixel-power role, which sits under its
+  own dedicated, unambiguous comment header, is treated as this pin's
+  real function. This exact pattern (PIN_NEOPIXEL + NEOPIXEL_POWER pair,
+  same relative structure) is independently, authoritatively documented
+  on a real vendor's actual board — Adafruit's Feather RP2040 CAN Bus,
+  confirmed via learn.adafruit.com/adafruit-rp2040-can-bus-feather/
+  pinouts: "GPIO20 (NeoPixel Power) - NeoPixel power pin... It needs to
+  be set High for the NeoPixel to be powered" — and this repo's own
+  adafruit_feather_can/board.json already excludes that pin
+  (capabilities: []) on that authority. Since no Amken-specific
+  documentation of GPIO20's exact polarity/behavior could be found
+  anywhere (see BOARD IDENTIFICATION above), this audit does NOT assert
+  a polarity or claim NEOPIXEL_POWER "needs to be high" for Amken's
+  board specifically — it only excludes GPIO20 from general routable use
+  as a dedicated hardware-control line, which the vendor's own comment
+  grouping alone is sufficient to justify (regardless of exact polarity).
+  GPIO20 had a routable D20 alias (line 72) with no prior chipGpios
+  entry. FIXED: capabilities emptied.
+
+GPIO23 (D23): this file's own commented-out line 18
+  (`//#define PIN_LIS_INTERRUPT1 (23u)`) shows the vendor originally
+  assigned the accelerometer's interrupt line here, then moved it to
+  GPIO25 (line 19, active). GPIO23 itself carries no active dedicated
+  role anywhere in the file. KEPT general-purpose — the commented-out
+  macro is dead/historical, not a live hardware assignment.
+
+GPIO24 (PIN_MAX31865_CS): "//MAX31865" comment (line 21) directly above
+  `#define PIN_MAX31865_CS (24u)` confirms this is the onboard MAX31865
+  RTD temperature-sensor chip's dedicated SPI chip-select — a manual CS
+  line toggled by the MAX31865 driver library, distinct from the shared
+  SPI0 hardware SS pin (GPIO1). This GPIO was ALSO exposed as a plain,
+  untagged D24 general-purpose alias (line 76) — a real defect of the
+  same class already fixed elsewhere in this repo (bigtreetech_SKR_Pico
+  GPIO8/9 TMC-UART, adafruit_feather_can GPIO13 LED/SS-alias): without
+  this override, the confirmed MAX31865 CS pin would have been offered
+  as an innocuous general digital output, even though driving it from a
+  Designer sketch would corrupt SPI communication with the onboard
+  temperature sensor. FIXED: capabilities emptied.
+
+GPIO25 (PIN_LIS_INTERRUPT1, active assignment): "//Accelerometer"
+  comment (line 16) covers this section; line 19's active
+  `#define PIN_LIS_INTERRUPT1 (25u)` (superseding the dead GPIO23
+  assignment on the line above it, see GPIO23 above) confirms this is
+  the onboard LIS2D accelerometer's interrupt output line. Also exposed
+  as a plain, untagged D25 alias (line 77). Same defect class as GPIO24.
+  FIXED: capabilities emptied.
+
+GPIO26, GPIO27, GPIO28 (A0, A1, A2 / D26, D27, D28): no PIN_ macro or
+  comment identifying any board-specific role. KEPT general-purpose
+  (analog + digital, unchanged from chip defaults).
+
+GPIO29 (PIN_CAN_INTERRUPT, aliased to both D29 and A3): "// CAN bus"
+  comment (line 12) directly above `#define PIN_CAN_INTERRUPT (29u)`
+  (line 14) confirms this is the onboard CAN transceiver's interrupt
+  line. Also exposed as plain, untagged D29 and A3 (analog) general-
+  purpose aliases (lines 81, 86). Same defect class as GPIO24/25.
+  FIXED: capabilities emptied.
+
+No button of any kind: no PIN_BUTTON alias declared in pins_arduino.h,
+  and no source consulted (vendor site, PR, GitHub org repos, general
+  WebSearch) documents a physical button on this board beyond the
+  RP2040's own BOOTSEL, out of scope per the rpipico/board.json
+  precedent (read via SDK trick, not a normal GPIO digitalRead()). No
+  button tagging applied.
+
+BUS-COLLISION CHECK (SDA/SCL/SS/MOSI/MISO/SCK auto-append bug class,
+per the task background's specific warning)
+----------------------------------------------------------------------
+The one confirmed LED/NeoPixel pin on this board (GPIO5) is NOT aliased
+as SDA/SCL/SS/MOSI/MISO/SCK anywhere in this file — those four bus-role
+names all resolve to GPIO0-3 (the accelerometer/MAX31865 SPI0 bus),
+entirely separate from GPIO5. So the specific "confirmed button/LED pin
+double-aliased as a bus role" bug class does NOT occur on this board;
+no pins_arduino.h edit was needed to fix it (unlike, e.g., the
+adafruit_feather_scorpio/adafruit_feather_can precedents, which DID
+require a pins_arduino.h edit for exactly this collision). This board's
+Wire0/Wire1 SDA/SCL are all sentineled to (31u) (not pinned out) and are
+correctly left undeclared as static-const aliases, matching this file's
+own second pre-existing pfodWeb NOTE (lines 93-95) — no phantom
+"GPIO31" pin exists, and no I2C bus role can auto-append onto any real
+GPIO on this board.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax with a standalone
+  script (scratchpad validate_revelop_es.js) that strips `//`-style
+  comment tails line-by-line (respecting quoted-string boundaries so no
+  in-string text is mistaken for a comment) and then runs JSON.parse()
+  against the result — confirmed VALID. chipGpios has exactly 9 keys:
+  "0","1","2","3","5","20","24","25","29", matching the 9 findings
+  above. No build script was executed or required() (per task
+  instructions).
+- All 10 fields from build_boards.js's REQUIRED_BOARD_FIELDS list are
+  present with no extras: boardName, displayName, family,
+  inputOnlyGpios, connections, pinNotes, chipGpios, pwm, dac, adc.
+- pwm/dac/adc/family/connections/pinNotes/inputOnlyGpios/boardName/
+  displayName values reproduce the chip-level
+  variants/rp2040/rp2040/board.json defaults verbatim.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/amken_revelop_es/board.json (new file
+  — this board previously had none; 9 chipGpios overrides with a full
+  pfodWeb NOTE documenting the research trail and per-pin reasoning).
+- Created: boardsDetails/rp2040/rp2040/amken_revelop_es/notes.txt (this
+  file, and its containing directory).
+- pins_arduino.h: NOT modified. No SDA/SCL/SS/MOSI/MISO/SCK collision
+  involving the confirmed LED/NeoPixel pin (GPIO5) was found requiring a
+  #define removal — all corrections were achievable via chipGpios
+  overrides alone.
+
+FOR FUTURE REFERENCE — REMAINING AMKEN SIBLING BOARDS
+--------------------------------------------------------
+amken_revelop: per amken_bunny's own forward-notes, its pins_arduino.h
+  is nearly identical to Bunny's (same PIN_LED=24, same TMC UART on
+  GPIO4/5) except it declares real Wire0 SDA=28/SCL=29. NOT yet
+  independently audited this session — still in the queue.
+
+amken_revelop_plus: not inspected this session (out of scope). Same
+  amken.us/amken3d.com landing-page-only documentation ceiling should be
+  expected (the live site's product blurbs only cover "revelop" and
+  "revelop e-S" by name; "Revelop Plus" was not mentioned anywhere on
+  the current homepage text, so treat its current-product status as
+  unconfirmed until independently checked).

@@ -1,0 +1,151 @@
+Board: um_nanos3 (Unexpected Maker NanoS3, chip esp32s3)
+Directory: variants/esp32/esp32s3/um_nanos3/
+Date: 2026-07-12
+
+SOURCES CONSULTED
+- variants/esp32/esp32s3/um_nanos3/pins_arduino.h (this repo's copy, as it
+  stood before this task's edits).
+- Raw upstream file at
+  https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/um_nanos3/pins_arduino.h
+  — fetched and confirmed byte-for-byte identical in content to the local
+  copy before editing (same USB_VID/PID "Nanos3", same RGB_DATA=41 /
+  RGB_BUILTIN / RGB_BRIGHTNESS / LED_BUILTIN block, same
+  SS=34/MOSI=35/MISO=37/SDO=35/SDI=37/SCK=36 SPI alias block, no BUTTON
+  or BOOT define anywhere). This confirms the local file was the
+  genuine, unmodified upstream Espressif/Unexpected Maker variant file
+  prior to this task's fix.
+- boardsDetails/esp32/esp32s3/um_edges3_d/notes.txt and
+  variants/esp32/esp32s3/um_edges3_d/{pins_arduino.h,board.json} — the
+  precedent fix for the identical SS/MOSI/MISO/SDO/SDI/SCK-at-GPIO34-37
+  alias-leak bug, referenced explicitly as the known-bug flag for this
+  task. Confirmed the fix mechanism used there: delete the alias block
+  from pins_arduino.h entirely (a `= -1;` override does NOT work because
+  a plain `-1` fails the parser's `\d+` numeric regex and is silently
+  invisible — deletion, not override, is required) and replace with a
+  plain-English "pfodWeb NOTE" comment (not a commented-out `//`-prefixed
+  version of the old declarations, since build_boards.js's regex parser
+  is comment-blind and would still match those).
+- variants/esp32/esp32s3/board.json (chip-level default) — confirms
+  GPIO26-32 (flash), GPIO33-37 (octal flash/PSRAM), and GPIO19-20 (USB)
+  are already excluded chip-wide from chipGpios, so GPIO34-37 were
+  already absent from um_nanos3's own board.json chipGpios too (matches
+  the chip default, no chipGpios edit was needed there — only the
+  pins_arduino.h alias deletion was needed to stop the leak).
+- variants/esp32/esp32s3/um_tinys3/{pins_arduino.h,board.json} and
+  boardsDetails/esp32/esp32s3/um_tinys3/notes.txt — sibling Unexpected
+  Maker board used as the style/methodology precedent for tagging
+  "led_neopixel" only on a confirmed real-GPIO NeoPixel data pin, and for
+  the "no confirmable button, don't guess" policy.
+- pfodWeb_src/build_boards.js (buildEsp32Board, parseEsp32Consts) — read
+  to confirm exactly how the parser resolves aliases: `RGB_BUILTIN` is a
+  `#define` containing arithmetic (`RGB_DATA + SOC_GPIO_PIN_COUNT`), not
+  a bare `#define NAME (digits)`, so parseEsp32Consts's `defineRe` never
+  captures it, and `LED_BUILTIN`'s pending alias to `RGB_BUILTIN` never
+  resolves — LED_BUILTIN/RGB_BUILTIN are correctly invisible to the
+  parser (the virtual "N + SOC_GPIO_PIN_COUNT" number is never mistaken
+  for a real GPIO). Only `RGB_DATA = 41` (a direct numeric
+  `static const uint8_t` assignment) is parsed and becomes a real GPIO
+  alias — confirming GPIO41 is the real underlying NeoPixel data pin per
+  this board's own header, independent of any web research.
+- WebSearch: "Unexpected Maker NanoS3 pinout NeoPixel GPIO button" and
+  "NanoS3 RGB_DATA GPIO41 pins_arduino.h Unexpected Maker".
+- https://esp32s3.com/nanos3.html — Unexpected Maker's own "Introducing
+  the NanoS3" product page (fetched directly): confirms a "Low power RGB
+  LED" feature; does not give an explicit GPIO number in the fetched
+  text but explicitly states the RGB LED "is powered via an IO pin, so
+  you need to set that to high before you'll see output on the LED" —
+  matching this board's existing RGB_PWR/GPIO42 power-gate exclusion
+  (unchanged by this task, from an earlier audit pass).
+- CNX Software article ("Unexpected Maker NANOS3 might be the world's
+  tiniest ESP32-S3 module...") and search-aggregated product-page text —
+  explicitly states: "the NanoS3 includes everything you need other
+  than a USB connector and buttons for IO0 and RESET ... those need to
+  be provided by you, if required" — i.e. NanoS3 does NOT ship with
+  populated physical BOOT/RESET buttons; they are pads/options left for
+  the user to add.
+
+FINDINGS: VIRTUAL RGB_BUILTIN / REAL GPIO
+Per the vendor header:
+  static const uint8_t RGB_DATA = 41;
+  #define RGB_BUILTIN (RGB_DATA + SOC_GPIO_PIN_COUNT)
+  static const uint8_t LED_BUILTIN = RGB_BUILTIN;
+RGB_BUILTIN/LED_BUILTIN are virtual pin numbers (RGB_DATA + an offset,
+e.g. 41+N) used only by the new Arduino rgbLedWrite()/digitalWrite()
+convenience API to select the "use the addressable RGB helper" code
+path — they do not name a real GPIO. The REAL physical NeoPixel data
+GPIO is RGB_DATA = 41, confirmed both by build_boards.js's parser
+(only RGB_DATA resolves to a plain integer; RGB_BUILTIN/LED_BUILTIN do
+not) and by the NanoS3 product page's "RGB LED via an IO pin" text.
+
+FINDINGS: SS/MOSI/MISO/SDO/SDI/SCK ALIAS-LEAK (same bug class as
+um_edges3_d)
+The vendor pins_arduino.h declared:
+  SS = 34, MOSI = 35, MISO = 37, SDO = 35, SDI = 37, SCK = 36
+All four GPIOs (34-37) fall inside the GPIO33-37 range the chip-level
+esp32s3/board.json already excludes as reserved octal flash/PSRAM pins,
+and um_nanos3's own board.json chipGpios already omitted 34-37
+(matching the chip default). Despite that, build_boards.js's
+buildEsp32Board() unions chipGpios keys with EVERY GPIO referenced by a
+pins_arduino.h alias (aliasesByGpio), so the still-present SS/MOSI/
+MISO/SCK/SDO/SDI declarations would silently re-add GPIO34-37 as
+user-selectable pins (digital_input/digital_output/pwm_output plus
+spi_ss/spi_mosi/spi_miso/spi_sck-style aliasing) in the Designer, even
+though the board intentionally excludes them as internal PSRAM/flash
+bus lines. This is the exact bug flagged for this task and previously
+found/fixed on the sibling um_edges3_d board.
+
+FIX APPLIED (pins_arduino.h)
+Deleted the `SS`/`MOSI`/`MISO`/`SDO`/`SDI`/`SCK` declaration block
+(GPIO34-37) entirely and replaced it with a plain-English "pfodWeb
+NOTE" comment (no literal re-statement of the deleted declarations as
+commented-out code, since build_boards.js's regex parser is
+comment-blind and a `//`-prefixed `static const uint8_t SS = 34;` line
+would still match it). A plain `= -1;` override was NOT used, per the
+known-bug flag for this task: since no other declaration of the same
+alias name exists elsewhere in this board's single self-contained
+header (unlike a shared common.h scenario), deletion was the correct
+and sufficient fix — there is no second declaration anywhere else in
+this file's flattened source that would otherwise win.
+No board.json chipGpios edit was needed for this part: GPIO34-37 were
+already absent from um_nanos3's chipGpios (matching the chip-level
+default), so once the leaking aliases are gone, no leak path remains.
+
+FINDINGS / TAGGING: LED (section 7a)
+GPIO41 (RGB_DATA) is confirmed as the board's onboard NeoPixel data
+pin — parsed directly from this board's own pins_arduino.h (a real,
+non-virtual numeric GPIO assignment) and corroborated by the NanoS3
+product page's RGB LED description. Tagged GPIO41's chipGpios
+capabilities as ["digital_output", "led_neopixel", "pwm_output"] in
+board.json (dropping "digital_input", matching the um_tinys3 precedent
+for led_neopixel-tagged pins). GPIO42 (RGB_PWR, the NeoPixel's internal
+power-gate) remains excluded from chipGpios entirely — that exclusion
+predates this task (an earlier dedicated-hardware-exclusion pass) and
+was left untouched, only its board.json header comment was extended to
+document the led_neopixel tagging alongside it.
+
+CONSIDERED BUT NOT TAGGED: BUTTON
+No BUTTON/BOOT alias is declared anywhere in this board's
+pins_arduino.h (only RGB_DATA/RGB_PWR are hardware-identity-named;
+no button-style constant exists at all). WebSearch results for the
+NanoS3 product page explicitly and affirmatively state the board does
+NOT ship with a populated BOOT or RESET button — "the NanoS3 includes
+everything you need other than a USB connector and buttons for IO0 and
+RESET ... those need to be provided by you, if required." This is
+stronger evidence than the um_tinys3 case (where the button question
+was simply undocumented either way); here the vendor page affirmatively
+confirms absence. GPIO0 keeps its existing "Must be HIGH for normal
+boot" pinNotes strapping warning but is NOT tagged as a "button" —
+there is no onboard button wired to it. No battery-sense ADC pin is
+declared in this board's header either, and none was tagged.
+
+SUMMARY (one line)
+GPIO41 (RGB_DATA) tagged "led_neopixel" as the confirmed real onboard
+NeoPixel data pin (RGB_BUILTIN/LED_BUILTIN are virtual RGB_DATA+offset
+numbers, not real GPIOs, and are correctly invisible to
+build_boards.js's parser); no button exists on this board per vendor
+confirmation, so none was tagged; and the vendor header's
+SS/MOSI/MISO/SDO/SDI/SCK aliases on GPIO34-37 were deleted from
+pins_arduino.h (not just absent from chipGpios) to close the same
+alias-leak bug in build_boards.js already fixed on the sibling
+um_edges3_d board, since GPIO34-37 sit inside the chip's excluded
+octal-flash/PSRAM range.

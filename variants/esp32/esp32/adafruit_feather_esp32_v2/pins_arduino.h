@@ -51,12 +51,14 @@ static const uint8_t LED_BUILTIN = 13;
 #define RGB_BUILTIN    (PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT)
 #define RGB_BRIGHTNESS 64
 
-// Neopixel & I2C power
-#define NEOPIXEL_I2C_POWER 2
+// pfodWeb NOTE: NEOPIXEL_I2C_POWER (GPIO2) deliberately NOT declared -
+// internal power-gate for the onboard NeoPixel + I2C connector, not
+// general-purpose.
 
 static const uint8_t T0 = 4;
 static const uint8_t T1 = 0;
-static const uint8_t T2 = 2;
+// pfodWeb NOTE: T2 (GPIO2) deliberately NOT declared - same as
+// NEOPIXEL_I2C_POWER above.
 static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;

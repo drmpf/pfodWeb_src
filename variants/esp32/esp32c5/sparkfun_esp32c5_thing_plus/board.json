@@ -1,0 +1,142 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: SparkFun Thing Plus - ESP32-C5 (Adafruit Feather-pinout form
+  // factor). No board.json override existed before this audit (used the
+  // chip-level esp32c5/board.json default). Flagged by the discovery sweep
+  // for having PIN_RGB_LED 27 / RGB_BRIGHTNESS 64, live (uncommented)
+  // USB_DM=13 / USB_DP=14 declarations, plus LP_SDA=2, LP_SCL=3
+  // (WIRE1_PIN_DEFINED/SDA1/SCL1), LP_RX=4, LP_TX=5 declared in
+  // pins_arduino.h but never individually reviewed.
+  //
+  // Sources consulted:
+  //  - https://www.sparkfun.com/sparkfun-thing-plus-esp32-c5.html
+  //    Official SparkFun product page. States the board includes a
+  //    "WS2812 RGB LED" with "Data In connected to IO27", and confirms a
+  //    native "USB-C Connector" for power and programming with no mention
+  //    of a USB-to-serial bridge chip (CH340/CP2102/etc).
+  //  - https://docs.sparkfun.com/SparkFun_Thing_Plus_ESP32-C5/hardware/hardware_overview
+  //    Official SparkFun hardware overview. States "The RGB jumper
+  //    connects the WS2812 RGB LED's Data In pin to IO27 on the C5" and
+  //    that the jumper is CLOSED by default (opening it disconnects IO27
+  //    from the LED for reuse as a plain GPIO) - independently corroborates
+  //    the product page. Also documents the board's USB-C connector as
+  //    connecting "directly to the ESP32-C5's native USB serial converter
+  //    (not a bridge chip)", confirming USB_DM/USB_DP (GPIO13/14) are the
+  //    chip's native USB PHY D-/D+ lines, matching the chip-level
+  //    board.json's existing chipGpios exclusion of GPIO13/14. The same
+  //    page also lists other board-specific dedicated pins for reference
+  //    (not part of this audit's flagged set): IO9/IO8/IO10 = microSD
+  //    POCI/PICO/SCK, IO25 = microSD chip select (matches this board's own
+  //    SS=25/MISO=9/MOSI=8/SCK=10 aliases in pins_arduino.h - genuine
+  //    onboard SD wiring, not boilerplate), IO0 = fuel-gauge alert, IO6 =
+  //    regulator status, IO26 = low-power-mode jumper. None of IO0/6/26
+  //    coincide with GPIO2/3/4/5 (the LP_SDA/LP_SCL/LP_RX/LP_TX pins under
+  //    review) or GPIO27. The page also mentions a separate onboard "WS2812
+  //    RGB Status (STAT) LED" wired to IO23 - a different, fixed status
+  //    indicator distinct from the user-controllable NeoPixel on IO27; out
+  //    of scope for this audit (IO23 was not one of the flagged pins and
+  //    this board's own pins_arduino.h aliases GPIO23 as SDA, not as an LED
+  //    pin - left uninvestigated/unchanged, flagged in notes.txt for a
+  //    future pass).
+  //  - boardsDetails/esp32/esp32c5/esp32c5/notes.txt and
+  //    boardsDetails/esp32/esp32c5/pandabyte_xc5/notes.txt (this session,
+  //    sibling ESP32-C5 board audits) - established that LP_SDA/LP_SCL/
+  //    LP_RX/LP_TX on the ESP32-C5 are a chip-wide, fixed LP-domain
+  //    I2C/UART controller pin-mux constraint (Espressif ESP32-C5-DevKitC-1
+  //    user guide + datasheet), not evidence of a dedicated onboard device.
+  //    This board's own pins_arduino.h carries the identical "LP I2C/UART
+  //    Pins are fixed on ESP32-C5" comments verbatim, and none of the
+  //    SparkFun-documented dedicated pins (SD card, fuel gauge, regulator
+  //    status, low-power jumper) land on GPIO2/3/4/5 - same reasoning
+  //    applies here.
+  //
+  // GPIO27 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812 addressable
+  // RGB LED, independently corroborated by both the official SparkFun
+  // product page and hardware overview for this exact board (RGB solder
+  // jumper, closed by default). High confidence. Tagged
+  // ["digital_output","led_neopixel","pwm_output"], matching this repo's
+  // led_neopixel precedent (esp32c5/esp32c5 GPIO27, pandabyte_xc5 GPIO10).
+  // Alias-collision check: this board's pins_arduino.h aliases SDA=23,
+  // SCL=24, SS=25, MOSI=8, MISO=9, SCK=10, TX=11, RX=12, A0-A5=1..6 - none
+  // equal 27, so no colliding boilerplate bus alias exists for this pin
+  // (verified programmatically against build_boards.js's own alias-parsing
+  // regex; confirmed zero matches for GPIO27).
+  //
+  // GPIO13/GPIO14 (USB_DM/USB_DP): CONFIRMED native ESP32-C5 USB PHY D-/D+
+  // lines used by this board's USB-C connector (SparkFun hardware overview:
+  // "native USB serial converter, not a bridge chip"). The chip-level
+  // esp32c5/board.json already excludes GPIO13/14 from chipGpios, but
+  // unlike the sibling boards (which merely comment out the alias
+  // declarations), this board's pins_arduino.h had them as LIVE
+  // (uncommented) `static const uint8_t` declarations - which
+  // build_boards.js's ESP32 alias parser reads regardless of chipGpios,
+  // reintroducing GPIO13/14 into the routable pin list with generic
+  // digital_input/digital_output/pwm_output capabilities. Fixed by
+  // deleting the declarations from pins_arduino.h entirely (see the NOTE
+  // there) - verified programmatically that USB_DM/USB_DP no longer parse
+  // after the edit. IMPORTANT FOLLOW-ON FINDING: while verifying this fix,
+  // discovered that the two sibling boards' (esp32c5/esp32c5,
+  // pandabyte_xc5) prior fix of merely commenting out
+  // (`// static const uint8_t USB_DM = 13;`) does NOT actually work -
+  // build_boards.js's alias-parsing regex does not strip `//` comments
+  // before matching, so it still matched the commented-out text and both
+  // sibling boards were STILL leaking GPIO13/14 back into their pin lists
+  // despite their board.json NOTE comments claiming exclusion. Corrected
+  // in the same pass: both sibling pins_arduino.h files were edited to
+  // delete the USB_DM/USB_DP lines entirely instead of commenting them
+  // out; re-verified programmatically that neither leaks GPIO13/14 anymore.
+  //
+  // GPIO2/GPIO3 (LP_SDA/LP_SCL, LP-domain I2C) and GPIO4/GPIO5 (LP_RX/
+  // LP_TX, LP-domain UART): KEEP as general-purpose GPIOs - no onboard
+  // peripheral documented at any of the four pins on this board (SparkFun's
+  // own dedicated-pin list covers SD card, fuel gauge, regulator status,
+  // and low-power jumper, none of which land on GPIO2/3/4/5). The "LP
+  // I2C/UART Pins are fixed" comments describe a chip-internal pin-mux
+  // constraint of the ESP32-C5's low-power core, not a dedicated onboard
+  // device wired to them - same conclusion independently reached for both
+  // sibling ESP32-C5 boards this session. A user sketch remains free to use
+  // GPIO2/3/4/5 as plain digital/analog GPIOs. Left unchanged from
+  // chip-level defaults (all four already carry
+  // analog_input+digital_input+digital_output+pwm_output, matching their
+  // A1/A2/A3/A4 analog aliases).
+  //
+  // See boardsDetails/esp32/esp32c5/sparkfun_esp32c5_thing_plus/notes.txt
+  // for the full research trail.
+
+  "boardName": "ESP32C5",
+  "displayName": "ESP32-C5 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "4":  "Must be LOW or floating on reboot",
+    "5":  "Must be LOW or floating on reboot",
+    "6":  "Must be LOW or floating on reboot",
+    "23": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "26": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "27": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "28": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

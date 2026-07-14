@@ -1,0 +1,109 @@
+Board: pimoroni_tiny2040 (chip: rp2040) — Pimoroni Tiny 2040
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel audit)
+
+pins_arduino.h identity pins:
+  #define PIN_LED        (19u)   // comment: "RGB LED on pins 18-20. Use the Green
+                                  //   LED element on pin 19 as LED_BUILTIN"
+  (no PIN_BUTTON / PIN_NEOPIXEL alias declared anywhere in this file)
+  PIN_SPI0_MISO=4, PIN_SPI0_MOSI=7, PIN_SPI0_SCK=6, PIN_SPI0_SS=17 (dummy —
+    board's own comment: "PIN_SPI0_SS not available on any header pin but
+    needs to be defined for ../generic/common.h so use a dummy")
+  PIN_WIRE0_SDA=4/SCL=5, PIN_WIRE1_SDA=6/SCL=7
+  Includes ../generic/common.h for the blanket fallback.
+
+SOURCES CONSULTED
+- pfodWeb source: variants/rp2040/rp2040/pimoroni_tiny2040/pins_arduino.h (full file).
+- pfodWeb source: variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {} by design).
+- Precedents read: variants/rp2040/rp2040/rpipico/board.json (LED-only, BOOTSEL-out-of-scope
+  rationale for the PLAIN Pico), variants/rp2040/rp2040/waveshare_rp2040_zero/board.json (tiny
+  "Zero" form-factor precedent), variants/rp2040/rp2040/vccgnd_yd_rp2040/board.json (button +
+  LED + NeoPixel multi-pin chipGpios precedent), variants/rp2040/rp2040/adafruit_feather_scorpio/
+  pins_arduino.h (SS-collision-fix precedent — checked, does NOT apply here, see below),
+  variants/esp32/esp32s3/nora_w10/board.json (per-channel RGB tagging vocabulary
+  led_r_high/led_g_high/led_b_high, and the "BOOT-multiplexed pin gets digital_input+button
+  only, no output" precedent for GPIO0/SW2).
+- Official Pimoroni Tiny 2040 (PIM558) datasheet PDF — authoritative, fetched via
+  media.digikey.com/pdf/Data%20Sheets/Pimoroni%20PDFs/Tiny_2040_Web.pdf (mirror of Pimoroni's
+  own shop.pimoroni.com/products/tiny-2040/7-19-21 datasheet). Contains the official pinout
+  diagram and feature list. Key excerpts:
+    Features: "User controllable RGB LED"; "Switch for basic input (doubles up as DFU select
+    on boot)".
+    Notes: "The RGB LED is connected to GP18-GP20 and active low (so the on/off state will
+    work in the opposite way to the LED on a Raspberry Pi Pico). You can PWM the pins to dim
+    the LED."
+    Pinout diagram: LED block explicitly labelled "R GP18 / G GP19 / B GP20" (separate from
+    "RESET -> RUN"); separately labels "BOOTSEL GP23 — BOOT/DFU mode protected by diode".
+- shop.pimoroni.com/en-us/products/tiny-2040 (WebFetch, current product page): "The Tiny 2040
+  features an RGB LED (not single-color)... connected to pins GP18-GP20... active low... PWM
+  these pins to adjust brightness"; "the board includes a reset button and some clever
+  circuitry that lets you use the boot button as a user controllable switch... mapping to
+  GPIO 23".
+- forums.pimoroni.com "Tiny 2040 RGB LED control" tutorial (WebSearch): sample MicroPython
+  `rpwm = PWM(Pin(18)) # RED`, `gpwm = PWM(Pin(19)) # GREEN`, `bpwm = PWM(Pin(20)) # BLUE`;
+  confirms common-anode (active-low: "low numbers make it brighter").
+- docs.zephyrproject.org Pimoroni Tiny2040 board page (WebFetch): independently lists
+  "Red LED: GPIO18 (alias led0)", "Green LED: GPIO19 (alias led1)", "Blue LED: GPIO20
+  (alias led2)" — corroborates the channel mapping from an unrelated toolchain.
+- WebSearch "Tiny 2040 GPIO23 boot button" — multiple summarized sources agree: "The Tiny 2040
+  has a User/BOOT button readable as GPIO23... some clever circuitry that lets you use the
+  boot button as a user controllable switch."
+
+PER-PIN REASONING
+- GPIO18/19/20: Confirmed by FOUR independent sources (official Pimoroni datasheet PDF, current
+  shop.pimoroni.com product page, forums.pimoroni.com tutorial code, Zephyr board docs) to be a
+  SINGLE onboard RGB LED (common-anode / active-low), NOT three separate single-color LEDs and
+  NOT the plain single-color LED the PIN_LED alias name might suggest. GPIO19 is the specific
+  channel this board's pins_arduino.h aliases as PIN_LED/LED_BUILTIN (its own header comment:
+  "Use the Green LED element on pin 19 as LED_BUILTIN") — confirming the task's hint that
+  Pimoroni "Tiny" boards have RGB, not single-color, onboard LEDs. Tagged using this repo's
+  per-channel RGB vocabulary (precedent: variants/esp32/esp32s3/nora_w10/board.json):
+    GPIO18: ["digital_output", "pwm_output", "led_r_low"]
+    GPIO19: ["digital_output", "pwm_output", "led_g_low"]  (PIN_LED / LED_BUILTIN)
+    GPIO20: ["digital_output", "pwm_output", "led_b_low"]
+  pwm_output kept on all three — vendor docs explicitly describe PWM-dimming these pins.
+  digital_input dropped, matching this repo's led_high/led_low/led_r_*/led_g_*/led_b_*
+  precedent for dedicated onboard LED pins throughout the codebase.
+
+- GPIO23: NOT declared anywhere in this board's pins_arduino.h (no PIN_BUTTON alias), but
+  confirmed via the official datasheet's own pinout diagram ("BOOTSEL GP23 — BOOT/DFU mode
+  protected by diode") and product-page prose ("Switch for basic input (doubles up as DFU
+  select on boot)"; "clever circuitry that lets you use the boot button as a user controllable
+  switch... GPIO 23") to be a real, diode-isolated, user-readable GPIO wired to the board's
+  physical BOOT switch — distinct from the separate RESET button, which drives the RUN
+  (hardware reset) pin directly and is not a GPIO at all (same out-of-scope RESET rationale as
+  rpipico/board.json and waveshare_rp2040_zero/board.json). Added purely via a chipGpios entry
+  (the general "GPIO absent from pins_arduino.h but present in chipGpios" mechanism already
+  supported by build_boards.js's buildEsp32Board(), which unions pins_arduino.h aliases with
+  chipGpios keys). Tagged ["digital_input", "button"] — digital_output/pwm_output deliberately
+  OMITTED: no vendor source confirms it is electrically safe to drive this diode-coupled
+  BOOT/DFU-select line as an output, so the conservative choice matches this repo's existing
+  precedent for u-blox EVK-NORA-W10's GPIO0 (SW2/BOOTn, "multifunctional - usable for other
+  user functions in software after power-up") in variants/esp32/esp32s3/nora_w10/board.json,
+  which likewise received digital_input+button only, no output capabilities, for the same
+  "boot-select-multiplexed pin" reason.
+
+BUS-COLLISION CHECK (per task's specific hint re: PIN_SPI0_SS)
+This board's own pins_arduino.h declares PIN_SPI0_SS as a dummy value of 17u (its own comment:
+"not available on any header pin but needs to be defined for ../generic/common.h so use a
+dummy"). The confirmed RGB LED/button pins are 18, 19, 20, and 23 — none of which equal 17 (SS),
+4 (MISO/SDA0), 7 (MOSI/SCL1), 6 (SCK/SDA1), or 5 (SCL0). So build_boards.js's unconditional
+SS/SDA/SCL/MOSI/MISO/SCK alias auto-append never fires on any tagged pin here — UNLIKE the
+adafruit_feather_scorpio precedent (where the vendor default PIN_SPI0_SS DID collide with that
+board's confirmed onboard LED pin and had to be removed from pins_arduino.h). No pins_arduino.h
+edit needed on this board; the apparent "17 vs 19" proximity flagged in the task brief turned
+out not to be an actual collision once the real values were checked.
+
+Result: Created variants/rp2040/rp2040/pimoroni_tiny2040/board.json (full per-board override
+file, chip-level defaults copied verbatim + chipGpios overrides) tagging:
+  GPIO18 -> led_r_low, GPIO19 -> led_g_low (PIN_LED/LED_BUILTIN), GPIO20 -> led_b_low
+    (one onboard common-anode RGB LED, all three channels PWM-dimmable)
+  GPIO23 -> button (BOOTSEL/user switch, digital_input + button only, no output capabilities)
+No SPI/Wire bus-collision fix was needed (PIN_SPI0_SS's dummy value of 17 does not coincide
+with any tagged pin). JSON validity verified via manual `//`-comment stripping + JSON.parse
+(no build script executed, per task instructions).
+
+SUMMARY: Confirmed via the official Pimoroni datasheet plus three corroborating independent
+sources that GPIO18/19/20 form a single active-low RGB LED (not a plain single-color LED_BUILTIN
+despite the alias name) and that GPIO23 is a genuine, diode-protected, user-readable BOOT/DFU
+button distinct from the non-GPIO RESET button — both now tagged in a new per-board board.json;
+no SPI/Wire pin-exclusion changes were required.

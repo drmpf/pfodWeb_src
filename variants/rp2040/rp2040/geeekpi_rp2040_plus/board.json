@@ -1,0 +1,76 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases. Multiple GeeekPi RP2040 Plus retailer/product-
+  // description listings (Amazon US/UK/DE/JP — GeeekPi's own marketing
+  // copy, reproduced verbatim by each retailer) describe the board's
+  // buttons as: "USB-C port... an extra LED, and a reset button so you
+  // can reboot the board without unplugging it" plus "a boot selection
+  // button to easily switch between different boot modes, such as USB
+  // High Capacity Storage, USB CDC Serial and Custom Boot Modes" — i.e.
+  // RESET and BOOT(SEL) only, matching every other Pico-pinout-compatible
+  // clone board already audited in this repo (rpipico, waveshare_rp2040_plus).
+  // Neither is a normal GPIO digitalRead() pin (RESET pulls the RUN net
+  // low in hardware; BOOTSEL is sampled via the RP2040 ROM's special
+  // QSPI-CS-line trick, not digitalRead() — same out-of-scope rationale
+  // as ../rpipico/board.json and ../waveshare_rp2040_plus/board.json), so
+  // there is no pin to attach a "button" capability to.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED) is the board's only onboard visual indicator.
+  // GeeekPi's own product-description text (consistent across Amazon
+  // US/UK/DE/JP listings, which reproduce the manufacturer's copy)
+  // states: "The on-board LED is connected to GP25 to provide a visual
+  // indicator for testing and debugging purposes" — confirming the GPIO
+  // number independently of this board's pins_arduino.h PIN_LED (25u)
+  // definition (itself contributed to arduino-pico by the vendor/board
+  // integrator). No GeeekPi-specific schematic or independently
+  // maintained device-tree source (e.g. Zephyr) could be located to
+  // directly confirm electrical polarity — GeeekPi does not appear to
+  // have upstreamed a Zephyr board definition the way Waveshare has.
+  // Tagged ACTIVE HIGH on the strength of the essentially unanimous
+  // GPIO25-LED convention among every other Pico-pinout-compatible clone
+  // already audited in this family (official Raspberry Pi Pico,
+  // ../rpipico/board.json — datasheet-confirmed active-high; and the
+  // near-identically-named/positioned Waveshare "RP2040 Plus" product,
+  // ../waveshare_rp2040_plus/board.json — Zephyr-dts-confirmed
+  // GPIO_ACTIVE_HIGH on the same GPIO25 pin) — no led_low precedent
+  // exists anywhere in this repo's RP2040 GPIO25 onboard-LED tagging.
+  // No onboard NeoPixel/WS2812 is mentioned in any GeeekPi product
+  // listing or in this board's pins_arduino.h/common.h. digital_input
+  // dropped and pwm_output kept per this repo's established led_high
+  // precedent for dedicated onboard LED pins (see ../rpipico/board.json
+  // GPIO25, ../waveshare_rp2040_plus/board.json GPIO25).
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN — onboard user LED on GP25, active-high inferred from unanimous GPIO25-LED convention across this repo's audited Pico-pinout clones (see pfodWeb NOTE above); no GeeekPi-specific schematic/dts located to directly confirm polarity" }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as every other RP2040/RP2350 board (this board's
+  // pins_arduino.h declares no board-specific analog aliases beyond the
+  // shared generic/common.h defaults — 3 analog channels, GPIO26-28).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

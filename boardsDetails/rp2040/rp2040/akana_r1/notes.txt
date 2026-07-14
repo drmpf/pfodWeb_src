@@ -1,0 +1,133 @@
+Board: akana_r1 (chip family: rp2040)
+Audit date: 2026-07-12
+Directory: variants/rp2040/rp2040/akana_r1/
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/akana_r1/board.json. Tagged all six BTN_*
+GPIOs as confirmed real buttons, tagged PIN_LED (GPIO25) as a confirmed
+active-high onboard LED. Left PIN_NEO (GPIO24) at NO CHANGE (full default
+capabilities) — despite its alias name, vendor documentation explicitly
+states the main board has no onboard addressable RGB/NeoPixel LED.
+
+SOURCES CONSULTED
+------------------
+1. variants/rp2040/rp2040/akana_r1/pins_arduino.h (this repo) — header
+   comment: "METE HOCA Akana R1 Pin Definitions". Declares:
+     PIN_LED   = 25
+     PIN_NEO   = 24
+     BTN_ENTER = 14
+     BTN_BACK  = 15
+     BTN_UP    = 22
+     BTN_DOWN  = 23
+     BTN_LEFT  = 20
+     BTN_RIGHT = 21
+2. variants/rp2040/rp2040/generic/common.h (this repo) — included by this
+   board's pins_arduino.h. Its own pfodWeb NOTE documents that on the
+   *stock/reference* Pico design, GPIO24 is VBUS-sense and not broken out
+   to a header at all — i.e. Akana R1's designers deliberately repurposed
+   this specific GPIO and gave it a NeoPixel-suggestive name, rather than
+   it being an incidental copy-paste of a generic alias.
+3. Manufacturer's own product page (WebFetch):
+   https://www.metehoca.com/akana-r1-yeni-nesil-gelistirme-karti/
+4. Vendor's Tindie storefront listing (WebFetch):
+   https://www.tindie.com/products/mh-edu/akana-r1-next-generation-development-board/
+5. WebSearch confirming accessory RGB docks exist as SEPARATE plug-in
+   products (not part of the base board):
+   - "NEO8 Dock - WS2812 RGB LED Dock for Akana R1" (Tindie, MH-EDU-Electronics)
+   - "RGB Matrix Dock - WS2812 LED Matrix for Akana R1" (Tindie, MH-EDU-Electronics)
+6. Confirmed via WebSearch/arduino-pico repo browsing that this board is
+   an officially-supported arduino-pico variant (METE HOCA Akana R1),
+   RP2040-based, with a 1.3" I2C OLED display, matching the general
+   "game controller for STEM coding" description.
+
+Both sources #3 and #4 independently describe the identical hardware:
+- "4+2 kullanıcı butonları" (4+2 user buttons) in a game-controller
+  format, with a dedicated hardware debounce circuit to prevent bounce.
+  Separately, BOOTSEL and RESET buttons exist "on the top of the board"
+  for programming (out of scope — not normal GPIOs, same precedent as
+  rpipico/board.json's BOOTSEL treatment).
+- 6 total single-color LEDs: 2 on the front (one fixed "ON" power-status
+  LED, one user-controllable LED "connected to GP25" in the upper-right)
+  plus 4 LEDs on the back corners, "also connected to GP25" (parallel to
+  the front user LED, same signal).
+- Explicitly: "single-color LEDs only; no addressable RGB LEDs or
+  WS2812/NeoPixel components are built into the main Akana R1 board
+  itself. Such RGB functionality is available through separate
+  expansion docks."
+
+PER-PIN REASONING
+------------------
+GPIO14 (BTN_ENTER)  -> ["digital_input","button"]
+GPIO15 (BTN_BACK)   -> ["digital_input","button"]
+GPIO20 (BTN_LEFT)   -> ["digital_input","button"]
+GPIO21 (BTN_RIGHT)  -> ["digital_input","button"]
+GPIO22 (BTN_UP)     -> ["digital_input","button"]
+GPIO23 (BTN_DOWN)   -> ["digital_input","button"]
+  Reasoning: the vendor's own "4+2 buttons in a game-controller format"
+  description (4 directional + 2 action = exactly UP/DOWN/LEFT/RIGHT +
+  ENTER/BACK) independently corroborates the six BTN_* aliases in
+  pins_arduino.h as real hardware buttons — this is not merely inferred
+  from the alias names, but cross-checked against an independent vendor
+  description of the physical button layout and count. Individual
+  per-alias-to-GPIO confirmation ("ENTER is specifically GPIO14") was not
+  found in vendor marketing copy (expected — that level of detail is
+  pinout-diagram material, not product-page copy), but the pins_arduino.h
+  itself is the authoritative source for the exact GPIO mapping once
+  button existence/count/layout is externally confirmed, which it is.
+
+GPIO25 (PIN_LED) -> ["digital_output","pwm_output","led_high"]
+  Reasoning: both vendor sources confirm a user-controllable LED
+  "connected to GP25" (distinct from the separate fixed-power "ON" LED,
+  which is not user-controllable and therefore not a GPIO to tag). This
+  matches the LED_BUILTIN convention (generic/common.h: "#ifdef PIN_LED
+  -> #define LED_BUILTIN PIN_LED"). Tagged active-high (led_high) to
+  match the already-established, independently-confirmed GP25 LED
+  precedent used elsewhere in this RP2040 family (rpipico/board.json,
+  wiznet_5500_evb_pico/board.json) — no Akana-specific circuit-polarity
+  documentation (e.g. a schematic) was found, but nothing suggests an
+  inverted (active-low) circuit either, and GP25-LED-active-high is the
+  universal convention across every RP2040/Pico-form-factor board
+  audited in this codebase so far. The 4 parallel back-corner LEDs share
+  this same GP25 signal, so no additional GPIO needs tagging.
+
+GPIO24 (PIN_NEO) -> NO CHANGE (left at full chip-default derived
+  capabilities: digital_input/digital_output/pwm_output; no chipGpios
+  entry added)
+  Reasoning: this is the one genuine conflict found in this audit. The
+  alias name "PIN_NEO" strongly suggests an onboard NeoPixel/addressable
+  RGB LED, and the fact that GPIO24 is VBUS-sense (not broken out at all)
+  on the stock reference Pico design is circumstantial evidence that
+  Akana R1's designers deliberately repurposed this pin for something
+  NeoPixel-related. HOWEVER, both independent vendor sources explicitly
+  and affirmatively state the main board has "single-color LEDs only"
+  and that NO addressable RGB/WS2812/NeoPixel component is built into
+  the main board — RGB is only available via separate plug-in accessory
+  docks (NEO8 Dock, RGB Matrix Dock) sold as distinct products. Per this
+  audit's rule ("never guess existence... from an alias name alone;
+  report NO CHANGE for anything unconfirmable rather than guess"), this
+  pin is NOT tagged led_neopixel. A plausible reconciling explanation is
+  that GPIO24 is broken out to the "AkanaPort" expansion header
+  specifically as a NeoPixel-protocol data line for the accessory RGB
+  docks (which would make it a legitimate output-only pin, similar to
+  adafruit_trinkeyrp2040qt/board.json's GPIO27 precedent) even though no
+  NeoPixel exists on the base board itself — but this could not be
+  confirmed from any available documentation (no schematic or pinout
+  diagram for the AkanaPort header was found), so it is left unmodified
+  rather than guessed at. Worth revisiting if an official schematic
+  surfaces.
+
+I2C PINS (Wire0 GPIO4/5, Wire1 GPIO6/7) — NOT excluded, out of scope
+  The board has an onboard 1.3" I2C OLED display, but it was not possible
+  to confirm from vendor documentation which of the two Wire buses it is
+  wired to, and I2C buses are commonly shared with multiple devices at
+  different addresses (unlike the SPI chip-select case in
+  wiznet_5500_evb_pico/board.json, where a single dedicated chip
+  monopolizes the whole bus). No exclusion applied; left at full default
+  capabilities.
+
+RESULT
+------
+variants/rp2040/rp2040/akana_r1/board.json created (verified valid JSON
+via manual comment-stripping + JSON.parse, per task instructions — did
+NOT run/require build_boards.js).

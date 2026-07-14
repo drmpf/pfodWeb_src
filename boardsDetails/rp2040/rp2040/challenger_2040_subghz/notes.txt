@@ -1,0 +1,202 @@
+Board: iLabs "Challenger RP2040 SubGHz" (chip bucket: rp2040)
+Directory: variants/rp2040/rp2040/challenger_2040_subghz/
+Audit date: 2026-07-13
+
+SUMMARY
+-------
+Confirmed the onboard RFM69HCW sub-GHz radio module (315/433/868/915MHz
+ISM bands) occupies GPIO9-15 and GPIO18 (SPI1 bus + reset + 3 DIO
+interrupt lines) -- identical GPIO footprint to the challenger_2040_lora
+sibling, since iLabs' own product description calls this board "a
+spin-off from the Challenger RP2040 LoRa board with the LoRa module
+replaced by a low power SubGHz radio module." Found these pins were
+ALREADY fully excluded from the Designer's pin list by this board's
+existing pins_arduino.h (no static const uint8_t alias declared for any
+of them, and the file already carries a prior-session "pfodWeb NOTE"
+documenting this) -- so no board.json chipGpios entries were needed or
+added for the radio pins themselves. Created board.json (this board
+previously had none) containing a single chipGpios entry: GPIO24, tagged
+as the onboard general-purpose LED (active-high, cross-referenced from
+the challenger_2040_wifi sibling's datasheet since this board's own
+datasheet does not state the LED's active level). No onboard NeoPixel or
+user button found. pins_arduino.h was NOT modified this session (already
+correct).
+
+SOURCES CONSULTED
+------------------
+1. ilabs.se/challenger-rp2040-subghz-rfm69hcw-datasheet/ (official iLabs
+   datasheet - authoritative, fetched directly). States verbatim:
+   "GPIO9 - RFM69HCW_CS", "GPIO10 - RFM69HCW_SCK", "GPIO11 -
+   RFM69HCW_MOSI", "GPIO12 - RFM69HCW_MISO", "GPIO13 is connected to the
+   reset input of the RFM69HCW, and GPIO14, GPIO15 and GPIO18 is
+   connected to DIO0 - DIO2 respectively." Also: "GPIO24 is connected to
+   the general purpose LED" (active level NOT stated on this page,
+   unlike the challenger_2040_wifi datasheet). No NeoPixel or user
+   pushbutton mentioned anywhere on the page.
+2. ilabs.se/product/challenger-rp2040-subghz-868mhz/ (official iLabs
+   product page, fetched directly) - confirms the RFM69HCW radio, Feather
+   form factor, LiPo battery charging circuit, and: "One SPI channel has
+   been routed to the header pins (SCK, SDO, SDI) and the other SPI
+   channel is connected to the RFM69HCW module. One I2C channel has been
+   routed to the header pins (SCL, SDA). The micro controller has 4
+   analog input pins that all are available on the header pins (A0-A3)."
+   No NeoPixel or pushbutton mentioned; no LED active-level spec given.
+3. github.com/earlephilhower/arduino-pico
+   variants/challenger_2040_subghz/pins_arduino.h (upstream arduino-pico
+   source that this repo's local copy is derived from, fetched directly)
+   - confirmed byte-identical pin assignments to the local file: PIN_LED
+   =24, RFM69HCW SPI1 CS/SCK/MOSI/MISO=9/10/11/12, RST=13, DIO0/DIO1/
+   DIO2=14/15/18; no NeoPixel or button define present in the upstream
+   file either. No additional pin-role documentation beyond what's
+   already annotated locally.
+4. WebSearch cross-check (TinyGo / community summaries of the Challenger
+   RP2040 SubGHz board) - independently corroborates "GPIO24 is
+   connected to the general purpose LED on the Challenger RP2040 SubGHz
+   board" and the identical RFM69HCW GPIO9-15,18 mapping. Also
+   corroborates the "spin-off from the Challenger RP2040 LoRa board"
+   description.
+5. ilabs.se/challenger-rp2040-wifi-datasheet/ (sibling board in the same
+   iLabs Challenger RP2040 product line, already audited in this repo -
+   see variants/rp2040/rp2040/challenger_2040_wifi/board.json) -
+   explicitly states "Active level: High" for its own onboard user LED.
+   Used here as the cross-referenced basis for tagging this board's
+   GPIO24 LED active-high, since this board's own datasheet does not
+   state the active level directly (same reasoning already used for the
+   challenger_2040_nfc sibling, whose datasheet also omitted the active
+   level).
+6. Local codebase: variants/rp2040/rp2040/challenger_2040_subghz/
+   pins_arduino.h - already carried a prior-session "pfodWeb NOTE"
+   comment (lines 64-66, predating this board.json) stating: "D14-D17
+   deliberately NOT declared -- GPIO13/14/15/18 are the RFM69HCW sub-GHz
+   radio's RST/DIO0/DIO1/DIO2 lines, not general-purpose (GPIO9-12, the
+   module's SPI1 bus, already excluded)." Verified directly: the file's
+   only `static const uint8_t` declarations are D0-D13, D18, and A0-A5,
+   resolving to GPIOs {16,17,20,23,22,2,3,0,1,4,5,6,7,8,24,26,27,28,29,
+   19,21} - none of {9,10,11,12,13,14,15,18} appear anywhere.
+7. variants/rp2040/rp2040/board.json (chip-level defaults - chipGpios:{}
+   deliberately empty, copied verbatim into this board's new board.json
+   except for the added chipGpios entry).
+8. Precedent/schema reference: variants/rp2040/rp2040/challenger_2040_lora/
+   board.json (near-identical sibling board - same radio-module GPIO
+   footprint and same GPIO24 LED, used as the primary structural
+   template for this board's board.json and this notes.txt), plus
+   variants/rp2040/rp2040/challenger_2040_wifi/board.json and
+   variants/rp2040/rp2040/challenger_2040_nfc/board.json (read in full
+   for the established LED active-high cross-reference pattern and
+   per-pin reasoning style) - all read before writing this board's
+   board.json.
+9. pfodWeb_src/build_boards.js was NOT modified and NOT require()'d or
+   executed this session, per task instructions; the parser-behavior
+   reasoning below is carried over from the identical trace already
+   performed and documented for challenger_2040_lora's board.json/notes.txt
+   in a prior session of this same audit (buildEsp32Board() gpio-listing
+   mechanism unchanged since then).
+
+WHY NO chipGpios ENTRIES FOR THE RADIO PINS (GPIO9-15,18)
+-----------------------------------------------------------
+Same mechanism as challenger_2040_lora (see that board's notes.txt for
+the full build_boards.js trace): buildEsp32Board() (the parser the
+"rp2040" family routes through) only lists a GPIO in the Designer's pin
+picker if it appears either (a) as a `static const uint8_t` alias in
+pins_arduino.h, or (b) as a key in this board's chipGpios object. Since
+this board's pins_arduino.h already declares NO alias resolving to
+GPIO9, 10, 11, 12, 13, 14, 15, or 18 (see source #6 above), those eight
+GPIOs are already 100% absent from the Designer's pin list with zero
+board.json involvement. Adding chipGpios entries for them here would be
+COUNTERPRODUCTIVE: it would re-add each one to the parser's allGpios set
+as a bare, visible "GPIO<n>" row carrying an auto-appended "Check if
+available on board" note (fires for any rp2040-family GPIO absent from
+pins_arduino.h, regardless of a chipGpios override) - undoing the full
+concealment the pins_arduino.h aliasing already achieves. Left alone;
+this board.json exists solely to add the LED tag.
+
+Also confirmed (same check as challenger_2040_lora): this board's
+pins_arduino.h declares no bare SDA/SCL/SS/MOSI/MISO/SCK/TX/RX-named
+`static const uint8_t` globals for GPIO9-15,18 either (only
+PIN_SPI1_*/RFM69HCW_*-prefixed #defines, macro-only, not harvested by
+the parser's alias scan) - so there is no risk of build_boards.js's
+unconditional bus-capability auto-append silently re-adding a spi_*
+role capability to any of the radio-dedicated pins.
+
+PER-PIN REASONING
+------------------
+GPIO9 (RFM69HCW_CS, radio SPI1 chip-select): no pins_arduino.h alias
+  exists for this GPIO; already fully absent from the Designer pin list.
+  No board.json entry needed or added.
+
+GPIO10 (RFM69HCW_SCK, radio SPI1 clock): same - no alias, already
+  excluded.
+
+GPIO11 (RFM69HCW_MOSI, radio SPI1 data out): same - no alias, already
+  excluded.
+
+GPIO12 (RFM69HCW_MISO, radio SPI1 data in): same - no alias, already
+  excluded.
+
+GPIO13 (RFM69HCW_RST, reset input to the radio module): same - no
+  alias, already excluded.
+
+GPIO14 (RFM69HCW_DIO0, radio interrupt line): same - no alias, already
+  excluded.
+
+GPIO15 (RFM69HCW_DIO1, radio interrupt line): same - no alias, already
+  excluded.
+
+GPIO18 (RFM69HCW_DIO2, radio interrupt line): same - no alias, already
+  excluded.
+
+GPIO24 (PIN_LED / LED_BUILTIN, D18 alias): tagged in the new board.json
+  chipGpios with ["digital_output", "pwm_output", "led_high"]. Presence
+  confirmed by the official iLabs datasheet ("GPIO24 is connected to the
+  general purpose LED") and independently corroborated by TinyGo's board
+  docs. Active-high polarity is a cross-referenced inference, not a
+  direct statement in this board's own datasheet: the sibling
+  challenger_2040_wifi board's own datasheet explicitly states "Active
+  level: High" for the identical shared reference LED circuit reused
+  across this iLabs Challenger RP2040 product line, and every other
+  RP2040 board audited in this family to date (rpipico,
+  wiznet_5500_evb_pico, adafruit_feather_scorpio, challenger_2040_lora,
+  challenger_2040_wifi, challenger_2040_nfc) has been confirmed or
+  cross-reference-inferred active-high, none active-low. digital_input
+  capability dropped to match this repo's established led_high precedent
+  for dedicated onboard LED pins; pwm_output kept since arduino-pico's
+  analogWrite() works on any RP2040 GPIO.
+
+No onboard NeoPixel found - confirmed absent by both the iLabs datasheet
+  and product page (neither mentions one, unlike the challenger_2040_wifi
+  and challenger_2040_nfc siblings which explicitly describe/use one),
+  and confirmed absent from the upstream arduino-pico pins_arduino.h (no
+  NEOPIXEL/PIN_NEOPIXEL define present). No chipGpios tag applied.
+
+No onboard user button found (beyond the standard RP2040 BOOTSEL, which
+  is not a normal GPIO on RP2040, out of scope per the rpipico/board.json
+  precedent) - confirmed absent by both the iLabs datasheet and product
+  page (neither mentions a discrete pushbutton). No chipGpios tag
+  applied.
+
+VALIDATION
+----------
+- board.json was checked for valid JSONC syntax using a standalone
+  script (scratchpad validate_json.js) that strips `//` line comments
+  (respecting quoted strings, with backslash-escape handling) and then
+  runs a plain JSON.parse() - confirmed valid, and confirmed the file
+  has exactly the required 10 top-level fields (boardName, displayName,
+  family, inputOnlyGpios, connections, pinNotes, chipGpios, pwm, dac,
+  adc) plus the chipGpios object with one entry (GPIO24). No build
+  script was executed and build_boards.js was never require()'d, per
+  task instructions.
+- inputOnlyGpios/connections/pinNotes/pwm/dac/adc/boardName/displayName/
+  family values reproduce the chip-level variants/rp2040/rp2040/
+  board.json defaults verbatim except for the added chipGpios entry,
+  per the task's stated requirement.
+
+FILES CHANGED
+-------------
+- Created: variants/rp2040/rp2040/challenger_2040_subghz/board.json (new
+  file - this board previously had none)
+- Created: boardsDetails/rp2040/rp2040/challenger_2040_subghz/notes.txt
+  (this file)
+- pins_arduino.h: NOT modified this session (already correctly excludes
+  all eight RFM69HCW-dedicated GPIOs via absent aliases, and already
+  carried the explanatory "pfodWeb NOTE" comment from a prior session;
+  verified correct and left untouched)

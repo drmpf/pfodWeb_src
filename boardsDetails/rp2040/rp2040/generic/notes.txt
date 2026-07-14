@@ -1,0 +1,67 @@
+Board: generic (chip: rp2040) — "Generic RP2040" catch-all entry for DIY/custom/unlisted RP2040 boards
+Audited: 2026-07-13
+
+SOURCES CONSULTED
+------------------
+1. Local repo files:
+   - variants/rp2040/rp2040/board.json (chip-level defaults; chipGpios: {} deliberately empty)
+   - variants/rp2040/rp2040/generic/pins_arduino.h (this board's own pin definitions —
+     PIN_LED=25u, Serial1=0/1, Serial2=8/9, SPI0=16/17/18/19, SPI1=12/13/14/15,
+     Wire0=4/5, Wire1=26/27)
+   - variants/rp2040/rp2040/generic/common.h (D0-D22, A0-A2=GPIO26-28,
+     LED_BUILTIN=PIN_LED, SS/MOSI/MISO/SCK=SPI0 pins, SDA/SCL=Wire0 pins; contains
+     its own pfodWeb NOTE that GPIO23/24/25/29 are deliberately NOT given D-aliases
+     because they're wired to onboard circuitry on the reference Pico design)
+   - variants/rp2040/rp2040/rpipico/board.json + boardsDetails/rp2040/rp2040/rpipico/
+     notes.txt (precedent — this session's prior audit of the actual Raspberry Pi
+     Pico board, which uses this exact same generic/common.h template and declares
+     numerically IDENTICAL PIN_LED/SPI/Wire values in its own pins_arduino.h)
+2. No new web research performed for this entry. Reasoning: "Generic RP2040" is
+   not a real vendor product — it is this repo's own shared template file used as
+   a Designer board-picker fallback for DIY/unlisted RP2040 boards. There is no
+   datasheet or vendor page to consult for a template. Its GPIO25/PIN_LED value is
+   inherited by construction (byte-for-byte identical numeric defines) from the
+   already-audited rpipico entry, so rpipico's already-cited sources (official
+   Raspberry Pi Pico datasheet + raspberrypi.com docs confirming "LED is connected
+   to GP25", plus consistent secondary sources confirming active-high GPIO25)
+   apply here by direct analogy rather than independent re-confirmation.
+
+REASONING
+------------------
+- This board's pins_arduino.h is the literal shared template other real boards
+  include via "../generic/common.h" — not a distinct product. Its declared pin
+  values (PIN_LED=25u, SPI0/SPI1, Wire0/Wire1) are numerically identical to
+  rpipico's own pins_arduino.h, because rpipico itself was built on this same
+  Pico-compatible default layout.
+- GPIO25 (PIN_LED / LED_BUILTIN): has an alias, so the chip-level empty
+  chipGpios:{} default would otherwise expose it as a full general-purpose pin
+  (digital_input/digital_output/pwm_output). Overridden in the new board.json to
+  ["digital_output","pwm_output","led_high"], matching rpipico's tag exactly:
+  digital_input dropped per this repo's established precedent for dedicated
+  onboard LED pins, pwm_output kept since arduino-pico's analogWrite() works on
+  any RP2040 GPIO.
+- IMPORTANT CAVEAT (unlike rpipico): this is NOT a vendor-researched hardware
+  confirmation. "Generic RP2040" is selected by users for boards that aren't in
+  the list at all — there is no guarantee a given DIY board actually has an LED
+  wired to GPIO25, or that it's active-high if present. The tag is applied here
+  only as a reasonable default-by-analogy (matching the template's Pico-derived
+  values and this repo's convention for the identical numeric pin on rpipico),
+  and the board.json's own inline note plus this notes.txt both flag that users
+  picking this generic entry should verify against their actual board.
+- No SDA/SCL/SS/MOSI/MISO/SCK collision on GPIO25: this template's bus pins are
+  SDA=4, SCL=5, SS=17, MOSI=19, MISO=16, SCK=18 — none is GPIO25, so no
+  build_boards.js auto-appended-bus-capability bug applies here.
+- No onboard NeoPixel and no onboard general-purpose button declared anywhere in
+  this template — not applicable, no tags needed for either.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/generic/board.json (full file, copied from the
+chip-level variants/rp2040/rp2040/board.json defaults) adding one chipGpios
+override: GPIO25 (PIN_LED/LED_BUILTIN) tagged ["digital_output","pwm_output",
+"led_high"], by direct analogy with the already-audited rpipico entry (same
+template, numerically identical pin values). Unlike rpipico this is explicitly
+NOT vendor-researched — both the board.json's inline comment/note and this
+notes.txt flag it as a generic/template default that users of a real but
+unlisted DIY board should verify against their own hardware. No bus-collision
+bug found (GPIO25 is not aliased to any SPI/Wire pin in this template).

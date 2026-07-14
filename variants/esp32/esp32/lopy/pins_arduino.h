@@ -32,7 +32,8 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 12;
 static const uint8_t SCL = 13;
 
-static const uint8_t SS = 17;
+// pfodWeb NOTE: SS (GPIO17) deliberately NOT declared - same GPIO as the
+// dedicated onboard LoRa radio's LORA_CS pin above, not a usable SPI CS.
 static const uint8_t MOSI = 22;
 static const uint8_t MISO = 37;
 static const uint8_t SCK = 13;
@@ -52,7 +53,8 @@ static const uint8_t A13 = 15;
 static const uint8_t A14 = 13;
 static const uint8_t A15 = 12;
 static const uint8_t A16 = 14;
-static const uint8_t A17 = 27;
+// pfodWeb NOTE: A17 (GPIO27) deliberately NOT declared - same GPIO as
+// the dedicated onboard LoRa radio's LORA_MOSI pin above.
 static const uint8_t A18 = 25;
 static const uint8_t A19 = 26;
 
@@ -63,7 +65,7 @@ static const uint8_t T3 = 15;
 static const uint8_t T4 = 13;
 static const uint8_t T5 = 12;
 static const uint8_t T6 = 14;
-static const uint8_t T7 = 27;
+// pfodWeb NOTE: T7 (GPIO27) deliberately NOT declared - same as A17 above.
 static const uint8_t T8 = 33;
 static const uint8_t T9 = 32;
 

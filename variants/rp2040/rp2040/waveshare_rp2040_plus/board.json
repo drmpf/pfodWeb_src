@@ -1,0 +1,65 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // This board's own pins_arduino.h declares no capacitive/mechanical
+  // button aliases. The board has BOOT and RESET buttons (schematic
+  // reference designators Key1/Key2 — confirmed via the official
+  // RP2040_Plus.pdf schematic: Key1 sits on the RUN net (reset button,
+  // pulls RUN low), Key2 sits on the QSPI_SS_N net through R20 1K
+  // (BOOTSEL button, pulls flash chip-select low during boot to enter
+  // the ROM bootloader) — and independently confirmed by both the
+  // Waveshare RP2040-Plus docs page ("BOOT Button... enter download
+  // mode", "RESET Button") and Zephyr's own rp2040_plus.dts board
+  // definition, which declares no gpio-keys node at all. Neither button
+  // is a normal GPIO digitalRead() pin (same out-of-scope rationale as
+  // ../rpipico/board.json and ../waveshare_rp2040_zero/board.json), so
+  // there is no pin to attach a "button" capability to.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // GPIO25 (PIN_LED) is the board's only onboard visual indicator — the
+  // schematic (RP2040_Plus.pdf, "Key & LED" block) shows Led1 in series
+  // with current-limiting resistor R19 (470R) between GPIO25 and GND,
+  // and Waveshare's docs describe it simply as a "User status indicator
+  // (not a power LED)". Polarity confirmed active-high via Zephyr's
+  // official rp2040_plus.dts board definition (independently maintained,
+  // hardware-verified device tree): `led0: led_0 { gpios = <&gpio0 25
+  // GPIO_ACTIVE_HIGH>; label = "LED"; };` — matching the standard
+  // Raspberry Pi Pico GPIO25 LED convention this Pico-compatible board
+  // follows. No onboard NeoPixel exists on this board (only the single
+  // GPIO25 LED — confirmed via Waveshare docs and schematic, unlike the
+  // "Zero" form-factor sibling board which has a NeoPixel instead).
+  // digital_input dropped and pwm_output kept per this repo's established
+  // led_high precedent for dedicated onboard LED pins (see
+  // ../rpipico/board.json GPIO25, esp32/esp32c5/XIAO_ESP32C5 GPIO27).
+  "chipGpios": {
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard user status LED, active-high, confirmed via Zephyr's rp2040_plus.dts (GPIO_ACTIVE_HIGH) and RP2040_Plus.pdf schematic (see pfodWeb NOTE above)" }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // Same 12-bit ADC as every other RP2040/RP2350 board (this board's
+  // pins_arduino.h declares no board-specific analog aliases beyond the
+  // shared generic_full/common.h defaults).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

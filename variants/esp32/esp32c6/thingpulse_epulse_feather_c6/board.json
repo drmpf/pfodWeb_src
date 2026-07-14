@@ -1,0 +1,128 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: ThingPulse ePulse Feather C6 (ESP32-C6-MINI-1 based, part of
+  // ThingPulse's "Low Power" board line). No board.json override existed
+  // before this audit (used the chip-level esp32c6/board.json default).
+  // Flagged by a discovery sweep for PIN_RGB_LED=8 / RGB_BRIGHTNESS=64
+  // declared in pins_arduino.h. Also checked for a battery-sense ADC pin
+  // matching the sibling thingpulse_epulse_feather (esp32, non-C6) board's
+  // documented 2.2M/4.7M BATT_MONITOR divider.
+  //
+  // Sources consulted:
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/thingpulse_epulse_feather_c6/pins_arduino.h
+  //    Confirms the merged upstream file matches this repo's local
+  //    pins_arduino.h byte-for-byte: PIN_RGB_LED=8, RGB_BRIGHTNESS=64,
+  //    TX=16, RX=17, SDA=23, SCL=22, SS=18, MOSI=19, MISO=20, SCK=21,
+  //    A0-A6=0-6. No BATT_MONITOR/VBAT/BAT_VOLT_PIN declared anywhere in
+  //    the file.
+  //  - https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/esp32c6/pins_arduino.h
+  //    (this repo's local copy: variants/esp32/esp32c6/esp32c6/pins_arduino.h)
+  //    Is IDENTICAL to the ThingPulse C6 file for every line shown above
+  //    (only difference: the generic file additionally declares the fixed
+  //    LP_I2C SDA1=6/SCL1=7 pins). This is strong evidence the ThingPulse
+  //    C6 variant file was created by copying the generic ESP32-C6 dev-
+  //    module template and trimming the LP_I2C lines, without customising
+  //    the RGB LED default for the real board hardware.
+  //  - https://thingpulse.com/products/epulse-feather-c6/ and
+  //    https://www.cnx-software.com/2024/03/06/epulse-feather-c6-esp32-c6-development-board-adafruit-feather-lipo-battery/
+  //    and https://www.electronics-lab.com/epulse-feather-c6-an-esp32-c6-based-dev-board-with-wifi-ble-zigbee-thread-matter-capabilities/
+  //    Product page and independent hardware write-ups list the board's
+  //    features in detail (ESP32-C6-MINI-1(H4) module, 4MB flash, 20
+  //    accessible GPIO/ADC/I2C/UART pins, TP4065 LiPo charging IC,
+  //    MAX17048 fuel-gauge chip for battery monitoring, USB-C). None of
+  //    these sources mention an onboard RGB LED, NeoPixel, or WS2812 -
+  //    a feature that vendor pages and third-party reviews consistently
+  //    highlight for other boards in this repo when it is genuinely
+  //    present (compare pandabyte_xc6/board.json's GPIO23 citation trail).
+  //  - https://github.com/ThingPulse/epulse-feather-c6-samples and
+  //    https://github.com/ThingPulse/esp32-epulse-feather-testbed
+  //    ThingPulse's own sample/testbed firmware repos for this board.
+  //    Sample projects are "Fuel Gauge Simple" / "Fuel Gauge WiFi" -
+  //    battery monitoring exclusively via the MAX17048 over I2C, no ADC
+  //    pin, no RGB/NeoPixel sample or reference anywhere in the listed
+  //    projects.
+  //  - variants/esp32/esp32/thingpulse_epulse_feather/pins_arduino.h (this
+  //    repo, sibling board audited in parallel this wave) explicitly
+  //    declares `static const uint8_t LED_BUILTIN = -1;` - i.e. ThingPulse
+  //    deliberately ships NO onboard LED on the non-C6 sibling in this
+  //    same "Low Power" product line, which is the opposite convention
+  //    from a board that actually carries a populated NeoPixel. That
+  //    sibling file also documents its BATT_MONITOR pin (GPIO35) with an
+  //    explicit "voltage divider 2.2M/4.7M" comment - the C6 file has no
+  //    equivalent declaration anywhere, and the fuel-gauge sources above
+  //    explain why: the C6 model replaced the analog divider with the
+  //    MAX17048 I2C fuel-gauge chip, so there is no ADC battery pin on
+  //    this board to correct adc.defaultRefVolts for.
+  //
+  // GPIO8 (PIN_RGB_LED / RGB_BUILTIN / RGB_BRIGHTNESS): NOT confirmed as
+  // genuine onboard hardware for this specific board. No product page,
+  // review, schematic summary, or ThingPulse sample/testbed repo found
+  // during this audit mentions an RGB LED/NeoPixel on the ePulse Feather
+  // C6, and the pins_arduino.h block is provably identical boilerplate
+  // copied from the generic ESP32-C6 dev-module variant. Per this repo's
+  // KEEP+tag policy, tagging requires confirmation of genuinely populated
+  // hardware - absent that, GPIO8 is left as a plain chip-level GPIO
+  // (digital_input/digital_output/pwm_output), unchanged from the
+  // chip-level esp32c6/board.json default, with its existing strapping-
+  // pin note retained (GPIO8 must be HIGH or floating on reboot). No
+  // led_neopixel tag applied. A future audit that finds a vendor source
+  // (schematic, hardware test report) confirming a real onboard NeoPixel
+  // on GPIO8 for this exact board should revisit this decision.
+  //
+  // Battery-sense pin: none declared in pins_arduino.h (no BATT_MONITOR /
+  // VBAT / BAT_VOLT_PIN). Confirmed by vendor sources this board measures
+  // battery state via the MAX17048 fuel-gauge chip over I2C, not an ADC
+  // pin with a resistor divider - so, unlike the sibling
+  // thingpulse_epulse_feather board, there is no adc.defaultRefVolts
+  // correction to make here.
+  //
+  // Alias-collision check: TX=16, RX=17, SDA=23, SCL=22, SS=18, MOSI=19,
+  // MISO=20, SCK=21 - none of these collide with GPIO8, so no bus
+  // capability would be unconditionally appended onto GPIO8 by
+  // build_boards.js regardless of the led_neopixel decision above.
+  //
+  // Opportunistic button check (section 7a): no button-related alias or
+  // #define found in pins_arduino.h, and no vendor source consulted
+  // mentions an onboard user button on this board. Nothing to tag.
+  //
+  // See boardsDetails/esp32/esp32c6/thingpulse_epulse_feather_c6/notes.txt
+  // for the full research trail.
+
+  "boardName": "ESP32C6",
+  "displayName": "ESP32-C6 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "8":  "Must be HIGH or floating on reboot",
+    "9":  "Must be HIGH for normal boot",
+    "15": "Must be LOW or floating on reboot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "17": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "18": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "19": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

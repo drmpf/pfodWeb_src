@@ -1,0 +1,77 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "ESP8266" -> designer/boards/ESP8266/ESP8266.json -> const ESP8266Data = {...}
+  // (boardName/displayName are fallbacks — a matching boards.txt entry
+  // with build.variant=adafruit, if present, overrides both.)
+  "boardName": "ESP8266",
+  "displayName": "Generic ESP8266 Module",
+
+  "family": "esp8266",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "tcp", "http"],
+
+  // Reference: https://randomnerdtutorials.com/esp8266-pinout-reference-gpios/
+  // pfodWeb NOTE: GPIO0 tagged "led_low" (onboard red LED, active-low) -
+  // confirmed via this board's own pins_arduino.h (`#define LED_BUILTIN 0`)
+  // plus the official Adafruit Learning Guide pinout page:
+  //   https://learn.adafruit.com/adafruit-feather-huzzah-esp8266/pinouts
+  //     ("GPIO #0, which does not have an internal pullup, and is also
+  //     connected a red LED ... note the LED is reverse wired so setting
+  //     the pin LOW will turn the LED on.")
+  // GPIO0 is not this board's TX/RX pin (those are the hard-reserved
+  // GPIO1/GPIO3 UART0 lines below), so the LED tag is safe to keep.
+  // No onboard user pushbutton was found (only non-GPIO RST and EN control
+  // pins) - see notes.txt for the sources checked.
+  // Also considered but NOT tagged: this board's ESP-12E module has a
+  // second, blue LED wired to GPIO2 ("also used to detect boot-mode ...
+  // connected to the blue LED that is near the WiFi antenna" - same
+  // pinouts page). This is the same generic ESP-12 module boot-strap LED
+  // already covered by the chip-level GPIO2 pinNote below on every
+  // ESP8266 board sharing that module, not a Feather-specific alias in
+  // this board's own pins_arduino.h (no LED_BUILTIN2/LED_BLUE etc.), so it
+  // is left untagged here - see notes.txt.
+  "pinNotes": {
+    "0":  "Must be HIGH or floating for normal boot; LOW at boot enters flash/programming mode. No interrupt support. No onboard user button on this board (checked - see notes.txt) - only non-GPIO RST/EN control pins are present. Onboard red LED (active-low, LED_BUILTIN) - confirmed via Adafruit Learning Guide, see chipGpios note",
+    "2":  "Must be HIGH at boot. Commonly wired to the on-board LED on dev boards",
+    "15": "Must be LOW at boot (tied to GND via resistor on most boards)",
+    "16": "RTC-domain pin: no internal pull-up/down, no PWM, no interrupt support. Commonly wired to RST for deep-sleep wake",
+    "17": "Analog input only (A0) — cannot be used for digital I/O or PWM. Native range is 0-1.0V on the bare chip; Adafruit's own guide documents A0 on this board as ~1.0V max with no on-board divider extending the range - see adc note below"
+  },
+
+  // Full usable-GPIO map for the chip — see variants/esp8266/esp8266/board.json
+  // for the full rationale (A0 analog-only, GPIO1/3 forced serial, PWM
+  // available on GPIO0-15 except 16, per randomnerdtutorials.com above).
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "led_low"], "note": "Onboard red LED (active-low) — see pfodWeb NOTE above pinNotes for sources" },
+    "1":  { "capabilities": ["serial_tx"], "note": "Hardware UART0 TX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "2":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["serial_rx"], "note": "Hardware UART0 RX0 — used by the Serial pfod connection, not available as a general GPIO" },
+    "4":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "15": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "16": { "capabilities": ["digital_input", "digital_output"] },
+    "17": { "capabilities": ["analog_input"] }
+  },
+
+  // ESP8266's analogWrite() PWM defaults to a 10-bit range (0-1023),
+  // unlike AVR/ESP32's 8-bit (0-255) default.
+  "pwm": { "min": 0, "max": 1023, "method": "analogWrite" },
+
+  // No hardware DAC on ESP8266.
+  "dac": {},
+
+  // pfodWeb NOTE: adc.defaultRefVolts left at the inherited chip-level
+  // "1.0" (NOT overridden) - the Adafruit Learning Guide's own Analog
+  // Input page states A0 has "a ~1.0V maximum voltage, so if you have an
+  // analog voltage you want to read that is higher, it will have to be
+  // divided down to 0 - 1.0V range" (https://learn.adafruit.com/adafruit-
+  // feather-huzzah-esp8266/analog-input), confirming this board does NOT
+  // have an on-board resistor divider extending A0's range like NodeMCU
+  // or D1 Mini do - it exposes the bare chip's native 0-1.0V ADC directly.
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "1.0" }
+}

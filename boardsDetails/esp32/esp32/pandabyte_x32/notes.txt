@@ -1,0 +1,75 @@
+pandabyte_x32 - onboard button / LED research notes
+=====================================================
+
+pins_arduino.h aliases (NOT trusted alone, cross-checked below):
+  LED_BUILTIN    = GPIO2
+  RGB_BUILTIN    = GPIO12
+  BUTTON_BUILTIN = GPIO4
+  TX = GPIO1, RX = GPIO3 (no conflict with the above pins)
+
+Sources consulted
+------------------
+https://www.pandabyte.in/product-page/esp32-x32-microcontroller-board-arduino-compatible
+  Vendor (PandaByte.in) product page for the "PandaByte x32" board. States
+  under Peripherals: "Switches: RST, FLASH, and User Programmable buttons"
+  and "Programmable Single Color and RGB LEDs". Confirms three distinct
+  onboard components exist: a dedicated user switch, a single-color LED,
+  and an RGB LED, and separately (search snippet) that the RGB LED is
+  WS2812B. Does NOT give GPIO numbers or LED drive polarity - no pinout
+  table, schematic, or wiki content was retrievable from the page.
+
+https://github.com/espressif/arduino-esp32/pull/12220
+  Official, merged espressif/arduino-esp32 PR that added PandaByte board
+  support (x32, xC3m, xS3, xC5, xC6), authored/tested by the PandaByte
+  vendor contact. Testing checklist for each board records: "Blink
+  (digitalWrite)", "Blink RGB (FastLED)", "Digital Input (Switch)" among
+  others. This independently corroborates that LED_BUILTIN (GPIO2) is a
+  plain digitalWrite-driven LED, RGB_BUILTIN (GPIO12) is an
+  addressable/FastLED-style RGB LED, and BUTTON_BUILTIN (GPIO4) is a real
+  digital-input switch - i.e. the pins_arduino.h aliases are correct
+  identities, not generic mislabeled names. Does not state LED polarity.
+
+https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/pandabyte_x32/pins_arduino.h
+  Confirmed the upstream pins_arduino.h is identical to this repo's copy
+  (LED_BUILTIN=2, RGB_BUILTIN=12, BUTTON_BUILTIN=4, TX=1, RX=3). No
+  comments on polarity or NUM_LEDS present in the file.
+
+https://www.pandabyte.in/help-center
+  Vendor help-center page. No board-specific pinout, GPIO table, or LED
+  polarity documentation found.
+
+General WebSearch queries run (no additional board-specific results beyond
+the above): "PandaByte X32 wiki pinout diagram", "pandabyte x32 GPIO2 LED
+blink example code", "pandabyte.in x32 wiki.pandabyte.in", "pandabyte x32
+site:github.com arduino-esp32 pins_arduino.h", "github espressif
+arduino-esp32 pull request pandabyte board support", "panda-byte" GitHub
+org (github.com/panda-byte) - checked, but this account's repos are
+unrelated (JS/Python web projects), not the PandaByte.in hardware vendor.
+
+Pins considered but NOT tagged
+--------------------------------
+GPIO2 (LED_BUILTIN, single-color LED): Identity is confirmed (vendor page
+lists a distinct "single-color LED" separate from the RGB LED, and PR
+#12220 records a passing "Blink (digitalWrite)" test on this exact pin).
+However NO source found states whether the LED is wired active-high or
+active-low, and the pfodWeb button/LED capability tags require picking
+either "led_high" or "led_low". Standard ESP32-WROOM-32 devkit-clone
+convention is almost always active-high for a GPIO2 onboard LED, but this
+is a generic pattern, not a fact confirmed for this specific board's
+circuit, so per task instructions this was treated as an unconfirmed
+guess and NOT applied. Left untagged (default chipGpios capabilities
+unchanged) for human review/decision.
+
+GPIO4 and GPIO12: both had solid, non-alias-based vendor + PR confirmation
+(see above) and were tagged - see summary below. Neither coincides with
+this board's TX(1)/RX(3) pins, so no TX/RX-reservation conflict applies.
+
+Summary of changes made
+-------------------------
+Created C:\ai\aicode\pfodWeb\variants\esp32\esp32\pandabyte_x32\board.json
+(no board.json existed previously) as a full copy of the esp32/esp32
+chip-level default board.json, with:
+  GPIO4  -> ["digital_input", "button"]
+  GPIO12 -> ["digital_output", "led_neopixel", "pwm_output"]  (pwm_output
+            kept because it was present in the chip default for GPIO12)
+GPIO2 was left at its chip-default capabilities (untagged) - see above.

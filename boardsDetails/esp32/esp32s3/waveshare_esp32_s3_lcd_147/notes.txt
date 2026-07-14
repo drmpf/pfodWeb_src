@@ -1,0 +1,63 @@
+Board: waveshare_esp32_s3_lcd_147 (Waveshare "ESP32-S3-LCD-1.47")
+Variant dir: C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\waveshare_esp32_s3_lcd_147
+
+Sources consulted:
+- https://www.waveshare.com/wiki/ESP32-S3-LCD-1.47
+  Attempted WebFetch directly - returned HTTP 403 Forbidden (site blocks the fetch tool).
+  Used only indirectly via WebSearch snippet indexing below.
+- https://www.waveshare.com/esp32-s3-lcd-1.47.htm
+  Attempted WebFetch directly - returned HTTP 403 Forbidden. Product title confirms
+  "With Colorful RGB LED" per WebSearch result snippet, corroborating an onboard RGB LED.
+- WebSearch query: Waveshare ESP32-S3-LCD-1.47 wiki BOOT button RGB LED GPIO
+  Search-engine summary of indexed Waveshare wiki content stated: "the RGB LED is
+  connected to GPIO 38" and listed LCD pins (MOSI 45, SCLK 40, CS 42, DC 41, Reset 39,
+  Backlight 48) and SD card pins (16,18,17,21,14,15) - used only as a secondary hint,
+  not as the primary confirming source (search summaries can be unreliable).
+- https://files.waveshare.com/wiki/ESP32-S3-LCD-1.47/ESP32-S3-LCD-1.47_schematic_diagram.pdf
+  PRIMARY CONFIRMING SOURCE. Fetched successfully and read directly (official Waveshare
+  schematic PDF for this exact board). Findings:
+    * LED1 = "WS2812B-0807" addressable RGB LED. Its DI (data-in) pin is on net
+      "RGB_IO", which is also tied to net "IO38" (ESP32-S3 U3 pin GPIO38). This is a
+      single-wire addressable NeoPixel-type LED -> confirms GPIO38 = led_neopixel.
+    * Two pushbuttons on the schematic: "Key1" and "Key2".
+      - Key1: one pin tied to GND, other pin tied to net "RESET" (same net as R1 10K
+        pull-up to 3V3, C16 1uF, and U3's CHIP_PU/EN pin). This is the hardware
+        EN/RESET button - it resets the whole chip via the EN pin, it is NOT wired to
+        any GPIO, so it cannot be exposed as a pfodWeb digital_input/button capability.
+      - Key2: one pin tied to GND, other pin tied to net "IO0" (same net as R2 10K
+        pull-up to 3V3 and U3 GPIO0 pin). This is the standard ESP32 BOOT/download
+        button, active-low -> confirms GPIO0 = button.
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\waveshare_esp32_s3_lcd_147\pins_arduino.h
+  `#define PIN_RGB_LED 38` corroborates the GPIO38 NeoPixel finding (used only as a
+  secondary corroborating source per task rules, not as primary evidence).
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\lolin_s3_mini\board.json
+  Checked as in-repo precedent for how a GPIO0 BOOT button (also a strapping pin) is
+  normally tagged in this project: exactly ["digital_input","button"], confirming the
+  tagging convention used here.
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\adafruit_metro_esp32s3\board.json and
+  esp32s3\elecrow_crowpanel_7\board.json
+  Checked as in-repo precedent for led_neopixel capability array ordering
+  (["digital_output","pwm_output","led_neopixel"]), used for consistency.
+
+Pins considered but NOT tagged:
+- Key1 / EN-RESET button: wired to the chip's CHIP_PU/EN pin, not to any GPIO. There is
+  no GPIO capability to tag for a hardware reset button - this is not a judgment call,
+  it is simply not representable as a pfodWeb button GPIO. No further action needed.
+- Backlight (LCD_BL, GPIO48) and other LCD/SD/UART pins visible on the schematic are
+  dedicated display/storage/comm pins, not "button/LED" candidates per task scope, and
+  were left untouched (no pre-existing pin-exclusions existed for this board since no
+  board.json existed prior to this task - out of scope to add new exclusions here).
+- No TX/RX conflict: this board's TX=43, RX=44 (pins_arduino.h); neither GPIO0 nor
+  GPIO38 coincide with TX/RX, so no discard risk.
+
+Summary of what was tagged:
+- GPIO0 -> ["digital_input","button"]  (Key2, BOOT button, confirmed via official
+  Waveshare schematic PDF)
+- GPIO38 -> ["digital_output","pwm_output","led_neopixel"]  (LED1, WS2812B-0807
+  addressable RGB LED, confirmed via official Waveshare schematic PDF; pwm_output kept
+  because it was present in the chip-level default capability set for GPIO38)
+
+No board.json existed for this variant prior to this task; a new one was created as a
+full copy of variants/esp32/esp32s3/board.json (chip-level default) with only the
+GPIO0 and GPIO38 capability arrays changed, plus the NOTE comment above. No existing
+pin-exclusions were touched (none existed).

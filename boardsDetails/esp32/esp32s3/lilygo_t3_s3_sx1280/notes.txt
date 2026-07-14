@@ -1,0 +1,56 @@
+Board: lilygo_t3_s3_sx1280 (variants/esp32/esp32s3/lilygo_t3_s3_sx1280)
+Researched: 2026-07-11
+
+Sources consulted:
+- https://github.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/blob/master/examples/ArduinoLoRa/LoRaReceiver/utilities.h
+  -> Vendor example utilities.h. Under the #elif block for
+     T3_S3_V1_2_SX1280 / ARDUINO_LILYGO_T3S3_SX1280 (part of the shared
+     T3_S3 board block), it defines: BOARD_LED 37, LED_ON HIGH,
+     BUTTON_PIN 0, ADC_PIN 1, RADIO_DIO1_PIN 9, RADIO_BUSY_PIN 36.
+     Confirms LED on GPIO37 is active-high, and BOOT button on GPIO0.
+- https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGo-LoRa-Series/master/docs/en/t3_s3_sx1280/t3_s3_sx1280_hw.md
+  -> Official hardware doc page for this exact SX1280 variant.
+     States "On-board LED: GPIO 37", "Boot Button: GPIO 0" (BOOT button,
+     customizable), plus a separate CHG (charging) LED that is NOT a
+     GPIO-controlled LED (hardware charge-status indicator only, no
+     software control - not applicable to pfodWeb tagging).
+     Also lists UART1 TX=43/RX=44, I2C SDA=18/SCL=17, SD-card SPI
+     (CS13/MOSI11/MISO2/SCK14), LoRa SPI (CS7/MOSI6/MISO3/SCK5),
+     LoRa RESET=8/DIO1=9/BUSY=36 - consistent with this board's
+     pins_arduino.h and with the pin-exclusions already present in
+     board.json (SD bus 2,11,13,14; LoRa 3,5,6,7,8,9,36).
+- https://wiki.lilygo.cc/products/t3-series/t3-s3/ (surfaced via search, not deep-fetched
+  beyond snippet) -> general T3-S3 family product/doc page, consistent with above.
+- Cross-checked local sibling boards already audited in an earlier pass:
+  variants/esp32/esp32s3/lilygo_t3_s3_sx1262/board.json and
+  lilygo_t3_s3_sx127x/board.json both already tag GPIO0 as
+  ["digital_input","button"] and both leave GPIO37 untagged with a NOTE
+  explaining the chip-level exclusion - same conclusion independently
+  reached here, confirms consistency across the T3-S3 family.
+- Checked variants/esp32/esp32s3/board.json (chip-level default) directly:
+  GPIO37 has no chipGpios entry at all (chip default jumps from 21 to 38),
+  so its absence in lilygo_t3_s3_sx1280/board.json is a chip-level
+  exclusion, not something removed by this board's own SD/LoRa pin audit.
+
+Pins considered but NOT tagged:
+- GPIO37 (onboard LED, confirmed via vendor utilities.h BOARD_LED=37 and
+  t3_s3_sx1280_hw.md "On-board LED: GPIO 37", active-high per LED_ON HIGH):
+  NOT tagged. This is not a guess/judgment call - it is a hard rule
+  per task instructions: GPIO37 has NO chipGpios entry in this board's
+  board.json because it falls inside the ESP32-S3 chip-level default
+  pin-exclusion range (confirmed also absent from the chip-level default
+  variants/esp32/esp32s3/board.json, which jumps directly from GPIO21 to
+  GPIO38). Re-adding it would reverse a pre-existing chip-level exclusion,
+  which is explicitly out of scope for this task. Left untagged for human
+  review/decision on whether the chip-level exclusion should ever be
+  relaxed for boards that do expose GPIO37 as a usable LED pin.
+- CHG (charge status) LED: mentioned in vendor hw doc as a hardware-driven
+  battery-charge indicator, not connected to any user-controllable GPIO.
+  Not a candidate for tagging (no GPIO to tag) - not a guess, this is
+  explicit in the vendor doc.
+
+What was tagged:
+- GPIO0 -> ["digital_input","button"] (BOOT button, confirmed by vendor
+  utilities.h BUTTON_PIN 0 for this exact SX1280 variant block, and
+  t3_s3_sx1280_hw.md "Boot Button: GPIO 0"). Not TX/RX (TX=43, RX=44 per
+  this board's pins_arduino.h), so no TX/RX silent-discard conflict.

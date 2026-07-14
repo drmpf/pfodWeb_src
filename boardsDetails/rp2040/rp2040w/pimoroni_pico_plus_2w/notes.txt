@@ -1,0 +1,242 @@
+Board: Pimoroni Pico Plus 2 W (PIM726)
+Chip bucket: variants/rp2040/rp2040w/pimoroni_pico_plus_2w/
+Audit: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion, 2026-07-13.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040w/pimoroni_pico_plus_2w/board.json (did not
+exist before this audit). Added one chipGpios override: GPIO45 (BOOT
+button, usable as a general user button, active-low — same pin/behaviour
+as the non-W pimoroni_pico_plus_2 sibling). No NeoPixel confirmed on this
+board (single-color "User LED indicator" only, wireless-chip-controlled).
+No chipGpios override added for the LED (pseudo-GPIO 64 / WL_GPIO0 via the
+CYW43/RM2 wireless chip) or for GPIO23/24/25/29 (wireless-bus lines,
+already excluded by omission from this board's own pins_arduino.h alias
+list) or for GPIO47 (PSRAM chip-select, bare #define with no static-const
+alias, already excluded from the pin sweep) — all four follow established
+precedents from sibling boards in this same chip bucket / family, detailed
+below.
+
+FILES READ
+----------
+- variants/rp2040/rp2040w/pimoroni_pico_plus_2w/pins_arduino.h (full file,
+  33 declared pins, RP2350B / includes <cyw43_wrappers.h>)
+- variants/rp2040/rp2040w/board.json (chip-level defaults, chipGpios: {})
+- variants/rp2040/rp2350/pimoroni_pico_plus_2/pins_arduino.h +
+  variants/rp2040/rp2350/pimoroni_pico_plus_2/board.json +
+  boardsDetails/rp2040/rp2350/pimoroni_pico_plus_2/notes.txt (direct
+  non-W sibling, already audited this session — near-identical
+  pins_arduino.h, GPIO45 BOOT button precedent, GPIO47 PSRAM-CS
+  no-override-needed precedent, no-NeoPixel precedent)
+- variants/rp2040/rp2040w/rpipicow/pins_arduino.h +
+  variants/rp2040/rp2040w/rpipicow/board.json (RP2040 W flagship in this
+  chip bucket: bespoke self-contained pins_arduino.h that omits GPIO23/
+  24/25/29 D<n>/A<n> aliases entirely because they're wired to the CYW43
+  WiFi chip; PIN_LED (64u) pseudo-GPIO precedent; extensive documented
+  reasoning for leaving pin 64 completely untagged)
+- variants/rp2040/rp2040w/rpipico2w/pins_arduino.h +
+  variants/rp2040/rp2040w/rpipico2w/board.json (RP2350 W flagship in this
+  chip bucket, same design as rpipicow, confirms the pattern carries over
+  to RP2350 silicon)
+
+pins_arduino.h KEY FACTS
+-------------------------
+- PINS_COUNT / NUM_DIGITAL_PINS = 33 (identical to the non-W sibling)
+- Includes <cyw43_wrappers.h> (the non-W sibling does NOT include this)
+- PIN_LED = 64 (LED_BUILTIN) — the arduino-pico "pseudo-GPIO 64"
+  convention that routes through the CYW43-family wireless chip's own
+  WL_GPIO0 via cyw43_arch_gpio_put()/get(), NOT a real RP2350 pin. This
+  is the ONE meaningful difference from the non-W sibling, which instead
+  declares `#define PIN_LED (25u)` (a real GPIO).
+- SPI0: MISO=32, MOSI=35, SCK=34, SS=33 (aliased via `static const
+  uint8_t SS/MOSI/MISO/SCK = PIN_SPI0_*;`) — identical to non-W sibling.
+- SPI1: MISO=12, MOSI=15, SCK=14, SS=13 (declared via #define only, not
+  aliased to bare SS/MOSI/MISO/SCK) — identical to non-W sibling.
+- Wire0: SDA=4, SCL=5; Wire1: SDA=6, SCL=7 — identical to non-W sibling.
+- RP2350_PSRAM_CS = 47 — `#define` only, no static-const peer alias
+  anywhere in the file. Identical to non-W sibling.
+- DVI connector pins (CKN/CKP/D0N/D0P/D1N/D1P/D2N/D2P) declared via
+  #define, overlapping GPIO12-19 (shared with SPI1 and D12-D19) —
+  identical to non-W sibling, outside this task's scope.
+- D0-D22, D26=40/D27=41/D28=42, A0=40/A1=41/A2=42, A3=43 — identical set
+  of aliases to the non-W sibling. Confirmed via direct grep: NO
+  `static const uint8_t` alias anywhere in this file resolves to GPIO23,
+  GPIO24, GPIO25, or GPIO29 (same grep pattern used for the rpipicow/
+  rpipico2w precedent audits). Unlike the non-W sibling, GPIO25 is not
+  even used for the LED here (LED uses pseudo-pin 64 instead) — so
+  GPIO25 is genuinely absent from every alias in this W-variant file.
+- No PIN_NEOPIXEL / NUM_NEOPIXEL define anywhere in the file.
+- No PIN_BUTTON alias anywhere in the file.
+
+VENDOR SOURCES CONSULTED
+-------------------------
+1. https://shop.pimoroni.com/en-us/products/pimoroni-pico-plus-2-w
+   (official product page, fetched directly via WebFetch). Quote: "The
+   BOOT button can also be used as a user button. It's wired to GP45 and
+   active low." Also confirms: RP2350B, "48 usable GPIO pins, including
+   8 ADCs and 24 PWMs", 8MB PSRAM, "Raspberry Pi RM2 module, which gives
+   it 2.4GHz wireless and Bluetooth connectivity", USB-C. Only a plain
+   "User LED indicator" mentioned — no NeoPixel/addressable RGB LED.
+
+2. https://www.adafruit.com/product/6243 (PIM726 US distributor page,
+   fetched directly). Independently corroborates "BOOT button, which can
+   also be used as a user switch", "8MB of PSRAM", "Raspberry Pi RM2
+   module ... 2.4GHz wireless and Bluetooth", and explicitly states "the
+   same shape and pinout as the classic Pico 2W" for add-on
+   compatibility — used as corroborating (not sole) evidence that this
+   board preserves the same GPIO23/24/25/29 wireless-bus reservation
+   convention as the official Pico W/Pico 2 W. Only a plain "User LED
+   indicator" listed — no NeoPixel/RGB LED.
+
+3. https://www.pishop.us/product/pimoroni-pico-plus-2-w/ (reseller
+   mirror of Pimoroni's own product copy, fetched directly). Confirms
+   verbatim: "The BOOT button can also be used as a user button. It's
+   wired to GP45 and active low." Same PSRAM/RM2/GPIO-count facts. Only
+   a plain "User LED indicator" — no addressable/RGB LED mentioned.
+
+4. https://forums.pimoroni.com/t/new-pico-plus-2-w-led/25923 (Pimoroni's
+   own support forum, fetched directly). Pimoroni staff response quotes:
+   "The user LED is wired to WL_GPIO0, just like on an ordinary Pico W.
+   You can blink it in the same way as a regular Pico, by using 'LED' in
+   place of 25." This directly confirms (a) the LED is wireless-chip-
+   controlled (WL_GPIO0), matching this board's own pins_arduino.h
+   `PIN_LED (64u)` + cyw43_wrappers.h, and (b) the phrasing "in place of
+   25" confirms GPIO25 is NOT the LED pin on this W-variant (unlike the
+   non-W sibling, where GPIO25 IS the LED) — consistent with GPIO25 now
+   being reserved for the wireless module instead. The thread separately
+   covers an unrelated MicroPython firmware/naming bug on early
+   non-PSRAM units (`Pin("LED", ...)` vs `machine.Pin("LEDW")`) — not
+   applicable to this repo's Arduino-core board.json.
+
+5. WebSearch cross-check on the official Pico W / Pico 2 W GPIO23/24/25/
+   29 wireless-bus reservation (raspberrypi.com documentation,
+   forums.raspberrypi.com "Understanding Pico W shared GPIO with WiFi
+   chip" / "More GPIO - how about 23, 24, 25, 29?" threads): confirms
+   the general convention (GPIO23 = WL power-save/enable, GPIO24 = WL
+   data/VBUS-sense/IRQ, GPIO25 = WL chip-select/LED-control, GPIO29 = WL
+   clock / ADC3-when-idle) that this repo's own rpipicow/board.json and
+   rpipico2w/board.json already document in full for the reference Pico
+   W/Pico 2 W boards. Used here only as corroborating background for why
+   this Pimoroni board's "same pinout as Pico 2W" claim implies the same
+   4-GPIO reservation, combined with the direct confirmation (source 4)
+   that GPIO25 specifically is no longer the LED pin on this W-variant.
+   No Pimoroni-specific schematic/GPIO-table for the RM2 module's exact
+   GPIO23/24/29 wiring was found via WebSearch or WebFetch (Pimoroni does
+   not appear to publish a granular schematic PDF with net labels in
+   fetchable text form) — the exclusion conclusion rests on (a) the
+   vendor's explicit pinout-compatibility claim, (b) the direct
+   confirmation that GPIO25 changed roles from the non-W sibling exactly
+   as expected for a wireless-chip reservation, and (c) the simple fact
+   that this board's own pins_arduino.h already declares zero aliases
+   for any of GPIO23/24/25/29 — i.e. the pins_arduino.h author (whether
+   Pimoroni/arduino-pico upstream or a prior contributor to this repo)
+   already encodes the same exclusion this audit would otherwise add,
+   just without an explanatory comment.
+
+6. No source (official product page, Adafruit, PiShop, or Pimoroni's own
+   support forum) mentions a NeoPixel/WS2812/addressable RGB LED
+   anywhere on this board — every source instead describes a single-
+   color "User LED indicator" (confirmed wireless-chip-controlled per
+   source 4). Matches the non-W sibling's own confirmed NeoPixel-absent
+   finding. Per this audit's explicit instruction to "confirm via real
+   vendor documentation — never guess. Report NO CHANGE rather than
+   guess," no led_neopixel tag was added.
+
+NEOPIXEL — NOT FOUND, NO CHANGE
+--------------------------------
+As with the non-W sibling, no vendor source confirms a NeoPixel/WS2812/
+addressable RGB LED on the Pimoroni Pico Plus 2 W — every source
+describes a single-color "User LED indicator" that is wireless-chip-
+controlled (WL_GPIO0 via the CYW43/RM2 module), consistent with this
+board's own pins_arduino.h `PIN_LED (64u)` + <cyw43_wrappers.h>. No
+led_neopixel tag added anywhere.
+
+PER-PIN FINDINGS
+-----------------
+Pin 64 (PIN_LED / LED_BUILTIN, pseudo-GPIO for CYW43/RM2 WL_GPIO0):
+  Confirmed wireless-chip-controlled via Pimoroni's own support forum
+  ("wired to WL_GPIO0, just like on an ordinary Pico W"). NOT a real
+  RP2350 silicon pin — outside the chip's real GPIO0-47 address space,
+  and driving it correctly requires cyw43_arch_init() to have already
+  run (only guaranteed by this chip bucket's tcp.ino/http.ino templates
+  calling WiFi.mode()/WiFi.begin(), NOT by the shared serial.ino
+  template). Left completely untagged, no chipGpios entry — identical
+  reasoning already fully documented in rpipicow/board.json and
+  rpipico2w/board.json for the same pseudo-pin-64 mechanism.
+
+GPIO23/24/25/29 (RM2/CYW43 wireless-bus lines):
+  Already fully excluded from this board's own pins_arduino.h alias list
+  by omission (confirmed via direct grep — no D<n>/A<n>/other
+  static-const alias anywhere resolves to any of these four numbers).
+  Inferred to be reserved for the wireless module based on (a) the
+  vendor's "same shape and pinout as the classic Pico 2W" claim, (b) the
+  Pimoroni forum's confirmation that GPIO25 specifically is no longer
+  the LED pin here (unlike the non-W sibling), consistent with a
+  wireless-chip takeover of that pin, and (c) the established
+  rpipicow/rpipico2w precedent for the same 4-GPIO reservation pattern
+  on official Raspberry Pi wireless boards. No chipGpios entry added —
+  adding one would incorrectly re-introduce pins that are not
+  physically user-accessible on this board, per the same reasoning
+  documented in rpipicow/board.json and rpipico2w/board.json.
+
+GPIO45 (BOOT button):
+  Not declared anywhere in pins_arduino.h (no PIN_BUTTON alias, and
+  outside the file's own NUM_DIGITAL_PINS=33 range). Confirmed via all
+  three vendor/reseller sources: "wired to GP45 and active low," usable
+  as a general user button in addition to its bootloader-select role —
+  identical pin number and wording to the already-confirmed non-W
+  sibling finding. Added purely via chipGpios (established "GPIO absent
+  from pins_arduino.h but present in chipGpios" pattern — see
+  pimoroni_pico_plus_2/GPIO45, pimoroni_tiny2040/pimoroni_tiny2350
+  GPIO23).
+  Capabilities: digital_input, button only. digital_output/pwm_output
+  deliberately omitted — no vendor source confirms it's electrically
+  safe to drive this BOOT/DFU-select line as an output; matches the
+  conservative precedent already set for pimoroni_pico_plus_2 GPIO45,
+  pimoroni_tiny2040/pimoroni_tiny2350 GPIO23, and u-blox EVK-NORA-W10
+  GPIO0.
+  No SPI/I2C bus-alias collision (this board's SPI0/SPI1/Wire0/Wire1
+  pins are GPIO32-35, 12-15, 4-5, 6-7 — GPIO45 is untouched).
+
+GPIO47 (RP2350_PSRAM_CS) — NO CHANGE, and deliberately no chipGpios
+entry either:
+  Onboard 8MB PSRAM chip-select, confirmed by this board's own
+  pins_arduino.h (`#define RP2350_PSRAM_CS (47u)`, identical to the
+  non-W sibling) and the vendor-documented "8MB of PSRAM" spec. Declared
+  ONLY as a bare #define with no static-const uint8_t peer alias
+  anywhere in this board's pins_arduino.h. build_boards.js's
+  buildEsp32Board()/parseEsp32Consts() only adds a GPIO number to the
+  routable pin set from (a) a resolved `static const uint8_t NAME = ...`
+  declaration, or (b) an explicit chipGpios key. GPIO47 satisfies
+  neither, so it is already absent from the generated Designer pin list
+  with zero board.json changes needed. Adding a chipGpios entry for it
+  would be actively counter-productive (chipGpios keys are
+  unconditionally unioned into the routable "allGpios" pin set), exactly
+  as already documented at length in pimoroni_pico_plus_2/board.json's
+  own GPIO47 finding. Left untouched.
+
+BUS-COLLISION CHECK (per task's known bug class)
+--------------------------------------------------
+Confirmed board's SPI0 (32/33/34/35), SPI1 (12/13/14/15), Wire0 (4/5),
+Wire1 (6/7) pin numbers do not coincide with GPIO45 (button) or pin 64
+(LED pseudo-GPIO). build_boards.js's unconditional SS/SDA/SCL/MOSI/MISO/
+SCK alias auto-append therefore never contaminates the one tagged real
+GPIO here — no #define removal needed.
+
+RESULT
+------
+- variants/rp2040/rp2040w/pimoroni_pico_plus_2w/board.json: CREATED (new
+  file — full chip-level defaults copied verbatim + one chipGpios
+  override for GPIO45).
+- JSON validity confirmed via manual `//`-comment-stripping + JSON.parse
+  (no build_boards.js invocation), per task instructions.
+- No pins_arduino.h edits needed (no bus-collision bug found on this
+  board).
+- No NeoPixel tag added (not found in any vendor source — reported as
+  NO CHANGE per audit policy).
+- No chipGpios entry added for pin 64 (LED/WL_GPIO0 pseudo-pin), for
+  GPIO23/24/25/29 (wireless-bus lines, already excluded by omission), or
+  for GPIO47/PSRAM CS (already correctly excluded by the parsing
+  mechanism itself) — all four documented above as deliberate,
+  precedent-matching non-changes.

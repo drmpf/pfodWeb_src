@@ -1,0 +1,182 @@
+Board: esp32c6-evb (chip: esp32c6)
+Directory: variants/esp32/esp32c6/esp32c6-evb/
+Audit date: 2026-07-12
+Audit type: dedicated-hardware pin-exclusion audit (playbook sections 1-6),
+plus button capability tag (section 7a) where directly in scope.
+
+FLAGGED CONTENT (from discovery sweep):
+  static const uint8_t BUT_BUILTIN = 9;
+  #define REL1 10 / REL2 11 / REL3 22 / REL4 23
+  #define DIN1 1 / DIN2 2 / DIN3 3 / DIN4 15
+  static const uint8_t TX1 = 5;
+  static const uint8_t RX1 = 4;
+
+IDENTIFICATION
+Board name "ESP32-C6-EVB" plus REL1-4/DIN1-4 naming convention is an exact
+match for Olimex's real, open-source-hardware "ESP32-C6-EVB" industrial I/O
+evaluation board.
+
+SOURCES CONSULTED
+1. https://github.com/OLIMEX/ESP32-C6-EVB
+   Official open-source-hardware repo (CERN OHL v1.2). Confirms product
+   identity, KiCad schematic source files present, made-with-KiCad,
+   full CAD available. Repo landing page text alone didn't surface the
+   detailed pin table (needed the linked docs below for that).
+2. https://www.mouser.com/catalog/specsheets/Olimex_12-4-2023_ESP32-C6-EVB-user-manual.pdf
+   (User Manual Rev.1.0, Aug 2023) - WebFetch timed out (60s) on this PDF
+   mirror; not read directly this session. Referenced only via search-result
+   snippet text ("The board has 4 optocouplers for analog input and each
+   input has own status LED... four 10A/240VAC relays and four opto-isolated
+   inputs for DC voltage (up to 30VDC)").
+3. https://store.comet.bg/download-file.php?id=30743 (User Manual Rev.2.0,
+   Jun 2024) - found via search, not independently fetched this session
+   (redundant with source 4's corroboration).
+4. https://www.olimex.com/Products/IoT/ESP32-C6/ESP32-C6-EVB/open-source-hardware
+   Official product page - fetched directly. CONFIRMED: "four relays
+   (REL1-4) with a rating of 10A/240VAC"; "four opto-isolated inputs
+   (DIN1-4) accepting DC voltage ranging from 5 to 30VDC, providing
+   electrical isolation from the main circuit"; "two UEXT connectors: one
+   using a 0.1" pitch and another with JST connector type"; mentions a user
+   button and reset button. This is the primary evidence source used for
+   the relay/DIN capability decisions.
+5. https://templates.blakadder.com/ESP32-C6-EVB.html
+   Independent Tasmota community device-template page - fetched directly.
+   Gives a full GPIO table matching this board's own pins_arduino.h exactly:
+   GPIO0=User, GPIO1/2/3=Switch1-3(DIN1-3), GPIO4/5/6/7=User, GPIO8=Led1,
+   GPIO9=Button1, GPIO10/11=Relay1/2, GPIO12-14=User, GPIO15=Switch4(DIN4),
+   GPIO16-21=User, GPIO22/23=Relay3/4, GPIO24-30=None. Also fetched the raw
+   Tasmota template JSON string:
+   {"NAME":"ESP32-C6-EVB","GPIO":[1,160,161,162,1,1,1,1,288,32,224,225,1,1,
+   1,163,1,1,1,1,1,1,226,227,0,0,0,0,0,0,0],"FLAG":0,"BASE":1}
+   GPIO8=288 (Led1, non-inverted code), GPIO9=32 (Button1, non-inverted
+   code), GPIO10=224 (Relay1, non-inverted code) - independent corroboration
+   of the button/relay/DIN pin roles, but Tasmota's "non-inverted" component
+   numbering doesn't unambiguously establish real electrical polarity
+   without cross-checking Tasmota's own GPIO-role convention tables (not
+   done this session - see "Deferred" below).
+6. https://github.com/OLIMEX/ESP32-C6-EVB/blob/main/HARDWARE/Hardware-revision-A/ESP32-C6-EVB_Rev_A.pdf
+   Attempted WebFetch of the actual schematic PDF for LED/button polarity
+   confirmation - returned only the GitHub page shell (PDF binary content
+   not extracted by the fetch tool), no schematic detail obtained.
+7. https://github.com/OLIMEX/ESP32-C6-EVB/blob/main/DOCUMENTS/ESP32-C6-EVB-user-manual.pdf
+   Located via search (repo's own DOCUMENTS folder mirror of the user
+   manual) but not fetched this session - redundant with source 4's
+   already-sufficient product-page confirmation of relay/DIN specs.
+
+PER-PIN REASONING
+
+GPIO9 (BUT_BUILTIN): KEPT, tagged capabilities ["digital_input","button"]
+(restricted set per playbook section 7a - normal full default NOT carried
+over). Confirmed onboard user button via source 4 (mentions "a user button")
+and source 5 (GPIO9=Button1 in both the pin table and raw Tasmota GPIO
+array). Chip-level pinNotes already flags "Must be HIGH for normal boot"
+(GPIO9 is an ESP32-C6 strapping pin) - consistent with a button using an
+external pull-up, pressed = pulled LOW, matching Tasmota's non-inverted
+Button1 convention (default active-low with internal/external pull-up).
+
+GPIO10/GPIO11/GPIO22/GPIO23 (REL1/REL2/REL3/REL4): KEPT at full chip-level
+default capabilities (digital_input/digital_output/pwm_output - NOT
+restricted). Per playbook section 3's explicit, standing relay-output KEEP
+policy: "a relay is a simple digital on/off actuator, and controlling it
+from pfodWeb IS the point of using such a board with pfodWeb - do not
+exclude." Confirmed 4x 10A/240VAC relay outputs via source 4 (product page)
+and source 5 (Tasmota Relay1-4 mapping matches these exact GPIOs). Each
+pin given an informational "note" field identifying its relay-channel role
+and rating - matches the existing per-pin "note" precedent already used on
+other audited boards (e.g. VALTRACK_V4_MFW_ESP32_C3 GPIO2). Left at full
+default capabilities rather than trimmed to output-only, consistent with
+this repo's existing waveshare_esp32_s3_relay_6ch precedent, which left its
+own relay-drive GPIOs (1,2,41,42,45,46) at full default capabilities too.
+
+GPIO1/GPIO2/GPIO3/GPIO15 (DIN1/DIN2/DIN3/DIN4): KEPT, but capabilities
+trimmed to ["digital_input"] only (chip-level default for these GPIOs
+otherwise also includes analog_input/digital_output/pwm_output, all
+dropped). Confirmed opto-isolated digital inputs, 5-30VDC, via source 4
+(product page) and source 5 (Tasmota Switch1-4 mapping matches these exact
+GPIOs). The GPIO pin in this circuit is wired only to an optocoupler's
+phototransistor collector/emitter (external voltage drives an internal LED;
+the GPIO only ever reads the resulting isolated logic level) - a genuine
+board-level input-only signal path, even though the ESP32-C6 chip's own
+inputOnlyGpios list is empty (this chip has no input-only-at-silicon pins;
+the restriction here is board wiring, not chip silicon - explicitly checked
+per this session's task, no chip-level GPIO34-style restriction applies to
+any DIN pin). Matches playbook section 3's KEEP policy for sensor/status
+pins ("a legitimate pfodWeb data-display use case"). Each pin given an
+informational "note" field identifying its DIN-channel role and voltage
+range.
+
+GPIO5/GPIO4 (TX1/RX1): KEPT, NO board.json entry added - falls through
+unmodified to the chip-level default (analog_input/digital_input/
+digital_output/pwm_output on both). This board's own pins_arduino.h groups
+TX1/RX1 together with SDA/SCL/SS/MOSI/MISO/SCK under a single comment block
+("available at UEXT and pUEXT +" ... "-") - i.e. these are the standard
+Olimex UEXT/pUEXT general-purpose expansion-header signals (UART+I2C+SPI),
+not a UART wired to a specific onboard peripheral chip. Source 4 confirms
+"two UEXT connectors" exist on this board, supporting the general-purpose
+reading. No dedicated onboard consumer identified for TX1/RX1 in any source
+consulted - treated as general-purpose per playbook section 3's default
+("General-purpose I2C/SPI buses [and by the same logic, UART headers]
+without a documented exclusive onboard consumer... KEEP"). GPIO4/GPIO5 are
+also aliased A4/A5 in pins_arduino.h (harmless - already covered by the
+chip-level default's analog_input capability on those pins, not a bus-alias
+collision).
+
+ALIAS-COLLISION CHECK (new item this session)
+Explicitly checked whether GPIO9 (button), GPIO10/11/22/23 (relays),
+GPIO1/2/3/15 (DIN), or GPIO5/4 (TX1/RX1) collide with this board's own
+primary-UART/bus aliases - the exact identifiers build_boards.js's
+buildEsp32Board() unconditionally consumes via consts.TX/RX/SDA/SCL/SS/
+MOSI/MISO/SCK (matched by literal declared name, see build_boards.js
+~L541-548, 662-703). Read this board's pins_arduino.h directly:
+  TX  = 16
+  RX  = 17
+  SDA = 6
+  SCL = 7
+  SS  = 21
+  MOSI = 18
+  MISO = 20
+  SCK = 19
+None of these 8 values (16,17,6,7,21,18,20,19) match any of the 9 pins
+being tagged/noted (9,10,11,22,23,1,2,3,15) or TX1/RX1 (5,4). CONCLUSION:
+no alias contamination found; no boilerplate aliases needed deletion. (This
+is distinct from the harmless A1/A2/A3/A4/A5 analog aliases on DIN1-3 and
+TX1/RX1, which only add analog_input capability already present at the
+chip-level default and were not touched.)
+
+Chip-level GPIO34-style input-only check: ESP32-C6's chip-level board.json
+(variants/esp32/esp32c6/board.json) declares "inputOnlyGpios": [] with an
+explicit comment "every exposed GPIO is bidirectional - no input-only
+pins." Confirmed no silicon-level input-only restriction applies to any
+DIN pin (the DIN1-4 input-only-ness enforced in this board's board.json is
+a board-wiring decision, documented above, not a chip-silicon fact).
+
+DEFERRED / NOT CHANGED (left as chip-level default, no tag)
+GPIO8 (LED_BUILTIN): NOT tagged with a led_* capability this session,
+despite source 5's Tasmota table showing GPIO8=Led1 (component code 288,
+"non-inverted"). This pin was outside the explicitly-flagged scope for this
+audit pass (the flagged content list was BUT_BUILTIN/REL1-4/DIN1-4/TX1/
+RX1 only; LED_BUILTIN is ordinary ESP32 boilerplate already filtered out of
+the discovery-sweep regex). Attempted to confirm real electrical polarity
+via the vendor's own schematic PDF (source 6) but the WebFetch tool could
+not extract PDF schematic content from the GitHub blob page (returned only
+page-shell text). Per playbook policy ("never guess a button/LED polarity
+tag without confirmed vendor evidence"), left GPIO8 at its unmodified
+chip-level default capabilities (digital_input/digital_output/pwm_output,
+no led_* tag) rather than guess active-high vs active-low from the Tasmota
+component-code naming alone. Flagged here for a future pass if the
+schematic PDF can be read directly (e.g. via a PDF-capable fetch) or the
+user manual PDF (sources 2/3/7) can be successfully retrieved and read.
+
+SUMMARY
+Olimex ESP32-C6-EVB confirmed as a real, vendor-documented industrial I/O
+board. Created variants/esp32/esp32c6/esp32c6-evb/board.json (full copy of
+the chip-level esp32c6 default) with 9 edited chipGpios entries: GPIO9
+tagged button (restricted capability set); GPIO10/11/22/23 (REL1-4) left at
+full default capabilities plus an informational relay-channel note each;
+GPIO1/2/3/15 (DIN1-4) trimmed to digital_input-only plus an informational
+DIN-channel note each. TX1/RX1 (GPIO5/4) confirmed general-purpose UEXT/
+pUEXT header signals, left unmodified/un-noted. No GPIOs excluded - matches
+the task's expectation that this board needs capability tags/documentation
+only, no exclusions. Alias-collision check performed and passed clean (no
+SDA/SCL/SS/MOSI/MISO/SCK/TX/RX boilerplate contamination). GPIO8 (LED)
+deferred, undecided, documented above for a future pass.

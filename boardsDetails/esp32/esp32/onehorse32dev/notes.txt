@@ -1,0 +1,69 @@
+onehorse32dev - onboard button research notes
+==============================================
+
+Flagged by discovery sweep for: static const uint8_t KEY_BUILTIN = 0;
+(variants/esp32/esp32/onehorse32dev/pins_arduino.h)
+
+Sources consulted:
+
+1. https://www.tindie.com/products/onehorse/smallest-esp32-development-board/
+   Vendor product listing ("Smallest ESP32 Development Board", seller
+   "onehorse" = Kris Winer). Describes the board as having "reset and
+   boot buttons for easy programming". A buyer review on the same page
+   describes the manual bootloader-entry sequence: "press down BOOT,
+   press and release RESET, and finally release BOOT". This confirms a
+   physical pushbutton labelled BOOT exists on the board and is used for
+   the standard ESP32 GPIO0-low-at-reset flash-mode entry, i.e. it is
+   wired to GPIO0 (the only pin that performs this function on ESP32
+   silicon). This is vendor-level but not a schematic/net-level source.
+
+2. https://www.espboards.dev/esp32/onehorse32dev/
+   Third-party aggregator. Lists "KEY_BUILTIN" = GPIO0 as "the built-in
+   button on this development board". Per task rules this is an
+   alias-echo source on its own (it is likely just reading
+   pins_arduino.h), so it is NOT treated as independent confirmation -
+   used only as corroboration alongside source #1.
+
+3. GitHub espressif/arduino-esp32 PR #337 "Update boards.txt for
+   Onehorse's ESP32 Dev Module" (https://github.com/espressif/arduino-esp32/pull/337/files)
+   and issue #334. Confirms the board/variant was contributed based on a
+   real physical product (not a placeholder/generic variant), and that
+   the "Onehorse ESP32 Dev Module" board.txt entry corresponds to this
+   exact variant directory. Did not contain schematic-level pin detail.
+
+4. No official schematic, KiCad file, or vendor pinout diagram could be
+   located for this board (unlike some other small hobbyist boards in
+   this sweep, e.g. hornbill32dev, which had a public schematic PDF).
+   This is a low-volume/discontinued hobbyist product (Tindie listing),
+   so a definitive net-level source may not exist publicly.
+
+Reasoning / confidence:
+- GPIO0 is the universal ESP32 BOOT-strapping pin (must be pulled LOW at
+  reset to enter UART flash mode). Nearly every ESP32 dev board with a
+  "BOOT" button wires that button to GPIO0 - there is no other pin that
+  would make sense for this function.
+- The vendor's own product description explicitly confirms a physical
+  BOOT button exists on this specific board (source #1), which is
+  stronger than the generic "GPIO0 is usually a boot button" inference
+  used for boards with zero vendor documentation.
+- No schematic was found to verify the exact net (BOOT switch -> GND/IO0
+  vs. some other wiring), so this falls short of the highest-confidence
+  tier used for boards with a public schematic.
+- Overall confidence: MEDIUM-HIGH. Vendor-confirmed physical BOOT button
+  + universal GPIO0 boot-strap convention + third-party corroboration,
+  but no schematic-level proof.
+
+Alias-collision check (build_boards.js bus-capability contamination):
+pins_arduino.h defines TX=1, RX=3, SDA=21, SCL=22, SS=5, MOSI=23,
+MISO=19, SCK=18. None of these alias to GPIO0, so tagging GPIO0 as a
+button carries no risk of a stray bus capability (SDA/SCL/SS/MOSI/MISO/
+SCK/TX/RX) being appended by build_boards.js. No alias line needed to be
+deleted for this board.
+
+Summary of what was tagged:
+- board.json created for onehorse32dev/board.json (did not previously
+  exist; copied in full from the esp32 chip-level default board.json).
+- GPIO0 -> ["digital_input", "button"] (BOOT button, medium-high
+  confidence - vendor-confirmed physical button + universal GPIO0
+  strapping-pin convention, no schematic-level proof).
+- No other pins changed; no alias conflicts found or fixed.

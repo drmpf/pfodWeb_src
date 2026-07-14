@@ -1,0 +1,121 @@
+XIAO_ESP32S3 (Seeed Studio XIAO ESP32S3, plain/non-Sense, chip esp32s3) -
+dedicated-hardware pin-exclusion audit + opportunistic button/LED/battery
+check (this board had never been individually reviewed - no board.json
+override, no NOTE comment existed before this pass).
+Date: 2026-07-12
+
+Sweep flag verification:
+- Read C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\XIAO_ESP32S3\pins_arduino.h
+  in full (56 lines). Confirmed the discovery sweep's flag was a FALSE
+  POSITIVE for "dedicated hardware": the only #define lines are
+  USB_VID (0x2886) and USB_PID (0x0056), which are USB descriptor macros,
+  not pins. No BAT_VOLT_PIN, no PIN_NEOPIXEL, no BUTTON/BOOT alias, no
+  camera pins (no MOSI1/MISO1/SCK1, no DVP_*/CAM_*/XMCLK/I2S_* tokens
+  anywhere in the file - contrast with the sibling XIAO_ESP32S3_Plus
+  pins_arduino.h, which explicitly documents and excludes those for its
+  Sense-variant camera bus).
+- However, the file DOES contain a static const LED_BUILTIN = 21 (plus
+  the usual TX/RX/SDA/SCL/SS/MOSI/MISO/SCK/A<n>/D<n>/T<n> aliases) - this
+  is a real onboard-LED declaration, just not a "#define" the sweep's
+  #define-only grep would have caught. Investigated per the task's
+  opportunistic button/LED/battery check since the board had zero prior
+  review.
+
+Sources consulted:
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\XIAO_ESP32S3\pins_arduino.h
+  (local, vendor-derived) - full read. LED_BUILTIN=21, TX=43, RX=44,
+  SDA=5, SCL=6, SS=44, MOSI=9, MISO=8, SCK=7. No battery/button/camera
+  aliases of any kind.
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\XIAO_ESP32S3_Plus\pins_arduino.h
+  and board.json (local, sibling board previously audited) - used as a
+  direct precedent: same chip, same LED_BUILTIN=21, already tagged
+  "led_low" there with capabilities ["digital_output","pwm_output","led_low"]
+  (digital_input dropped). Plus variant's board.json NOTE cites Seeed's
+  own docs: "inverted - LOW means the LED is on". Plus variant also has
+  ADC_BAT on GPIO10 (excluded there because it collides with the Sense
+  camera's XMCLK on the Plus board) - NOT applicable to plain XIAO_ESP32S3,
+  which has no such alias declared at all (see wiki confirmation below).
+- https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/ (Seeed
+  Studio Wiki, authoritative) - fetched and confirmed:
+  * Page covers three variants: plain XIAO ESP32-S3, XIAO ESP32-S3 Sense,
+    XIAO ESP32-S3 Plus, with specs kept clearly separate per variant.
+  * Plain XIAO ESP32-S3 lists "1x User LED"; pin map gives USER_LED =
+    GPIO21. Text: "The LED will only turn off when the user LED pin on
+    the XIAO ESP32-S3 is set to a high level, and it will only turn on
+    when the pin is set to a low level" -> active-low, matches
+    XIAO_ESP32S3_Plus's existing "led_low" tag/wording exactly.
+  * Battery voltage sense: explicitly states "Since all GPIO pins of the
+    XIAO ESP32-S3 are assigned their own functions, we do not have a GPIO
+    configured for the battery pin." -> confirms no battery ADC pin to
+    tag/exclude on this specific (plain) variant, unlike the Plus variant.
+  * Onboard user button: only Reset and Boot buttons listed in the specs;
+    no general-purpose/programmable user button. Boot is the standard
+    ESP32 strapping pin GPIO0 (already covered by the existing pinNotes
+    "Must be HIGH for normal boot" - a boot-strap warning, not a
+    general-purpose button capability; consistent with the no-tag
+    decision made for the analogous BOOT pin on other esp32s3 boards
+    such as um_tinys3, where no vendor source confirmed a general-purpose
+    button either).
+  * Camera: plain XIAO ESP32-S3 has none. Only the Sense variant has
+    "1x OV3660 camera sensor" - confirms this board (directory
+    "XIAO_ESP32S3", distinct from "XIAO_ESP32S3_Plus") is indeed the
+    plain, camera-less variant, matching the empty pins_arduino.h (no
+    camera-pin tokens at all).
+- WebSearch (aggregated, general query) - independently corroborated
+  GPIO21 as the onboard yellow USER LED, active-low ("LOW means the LED
+  is on and HIGH means the LED is off"), consistent with the wiki fetch
+  above.
+
+Alias-collision check (per this session's new methodology - GPIO used as
+button/LED must not also be a boilerplate SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+alias elsewhere in the same pins_arduino.h, since build_boards.js
+unconditionally appends those capabilities regardless of chipGpios):
+- GPIO21 (tagged led_low): pins_arduino.h aliases are SDA=5, SCL=6,
+  SS=44, MOSI=9, MISO=8, SCK=7, TX=43, RX=44. GPIO21 matches NONE of
+  these (nor any A<n>/D<n>/T<n> alias touching that same GPIO number).
+  Clean - no alias line needed deletion.
+- Existing TX/RX conflict rule, checked the same way: SS=44 collides
+  with RX=44 in this vendor file (pre-existing vendor overlap, not
+  something this audit introduced). build_boards.js's ESP32 pin-builder
+  checks `g === rx` FIRST and does an early `continue` with capabilities
+  forced to exactly ['serial_rx'] (see pfodWeb_src/build_boards.js
+  ~line 662-668), before the SDA/SCL/SS/MOSI/MISO/SCK append block ever
+  runs (~line 698-703). So GPIO44 correctly ends up RX-only in the
+  generated output; the SS alias on the same GPIO is silently and
+  safely dropped by construction. No action needed - verified by reading
+  the generator code, not just assumed.
+
+Applied:
+- Created C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\XIAO_ESP32S3\board.json
+  as a board-specific override of the chip-level default
+  (C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\board.json), identical in
+  every field except chipGpios["21"], which changes from
+  ["digital_input","digital_output","pwm_output"] to
+  ["digital_output","pwm_output","led_low"] (digital_input dropped, to
+  match the XIAO_ESP32S3_Plus sibling's existing precedent for the same
+  physical LED_BUILTIN=21 pin on the same chip).
+- No chipGpios exclusions were needed (no camera, no battery pin exists
+  on this variant to exclude).
+- No button capability was added (no confirmable onboard general-purpose
+  button; Boot/Reset are not general-purpose I/O per Seeed's own docs).
+- No SDA/SCL/SS/MOSI/MISO/SCK alias lines needed deletion (checked, no
+  collision with GPIO21; the pre-existing SS/RX=44 vendor overlap is
+  already handled correctly by the generator's TX/RX-first branch).
+
+Considered but NOT changed:
+- GPIO0 (BOOT strapping pin) - left as-is (digital_input/digital_output/
+  pwm_output, with the existing "Must be HIGH for normal boot" pinNote).
+  Not tagged as "button": Seeed's own spec page lists Boot only as a
+  physical utility button (used for entering download mode / held during
+  reset), not a general-purpose user-programmable button, matching the
+  precedent set on other esp32s3 boards for the same GPIO0/BOOT role.
+
+Summary: Sweep flag confirmed as a false positive (USB_VID/USB_PID are
+not pins). Opportunistic review found one genuine dedicated-hardware
+item the sweep missed - LED_BUILTIN=21 - now tagged "led_low" in a new
+board.json override, matching the sibling XIAO_ESP32S3_Plus board's
+already-established precedent and confirmed directly against Seeed's
+own wiki. No battery pin, no button, no camera on this (plain,
+non-Sense) variant - all confirmed via Seeed Studio's official wiki, so
+nothing further to exclude. Alias-collision and TX/RX-conflict checks
+both passed clean.

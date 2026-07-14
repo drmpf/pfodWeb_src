@@ -1,0 +1,133 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Silicognition "RP2040-Shim" — an RP2040 Feather-form-factor
+  // module shaped/sized to fit on top of a WIZnet-based PoE-FeatherWing,
+  // filling the space around the RJ45 jack and flyback transformer for
+  // compact Power-over-Ethernet builds. Pin labels (CircuitPython,
+  // MicroPython, Arduino) are made Feather-RP2040-compatible, but the
+  // underlying GPIO numbers behind those labels are custom-routed to fit
+  // the tiny PCB — this board's own pins_arduino.h is NOT a passthrough to
+  // ../generic/pins_arduino.h (unlike pimoroni_pga2040): it is a genuine
+  // board-specific file, sourced (per its own header comment) directly
+  // from https://silicognition.com/Products/rp2040-shim/.
+  //
+  // Sources consulted:
+  // 1. https://silicognition.com/Products/rp2040-shim/ (vendor product
+  //    page). States the board's whole "user interface (button, USB,
+  //    LEDs)" is clustered together, and that "a custom chip" enables
+  //    "the familiar single-press to reset, double-press to enter
+  //    bootloader button" — i.e. the reset/bootloader button is driven by
+  //    dedicated external reset-controller silicon, NOT a plain RP2040
+  //    GPIO pin read via digitalRead() (a different, more thorough
+  //    mechanism than even the plain Pico's BOOTSEL-via-QSPI-CS trick).
+  //    Page does not itemize LED/NeoPixel GPIO numbers directly.
+  // 2. https://raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/silicognition_rp2040_shim/pins.c —
+  //    official CircuitPython board pin file for this exact board.
+  //    Confirms: MP_QSTR_LED -> pin_GPIO22, MP_QSTR_NEOPIXEL ->
+  //    pin_GPIO23. No BUTTON/BOOT pin entry present anywhere in the file —
+  //    corroborates source 1's "custom chip, not a GPIO" finding for the
+  //    button.
+  // 3. https://raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/silicognition_rp2040_shim/mpconfigboard.h —
+  //    confirms `MICROPY_HW_NEOPIXEL` = `(&pin_GPIO23)` (independent
+  //    corroboration of source 2's NEOPIXEL->GPIO23 mapping) and
+  //    `MICROPY_HW_BOARD_NAME` = "Silicognition LLC RP2040-Shim". No
+  //    APA102 or button macro of any kind defined.
+  // 4. This board's own pins_arduino.h
+  //    (variants/rp2040/rp2040/silicognition_rp2040_shim/pins_arduino.h) —
+  //    `#define LED_BUILTIN (22u)`, `#define PIN_NEOPIXEL (23u)`, header
+  //    comment crediting https://silicognition.com/Products/rp2040-shim/
+  //    directly as the pin-definition source (i.e. these are real
+  //    vendor-sourced hardware aliases, not an inherited generic-fallback
+  //    template artifact like the pimoroni_pga2040 case). D13 is also
+  //    aliased to GPIO22 (same pin as LED_BUILTIN) in this file.
+  //  - No Zephyr board port exists for this specific Silicognition board
+  //    (checked; 404/no results), so LED/NeoPixel active-high polarity is
+  //    NOT independently devicetree-confirmed for this exact board — see
+  //    per-pin reasoning below for how polarity was still determined.
+  //
+  // Per-pin reasoning
+  // ------------------
+  // GPIO22 (LED_BUILTIN, also aliased D13): CONFIRMED onboard status LED
+  // — distinct from the NeoPixel, named plainly "LED" (not "NEOPIXEL") in
+  // CircuitPython's own pins.c for this exact board (source 2). Tagged
+  // ["digital_output","pwm_output","led_high"] — digital_input dropped to
+  // match this repo's established led_high precedent for dedicated
+  // onboard LED pins (rpipico GPIO25, adafruit_feather GPIO13,
+  // adafruit_feather_scorpio GPIO13); pwm_output kept since arduino-pico's
+  // analogWrite() works on any RP2040 GPIO, enabling brightness dimming.
+  // Active-high polarity assumed by the standard RP2040/Feather-family
+  // onboard-status-LED convention (every sibling Feather-form-factor
+  // RP2040 board already audited in this family — adafruit_feather GPIO13,
+  // adafruit_feather_scorpio GPIO13 — independently Zephyr-confirmed
+  // active-high) — NOT independently confirmed for this specific board via
+  // Zephyr (no board port exists to check). Checked against this board's
+  // own primary bus aliases (SPI0 MISO=12/MOSI=11/SCK=10/SS=21, SPI1
+  // MISO=20/MOSI=19/SCK=18/SS=15, Wire0 SDA=16/SCL=17) — no collision, no
+  // pins_arduino.h edit needed.
+  //
+  // GPIO23 (PIN_NEOPIXEL, no D-alias — reachable only via the raw
+  // PIN_NEOPIXEL macro, not through the D0-D13/D24-D25 array declared in
+  // this board's pins_arduino.h): CONFIRMED onboard NeoPixel (WS2812) data
+  // line, output-only, via BOTH CircuitPython's pins.c (source 2) and its
+  // mpconfigboard.h MICROPY_HW_NEOPIXEL macro (source 3) — independently
+  // cross-referenced within the same vendor-authoritative CircuitPython
+  // board port. Tagged ["digital_output","led_neopixel"], matching the
+  // adafruit_feather / adafruit_feather_scorpio NeoPixel-data-pin
+  // precedent (no digital_input/pwm_output — NeoPixel protocol timing is
+  // driven via the RP2040 PIO peripheral, not analogWrite/digitalRead). No
+  // separate power-gate pin found in either CircuitPython source file (no
+  // NEOPIXEL_POWER alias), matching the adafruit_feather (not
+  // adafruit_itsybitsy) precedent. No bus-alias collision (checked against
+  // the same primary aliases as GPIO22 above).
+  //
+  // Button (reset/bootloader, "custom chip" per source 1): NOT tagged —
+  // confirmed to be driven by dedicated external reset-controller silicon
+  // rather than a plain RP2040 GPIO (source 1), and no BUTTON/BOOT pin
+  // entry exists anywhere in CircuitPython's own board port for this exact
+  // board (source 2) to contradict that. Out of scope for GPIO-keyed
+  // capability tagging, same category as the plain Raspberry Pi Pico's
+  // BOOTSEL (rpipico board.json precedent) — not a missed tag.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/silicognition_rp2040_shim/notes.txt
+  "chipGpios": {
+    "22": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "LED_BUILTIN / D13 — onboard status LED, distinct from the NeoPixel. Confirmed via CircuitPython's own board pins.c for this exact board (LED -> GPIO22) and this board's own pins_arduino.h (sourced directly from silicognition.com product page). Active-high assumed by RP2040/Feather-family onboard-status-LED convention (not independently Zephyr-confirmed for this specific board — no Zephyr port exists)." },
+    "23": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard NeoPixel (WS2812) data line, output-only. Confirmed via CircuitPython's pins.c (NEOPIXEL -> GPIO23) and mpconfigboard.h (MICROPY_HW_NEOPIXEL -> pin_GPIO23) for this exact board, plus this board's own pins_arduino.h. No separate power-gate pin found." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 4 analog channels (A0-A3 = GPIO29/28/27/26), 12-bit ADC — matches the
+  // chip-level default and this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS = 4, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

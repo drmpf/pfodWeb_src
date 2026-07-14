@@ -1,0 +1,109 @@
+m5stack_timer_cam - button/LED capability research notes
+==========================================================
+
+SOURCES CONSULTED
+------------------
+https://github.com/m5stack/TimerCam-arduino
+  - Official M5Stack Arduino library repo for TimerCam. Used as primary
+    source for GPIO pin definitions (not relying on pins_arduino.h alias
+    names, per task rules).
+
+https://raw.githubusercontent.com/m5stack/TimerCam-arduino/master/src/utility/Power_Class.h
+  - Defines POWER_LED_PIN = GPIO2 and POWER_HOLD_PIN = GPIO33 (battery
+    hold, matches existing board.json exclusion note) and
+    BAT_ADC_PIN = GPIO38 (battery voltage ADC sense pin).
+
+https://raw.githubusercontent.com/m5stack/TimerCam-arduino/master/src/utility/Power_Class.cpp
+  - setLed(uint8_t brightness) implementation: configures an LEDC PWM
+    channel (LEDC_CHANNEL_6) directly on POWER_LED_PIN (GPIO2), duty
+    cycle increases with brightness value -> confirms GPIO2 drives a
+    single-color LED, active-high, PWM-capable (LEDC), not a NeoPixel
+    (no addressable-LED library/driver referenced anywhere in repo).
+
+https://raw.githubusercontent.com/m5stack/TimerCam-arduino/master/examples/led/led.ino
+  - Example fades TimerCAM.Power.setLed(i) from 0-255, confirms GPIO2
+    LED is user-controllable and PWM-dimmable (single LED, not RGB).
+
+https://community.m5stack.com/topic/4530/timercam-power-wake-button-docs-g38-instead-of-g37
+  - Forum thread: user felmue did multimeter + schematic analysis and
+    confirmed the physical PWR/WAKE button is wired to GPIO37 (matches
+    official docs), NOT GPIO38 as some users initially guessed. GPIO38
+    appeared to "work" only by coincidence (it's actually the battery
+    ADC sense pin, BAT_ADC_PIN, which floats differently with no
+    battery attached). Also confirms GPIO34-39 are input-only ESP32
+    pins with NO internal pull-up/pull-down capability (silicon
+    limitation), and this board has NO external pull-up resistor
+    fitted on GPIO37, so digitalRead(37) floats/is unreliable on stock
+    hardware unless the user solders on an external pull-up (felmue
+    used 15k to 3.3V) - i.e. the button is not usable out-of-the-box
+    via straightforward digitalRead.
+
+WebSearch results summarizing docs.m5stack.com TimerCam pinmap/schematic
+  - Corroborates: status LED = GPIO2 (per official pinmap table); PWR
+    button connected to GPIO37 through a diode (per official schematic,
+    Sch_M5TimerCAM.pdf at
+    https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/1042/Sch_M5TimerCAM.pdf).
+    Direct WebFetch of docs.m5stack.com/en/quick_start/timer_cam/ and
+    /en/quick_start/timer_cam/quick_start returned HTTP 404 (docs site
+    structure/URL likely changed since indexing) so the schematic PDF
+    itself and the raw pinmap page could not be fetched directly in
+    this session; relied on WebSearch synthesis of docs.m5stack.com
+    content plus the community forum's independent schematic check for
+    corroboration.
+
+Examined all example sketches in TimerCam-arduino repo (capture,
+ext_wakeup, http_post, led, power, rtsp_stream, wakeup, web_cam) via
+GitHub tree listing + WebFetch:
+  - No example in the official library actually performs a
+    digitalRead() of GPIO37 (or any GPIO) to read the PWR/wake button
+    as a user input during runtime. examples/ext_wakeup uses a
+    different pin entirely (CAM_EXT_WAKEUP_PIN = GPIO4, an external
+    PIR/sensor wake input, unrelated to the onboard push-button).
+    This suggests M5Stack's own library does not provide/expect
+    software button-press detection via GPIO37 in normal operation.
+
+PIN(S) CONSIDERED BUT NOT TAGGED
+----------------------------------
+GPIO37 (PWR/WAKE button):
+  - Schematic-confirmed as physically wired to the onboard push-button
+    (via a diode), so identity as "the button pin" is solidly
+    evidenced (not just an alias-name guess).
+  - However, LEFT UNTAGGED. Reason: GPIO34-39 on ESP32 have no internal
+    pull resistors (silicon-level limitation) and this board has no
+    external pull-up fitted on GPIO37, so per independent
+    community hardware investigation (multimeter + schematic), the pin
+    floats and digitalRead is unreliable/unusable on stock hardware
+    without a manual hardware modification (soldering an external
+    pull-up resistor). Given pfodWeb's "button" capability tag implies
+    a generally-usable digital input, and the official M5Stack library
+    itself never demonstrates reading this pin as a button, this is a
+    genuine judgment call. I chose NOT to guess/tag it and instead flag
+    it here for human review, per task instructions ("If you cannot
+    find solid confirming evidence, do NOT tag anything"). The pin
+    identity is solid; the runtime usability is not, and I did not want
+    to silently tag a button capability onto a floating/unreliable pin.
+  - Note: GPIO37 already exists in board.json chipGpios as
+    ["analog_input","digital_input"] (not inside a chip-level exclusion
+    range), so tagging it (if a human reviewer decides otherwise) would
+    be a simple in-place capability-array edit, not a re-add of an
+    excluded pin.
+
+GPIO38 (BAT_ADC_PIN, battery ADC sense):
+  - Some community members mistakenly believed this was the button pin
+    due to observed behavior without a battery attached, but this was
+    conclusively debunked by felmue's schematic/multimeter analysis
+    (see forum link above) - GPIO38 is genuinely the battery-voltage
+    ADC sense pin, not a button. Not tagged as a button (no evidence
+    supports it); left as-is.
+
+No RGB/discrete R-G-B LED or NeoPixel/WS2812 hardware was found
+anywhere in the vendor library, docs, or schematic references - only
+the single blue status LED on GPIO2.
+
+WHAT WAS TAGGED
+-----------------
+GPIO2: capabilities changed to ["digital_output","led_high","pwm_output"]
+(single-color active-high LED, pwm_output retained because it was
+already present in the pin's existing capability set). Confirmed via
+M5Stack's official TimerCam-arduino library source
+(Power_Class.h/.cpp), not via the pins_arduino.h LED_BUILTIN alias.

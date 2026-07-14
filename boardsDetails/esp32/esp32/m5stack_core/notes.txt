@@ -1,0 +1,64 @@
+m5stack_core (original M5Stack Basic/Gray/Go) - button/LED research notes
+============================================================================
+
+Sources consulted:
+
+https://docs.m5stack.com/en/core/basic
+  - Official M5Stack Core Basic hardware spec page. Confirms "Custom buttons x 3"
+    labelled A, B, C. Pinmap section lists Button A = G39, Button B = G38,
+    Button C = G37. No onboard LED listed anywhere in features/specs/pinmap.
+
+https://docs.m5stack.com/en/arduino/m5core/button
+  - Official Arduino API page for M5Core buttons. Shows M5.BtnA/BtnB/BtnC
+    usage via M5Unified library (M5.BtnA.wasPressed() etc). Did not itself
+    state GPIO numbers or mechanical-vs-capacitive type - used only as a
+    secondary confirmation that A/B/C are the standard button API surface.
+
+https://github.com/m5stack/M5Stack/blob/master/src/M5Stack.h
+  - Official M5Stack Arduino library top-level header. Confirms
+    BtnA/BtnB/BtnC are constructed as Button(BUTTON_A_PIN, true, DEBOUNCE_MS)
+    etc (constants defined elsewhere, invert=true). No LED/RGB/NeoPixel pin
+    declarations anywhere in this file.
+
+https://github.com/m5stack/M5Stack/blob/master/src/utility/Config.h
+  - Official M5Stack Arduino library config header. Confirms:
+      #define BUTTON_A_PIN 39
+      #define BUTTON_B_PIN 38
+      #define BUTTON_C_PIN 37
+    Also confirms the only LED-related define present is TFT_LED_PIN (32),
+    which is the TFT display backlight control pin, not a user-controllable
+    status/indicator LED. No RGB_LED/NEOPIXEL/WS2812 defines found.
+
+https://github.com/m5stack/M5Stack/blob/master/src/utility/Button.cpp
+  - Official M5Stack Arduino library button implementation. Confirms
+    read() uses digitalRead(_pin) (with optional invert), i.e. these are
+    plain mechanical/tactile digital-input buttons, NOT capacitive touch
+    (ESP32 touch-capable pins are GPIO0/2/4/12/13/14/15/27/32/33 - GPIO37/
+    38/39 are not touch-capable pins, consistent with plain digital input).
+
+Local files reviewed (not web, but part of confirmation):
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32\m5stack_core\pins_arduino.h
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32\m5stack_core\board.json (pre-existing,
+    already audited in an earlier pin-exclusion pass; TX=1, RX=3 confirmed via
+    pins_arduino.h - no conflict with GPIO37/38/39).
+
+Pins considered and NOT tagged:
+  - GPIO32 (TFT_LED_PIN / TFT backlight): this is not a general user LED, it's
+    the dedicated TFT display backlight control pin. It is already excluded
+    from chipGpios in this board.json (per the pre-existing top-of-file NOTE
+    about GPIO4/14/27/32/33 being dedicated TFT pins). No re-add attempted -
+    out of scope per task rules (would reverse a pre-existing exclusion).
+    This was a confident "no" (not user-facing LED), not a guess.
+  - No other candidate LED pin was found anywhere in official M5Stack docs,
+    schematics references, or library source for this exact board (Basic/
+    Gray/Go). The addressable NeoPixel bar exists only on the M5Stack Fire
+    variant (different board, out of scope, not touched). Conclusion: this
+    board genuinely has no onboard user-controllable LED. This is a
+    confident conclusion based on absence of any LED pin definition/mention
+    across all official sources checked, not a guess.
+
+What was tagged:
+  GPIO39 -> ["digital_input","button"]  (Button A, was ["analog_input","digital_input"])
+  GPIO38 -> ["digital_input","button"]  (Button B, was ["analog_input","digital_input"])
+  GPIO37 -> ["digital_input","button"]  (Button C, was ["analog_input","digital_input"])
+  No LED tag applied (no confirmable onboard user LED exists on this board).

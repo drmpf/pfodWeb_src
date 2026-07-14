@@ -1,0 +1,144 @@
+pfodWeb RP2040 family audit — board: pintronix_pinmax ("Pintronix PinMax")
+Date: 2026-07-13
+Result: NO CHANGE (board.json created with chipGpios: {} — matches the
+chip-level default, no capability overrides applied).
+
+FILES READ
+----------
+- variants/rp2040/rp2040/pintronix_pinmax/pins_arduino.h (full file, 32 lines)
+- variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {})
+- variants/rp2040/rp2040/rpipico/board.json (precedent: simple LED tag)
+- variants/rp2040/rp2040/vccgnd_yd_rp2040/board.json (precedent: LED+button+neopixel)
+- variants/rp2040/rp2040/akana_r1/board.json (precedent: NO CHANGE reasoning style
+  for an unconfirmed NeoPixel alias)
+- variants/rp2040/rp2040/solderparty_rp2040_stamp/board.json (precedent: NO CHANGE
+  reasoning style for an unconfirmed LED alias)
+- variants/rp2040/boards.txt — pintronix_pinmax.* entries (lines ~28398-28631):
+  name=Pintronix PinMax, vid.0/1=0x2e8a (shared Raspberry Pi Trading Ltd VID used
+  by every arduino-pico board), pid.0=0x9101, pid.1=0xd101, build.led= (empty,
+  same as rpipico's own build.led= entry — not a meaningful signal either way),
+  build.variant=pintronix_pinmax. No board-descriptive text anywhere in this file.
+- pfodWeb_src/designer/boards/rp2040_pintronix_pinmax/rp2040_pintronix_pinmax.json
+  (current generated/deployed output) — confirms today's build already treats
+  GPIO27 as pin "A1" with capabilities [analog_input, digital_input,
+  digital_output, pwm_output] (GPIO26-28 fall in the RP2040's default ADC
+  range), i.e. plain chip-default capabilities, no LED/button/neopixel tag.
+
+pins_arduino.h CONTENTS (full file)
+------------------------------------
+  #define PIN_LED        (27u)
+  #define PIN_SERIAL1_TX (0u)
+  #define PIN_SERIAL1_RX (1u)
+  #define PIN_SERIAL2_TX (8u)
+  #define PIN_SERIAL2_RX (9u)
+  #define PIN_SPI0_MISO  (16u)
+  #define PIN_SPI0_MOSI  (19u)
+  #define PIN_SPI0_SCK   (18u)
+  #define PIN_SPI0_SS    (17u)
+  #define PIN_WIRE0_SDA  (4u)
+  #define PIN_WIRE0_SCL  (5u)
+  #define SERIAL_HOWMANY (3u)
+  #define SPI_HOWMANY    (1u)
+  #define WIRE_HOWMANY   (1u)
+  #include "../generic/common.h"
+
+No header comment identifying a datasheet or vendor source (unlike rpipico's own
+header, which explicitly cites the official Raspberry Pi Pico datasheet). No
+PIN_NEOPIXEL, PIN_BUTTON, PIN_USRKEY, or any other onboard-hardware alias is
+declared anywhere. Only PIN_LED plus the standard serial/SPI/Wire aliases that
+every plain RP2040 board template carries.
+
+WEB RESEARCH TRAIL (WebSearch / WebFetch, 2026-07-13)
+------------------------------------------------------
+1. WebSearch "Pintronix PinMax RP2040 board pins_arduino.h", "Pintronix" PinMax
+   board", ""Pintronix" RP2040", ""pintronix_pinmax" arduino-pico" — every query
+   returned only generic RP2040/arduino-pico ecosystem links (variants folder
+   listing, arduino-pico README, unrelated RP2040 boards like Waveshare
+   RP2040-Zero, Adafruit Feather RP2040, Nano RP2040 Connect). No dedicated
+   "Pintronix PinMax" product page, datasheet, schematic, or pinout diagram was
+   surfaced by any query. (Note: the search tool's own auto-generated summaries
+   repeatedly asserted things like "Pintronix PinMax is listed as a supported
+   board" as if confirmed fact — these claims were NOT corroborated by the
+   underlying source links themselves, which were generic RP2040 pages with no
+   mention of this board at all. Treated as unreliable/hallucinated restating
+   of the query terms, not evidence, and verified independently below instead.)
+
+2. WebFetch of the actual GitHub commit history for
+   variants/pintronix_pinmax (github.com/earlephilhower/arduino-pico) found
+   ONE real commit: 80196d570ba675defc909ac02669b593e883010c, "Add Pintronix
+   PinMax board (#2286)", author "deltaford", 2024-07-20. WebFetch of that PR
+   (#2286, "Add PinMax board") found no author-written board description in
+   the PR body, and the only substantive review comment (from
+   earlephilhower, the core maintainer) was that the submitted variant header
+   was initially missing the standard PIN_SERIAL1_TX/RX and PIN_SERIAL2_TX/RX
+   defines — i.e. the contributor's original submission didn't even fully
+   match the template and had to be corrected to add generic boilerplate
+   defines, not board-specific hardware documentation.
+
+3. WebFetch of raw.githubusercontent.com/.../master/boards.txt (searching for
+   "pintronix"/"pinmax") came back "no matches found" — but this is very
+   likely a false negative caused by the tool truncating/summarizing an
+   extremely large file (this repo's own local copy places the
+   pintronix_pinmax section at line ~28398 of variants/rp2040/boards.txt),
+   NOT proof the entry doesn't exist upstream. The direct commit/PR lookup in
+   item 2 is the authoritative confirmation that this board genuinely exists
+   upstream as a contributed (not vendor-authored) board definition.
+
+4. WebSearch "deltaford PinMax RP2040 board github" and ""PinMax" board
+   Pintronix product page buy" — no personal repository, product page, or
+   store listing for a "PinMax" board was found anywhere.
+
+5. WebFetch of tindie.com/stores/pintronix/ (a real Tindie storefront named
+   "PINTRONIX", based in Borlanga, Sweden per earlier search results) was
+   blocked (HTTP 403). A subsequent WebSearch surfaced this store's actual
+   product catalog via search snippets: PINTRONIX PS Pinscape Controller Kit
+   (NXP FRDM-KL25Z-based virtual pinball controller), PINTRONIX PWM MOSFET /
+   PWM LED Driver Pinscape Expansion Boards, a Pinscape Extended Expansion
+   Kit, RJ45 breakout board kits, an 8-way fuse-holder board, and a 6-key
+   rotary encoder kit. NONE of these listed products is an RP2040 board or is
+   named "PinMax" — this storefront's entire catalog is Pinscape
+   virtual-pinball-machine peripheral hardware built around a different MCU
+   family entirely (NXP Kinetis KL25Z), not RP2040. It could not even be
+   confirmed that this Tindie "Pintronix" is the same entity behind the
+   "Pintronix PinMax" board name (could be an unrelated namesake) — either
+   way, no "PinMax" product exists in its listings.
+
+CONCLUSION / PER-PIN REASONING
+-------------------------------
+GPIO27 (PIN_LED): No authoritative vendor documentation of any kind exists for
+this board's actual physical hardware — no datasheet, schematic, product
+page, or manufacturer statement was found anywhere describing whether an LED
+is physically present at GPIO27, and if so its drive polarity (active-high vs
+active-low). The upstream contribution history shows this board definition
+was community-submitted with only generic/template pin aliases and had to be
+corrected by the arduino-pico maintainer for missing boilerplate defines,
+which is the opposite of confidence-inspiring for a hand-verified hardware
+pinout. Per this audit's explicit rule ("if you cannot find authoritative
+vendor documentation, report NO CHANGE rather than guess at polarity from the
+alias name alone"), GPIO27 is NOT tagged led_high/led_low here. It remains at
+its full chip-default derived capabilities (digital_input, digital_output,
+pwm_output, plus analog_input since GPIO26-28 fall in the RP2040's default
+ADC range per generic/common.h) — unchanged from today's build output.
+
+No button alias (no PIN_BUTTON/PIN_USRKEY/BOOTSEL-as-GPIO or similar) is
+declared in this board's pins_arduino.h at all, so there is nothing to
+tag/consider for button capability.
+
+No NeoPixel alias (no PIN_NEOPIXEL or similar) is declared in this board's
+pins_arduino.h at all, so there is nothing to tag/consider for NeoPixel
+capability.
+
+Bus-collision bug class check: this board declares SPI0 (MISO=16, MOSI=19,
+SCK=18, SS=17) and Wire0 (SDA=4, SCL=5) only, single-Wire/single-SPI as
+described in the task. PIN_LED=27 does not coincide with any of these bus
+pins, so the "confirmed button/LED pin also aliased as a bus pin" bug class
+does not apply here — no pins_arduino.h edit was made or needed.
+
+SUMMARY (one line): Pintronix PinMax (rp2040) — no authoritative vendor
+documentation exists for this community-contributed, seemingly obscure/
+possibly non-commercially-documented board (upstream PR itself lacks a board
+description and needed correction for missing boilerplate defines; the only
+real "Pintronix" storefront found sells unrelated NXP KL25Z-based Pinscape
+hardware, not RP2040, and has no "PinMax" product); board.json created with
+chipGpios: {} (NO CHANGE from chip-level default capabilities on GPIO27/
+PIN_LED, no button/neopixel aliases declared to consider).

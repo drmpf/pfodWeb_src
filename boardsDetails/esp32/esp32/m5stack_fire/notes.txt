@@ -1,0 +1,56 @@
+m5stack_fire board.json button/LED research notes
+====================================================
+
+Sources consulted:
+- https://docs.m5stack.com/en/core/fire
+  Official M5Stack product docs. Pinmap table confirms: Button A = GPIO39,
+  Button B = GPIO38, Button C = GPIO37. Confirms onboard RGB LED bar is
+  10x SK6812 3535 RGB LEDs driven from a single data pin, GPIO15. Also
+  notes GPIO15 should be initialized with pinMode(15, OUTPUT_OPEN_DRAIN)
+  to avoid WiFi conflicts (informational only, not a capability tag
+  concern - pfodWeb capability tagging does not encode pinMode nuances).
+- https://github.com/m5stack/m5-docs/blob/master/docs/en/core/fire.md
+  Same content as above (source markdown for docs.m5stack.com page),
+  cross-confirms Button A/B/C = GPIO39/38/37 and LED bar = GPIO15,
+  10x SK6812. Also confirms GPIO16/17 reserved for PSRAM (already
+  excluded in this board's board.json/pins_arduino.h from an earlier
+  audit pass, unrelated to this task).
+- WebSearch "M5Stack Fire buttons GPIO 39 38 37 pinout" - surfaced
+  devices.esphome.io/devices/m5stack-fire/ ESPHome config showing
+  BUTTON_A=IO39, BUTTON_B=IO38, BUTTON_C=IO37 configured with
+  inverted:true (active-low), corroborating the official docs.
+- WebSearch "M5Stack Fire onboard NeoPixel GPIO 15 10 LED bar" - surfaced
+  M5Stack community forum threads (forum.m5stack.com/topic/665 and
+  community.m5stack.com/topic/1068) confirming GPIO15 drives 10x SK6812
+  LEDs, consistent with official docs.
+
+Pins considered but NOT tagged:
+- None. All four confirmed pins (GPIO15 NeoPixel bar, GPIO37/38/39
+  buttons A/B/C) had existing chipGpios entries in board.json (none
+  fell inside a prior pin-exclusion range) and none coincided with this
+  board's TX/RX pins (TX=1, RX=3 per pins_arduino.h) or another
+  exclusion. No judgment calls or best-guesses were required - all
+  tags are directly and explicitly confirmed by official M5Stack
+  documentation (docs.m5stack.com/en/core/fire), not inferred from
+  pins_arduino.h aliases (which in fact do NOT declare G37/G38/G39 at
+  all - those aliases only exist in M5Stack's M5Stack.h library, not in
+  this variant's pins_arduino.h; this is expected and does not affect
+  board.json tagging since board.json chipGpios operates independently
+  of pins_arduino.h aliases).
+- Buttons are plain GPIO active-low per M5Stack Fire hardware (unlike
+  M5Stack Core2/CoreS3 which use capacitive touch). No pfodWeb tag
+  currently distinguishes active-low vs active-high buttons (only
+  ["digital_input","button"] is defined), so polarity is not encoded
+  here - noting it for human review in case polarity-specific button
+  tags are added in future.
+
+Summary of changes applied:
+- GPIO15: NeoPixel/RGB LED bar -> capabilities changed to
+  ["digital_output","led_neopixel","pwm_output"] (pwm_output retained
+  since it was already present).
+- GPIO37: Button C -> capabilities changed to ["digital_input","button"].
+- GPIO38: Button B -> capabilities changed to ["digital_input","button"].
+- GPIO39: Button A -> capabilities changed to ["digital_input","button"].
+- Added NOTE comments at top of board.json documenting these tags,
+  placed after the existing pin-exclusion NOTE comment (not replacing
+  it).

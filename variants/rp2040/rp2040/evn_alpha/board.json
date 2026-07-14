@@ -1,0 +1,191 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.  EVN Alpha is a bare RP2040 (no
+  // onboard WiFi/BLE radio) built on arduino-pico's "Generic RP2040"
+  // board variant (ARDUINO_GENERIC_RP2040), confirmed via this board's
+  // own pins_arduino.h / the vendor's evn_pins_defs.h (see notes.txt).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: "EVN Alpha" by EVN (Centre Of Robotics Excellence, Singapore)
+  // — a real, commercially available LEGO Technic-compatible robotics
+  // controller built around a bare RP2040, with 26 header ports for
+  // I2C/UART/Servo/EV3/NXT-motor peripherals (crowdfunded 2024, CNX
+  // Software coverage; official docs at evn.readthedocs.io; firmware/
+  // library at github.com/EVNdevs/EVN-arduino).
+  //
+  // This board's own pins_arduino.h already anticipates the dedicated-
+  // hardware exclusion for most pins by simply never declaring a
+  // `static const uint8_t D<n>` alias for GPIO2/3/10-22/26-28 (see the
+  // "pfodWeb NOTE" comments above D4 and after D9 in that file) — since
+  // build_boards.js's ESP32-style parser (parseEsp32Consts) only
+  // harvests `static const uint8_t NAME = n;` declarations (NOT bare
+  // `#define`s — confirmed by reading parseEsp32Consts's own doc-comment
+  // in pfodWeb_src/build_boards.js), those GPIOs were already invisible
+  // to the Designer's pin list without any chipGpios entry at all. GPIO24
+  // (PIN_BUTTON) and GPIO25 (PIN_LED) are likewise NOT covered by any
+  // static-const alias in this board's pins_arduino.h, so — unlike a
+  // typical ESP32/ESP8266 board where every silicon GPIO defaults to
+  // full capability — GPIO24/25 do not appear in the Designer's pin list
+  // AT ALL unless explicitly added via chipGpios below (this rp2040 chip
+  // bucket's own board.json has chipGpios: {}, so there is no blanket
+  // default to fall back on). The real defect this audit fixes is
+  // therefore the OPPOSITE of the usual RP2040 pattern: the onboard user
+  // button and LED were previously not exposed/tagged at all, not
+  // over-exposed as bare digital I/O.
+  //
+  // The chipGpios entries below restore GPIO24/25 with proper
+  // button/LED tags (confirmed via the vendor's own firmware source —
+  // see notes.txt), and additionally re-add the servo/motor/encoder
+  // GPIOs with capabilities:[] + a descriptive note (matching the
+  // bigtreetech_SKR_Pico precedent) so the Designer's pin picker shows
+  // *why* each dedicated GPIO is unavailable, rather than silently
+  // omitting it.
+  //
+  // No bus-alias/button-LED collision of the kind build_boards.js
+  // auto-appends (SDA/SCL/SS/MOSI/MISO/SCK) applies to this board: the
+  // vendor's SPI0/SPI1/Wire1 pin remaps in evn_pins_defs.h are all plain
+  // `#define`s, never `static const uint8_t SDA/SCL/SS/MOSI/MISO/SCK`,
+  // so build_boards.js's auto-append logic (keyed only off those exact
+  // static-const names) never triggers for them — confirmed by reading
+  // both this board's pins_arduino.h and buildEsp32Board() in
+  // pfodWeb_src/build_boards.js.
+  //
+  // Sources consulted (full detail + per-pin cross-check trail in
+  // boardsDetails/rp2040/rp2040/evn_alpha/notes.txt):
+  //   - github.com/EVNdevs/EVN-arduino (official vendor firmware repo)
+  //     — src/evn_pins_defs.h (servo/motor/button pin numbers, fetched
+  //     and diffed line-for-line against this board's pins_arduino.h:
+  //     exact match), src/helper/EVNButtonLED.h/.cpp (button read via
+  //     INPUT_PULLUP + digitalRead — "pin is LOW when button is
+  //     pressed" per the source's own comment — and LED driven via
+  //     digitalWrite(PIN_LED, state) where state=true is the toggled-on
+  //     LED state), src/EVNAlpha.h (public ledWrite()/buttonRead() API
+  //     confirming the same polarity at the user-facing library level).
+  //   - evn.readthedocs.io (official docs) — Programming guide's
+  //     ButtonLED example description: "press the User Button (leftmost
+  //     one), the blue User LED should toggle on and off".
+  //   - cnx-software.com "EVN Alpha is a LEGO-compatible robotics
+  //     controller built around Raspberry Pi RP2040 MCU" (2024) and
+  //     coresg.tech/evn/ (vendor product page) — board identity,
+  //     26-port I2C/UART/Servo/EV3/NXT-motor description, confirming
+  //     this is a real motor/servo robotics controller, consistent with
+  //     the Servo1-4/Motor1-4 port names already in this board's
+  //     pins_arduino.h.
+  //
+  // Per-pin mapping (vendor evn_pins_defs.h / pins_arduino.h-confirmed):
+  //   GPIO0  - D0 / PIN_SERIAL1_TX / PIN_SPI0_MISO - aux comms header,
+  //            general-purpose expansion pin. KEPT (already routable
+  //            via its D0 static-const alias; not part of this audit).
+  //   GPIO1  - D1 / PIN_SERIAL1_RX / PIN_SPI0_SS - same aux header.
+  //            KEPT, same reasoning.
+  //   GPIO2  - PIN_SERVO1 / PIN_SPI0_SCK - dedicated Servo Port 1 signal
+  //            line, driven by the EVN library's own servo-pulse code -
+  //            not general purpose. No static-const alias in
+  //            pins_arduino.h (already excluded); chipGpios entry added
+  //            purely for pin-picker documentation.
+  //   GPIO3  - PIN_SERVO2 / PIN_SPI0_MOSI - dedicated Servo Port 2
+  //            signal line. Same reasoning as GPIO2.
+  //   GPIO4  - D4 / PIN_WIRE0_SDA - aux I2C header. KEPT (general
+  //            expansion pin, already routable via D4).
+  //   GPIO5  - D5 / PIN_WIRE0_SCL - aux I2C header. KEPT, same
+  //            reasoning.
+  //   GPIO6  - D6 / PIN_WIRE1_SDA - aux I2C header (Wire1). KEPT.
+  //   GPIO7  - D7 / PIN_WIRE1_SCL - aux I2C header (Wire1). KEPT.
+  //   GPIO8  - D8 / PIN_SERIAL2_TX / PIN_SPI1_MISO - aux comms header.
+  //            KEPT.
+  //   GPIO9  - D9 / PIN_SERIAL2_RX / PIN_SPI1_SS - aux comms header.
+  //            KEPT.
+  //   GPIO10 - PIN_SERVO3 / PIN_SPI1_SCK - dedicated Servo Port 3
+  //            signal line. Same reasoning as GPIO2.
+  //   GPIO11 - PIN_SERVO4 / PIN_SPI1_MOSI - dedicated Servo Port 4
+  //            signal line. Same reasoning as GPIO2.
+  //   GPIO12 - PIN_MOTOR4_ENCB - Motor Port 4 quadrature-encoder B
+  //            line - dedicated motor-feedback hardware.
+  //   GPIO13 - PIN_MOTOR4_ENCA - Motor Port 4 quadrature-encoder A line.
+  //   GPIO14 - PIN_MOTOR3_ENCA - Motor Port 3 quadrature-encoder A line.
+  //   GPIO15 - PIN_MOTOR3_ENCB - Motor Port 3 quadrature-encoder B line.
+  //   GPIO16 - PIN_MOTOR2_ENCB - Motor Port 2 quadrature-encoder B line.
+  //   GPIO17 - PIN_MOTOR2_ENCA - Motor Port 2 quadrature-encoder A line.
+  //   GPIO18 - PIN_MOTOR1_ENCA - Motor Port 1 quadrature-encoder A line.
+  //   GPIO19 - PIN_MOTOR1_ENCB - Motor Port 1 quadrature-encoder B line.
+  //   GPIO20 - PIN_MOTOR4_OUTB - Motor Port 4 driver output B - dedicated
+  //            motor-driver hardware, drives an actual DC motor winding.
+  //   GPIO21 - PIN_MOTOR4_OUTA - Motor Port 4 driver output A.
+  //   GPIO22 - PIN_MOTOR3_OUTB - Motor Port 3 driver output B.
+  //   GPIO23 - PIN_MOTOR3_OUTA - Motor Port 3 driver output A.
+  //   GPIO24 - PIN_BUTTON - onboard "User Button", confirmed via vendor
+  //            firmware source (EVNButtonLED.h's isr(): pinMode(
+  //            PIN_BUTTON, INPUT_PULLUP) + comment "pin is LOW when
+  //            button is pressed") to be a genuine active-low mechanical
+  //            pushbutton with internal pull-up - standard button
+  //            wiring. Tagged button.
+  //   GPIO25 - PIN_LED - onboard "User LED" (blue), confirmed via vendor
+  //            firmware source (EVNButtonLED.h's isr()/update():
+  //            digitalWrite(PIN_LED, _button.state) and EVNAlpha.h's
+  //            public ledWrite(bool state){ digitalWrite(PIN_LED,
+  //            state); }) to be driven HIGH for the toggled-on/lit LED
+  //            state - active-high. Tagged led_high; pwm_output kept
+  //            since arduino-pico's analogWrite() works on any RP2040
+  //            GPIO (matches rpipico/board.json's GPIO25 precedent for
+  //            an active-high onboard LED with dimming support).
+  //   GPIO26 - PIN_MOTOR2_OUTB - Motor Port 2 driver output B.
+  //   GPIO27 - PIN_MOTOR2_OUTA - Motor Port 2 driver output A.
+  //   GPIO28 - PIN_MOTOR1_OUTB - Motor Port 1 driver output B.
+  //   GPIO29 - PIN_MOTOR1_OUTA - Motor Port 1 driver output A.
+  "chipGpios": {
+    "2":  { "capabilities": [], "note": "PIN_SERVO1 / PIN_SPI0_SCK - dedicated Servo Port 1 signal line (EVN library servo-pulse output), not general purpose." },
+    "3":  { "capabilities": [], "note": "PIN_SERVO2 / PIN_SPI0_MOSI - dedicated Servo Port 2 signal line, not general purpose." },
+    "10": { "capabilities": [], "note": "PIN_SERVO3 / PIN_SPI1_SCK - dedicated Servo Port 3 signal line, not general purpose." },
+    "11": { "capabilities": [], "note": "PIN_SERVO4 / PIN_SPI1_MOSI - dedicated Servo Port 4 signal line, not general purpose." },
+    "12": { "capabilities": [], "note": "PIN_MOTOR4_ENCB - Motor Port 4 quadrature-encoder B input, dedicated motor-feedback hardware." },
+    "13": { "capabilities": [], "note": "PIN_MOTOR4_ENCA - Motor Port 4 quadrature-encoder A input, dedicated motor-feedback hardware." },
+    "14": { "capabilities": [], "note": "PIN_MOTOR3_ENCA - Motor Port 3 quadrature-encoder A input, dedicated motor-feedback hardware." },
+    "15": { "capabilities": [], "note": "PIN_MOTOR3_ENCB - Motor Port 3 quadrature-encoder B input, dedicated motor-feedback hardware." },
+    "16": { "capabilities": [], "note": "PIN_MOTOR2_ENCB - Motor Port 2 quadrature-encoder B input, dedicated motor-feedback hardware." },
+    "17": { "capabilities": [], "note": "PIN_MOTOR2_ENCA - Motor Port 2 quadrature-encoder A input, dedicated motor-feedback hardware." },
+    "18": { "capabilities": [], "note": "PIN_MOTOR1_ENCA - Motor Port 1 quadrature-encoder A input, dedicated motor-feedback hardware." },
+    "19": { "capabilities": [], "note": "PIN_MOTOR1_ENCB - Motor Port 1 quadrature-encoder B input, dedicated motor-feedback hardware." },
+    "20": { "capabilities": [], "note": "PIN_MOTOR4_OUTB - Motor Port 4 driver output B, dedicated motor-driver hardware (drives a DC motor winding)." },
+    "21": { "capabilities": [], "note": "PIN_MOTOR4_OUTA - Motor Port 4 driver output A, dedicated motor-driver hardware." },
+    "22": { "capabilities": [], "note": "PIN_MOTOR3_OUTB - Motor Port 3 driver output B, dedicated motor-driver hardware." },
+    "23": { "capabilities": [], "note": "PIN_MOTOR3_OUTA - Motor Port 3 driver output A, dedicated motor-driver hardware." },
+    "24": { "capabilities": ["digital_input", "button"], "note": "PIN_BUTTON - onboard User Button, confirmed active-low mechanical pushbutton with internal pull-up via vendor firmware source (EVNButtonLED.h: pinMode(PIN_BUTTON, INPUT_PULLUP); \"pin is LOW when button is pressed\")." },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED - onboard User LED (blue), confirmed active-high via vendor firmware source (EVNButtonLED.h/EVNAlpha.h: digitalWrite(PIN_LED, state) where state=true is the lit/toggled-on LED state)." },
+    "26": { "capabilities": [], "note": "PIN_MOTOR2_OUTB - Motor Port 2 driver output B, dedicated motor-driver hardware." },
+    "27": { "capabilities": [], "note": "PIN_MOTOR2_OUTA - Motor Port 2 driver output A, dedicated motor-driver hardware." },
+    "28": { "capabilities": [], "note": "PIN_MOTOR1_OUTB - Motor Port 1 driver output B, dedicated motor-driver hardware." },
+    "29": { "capabilities": [], "note": "PIN_MOTOR1_OUTA - Motor Port 1 driver output A, dedicated motor-driver hardware." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference - same as every
+  // other RP2040 board. No GPIO on this board is currently tagged
+  // analog_input (all 4 ADC-capable GPIOs, 26-29, are committed to
+  // Motor1/2 driver outputs above) - this block is the inert chip-level
+  // default, kept for consistency with every other RP2040 board.json.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

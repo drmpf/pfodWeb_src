@@ -1,0 +1,211 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-13.
+// Board: Raspberry Pi Pico 2 W (RP2350A + Infineon CYW43439 WiFi/BLE
+// chip), flagship RP2350 reference board for the rp2040w chip bucket
+// (sibling to rpipicow, the RP2040 flagship in the same bucket).
+//
+// This board's own pins_arduino.h (variants/rp2040/rp2040w/rpipico2w/
+// pins_arduino.h) is ALREADY bespoke and self-contained -- it does NOT
+// `#include "../generic/common.h"`, and its own "pfodWeb NOTE" header
+// comment already explains why: GPIO23/24/25/29 are wired internally to
+// the CYW43439 WiFi/BLE chip and are deliberately NOT declared as
+// D<n>/A<n> aliases, and PIN_LED (64u) is documented as "not parsed as a
+// pin here" because it addresses the WiFi chip's own GPIO0, not a real
+// RP2350 pin. No board.json existed before this audit; this file makes
+// that already-correct pin exclusion an explicit, reviewable part of the
+// per-board config (matching the audit convention used for every other
+// board in this family) and records the research trail confirming it.
+//
+// Sources consulted:
+//  - This board's own pins_arduino.h (variants/rp2040/rp2040w/rpipico2w/
+//    pins_arduino.h): self-contained, includes <cyw43_wrappers.h>,
+//    `#define PIN_LED (64u)`, declares D0-D22/D26-D28/A0-A2/SS/MOSI/
+//    MISO/SCK/SDA/SCL aliases but NO alias at all for GPIO23/24/25/29
+//    or for pin 64 -- confirmed by direct read that no `static const
+//    uint8_t X = ...` line in the file resolves to 23, 24, 25, 29, or
+//    64. Mechanically identical situation to rpipicow (see that board's
+//    own board.json/notes.txt): build_boards.js's buildEsp32Board() (used
+//    for the "rp2040" family) unions pins_arduino.h aliases with any
+//    chipGpios keys to decide which GPIOs appear as pins at all (see
+//    pfodWeb_src/build_boards.js lines ~531-539); a GPIO with no alias
+//    and no chipGpios entry simply never appears in the output. So these
+//    4 WiFi-chip pins and the pseudo-pin 64 are ALREADY fully absent from
+//    the generated board -- adding chipGpios entries for them would be
+//    actively wrong, since chipGpios keys are unioned BACK into the
+//    exposed-GPIO set (would wrongly re-introduce pins that aren't even
+//    physically broken out on this board).
+//  - variants/rp2040/rp2040w/board.json (chip bucket): its own comment
+//    block already documents "rpipicow/rpipico2w have bespoke, self-
+//    contained pins_arduino.h that exclude the WiFi-chip-reserved GPIOs
+//    (23/24/25/29) directly" -- confirms this is the intended, already-
+//    implemented design for this specific board.
+//  - variants/rp2040/rp2040w/rpipicow/board.json +
+//    boardsDetails/rp2040/rp2040w/rpipicow/notes.txt (sibling WiFi-bucket
+//    RP2040 flagship, audited earlier in this same session/wave): used as
+//    the direct schema/style/reasoning precedent for this file. That
+//    board's pins_arduino.h is byte-for-byte identical to this board's
+//    except for RP2040-vs-RP2350 wording in the comments -- confirming
+//    the same exclusion design was applied consistently to both.
+//  - variants/rp2040/rp2040w/generic/common.h (the shared fallback used
+//    by sparkfun_thingplusrp2350/sparkfun_xrp_controller/
+//    sparkfun_xrp_controller_beta): its own pfodWeb NOTE comment
+//    describes GPIO23=SMPS power-save, GPIO24=VBUS sense, GPIO25=onboard
+//    LED, GPIO29=VSYS sense -- this is the PLAIN (non-wireless)
+//    Pico/Pico2 pin-role assignment for these 4 GPIOs, confirming by
+//    contrast that the wireless boards (rpipicow/rpipico2w) genuinely
+//    REPURPOSE the same 4 GPIO numbers for the CYW43439 control bus
+//    instead -- two different, mutually exclusive roles for the same
+//    4 numbers depending on whether the board has the wireless chip.
+//  - Official Raspberry Pi Pico 2 W documentation
+//    (raspberrypi.com/documentation/microcontrollers/raspberry-pi-pico.html,
+//    "wireless microcontroller boards" section -- fetched directly).
+//    Exact quoted wording: "Wireless Raspberry Pi Pico models use the
+//    Infineon CYW43439 wireless chip, connected to the on-board
+//    microcontroller through an SPI interface operating at up to 33 MHz."
+//    "The SPI clock line (CLK) is shared with the VSYS voltage monitor,
+//    and so the ADC can only read VSYS when no SPI transaction is in
+//    progress." "The LED (connected to the wireless chip through
+//    WL_GPIO0) is located to the left of the Micro USB port." This
+//    documentation page covers both Pico W and Pico 2 W as "wireless
+//    Pico models" and is RP2350-specific in places (search-returned
+//    snippet explicitly said "Pico 2 W has an on-board 2.4GHz wireless
+//    interface using an Infineon CYW43439... connected via SPI to the
+//    RP2350").
+//  - Official Pico 2 W datasheet/schematic existence confirmed
+//    (datasheets.raspberrypi.com/picow/pico-2-w-datasheet.pdf, redirects
+//    to pip-assets.raspberrypi.com/.../RP-008304-DS-2-pico-2-w-datasheet.pdf;
+//    datasheets.raspberrypi.com/picow/pico-2-w-schematic.pdf) -- PDF body
+//    exceeded the fetch tool's text-extraction ability (binary/compressed
+//    stream), so exact per-net schematic labels were not independently
+//    re-derived from it; relied on the raspberrypi.com documentation page
+//    (previous bullet) and cross-checked secondary sources (next bullet)
+//    instead, consistent with how the rpipicow precedent audit handled
+//    the equivalent Pico W datasheet PDF.
+//  - WebSearch cross-check (multiple independent secondary sources,
+//    consistent with each other and with the primary documentation page
+//    above): GPIO25 = wireless SPI chip-select (when high, also enables
+//    GPIO29 to read VSYS); GPIO24 = wireless SPI data/IRQ (CYW43439
+//    DIN/DOUT/IRQ share one RP2350 pin); GPIO23 = wireless power-on
+//    signal; GPIO29 = wireless SPI clock, doubling as ADC3/VSYS-sense
+//    only when no SPI transaction is in progress. Matches this board's
+//    own pins_arduino.h comment ("GPIO23/24/25/29 ... wired internally to
+//    the onboard CYW43 WiFi/BLE chip's SPI-ish control interface").
+//  - arduino-pico upstream source (github.com/earlephilhower/arduino-pico),
+//    fetched directly:
+//      * variants/rpipico2w/pins_arduino.h -- IMPORTANT DIFFERENCE from
+//        this repo's copy: the real upstream file is much shorter and
+//        ends with `#include "../generic/common.h"` (arduino-pico's OWN
+//        internal common.h, a different file from this repo's
+//        variants/rp2040/rp2040w/generic/common.h) rather than declaring
+//        D<n>/A<n> aliases directly. This repo's rpipico2w/pins_arduino.h
+//        has been deliberately customized during import to inline the
+//        correct wireless-aware D<n>/A<n> exclusion directly in the file
+//        (self-contained, matching rpipicow's equivalent customization)
+//        rather than deferring to a shared common.h that cannot
+//        distinguish the wireless-chip pin-repurposing from the plain-
+//        Pico pin-repurposing. Upstream file does still confirm
+//        `#define PICO_RP2350A 1` and `#define PIN_LED (64u)`.
+//      * api.github.com/repos/earlephilhower/arduino-pico/contents/variants/rpipico2w
+//        confirms the variant directory is real (digital.cpp, init.cpp,
+//        pins_arduino.h) -- this is the actual board-support source the
+//        Arduino IDE compiles generated sketches against.
+//  - Community discussion on the arduino-pico LED_BUILTIN mechanism
+//    (same as cited in the rpipicow precedent audit -- Raspberry Pi
+//    forums "Pico W onboard LED not working [SOLVED]";
+//    github.com/earlephilhower/arduino-pico issue #3297 re: Waveshare
+//    RP2350B Plus W LED1/CYW43 GPIO0 offset-64 convention): confirms
+//    arduino-pico's digitalWrite()/digitalRead() special-case any pin
+//    number >=64 by subtracting 64 and routing through
+//    cyw43_arch_gpio_put()/cyw43_arch_gpio_get(), which only work
+//    correctly AFTER cyw43_arch_init() has run. This mechanism is shared
+//    code across the whole arduino-pico core, so it applies identically
+//    on RP2350-based Pico 2 W as it does on RP2040-based Pico W.
+//  - variants/rp2040/tcp.ino / http.ino (this chip bucket's own
+//    templates): confirm setup() calls WiFi.mode(WIFI_STA) then
+//    WiFi.begin(...) before any user "extra setup code" runs, so
+//    cyw43_arch_init() has always completed by the time a TCP/HTTP
+//    sketch's own code could touch pin 64.
+//  - variants/serial.ino (this repo's shared Serial-connection template,
+//    used by every family including this "serial"-capable WiFi bucket):
+//    confirms setup() only calls Serial.begin() and the pfodParser
+//    bootstrap -- it never calls WiFi.mode()/WiFi.begin()/
+//    cyw43_arch_init(). A Serial-only sketch generated for this board
+//    would therefore call digitalWrite(64, ...) (or a codeName built
+//    from a bare "64") on an UNINITIALIZED cyw43 bus if pin 64 were
+//    tagged as a normal led_high/led_low capability -- a real
+//    correctness hazard, not just a style concern.
+//
+// GPIO23/24/25/29 (CYW43439 wireless bus -- power-on/data-IRQ/CS/clock,
+// clock doubling as ADC3/VSYS-sense only when the WL bus is idle):
+// CONFIRMED not present on the Pico 2 W's pin header at all, internal to
+// the WiFi/BLE radio. Already fully excluded by pins_arduino.h having no
+// D<n>/A<n> alias for any of them -- NO chipGpios entry added here
+// (adding one would incorrectly re-introduce a pin that isn't even
+// physically accessible). Matches this repo's rp2040w/board.json chip-
+// bucket comment describing this as the correct, already-implemented
+// design for this board, and matches the identical finding for sibling
+// board rpipicow.
+//
+// LED (WL_GPIO0 via CYW43439, addressed in arduino-pico as pin 64 /
+// PIN_LED): CONFIRMED wired to the wireless chip, not a real RP2350
+// GPIO ("The LED (connected to the wireless chip through WL_GPIO0) is
+// located to the left of the Micro USB port" -- raspberrypi.com official
+// documentation) -- not representable as a normal digital_output/
+// led_high/led_low capability for two independent reasons: (1) it is
+// outside the chip's real GPIO0-29 address space, so it is not "a pin"
+// in the sense this Designer's pin picker models; (2) driving it
+// correctly requires cyw43_arch_init() to have already run, which this
+// repo's shared serial.ino template does NOT do, so a naive
+// digitalWrite(64, ...) generated for a Serial-connection sketch on this
+// board would hit an uninitialized wireless bus. Left completely
+// untagged (no chipGpios entry, matching pins_arduino.h's own "not
+// parsed as a pin here" note) rather than guessing a capability that
+// could silently generate broken code -- same "no legitimate GPIO-
+// capability alias worth surfacing" precedent already used for
+// rpipicow/adafruit_trinkeyrp2040qt/wiznet_6300_evb_pico (see
+// sparkfun_thingplusrp2350/notes.txt).
+//
+// BOOTSEL button: present on Pico 2 W like every RP2040/RP2350 board,
+// but read via the boot ROM (not a normal digitalRead()-capable GPIO) --
+// no "button" capability tag applies, matching this repo's existing
+// convention of never tagging Pico-family BOOTSEL buttons.
+//
+// No SPI0/SPI1/Wire0/Wire1/Serial1/Serial2 header pins needed any
+// override -- they are ordinary general-purpose header pins on this
+// board (no onboard SD/PSRAM/sensor hardware competes for them the way
+// it does on sparkfun_thingplusrp2350), and their spi_*/i2c_* bus-role
+// tags are already attached automatically by build_boards.js's
+// unconditional SDA/SCL/SS/MOSI/MISO/SCK alias matching. (Note: this
+// board's own pins_arduino.h only declares ONE SPI bus's worth of D<n>-
+// visible SS/MOSI/MISO/SCK consts (SPI0, GPIO16-19) even though the
+// silicon/upstream file also has SPI1 pins (GPIO12-15) -- those still
+// surface correctly as plain D12-D15 general-purpose pins, just without
+// a second spi_ss/mosi/miso/sck tag, matching this repo's existing
+// single-SPI-alias convention used elsewhere in this family.)
+//
+// Pre-existing gap (same as documented for sparkfun_thingplusrp2350, out
+// of scope for this pin-exclusion/button/LED audit): this board's
+// pins_arduino.h declares PIN_SERIAL1_TX=0/PIN_SERIAL1_RX=1 but no bare
+// `static const uint8_t TX = ...` / `RX = ...` alias, so build_boards.js's
+// g===tx/g===rx serial-role detection never fires -- GPIO0/GPIO1 surface
+// as plain general-purpose D0/D1 pins instead of serial_tx/serial_rx.
+// Flagged in boardsDetails/rp2040/rp2040w/rpipico2w/notes.txt for a
+// future dedicated fix; not touched here per task scope.
+//
+// Net result: chipGpios is empty ({}), same as the rp2040w chip-level
+// default -- this file exists to make the CYW43-pin and LED reasoning an
+// explicit, sourced, per-board record (this audit's standard deliverable)
+// rather than to change generated behaviour, which was already correct.
+//
+// See boardsDetails/rp2040/rp2040w/rpipico2w/notes.txt for the summary.
+{
+  "boardName": "RP2040W",
+  "displayName": "Raspberry Pi Pico W / 2W",
+  "family": "rp2040",
+  "inputOnlyGpios": [],
+  "connections": ["serial", "tcp", "http", "ble"],
+  "pinNotes": {},
+  "chipGpios": {},
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

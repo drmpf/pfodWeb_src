@@ -1,0 +1,74 @@
+m5stack_poe_cam - button/LED research notes
+=============================================
+
+Sources consulted
+------------------
+https://docs.m5stack.com/en/unit/poe_cam
+  Official M5Stack product page for "Unit PoE CAM" (OV2640 sensor). Pinmap
+  table lists: Blue LED = signal G0, Side Button = signal G37. Camera pins
+  (XCLK G27, VSYNC G22, HREF G26, PCLK G21, D0-D7 = G32/G35/G34/G5/G39/G18/
+  G36/G19), W5500 SPI (MOSI G13, MISO G38, SCLK G23, CS G4), SCCB (SIOC G12,
+  SIOD G14) all match this variant's existing pin-exclusion list exactly,
+  confirming this is the correct product page for this variant (not the
+  newer OV3660 "v1.1" revision).
+
+https://github.com/m5stack/M5PoECAM
+  Official M5Stack Arduino library repo for this exact product. This was
+  the decisive source.
+  - src/M5PoECAM.h: #define M5_POE_CAM_LED_PIN 0, #define
+    M5_POE_CAM_BTN_A_PIN 37, plus ETH_CS_PIN=4, ETH_MOSI_PIN=13,
+    ETH_MISO_PIN=38, ETH_CLK_PIN=23 - these ethernet pin numbers are an
+    exact match to this variant's pins_arduino.h/board.json exclusions,
+    confirming the library targets this exact hardware.
+  - src/M5PoECAM.cpp: begin() does pinMode(BTN_A_PIN, INPUT) and (if LED
+    enabled) pinMode(LED_PIN, OUTPUT). setLed(status) calls
+    digitalWrite(LED_PIN, status) directly (no inversion) - i.e. the LED is
+    ACTIVE-HIGH (status=true/HIGH turns it on). update() reads the button
+    as `!digitalRead(BTN_A_PIN)` for its BtnA press-state (standard
+    pulled-up momentary button handling, not relevant to the LED-polarity
+    tag scheme).
+  - examples/led/led.ino: PoECAM.setLed(true) then delay then
+    setLed(false) - confirms true=on usage pattern, consistent with
+    active-high.
+  - examples/button/button.ino: uses PoECAM.BtnA.wasPressed() /
+    wasReleased() - confirms G37 is a real user-facing button (BtnA), not
+    just a reset/strap pin.
+
+https://docs.m5stack.com/en/unit/m5camera (checked for comparison/ruled out)
+  Different, non-PoE M5Camera variant (LED on IO14, different camera pin
+  set) - does not match this variant's pinout, so not used as the primary
+  source; only consulted to confirm we had the right product family member.
+
+ESPHome-related web search snippets referencing "Unit PoE CAM-W v1.1"
+(docs.m5stack.com/en/homeassistant/kit/unit_poe_cam_w_v1.1) - this is a
+LATER hardware revision (OV3660 sensor, different SCCB pins) and was
+initially confusing search results into suggesting the GPIO0 LED is
+"inverted: true" (active-low) on that revision. This was NOT used as the
+basis for the tag since it's a different board revision from the one this
+variant targets. The official M5PoECAM library source above (which matches
+this exact variant's pins) overrides it: for THIS board (OV2640 PoECAM),
+digitalWrite(LED_PIN, status) is called directly with no inversion, so it
+is active-high.
+
+Pins considered but NOT tagged
+--------------------------------
+None. Both candidate pins (GPIO0 LED, GPIO37 button) were confirmed via the
+official M5PoECAM Arduino library source code (strongest possible evidence
+- actual pinMode/digitalWrite calls from M5Stack's own repo) and tagged.
+Neither GPIO0 nor GPIO37 conflicts with this board's TX(1)/RX(3) pins, and
+neither falls inside an existing chip-level pin-exclusion range - both
+already had chipGpios entries prior to this change, so no exclusion was
+reversed.
+
+No best-guess/uncertain judgment calls were required for the final tags -
+the official library source directly and unambiguously answered both the
+GPIO assignment and the LED polarity question.
+
+Summary of changes made
+-------------------------
+Tagged GPIO0 -> ["digital_output","pwm_output","led_high"] (status LED,
+confirmed active-high). Tagged GPIO37 -> ["digital_input","button"] (BtnA
+user button). Both changes made in
+C:\ai\aicode\pfodWeb\variants\esp32\esp32\m5stack_poe_cam\board.json, with
+NOTE comments added after the existing pin-exclusion NOTE (no existing
+content deleted/replaced).

@@ -1,0 +1,195 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) - for this board that's
+  // "redscorp RP2040-Eins" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board - see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion + LED/button audit,
+  // 2026-07-13):
+  //
+  // Board: red-scorp "RP2040-Eins" (open-source, Arduino UNO R3
+  // footprint replacement; github.com/red-scorp/RP2040-Eins; the name
+  // "Eins" is German for "one", matching the Italian "Uno"). Same
+  // vendor/designer as the sibling redscorp_rp2040_promini board
+  // (Arduino Pro Mini footprint), but a genuinely different, larger
+  // board with extra onboard hardware (an RGB LED not present on the
+  // ProMini) - verified independently from this board's own
+  // pins_arduino.h and its own schematic PDF (doc/RP2040-Eins.pdf), not
+  // copied from the ProMini board. Note: this board's D0-D29/A0-A3
+  // numeric GPIO assignments happen to be numerically identical to the
+  // ProMini sibling's (both follow the same underlying arduino-pico
+  // "Nano Connect configuration" GPIO layout per each file's own
+  // top-of-file comment) - confirmed by independently reading this
+  // board's own pins_arduino.h line by line, not assumed from the
+  // sibling.
+  //
+  // Sources consulted:
+  //  1. This board's own pins_arduino.h (top-of-file comment: "RP2040-
+  //     Eins board support, URL: https://github.com/red-scorp/RP2040-Eins,
+  //     Based on Arduino Nano Connect configuration"). Confirms
+  //     PIN_LED=D13=GPIO6=LED_BUILTIN (also PIN_SPI0_SCK), plus three
+  //     extra defines not present on the ProMini sibling:
+  //     PIN_LED_R=D22=GPIO9, PIN_LED_G=D23=GPIO10, PIN_LED_B=D24=GPIO11
+  //     (checked: none of GPIO9/10/11 are aliased to any other bus role
+  //     anywhere else in this file - no SPI/I2C/Serial collision for the
+  //     RGB pins).
+  //  2. WebSearch "RedScorp RP2040-Eins github red-scorp" -> located
+  //     https://github.com/red-scorp/RP2040-Eins (correct repo, matches
+  //     the URL already in this board's pins_arduino.h) - "RP2040-based
+  //     board with Arduino Uno footprint".
+  //  3. WebFetch of the repo README (github.com/red-scorp/RP2040-Eins and
+  //     its README.md) - confirms a User LED, a Power LED, and an RGB
+  //     LED with per-channel pins "Red: GPIO9, Green: GPIO10, Blue:
+  //     GPIO11", and states the RGB LED "uses MOSFETs...to make it work
+  //     similarly to user LED" (i.e. same active-high switch topology as
+  //     the D13/GPIO6 user LED). Confirms a BOOTSEL button, "moved...to
+  //     the edge of the board for easier access when shield is attached"
+  //     in v1.0b3; no separate user-programmable button documented.
+  //  4. AUTHORITATIVE SOURCE: doc/RP2040-Eins.pdf (full KiCad-exported
+  //     schematic, "RP2040-Eins-0010" Rev 1.0, dated 2024-01-12, (c)
+  //     Andriy Golovnya, downloaded from
+  //     https://github.com/red-scorp/RP2040-Eins/raw/master/doc/RP2040-Eins.pdf
+  //     and read directly via the Read tool; deleted from scratchpad
+  //     after use). This schematic is the actual basis for every pin
+  //     decision below, in the "Signalling and power LEDs" block.
+  //  5. Precedent file
+  //     variants/rp2040/rp2040/redscorp_rp2040_promini/board.json (same
+  //     vendor, same D13/GPIO6 LED_BUILTIN+PIN_SPI0_SCK dual-role,
+  //     already confirmed active-high there via an identical
+  //     AO3400A-N-channel-MOSFET-driven "Signalling LED" schematic block
+  //     - this board's own schematic uses the exact same Q2/AO3400A/
+  //     "D13_SCK" net topology for its D1 signalling LED, so the same
+  //     active-high conclusion applies here too, independently re-derived
+  //     from this board's own schematic rather than assumed.
+  //
+  // PER-PIN REASONING
+  //
+  // GPIO6 (D13, PIN_LED / LED_BUILTIN, also PIN_SPI0_SCK):
+  //   Schematic's "Signalling and power LEDs" block shows D1 (RED LED)
+  //   driven through gate resistor R1 (5k1) by Q2 (AO3400A, N-channel
+  //   MOSFET), whose gate is tied to the "D13_SCK" net (GPIO6/D13),
+  //   exactly mirroring the redscorp_rp2040_promini board's confirmed
+  //   active-high "Signalling LED" circuit (same part number, same net
+  //   naming convention, same vendor). GPIO HIGH -> Q2 turns on -> LED
+  //   lights. CONFIRMED ACTIVE-HIGH. Tagged
+  //   ["digital_output","pwm_output","led_high"]; digital_input dropped
+  //   (matches promini/arduino_nano_connect/rpipico precedent for a
+  //   dedicated onboard-LED-driver pin).
+  //
+  //   Bus-collision bug-class check: this board's pins_arduino.h also
+  //   declares `#define PIN_SPI0_SCK (D13)` for the same GPIO6, and the
+  //   schematic's UNO-pin-connector header block breaks this same net
+  //   out alongside MISO=D12/GPIO4, MOSI=D11/GPIO7, SS=D10/GPIO5 (the
+  //   classic Arduino ICSP/pin-13 SPI grouping) on connector J9 (labelled
+  //   D13_SCK). This is the "confirmed LED pin also aliased as an SPI
+  //   bus role" pattern this audit watches for, but - exactly as already
+  //   established for the redscorp_rp2040_promini sibling and the
+  //   arduino_nano_connect precedent - it is NOT a bug to fix: this board
+  //   is an explicit, literal Arduino UNO R3 footprint replacement, and
+  //   pin 13 doubling as SCK and the onboard LED is the single most
+  //   iconic, universally-expected Arduino Uno convention (LED flicker
+  //   during SPI transfers is standard, documented behaviour on every
+  //   Uno-shaped board, if anything more directly applicable here than on
+  //   the ProMini). No pins_arduino.h edit made. build_boards.js will
+  //   auto-append the spi_sck capability on top of the
+  //   led_high/pwm_output/digital_output capabilities declared below,
+  //   matching the real dual-role hardware.
+  //
+  // GPIO9 (D22, PIN_LED_R), GPIO10 (D23, PIN_LED_G), GPIO11 (D24,
+  // PIN_LED_B) - discrete 4-pin RGB LED (D4, part "XL-3227RGB-RF"):
+  //   Schematic's "Signalling and power LEDs" block shows three separate
+  //   gate resistors (R13/R14/R15, 5k1 each) driving three separate
+  //   N-channel MOSFETs (Q3, Q4, Q5, all AO3400A - same part as the
+  //   confirmed-active-high D13/GPIO6 user-LED driver Q2), whose gates
+  //   are tied to the LED_R/LED_G/LED_B nets respectively (GPIO9/10/11),
+  //   switching the R/G/B legs of D4 to GND. Same low-side N-channel
+  //   MOSFET switch topology as the confirmed-active-high user LED, and
+  //   the vendor's own README explicitly states the RGB LED "uses
+  //   MOSFETs...to make it work similarly to user LED" - i.e. the vendor
+  //   itself confirms the same active-high behaviour for all three
+  //   channels. This is a discrete 4-pin RGB LED driven by three
+  //   independent GPIOs/MOSFETs (not a single-wire addressable
+  //   WS2812/SK6812-style part), so tagged led_high per channel, NOT
+  //   led_neopixel. Checked for the bus-collision bug class: none of
+  //   D22/D23/D24 (GPIO9/10/11) are aliased to any SPI/I2C/Serial role
+  //   anywhere else in this board's pins_arduino.h - genuinely dedicated
+  //   RGB-LED-only pins, no collision to fix.
+  //   Tagged: ["digital_output","pwm_output","led_high"] for all three
+  //   (digital_input dropped, matching the D13/GPIO6 LED precedent;
+  //   pwm_output kept since arduino-pico's analogWrite() works on any
+  //   RP2040 GPIO and PWMing each MOSFET gate lets each color channel be
+  //   dimmed/mixed normally).
+  //
+  // D2 (second RED LED in the "Signalling and power LEDs" schematic
+  // block, near +3V3/R6): not aliased to any Dn pin in this board's
+  // pins_arduino.h - a plain power-on/status indicator, not GPIO-driven
+  // (matching the ProMini sibling's identically-placed D2). Out of
+  // scope for GPIO-keyed capability tagging.
+  //
+  // BOOTSEL button (schematic block "Boot source selection button",
+  // SW1): wired directly to the "QSPI_SS" net - the RP2040's internal
+  // dedicated QSPI flash chip-select pin (package pins 51-56 region),
+  // NOT any of the GPIO0-29 pins this board's pins_arduino.h declares Dn
+  // aliases for. Same mechanism as the plain Raspberry Pi Pico's own
+  // BOOTSEL button (rpipico/board.json precedent) and the
+  // redscorp_rp2040_promini sibling's identical BOOTSEL wiring - not
+  // readable via digitalRead()/any numbered GPIO, so out of scope, not a
+  // missed tag.
+  //
+  // Reset button (schematic block "Reset button", SW2): wired to the
+  // RESET/RUN net, a dedicated hard-reset pin, not a readable GPIO -
+  // same as every other RP2040 board in this family, out of scope.
+  //
+  // QSPI flash (U1 W25Q128JVS SOIC / U4 W25Q128JVEIQ WSON, alternate
+  // footprints for the same onboard flash - populate one, not both):
+  // wired entirely to the RP2040's dedicated internal QSPI pins
+  // (QSPI_SD0-3, QSPI_SCLK, QSPI_SS), physically separate from GPIO0-29
+  // and with no corresponding Dn alias in this board's pins_arduino.h -
+  // out of scope, nothing to exclude.
+  //
+  // No addressable/single-wire NeoPixel exists on this board - the only
+  // RGB element (D4, XL-3227RGB-RF) is a discrete 4-pin common-cathode-
+  // style RGB LED driven by 3 separate GPIO/MOSFET channels, already
+  // covered above as three led_high pins, not led_neopixel.
+  //
+  // Other GPIOs (D0-D1, D3-D12, D14-D21, D25-D29 / analog A0-A3): all
+  // plain general-purpose UNO-footprint header breakouts, no dedicated
+  // onboard peripheral wired to any of them beyond the LEDs/QSPI-flash/
+  // buttons already covered above. Left at full chip-level default
+  // capabilities (no chipGpios entry needed) - matches the empty
+  // chip-level chipGpios philosophy for RP2040 (each board's own aliases
+  // are the full picture).
+  "chipGpios": {
+    "6": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN (schematic ref D1, \"Signalling and power LEDs\" block) - onboard LED switched by Q2 (AO3400A N-channel MOSFET) with gate driven by GPIO6/D13_SCK net; GPIO HIGH turns Q2 on and lights the LED - confirmed active-high, identical circuit topology to the redscorp_rp2040_promini sibling's confirmed-active-high signalling LED. Also aliased as PIN_SPI0_SCK (D13) - a deliberate, expected dual-role matching this board's explicit Arduino UNO R3 footprint (pin 13 = LED + SCK is the classic Uno convention); spi_sck capability is auto-supplied by build_boards.js on top of these." },
+    "9": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED_R - red channel of the onboard discrete RGB LED (D4, XL-3227RGB-RF). Switched by Q3 (AO3400A N-channel MOSFET, same part/topology as the confirmed-active-high D13/GPIO6 user LED); vendor README states the RGB LED \"uses MOSFETs...to make it work similarly to user LED\" - confirmed active-high. Not aliased to any SPI/I2C/Serial bus role elsewhere in this board's pins_arduino.h." },
+    "10": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED_G - green channel of the onboard discrete RGB LED (D4, XL-3227RGB-RF). Switched by Q4 (AO3400A N-channel MOSFET), same active-high topology as PIN_LED_R/GPIO9 above. Not aliased to any SPI/I2C/Serial bus role elsewhere in this board's pins_arduino.h." },
+    "11": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED_B - blue channel of the onboard discrete RGB LED (D4, XL-3227RGB-RF). Switched by Q5 (AO3400A N-channel MOSFET), same active-high topology as PIN_LED_R/GPIO9 above. Not aliased to any SPI/I2C/Serial bus role elsewhere in this board's pins_arduino.h." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 4 analog channels (A0-A3 = GPIO26-29), 12-bit ADC - matches the
+  // chip-level default and this board's own pins_arduino.h
+  // (NUM_ANALOG_INPUTS = 4, ADC_RESOLUTION = 12).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

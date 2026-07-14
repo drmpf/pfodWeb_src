@@ -1,0 +1,139 @@
+Board audit notes: connectivity_2040_lte_wifi_ble (chip: rp2040)
+Audit date: 2026-07-13
+Part of the RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion audit.
+
+BOARD IDENTITY
+---------------
+- Vendor: iLabs (variants/rp2040/boards.txt: usb_manufacturer="iLabs").
+- boards.txt display name: "iLabs Connectivity 2040 LTE/WiFi/BLE"
+  (variants/rp2040/boards.txt line ~19265:
+  connectivity_2040_lte_wifi_ble.name=iLabs Connectivity 2040 LTE/WiFi/BLE;
+  build.usb_product="Connectivity 2040 LTE/WiFi/BLE"; build.variant=
+  connectivity_2040_lte_wifi_ble).
+- Marketed product name (per vendor site / press): "RP2040 Connectivity"
+  board, 55mm x 42mm form factor.
+- Not part of the "challenger_2040_*" Feather-form-factor product line
+  (different naming, confirmed a distinct product) despite being the
+  same vendor (iLabs) and sharing very similar co-processor pin wiring
+  with challenger_2040_wifi (ESP32 link) and challenger_2040_lte
+  (SARA-R4XX link) — this board combines BOTH co-processors on one PCB.
+- boards.txt also carries `connectivity_2040_lte_wifi_ble.build.extra_flags=
+  -DWIFIESPAT2`, confirming the WiFi link uses the WiFiEspAT AT-command
+  library over UART, not the native RP2040 cyw43 stack.
+
+HARDWARE (confirmed via official vendor datasheet)
+----------------------------------------------------
+- MCU: RP2040 (dual-core Cortex-M0+, 133MHz), 8MB flash, 264KB RAM.
+- Onboard LTE modem: u-blox SARA-R412M (LTE Cat M1/NB-IoT/eGPRS), U.FL
+  antenna connector.
+- Onboard WiFi/BLE co-processor: ESP32-C3FN4, onboard chip antenna,
+  IEEE 802.11b/g/n, Station/SoftAP/SoftAP+Station/promiscuous modes.
+- LiPo battery input (2.0mm connector) with onboard charge circuit.
+- Two fixed-function buttons: reset and BOOT/UF2 mode — no other
+  user pushbutton.
+- No onboard NeoPixel / addressable RGB LED.
+- One onboard green user LED, GPIO19, confirmed active-high.
+
+SOURCES CONSULTED
+------------------
+1. https://ilabs.se/connectivity-rp2040-lte-wifi-ble-datasheet/
+   (official iLabs datasheet, fetched directly via WebFetch). Exact
+   quotes obtained:
+     "GPIO19 (D19/LED_BUILTIN) is connected to the user LED. Setting
+     this pin high will light the on board green LED up." (LED,
+     active-high, stated explicitly — not an inference)
+     "GPIO16 (D16): TXD to ESP32 RXD"
+     "GPIO17 (D17): RXD from ESP32 TXD"
+     "GPIO24 (D24): ESP32 reset input"
+     "GPIO25 (D25): ESP32 boot select pin (active-low for programming
+     mode)"
+     "GPIO4 (D4): UART1 TXD"
+     "GPIO5 (D5): UART1 RXD"
+     "GPIO6 (D6): UART1 CTS"
+     "GPIO7 (D7): UART1 RTS"
+     "GPIO12 (D12): DTR signal"
+     "GPIO13 (D13): Power-on signal"
+     "GPIO14 (D14): Reset signal"
+     "GPIO15 (D15): Power supply control"
+     No NeoPixel/addressable RGB LED mentioned anywhere in the
+     datasheet. No dedicated user pushbutton beyond reset/BOOT.
+2. https://www.cnx-software.com/2024/03/15/rp2040-connectivity-board-iot-solution-combining-lte-wi-fi-and-ble-into-a-single-platform/
+   and
+   https://www.electronics-lab.com/ilabs-new-rp2040-connectivity-board-features-u-blox-sara-r412m-lte-cat-m1-nb-iot-and-esp32-modules/
+   (independent press coverage, via WebSearch) — corroborate vendor
+   (iLabs), MCU (RP2040), modem (u-blox SARA-R412M, LTE Cat M1/NB-IoT),
+   WiFi/BLE chip (ESP32-C3FN4), and 55x42mm form factor. No mention of
+   an onboard NeoPixel or additional button in any of these either.
+3. Local: variants/rp2040/rp2040/connectivity_2040_lte_wifi_ble/pins_arduino.h
+   — read in full. Already carried a prior-session "pfodWeb NOTE"
+   (lines 54-57) stating: "bespoke pin set (not generic_full) — GPIO4,
+   5,16,17,24,25 are the UART+reset+mode lines to the onboard ESP32
+   WiFi/BLE co-processor, and GPIO6,7,12,13,14,15 are the UART+control
+   lines to the onboard SARA-R4XX cellular modem — none are general-
+   purpose." Verified directly against the `static const uint8_t Dn`
+   list: only D0-D3, D8-D11, D18-D23, D26-D29 are declared. None of
+   {4,5,6,7,12,13,14,15,16,17,24,25} have a Dn alias anywhere in the
+   file — all twelve dedicated-hardware GPIOs are already fully excluded
+   from the Designer's pin list before this audit, needing no board.json
+   entries (see build_boards.js reasoning below). GPIO19 (the LED) DOES
+   have a D19 alias (`static const uint8_t D19 = (19u);`), so it appears
+   as a normal GPIO in the Designer and needed a chipGpios entry to be
+   correctly tagged as an LED.
+   Grepped the whole file for SS/MOSI/MISO/SCK/SDA/SCL: SPI0 lives on
+   GPIO20-23 (SS=21,MOSI=23,MISO=20,SCK=22), Wire0 on GPIO0-1 (SDA=0,
+   SCL=1), SPI1/Wire1 not pinned out (dummy value 31u). None of these
+   bus pins coincide with GPIO19 (LED) or any of the twelve dedicated
+   co-processor/modem GPIOs — confirmed no button/LED-vs-bus-alias
+   collision bug on this board, no pins_arduino.h edit needed.
+4. Local: pfodWeb_src/build_boards.js (read directly, not executed) —
+   re-confirms the allGpios/inPinsH mechanism already traced on the
+   challenger_2040_lte sibling: a GPIO only appears in the Designer's
+   pin list if it has a pins_arduino.h Dn alias OR a chipGpios key.
+   Adding chipGpios entries for the twelve already-unaliased dedicated
+   GPIOs would be counterproductive (re-adds them as bare "GPIO<n>" rows
+   carrying an auto-appended "Check if available on board" note) — so
+   none were added, matching the challenger_2040_lte precedent (the
+   more carefully-traced of the two prior in-session approaches; see
+   that sibling's own board.json for the fuller discussion of the
+   challenger_2040_wifi/nfc audits' inconsistency).
+5. Sibling precedents read for comparison: challenger_2040_lte/board.json
+   and challenger_2040_wifi/board.json (both already audited this
+   session) — used to confirm the "connections": ["serial"] +
+   WiFi-bucketing-flag-comment pattern, and the chipGpios-omission
+   convention for unaliased dedicated pins.
+
+CONCLUSION / WHAT WAS APPLIED
+-------------------------------
+- Created variants/rp2040/rp2040/connectivity_2040_lte_wifi_ble/board.json
+  as a full per-board override (chip-level defaults copied verbatim from
+  variants/rp2040/rp2040/board.json).
+- chipGpios: one entry added —
+    GPIO19: ["digital_output","pwm_output","led_high"] — onboard user
+    LED, confirmed active-high directly by the vendor datasheet's own
+    wording.
+- No chipGpios entries added for GPIO4,5,6,7,12,13,14,15,16,17,24,25
+  (SARA-R412M modem + ESP32-C3 co-processor lines) — already fully
+  excluded from the Designer's pin list by the pre-existing
+  pins_arduino.h alias omission; adding entries would be
+  counterproductive (see source #4 above).
+- No onboard NeoPixel confirmed (none added).
+- No onboard user pushbutton confirmed beyond reset/BOOTSEL (none
+  added).
+- No pins_arduino.h edit made — no button/LED-vs-SPI/I2C-bus alias
+  collision bug found on this board (GPIO19 carries no bus alias; the
+  twelve dedicated GPIOs don't coincide with SPI0/Wire0 either).
+- "connections" left as ["serial"] (chip-level default) — this board's
+  WiFi/BLE and LTE hardware are both UART-attached AT-command
+  co-processors (ESP32-C3 via WiFiEspAT, SARA-R412M via AT commands),
+  not the native cyw43 stack that variants/rp2040/tcp.ino, http.ino,
+  ble.ino target. Flagged (not silently fixed) as a WiFi-bucketing
+  question per this audit's standing instruction, matching the same
+  flag already raised on the challenger_2040_wifi sibling.
+
+Summary: iLabs "RP2040 Connectivity" (LTE/WiFi/BLE) board — one LED
+GPIO tagged led_high; twelve SARA-R412M-modem/ESP32-C3-co-processor
+GPIOs confirmed already fully excluded via pre-existing pins_arduino.h
+alias omission (no board.json entries needed for them); no NeoPixel;
+no extra user button; no bus-collision bug found; no pins_arduino.h
+edits required.

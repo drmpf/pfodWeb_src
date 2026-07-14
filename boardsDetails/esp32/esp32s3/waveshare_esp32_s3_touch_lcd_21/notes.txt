@@ -1,0 +1,65 @@
+Board: waveshare_esp32_s3_touch_lcd_21 (Waveshare ESP32-S3-Touch-LCD-2.1, the 2.1 inch round model)
+Path: variants/esp32/esp32s3/waveshare_esp32_s3_touch_lcd_21
+Date: 2026-07-11
+
+SOURCES CONSULTED
+------------------
+https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.1
+  Direct WebFetch returned HTTP 403 (blocked). Fetched instead via r.jina.ai reader proxy (see below).
+
+https://r.jina.ai/https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.1
+  Reader-proxied text of the vendor wiki page. Features list has no LED/RGB/NeoPixel/WS2812 mention.
+  Onboard Resources list includes "RESET Button" (item 23) and "BOOT Button" (item 24), plus
+  "Power Indicator" (item 20) and "Charging Indicator" (item 21, "stays on while charging, turns off
+  when fully charged") - i.e. two indicator LEDs but described as fixed hardware indicators, not
+  user/GPIO-controllable. Full GPIO pin-mapping tables on the page were collapsed
+  ("click to expand") and not present in the extracted text, so GPIO numbers for the buttons were
+  NOT confirmed from this source alone - see schematic below for the actual confirmation.
+
+https://www.waveshare.com/esp32-s3-touch-lcd-2.1.htm
+  WebFetch returned HTTP 403 (blocked), not used.
+
+https://files.waveshare.com/wiki/ESP32-S3-Touch-LCD-2.1/ESP32-S3-Touch-LCD-2.1_schematic_diagram.pdf
+  SUCCESSFULLY FETCHED (this is the real, board-specific schematic - title block reads
+  "ESP32-S3-Touch-LCD-2.1"). Read via the Read tool's PDF text extraction. Findings:
+   - Net "IO0"/"GPIO0" (ESP32-S3R8, U7, pin 5) includes pushbutton footprint "Key1" pin 2
+     (PIKey102), with Key1's other pin (PIKey101) on the GND net, and pull-up resistor R42 (10K,
+     schematic shows "R42 10K" near GPIO0/Key1/Key2 block) - classic active-low BOOT/download
+     pushbutton wiring. This confirms GPIO0 = the vendor's "BOOT Button".
+   - Net "RESET" includes pushbutton footprint "Key2" pin 2 (PIKey202), R43 (10K pull-up), a
+     transistor (auto-program circuit VT1/VT2), and U7 pin 4 = CHIP_PU (the chip's EN/reset pin,
+     NOT a GPIO). This confirms Key2 = the vendor's "RESET Button", wired to EN, not to any GPIO -
+     cannot be tagged as a pfodWeb "button" capability since it isn't a GPIO pin at all.
+   - LED1 (0602 SMD LED) cathode is grouped with resistor R6 pin 1 and U1 (ETA6098 battery
+     charger IC) pin 9 = "STAT" (charge-status output of the charger IC) - i.e. LED1 is the
+     "Charging Indicator" from the wiki's Onboard Resources list, driven by the charger chip, not
+     by any ESP32 GPIO.
+   - LED2 (silkscreen "贴片LED 侧面红光 0602" = SMD side-emitting red LED) cathode is on the GND
+     net; anode side goes through R13 (2.2K) - consistent with an always-on "Power Indicator" LED
+     wired directly across a supply rail, not GPIO-driven.
+   - No WS2812/NeoPixel/addressable-RGB component, no "RGB" or "WS2812" net/part label anywhere
+     in the extracted netlist text.
+
+PINS/CAPABILITIES CONSIDERED BUT NOT TAGGED
+---------------------------------------------
+- Key2 / RESET button: tied to U7 pin 4 (CHIP_PU/EN), which is not a GPIO and has no entry in
+  chipGpios at all. Definitely not tagged - not a judgment call, this is simply not a GPIO pin.
+- LED1 (charge-status indicator) and LED2 (power indicator): both confirmed via schematic to be
+  driven by fixed hardware (charger IC STAT output / direct supply rail), not any ESP32-S3 GPIO.
+  Not tagged - not a judgment call, no GPIO net involved for either LED.
+- No other candidate button or LED pins were found on the schematic, IO extension header (TCA9554
+  I2C GPIO expander "Extend_IO1..8" - these are on a separate I2C-addressed expander chip, not
+  direct ESP32-S3 GPIOs, and were not investigated further as out of scope / no evidence they
+  drive a user button or LED), or the vendor wiki's onboard-resources list.
+- Note: this variant's pins_arduino.h header comment says `USB_PRODUCT "ESP32-S3-Touch-LCD-2.8"`
+  (apparently copied from the 2.8" sibling board's file) - this is a pre-existing file-content
+  quirk unrelated to this task and was left untouched per the "don't refactor/touch unrelated
+  content" rule; flagged here purely for human awareness.
+
+TAGGED
+------
+GPIO0 -> ["digital_input", "button"] (was ["digital_input","digital_output","pwm_output"] in the
+chip-level default). No existing board.json was present for this board, so a full copy of
+variants/esp32/esp32s3/board.json was created with only this one capability change plus the NOTE
+comment. GPIO0 is not this board's TX (43) or RX (44) pin, so no TX/RX-reservation conflict.
+No LED capability was tagged (no GPIO-driven LED found).

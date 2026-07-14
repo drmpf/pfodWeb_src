@@ -1,0 +1,241 @@
+datanoisetv_picoadk (RP2040 family) - button/LED/NeoPixel tagging + dedicated-hardware pin exclusion audit
+Date: 2026-07-13
+
+BOARD
+DatanoiseTV PicoADK (RP2040) - real audio-synthesis/effects development
+board built around an onboard PCM5102/PCM5100A-family 32-bit I2S audio
+DAC/codec (the vendor's own README uses both chip names for the same
+part). Also has 4 debug LEDs near the USB connector, a separate "Big
+Debug LED", a VBUS-detect sense pin, and an onboard 8-channel SPI ADC
+(ADC128) whose bus (GPIO10-13) is shared out to the pin headers. This
+arduino-pico board id ("datanoisetv_picoadk", build.board=
+DATANOISETV_PICOADK) is the original RP2040 PicoADK, distinct from the
+separate RP2350-based "datanoisetv_picoadk_v2" board id (a different
+chip bucket, out of scope for this task).
+
+SOURCES CONSULTED
+1. https://github.com/DatanoiseTV/PicoADK-Hardware
+   Main hardware repo. The pins_arduino.h header comment's cited source
+   (github.com/DatanoiseTV/PicoDSP-Hardware) now redirects/is renamed to
+   this repo.
+2. https://github.com/DatanoiseTV/PicoADK-Hardware/blob/main/README.md
+   Authoritative "Internal Signals" GPIO table (fetched via WebFetch).
+   Quoted: "GPIO2".."GPIO5" = "Debug LED 1".."Debug LED 4" ("shared w/
+   Header"); "GPIO10".."GPIO13" = SPI1/ADC128 SCK/MOSI/MISO/CSn ("shared
+   w/ Header" - "The SPI ADC shares the GPIO10 to GPIO13, which are also
+   present on the pin headers"); "GPIO15" = "Big Debug LED (WS2812 on
+   v1.1a)" (NOT shared w/ header); "GPIO16","GPIO17","GPIO18" = PCM5100A
+   I2S DAT/BCLK/LRCLK; "GPIO23" = "PCM5100A DEMP"; "GPIO24" = "VBUS
+   Detect Pin"; "GPIO25" = "PCM5102 XSMT". Also: "Make sure your
+   software controls the XSMT and DEMP pins. The XSMT needs to be
+   controlled by the software to mute/unmute the audio output."
+3. https://github.com/DatanoiseTV/PicoADK-Hardware/blob/main/GettingStarted_Arduino.md
+   Arduino code samples (fetched via WebFetch). Confirms active-high
+   polarity for PIN_LED0: `pinMode(PIN_LED0, OUTPUT);
+   digitalWrite(PIN_LED0, 1);` turns it on. Also shows
+   `pinMode(pDemp, OUTPUT); digitalWrite(pDemp, LOW);` (GPIO23/DEMP) and
+   `pinMode(pMute, OUTPUT); digitalWrite(pMute, HIGH);` (GPIO25/XSMT) as
+   plain software-driven control outputs, not general I/O.
+4. This board's own variants/rp2040/rp2040/datanoisetv_picoadk/pins_arduino.h
+   (bespoke/flattened header, no ../generic/common.h include) compared
+   against the raw upstream copy at
+   rp2040_board_variants/variants/datanoisetv_picoadk/pins_arduino.h
+   (which does include ../generic/common.h) - confirms the "D16-D19
+   deliberately NOT declared... GPIO16-19 are SPI0, which this ... board
+   reuses as the I2S bus" comment was deliberately authored for this
+   repo's flattened copy, not auto-generated.
+5. variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios: {}),
+   variants/rp2040/rp2040/rpipico/board.json and
+   variants/rp2040/rp2040/adafruit_macropad2040/board.json (sparse-
+   override structural precedent; macropad also established the "add
+   capabilities:[] purely for documentation even when a pin is already
+   excluded by having no D-alias" convention, followed here for
+   GPIO16-19/23-25).
+6. variants/esp32/esp32c6/makergo_c6_supermini/board.json - established
+   the "leave untagged / NO CHANGE rather than guess" convention for a
+   confirmed-onboard-LED whose exact drive characteristics could not be
+   confirmed from available sources. Followed here for GPIO15.
+7. pfodWeb_src/build_boards.js (buildEsp32Board()/parseEsp32Consts(),
+   read directly, not required/executed) - confirmed the
+   i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck auto-append only
+   fires off the UNQUALIFIED `consts.SDA`/`SCL`/`SS`/`MOSI`/`MISO`/`SCK`
+   static-const aliases (aliases literally named exactly that, not the
+   qualified PIN_SPI0_*/PIN_WIRE0_* #defines). This board's header
+   declares only `SDA`/`SCL` (via PIN_WIRE0_SDA/SCL, GPIO8/9) as
+   unqualified aliases - no SS/MOSI/MISO/SCK unqualified alias exists
+   anywhere in this header. So the "confirmed button/LED pin also
+   aliased as SDA/SCL/SS/MOSI/MISO/SCK" bug class flagged in this
+   audit's task brief was checked and does NOT fire on this board:
+   GPIO8/GPIO9 (the only pins carrying the SDA/SCL auto-tag) are
+   ordinary general-purpose/header pins, not tagged button/LED, so there
+   is no collision to fix and no header edit was made.
+
+PER-PIN FINDINGS
+
+GPIO0 (PIN_SERIAL1_TX), GPIO1 (PIN_SERIAL1_RX) - NO CHANGE. Ordinary
+  UART0 pins (D0/D1 declared), not mentioned in any internal-signal
+  source as connected to onboard hardware. Left at full chip-default
+  capability.
+
+GPIO2 (PIN_LED0) - CHANGED. Tagged ["digital_output","pwm_output","led_high"].
+  "Debug LED 1" near the USB connector, per source #2's Internal Signals
+  table ("shared w/ Header"). Active-high polarity directly confirmed
+  via source #3: `pinMode(PIN_LED0, OUTPUT); digitalWrite(PIN_LED0, 1);`
+  turns it on. digital_input dropped to match this repo's established
+  led_high precedent (rpipico, adafruit_macropad2040, akana_r1).
+
+GPIO3 (PIN_LED1) - CHANGED. Tagged ["digital_output","pwm_output","led_high"].
+  "Debug LED 2" near the USB connector, per source #2. Polarity inferred
+  to match PIN_LED0 (GPIO2) - same debug-LED bank, same schematic
+  pattern - not independently confirmed per-pin. Flagged as an
+  inference, not a separately-sourced confirmation.
+
+GPIO4 (PIN_LED2) - CHANGED. Tagged ["digital_output","pwm_output","led_high"].
+  "Debug LED 3" near the USB connector, per source #2. Same inferred-
+  polarity reasoning as GPIO3.
+
+GPIO5 (PIN_LED3) - CHANGED. Tagged ["digital_output","pwm_output","led_high"].
+  "Debug LED 4" near the USB connector, per source #2. Same inferred-
+  polarity reasoning as GPIO3/GPIO4.
+
+GPIO6 (PIN_WIRE1_SDA), GPIO7 (PIN_WIRE1_SCL) - NO CHANGE. Ordinary
+  second I2C bus pins (D6/D7 declared), not mentioned in any internal-
+  signal source as connected to onboard hardware (no onboard I2C
+  peripheral documented). Left at full chip-default capability. No
+  unqualified SDA1/SCL1 static-const alias declared, so no auto-tagging
+  fires here either way.
+
+GPIO8 (PIN_SERIAL2_TX / PIN_WIRE0_SDA), GPIO9 (PIN_SERIAL2_RX /
+  PIN_WIRE0_SCL) - NO CHANGE. Ordinary dual-role UART1/I2C0 pins (D8/D9
+  declared, plus the unqualified SDA/SCL static-const aliases pointing
+  here). Not mentioned in any internal-signal source as connected to a
+  specific onboard peripheral - general-purpose/header pins. The
+  automatic i2c_sda/i2c_scl capability tagging on these two GPIOs (via
+  build_boards.js's consts.SDA/consts.SCL resolution) is expected/
+  correct behaviour for a general-purpose I2C pin, not the alias-
+  collision bug class flagged in the task brief (see source #7 above -
+  neither GPIO is tagged button/LED, so there is nothing to collide
+  with).
+
+GPIO10 (PIN_SPI1_SCK), GPIO11 (PIN_SPI1_MOSI), GPIO12 (PIN_SPI1_MISO),
+  GPIO13 (PIN_SPI1_SS) - NO CHANGE. Confirmed dual-purpose per source
+  #2: "The SPI ADC shares the GPIO10 to GPIO13, which are also present
+  on the pin headers" - these drive the onboard 8-channel ADC128 SPI
+  ADC chip AND remain genuinely user-facing on the pin headers (unlike a
+  fully internal/dedicated bus). Left at full chip-default capability
+  (D10-D13 already declared), matching this repo's treatment of
+  genuinely shared/dual-purpose buses (e.g. adafruit_macropad2040's
+  STEMMA QT I2C connector) rather than the fully-internal-bus exclusion
+  pattern (e.g. that same board's OLED SPI1).
+
+GPIO14 - NO CHANGE. No static-const alias in pins_arduino.h and no
+  mention in any internal-signal source consulted - left entirely
+  absent from the parser's pin list (no chipGpios entry added), same
+  status as before this audit.
+
+GPIO15 (PIN_LED) - NO CHANGE (flagged, not guessed). Source #2's
+  Internal Signals table: "Big Debug LED (WS2812 on v1.1a)", NOT shared
+  w/ header - confirmed dedicated, but ambiguous in exact type. This
+  board's own boards.txt entry lists 8 different USB VID/PID pairs
+  across multiple upload_port entries under one single, unversioned
+  "datanoisetv_picoadk" Arduino board id, consistent with one Arduino
+  board id spanning several hardware sub-revisions (the "(WS2812 on
+  v1.1a)" qualifier implies not every reachable revision necessarily has
+  the WS2812 - could be a plain single-colour LED on earlier v1.0/v1.1
+  hardware). No source found confirms which sub-revision(s) this single
+  Arduino board id's users actually have. Tagging led_neopixel would be
+  wrong for a plain-LED revision (WS2812's PIO-driven one-wire protocol
+  will not light up under a bare digitalWrite); tagging led_high would
+  be wrong for a WS2812 revision (a sustained digitalWrite(HIGH) is not
+  a valid WS2812 data frame and will not reliably light the LED). Left
+  untagged per this repo's established leave-untagged-rather-than-guess
+  convention (source #6, esp32c6/makergo_c6_supermini's GPIO15 - an
+  ambiguous LED-polarity case treated the same way) - flagged here for a
+  future dedicated hardware-revision-specific pass. D15 alias already
+  exists in pins_arduino.h, so this pin continues to appear as a normal
+  digital_input/digital_output/pwm_output pin, unchanged from before
+  this audit.
+
+GPIO16 (PIN_SPI0_MISO / PIN_I2S_DOUT) - CHANGED (excluded).
+  capabilities: []. Dedicated I2S data line to the onboard audio codec,
+  per source #2's table (GPIO16 = I2S DAT). No static-const alias in
+  this board's pins_arduino.h (already excluded by default via its own
+  "D16-D19 deliberately NOT declared" comment) - entry added purely for
+  documentation, matching adafruit_macropad2040's OLED-bus/piezo-speaker
+  documentation pattern.
+
+GPIO17 (PIN_SPI0_SS / PIN_I2S_BCLK) - CHANGED (excluded).
+  capabilities: []. Dedicated I2S bit-clock line to the onboard audio
+  codec, per source #2 (GPIO17 = I2S BCLK). Same already-excluded/
+  documentation-only treatment as GPIO16.
+
+GPIO18 (PIN_SPI0_SCK / PIN_I2S_LRCLK) - CHANGED (excluded).
+  capabilities: []. Dedicated I2S word-select (LR clock) line to the
+  onboard audio codec, per source #2 (GPIO18 = I2S LRCLK). Same
+  already-excluded/documentation-only treatment as GPIO16/17.
+
+GPIO19 (PIN_SPI0_MOSI) - CHANGED (excluded). capabilities: []. The 4th
+  wire of the same SPI0 peripheral block reused for I2S (GPIO16-18).
+  Source #2's own Internal Signals table does NOT separately name
+  GPIO19 (only DAT/BCLK/LRCLK on GPIO16/17/18 are listed as I2S
+  signals) - this board's playback-only I2S DAC has no DIN/data-in
+  need for a 4th wire, so GPIO19 is plausibly an unused/spare pin of the
+  SPI0 block rather than an independently vendor-confirmed dedicated
+  line. Excluded anyway to match this board's own pins_arduino.h
+  comment, which already groups all of GPIO16-19 together as "SPI0"
+  reused for I2S (no D19 alias declared either, i.e. the header's own
+  author already treated it as part of the reused peripheral block) -
+  not reopening a wire the header itself already excludes, consistent
+  with this repo's established whole-bus-exclusion precedent for
+  dedicated internal SPI buses (wiznet_*_evb_pico* Ethernet SPI,
+  adafruit_macropad2040 GPIO26-28 OLED SPI1).
+
+GPIO20 (D20), GPIO21 (D21), GPIO22 (D22) - NO CHANGE. Ordinary spare
+  GPIOs, not mentioned in any internal-signal source consulted. Left at
+  full chip-default capability.
+
+GPIO23 (PCM5100A DEMP - deemphasis control) - CHANGED (excluded).
+  capabilities: []. Dedicated software-driven control output to the
+  onboard audio codec, per source #2's table entry and source #3's
+  `pinMode(pDemp, OUTPUT); digitalWrite(pDemp, LOW);` example. No
+  static-const alias exists anywhere in this board's pins_arduino.h -
+  was already invisible/excluded by default; entry added purely for
+  documentation.
+
+GPIO24 (VBUS Detect Pin) - CHANGED (excluded). capabilities: [].
+  Dedicated hardware-sense line reading USB VBUS presence, per source
+  #2's Internal Signals table. No static-const alias in pins_arduino.h -
+  same already-excluded/documentation-only treatment as GPIO23/25.
+
+GPIO25 (PCM5102 XSMT - mute/unmute control) - CHANGED (excluded).
+  capabilities: []. Dedicated software-driven mute-control output to the
+  onboard audio codec, per source #2's table entry, source #2's "The
+  XSMT needs to be controlled by the software to mute/unmute the audio
+  output", and source #3's `pinMode(pMute, OUTPUT);
+  digitalWrite(pMute, HIGH);` example. No static-const alias in
+  pins_arduino.h - same treatment as GPIO23/24.
+
+GPIO26 (A0), GPIO27 (A1), GPIO28 (A2) - NO CHANGE. Ordinary analog-
+  capable spare pins (matches NUM_ANALOG_INPUTS=3 in pins_arduino.h),
+  not mentioned in any internal-signal source consulted as connected to
+  onboard hardware. Left at full chip-default capability.
+
+SUMMARY
+11 chipGpios entries added: 4 debug LEDs (GPIO2-5) tagged
+digital_output+pwm_output+led_high (polarity directly confirmed for
+GPIO2/PIN_LED0, inferred for GPIO3-5); 7 dedicated-hardware pins
+excluded (capabilities: []) - the onboard PCM5102/PCM5100A audio codec's
+I2S bus (GPIO16-18) plus its unused/spare 4th SPI0 wire (GPIO19), and
+its DEMP/VBUS-detect/XSMT control lines (GPIO23-25). GPIO15 ("Big Debug
+LED", WS2812-on-v1.1a per vendor docs) deliberately left untagged/NO
+CHANGE - confirmed dedicated but ambiguous in exact LED type across this
+single Arduino board id's multiple hardware sub-revisions; flagged for a
+future dedicated pass rather than guessed. GPIO0/1, 6/7, 8/9, 10-13, 14,
+20-22, 26-28 left at NO CHANGE (ordinary general-purpose pins, or
+genuinely header-shared per vendor docs, e.g. the SPI1/ADC128 bus
+GPIO10-13). The "confirmed button/LED pin also aliased as SDA/SCL/SS/
+MOSI/MISO/SCK" bug class from the task brief was checked (via direct
+reading of build_boards.js's parseEsp32Consts()/buildEsp32Board()) and
+found NOT to fire on this board - no pins_arduino.h edit was made or
+needed. JSON syntax verified via a manual comment-strip + JSON.parse (no
+build_boards.js run/required, per task instructions).

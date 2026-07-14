@@ -1,0 +1,140 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // GPIO7 (BOOT button, see chipGpios below) is a genuine bidirectional
+  // GPIO merely wired to a switch to GND with the RP2040's internal
+  // pull-up enabled by software — not a dedicated/capacitive-only pin —
+  // so it is handled entirely via the chipGpios "button" tag (full
+  // capability set retained), not via inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Adafruit "Feather RP2040 RFM" (RFM95/LoRa or RFM69/900MHz
+  // packet-radio variant, product 5714/5712) — an Adafruit Feather with
+  // an onboard RFM radio module (SX1276-family RFM95, or RFM69HCW on the
+  // sibling SKU) wired via the RP2040's main SPI bus (shared with the
+  // board's standard SPI header pins) plus five dedicated GPIO control
+  // lines (CS, RESET, and three/six DIO interrupt lines), a status LED,
+  // an onboard status NeoPixel, and a BOOT button.
+  //
+  // Sources consulted:
+  // 1. https://learn.adafruit.com/feather-rp2040-rfm95/pinouts (official
+  //    Adafruit guide) — confirms: status LED "controllable in
+  //    CircuitPython code using board.LED, and in Arduino as PIN_LED" on
+  //    GPIO13; NeoPixel on GPIO4; BOOT button "connected to GPIO7 and
+  //    available as board.BOOT in CircuitPython and PIN_BUTTON in
+  //    Arduino"; RFM chip-select GPIO16 (PIN_RFM_CS), RFM reset GPIO17
+  //    (PIN_RFM_RST), RFM DIO0 GPIO21, DIO1 GPIO22, DIO2 GPIO23, DIO3
+  //    GPIO19, DIO4 GPIO20, DIO5 GPIO18; SPI bus shared with the RFM
+  //    module: SCK GPIO14, MOSI GPIO15, MISO GPIO8 (labeled "Primary for
+  //    RFM" but also the board's standard header SPI pins).
+  // 2. https://learn.adafruit.com/feather-rp2040-rfm95/using-the-rfm-9x-radio
+  //    (official Adafruit guide / RadioHead example defines) — quotes
+  //    `#define RFM95_CS 16`, `#define RFM95_RST 17`,
+  //    `#define RFM95_INT 21` — independently corroborates source #1's
+  //    CS/RST/DIO0 mapping.
+  // 3. https://raw.githubusercontent.com/adafruit/circuitpython (main)
+  //    ports/raspberrypi/boards/adafruit_feather_rp2040_rfm/pins.c —
+  //    confirms identical mapping: D13/LED->GPIO13, D4/NEOPIXEL->GPIO4,
+  //    D7/BUTTON/BOOT->GPIO7, SCK->GPIO14, MOSI->GPIO15, MISO->GPIO8,
+  //    RFM_CS->GPIO16, RFM_RST->GPIO17, RFM_IO0->GPIO21, RFM_IO1->
+  //    GPIO22, RFM_IO2->GPIO23, RFM_IO3->GPIO19, RFM_IO4->GPIO20,
+  //    RFM_IO5->GPIO18 — exact match to this board's own pins_arduino.h
+  //    PIN_RFM_* defines.
+  // 4. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+  //    boards/adafruit/feather_rfm95_rp2040/adafruit_feather_rfm95_rp2040.dts
+  //    — official upstream Zephyr board port, cross-referencing the same
+  //    hardware. Quotes verbatim:
+  //      leds { red_led: red_led { gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>; label = "Red LED"; }; }
+  //      gpio_keys { user_button: button { label = "User"; gpios = <&gpio0 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; ... }; }
+  //      ws2812 { gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>; chain-length = <1>; ... }
+  //      lora: radio@0 { compatible = "semtech,sx1276";
+  //        reset-gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
+  //        cs-gpios = <&gpio0 16 GPIO_ACTIVE_LOW>;
+  //        dio-gpios = <&gpio0 21 ...>, <&gpio0 22 ...>, <&gpio0 23 ...>,
+  //                    <&gpio0 19 ...>, <&gpio0 20 ...>, <&gpio0 18 ...>; }
+  //    This independently CONFIRMS: D13 LED is active-high; BOOT/GPIO7
+  //    button is active-low with the RP2040's internal pull-up enabled;
+  //    onboard status NeoPixel is GPIO4, active-high WS2812; and the
+  //    LoRa radio's CS/RESET/DIO0-DIO5 GPIO assignments exactly match
+  //    this board's own pins_arduino.h PIN_RFM_CS/RST/DIO0-DIO5 defines
+  //    (GPIO16,17,21,22,23,19,20,18).
+  //
+  // WHY NO chipGpios ENTRIES ARE ADDED FOR THE RFM RADIO PINS
+  // (GPIO16-23): this board's own pins_arduino.h (see its "bespoke pin
+  // set (not ../generic_full/common.h)" note, already present from a
+  // prior session) declares NO D-numbered alias at all for GPIO16
+  // through GPIO23 — only the PIN_RFM_CS/RST/DIO0-DIO5 macros exist,
+  // never wired into the `static const uint8_t D<n>` alias block.
+  // build_boards.js's buildEsp32Board() (the parser this "rp2040" family
+  // routes through) only lists a GPIO in the Designer's pin picker if it
+  // appears either (a) as a `static const uint8_t` alias in
+  // pins_arduino.h, or (b) as a key in this file's chipGpios object
+  // (`const allGpios = new Set(aliasesByGpio.keys()); for (const key of
+  // Object.keys(chipGpiosMap)) allGpios.add(n);`). Since GPIO16-23 are
+  // already fully absent from pins_arduino.h's alias set, they are
+  // already 100% absent from the Designer's pin list with no board.json
+  // changes needed. Adding chipGpios entries for them here would be
+  // COUNTERPRODUCTIVE: it would re-add each one to allGpios as a bare,
+  // visible "GPIO<n>" row carrying an auto-appended "Check if available
+  // on board" note (build_boards.js's `!inPinsH && cfg.family !==
+  // 'esp32' && ... -> noteParts.push('Check if available on board')`),
+  // undoing the full concealment the existing pins_arduino.h exclusion
+  // already achieves and misleadingly suggesting the pin's availability
+  // is merely unverified rather than physically dedicated to the RFM
+  // radio. Matches this repo's challenger_2040_lora precedent exactly
+  // (same reasoning, same class of onboard SPI radio module).
+  //
+  // BUG-CLASS FIX APPLIED (GPIO13 LED / SS alias collision): this
+  // board's vendor-default pins_arduino.h declared BOTH `PIN_LED (13u)`
+  // and `PIN_SPI0_SS (13u)` on the same GPIO13 — build_boards.js
+  // unconditionally auto-appends the spi_ss capability to whichever
+  // GPIO the SS alias resolves to (`if (g === ss) caps.push('spi_ss')`),
+  // which would have contaminated the confirmed LED tag below with a
+  // spurious spi_ss capability. Fixed 2026-07-13 by removing the
+  // PIN_SPI0_SS #define (and its dependent `static const uint8_t SS =
+  // ...;` alias, since this file — unlike adafruit_feather_scorpio's —
+  // does not include ../generic_full/common.h and so has nothing else
+  // requiring that symbol) from pins_arduino.h — no onboard SPI device
+  // consumes GPIO13 as SS; the RFM radio's own chip-select is the
+  // separate, dedicated PIN_RFM_CS on GPIO16. Matches this repo's
+  // adafruit_feather_scorpio bus-alias-contamination fix precedent.
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_feather_rfm/notes.txt
+  "chipGpios": {
+    "4":  { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — onboard single status NeoPixel (WS2812), output-only data line, active-high. Confirmed via Adafruit's own learn.adafruit.com pinouts guide, CircuitPython pins.c (D4/NEOPIXEL -> GPIO4), and Zephyr's adafruit_feather_rfm95_rp2040.dts onboard ws2812 node (gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>)." },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_BUTTON / BOOT — onboard bootloader-select pushbutton, also usable as a general input when application code is running. Active-low with the RP2040's internal pull-up enabled (no external pull-up on this line). Confirmed via Zephyr's adafruit_feather_rfm95_rp2040.dts gpio_keys node (gpios = <&gpio0 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>) and Adafruit's own pinouts guide (\"BOOT... connected to GPIO7 and available as... PIN_BUTTON in Arduino\"). Full digital_input/digital_output/pwm_output capability retained (ordinary GPIO wired to a switch to GND, not a dedicated/capacitive-only pin), matching this repo's adafruit_feather_scorpio/vccgnd_yd_rp2040 PIN_BUTTON/PIN_USRKEY precedent." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — onboard status LED, active-high. Confirmed via Zephyr's adafruit_feather_rfm95_rp2040.dts leds node (gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>), consistent with Adafruit's own pinouts guide describing it as controllable via PIN_LED/board.LED. digital_input dropped to match this repo's established led_high precedent for dedicated onboard LED pins (rpipico, adafruit_feather_scorpio, challenger_2040_lora); pwm_output kept since arduino-pico's analogWrite() works on any RP2040 GPIO, enabling brightness dimming. This GPIO was also the vendor's default (unused) PIN_SPI0_SS alias, which would have contaminated this confirmed LED tag with a spurious spi_ss capability — fixed 2026-07-13 by removing that alias (and its dependent SS static-const) from pins_arduino.h (no onboard SPI device consumes it as SS; the RFM radio's chip-select is the separate dedicated GPIO16 PIN_RFM_CS line), matching the adafruit_feather_scorpio precedent." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares 4 analog
+  // aliases (A0-A3 = GPIO26-29), matching the chip-level default.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

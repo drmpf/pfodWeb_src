@@ -61,7 +61,8 @@ static const uint8_t VBAT_VOLTAGE = 1;
 #define BAT_VOLT_PIN VBAT_VOLTAGE
 
 static const uint8_t RGB_DATA = 48;
-static const uint8_t RGB_PWR = 34;
+// pfodWeb NOTE: RGB_PWR (GPIO34) deliberately NOT declared - internal
+// power-gate for the onboard NeoPixel, not general-purpose.
 
 #define PIN_RGB_LED RGB_DATA
 // BUILTIN_LED can be used in new Arduino API digitalWrite() like in Blink.ino

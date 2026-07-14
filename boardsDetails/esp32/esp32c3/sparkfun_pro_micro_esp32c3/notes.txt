@@ -1,0 +1,147 @@
+sparkfun_pro_micro_esp32c3 board.json dedicated-hardware pin-exclusion audit research notes
+=============================================================================================
+
+Board: SparkFun Pro Micro - ESP32-C3 (variants/esp32/esp32c3/sparkfun_pro_micro_esp32c3),
+chip esp32c3. pins_arduino.h: TX=21, RX=20, A0-A4=0-4, D0-D10=0-10, SDA=5, SCL=6,
+SS=10, MOSI=3, MISO=1, SCK=0, LED_BUILTIN=10, plus I2S alt-function names:
+PIN_I2S_SCK=6, PIN_I2S_SD_DOUT=7, PIN_I2S_SD_IN=5, PIN_I2S_FS=10. No board.json
+override existed before this audit (used the chip-level esp32c3/board.json default).
+
+Flagged by a fresh discovery sweep for having I2S pin names (PIN_I2S_SCK/SD_DOUT/
+SD_IN/FS) on GPIO5/6/7/10 never individually reviewed - could indicate either a
+dedicated onboard microphone/codec (EXCLUDE per playbook policy) or a
+general-purpose I2S header for the user's own hardware (KEEP).
+
+Sources consulted
+------------------
+- https://docs.sparkfun.com/SparkFun_Pro_Micro-ESP32C3/hardware_overview/
+  and https://docs.sparkfun.com/SparkFun_Pro_Micro-ESP32C3/single_page/
+  Official SparkFun Hookup Guide hardware overview. Lists onboard peripherals:
+  Reset button, Boot button, Power (red) LED, STAT (blue) LED, and a Qwiic
+  connector "tied to 2.2 kOhm pull-up resistors" for I2C. No microphone, audio
+  codec, speaker, or any I2S device is mentioned anywhere in the hardware
+  overview - the only audio-adjacent fact stated is that the ESP32-C3 module
+  itself supports I2S as one of its GPIO alt-functions, not that this board
+  wires it to anything.
+- https://github.com/sparkfun/SparkFun_Pro_Micro-ESP32C3
+  (docs/hardware_overview.md, docs/resources.md) - same content, no audio
+  peripheral referenced. Resources page links a schematic PDF and Eagle files
+  but these are binary vendor CAD deliverables not embedded as readable text
+  in the docs site.
+- https://raw.githubusercontent.com/sparkfun/SparkFun_Pro_Micro-ESP32C3/main/Arduino_Board_Files/sparkfun_pro_micro_esp32c3/pins_arduino.h
+  Vendor's own upstream Arduino core variant file (what SparkFun/community
+  actually publish to build real firmware for this exact board). Confirmed to
+  match this repo's local pins_arduino.h exactly: same USB VID/PID, same
+  LED_BUILTIN=10, same TX=21/RX=20, same SDA=5/SCL=6, same SS=10/MOSI=3/
+  MISO=1/SCK=0, and the same PIN_I2S_SCK/SD_DOUT/SD_IN/FS names on GPIO6/7/5/10.
+  This rules out the "boilerplate copied from an unrelated board template"
+  explanation for any of these aliases - they are this board's own genuine
+  vendor-authored declarations.
+- https://community.sparkfun.com/t/sparkfun-esp32-c3-pro-micro-pinout-gpio/62635
+  Community forum thread. One contributor states they located GPIO5/GPIO6 as
+  I2C SDA/SCL from SparkFun's own GitHub source and used
+  `Wire.setPins(5, 6)` before `Wire.begin()` - independent corroboration that
+  GPIO5/6 are the real I2C bus. Other contributors freely wire GPIO7 and
+  GPIO10 to an external RC522 RFID module's own SPI-like interface for their
+  own projects - direct evidence these pins are general-purpose and not
+  reserved for/consumed by any onboard peripheral.
+- https://docs.sparkfun.com/SparkFun_Pro_Micro-ESP32C3/examples/
+  Confirms the board's Blink example just `#define LED_BUILTIN 10` ahead of
+  the stock Arduino Basics>Blink sketch (no inversion/active-low wrapper
+  mentioned) - confirms GPIO10 as the real onboard STAT LED, but the
+  schematic PDF fetched for polarity confirmation returned undecodable
+  binary content (could not confirm active-high vs active-low).
+- General web search for other ESP32-C3 boards ("ESP32-C3 Super Mini")
+  found their onboard LEDs are commonly active-LOW, illustrating that LED
+  polarity varies board-to-board and should not be assumed - reinforces the
+  decision below to skip a led_high/led_low capability tag for this board.
+
+Reasoning per pin
+------------------
+GPIO5 / GPIO6 / GPIO7 / GPIO10 (I2S SD_IN/SCK/SD_DOUT/FS) - KEEP. No onboard
+  microphone, audio codec, or speaker is documented anywhere for this board
+  (official hardware overview, GitHub docs, and independent product write-ups
+  all describe this as a plain ESP32-C3-MINI-1 dev board with a Qwiic I2C
+  connector and two buttons/two LEDs - nothing audio-related). These GPIOs
+  are general-purpose header pins that happen to carry I2S alt-function names
+  for a user's own I2S hardware, matching the playbook's "general-purpose bus
+  without documented exclusive consumer" KEEP policy, not the "dedicated I2S
+  audio codec bus" EXCLUDE policy. Capabilities left unchanged from the
+  chip-level esp32c3/board.json default. Informational "note" fields were
+  added to GPIO5/6/7's chipGpios entries explaining the I2S alt-function
+  names and the absence of an onboard audio device, for Designer-user
+  clarity.
+
+Alias-collision check (critical step for this session) - GPIO5 is also
+  aliased SDA and GPIO6 is also aliased SCL in pins_arduino.h. Both are
+  CONFIRMED real: the vendor's own hardware overview states the Qwiic
+  connector's I2C lines have onboard pull-up resistors, and an independent
+  community post corroborates GPIO5/6 as the actual I2C bus via
+  Wire.setPins(5, 6). Since build_boards.js unconditionally appends
+  i2c_sda/i2c_scl capabilities from the SDA/SCL consts regardless of
+  chipGpios content, this auto-added behavior is CORRECT here and the
+  aliases were left in pins_arduino.h - not deleted. GPIO10 is also aliased
+  SS, and GPIO0/1/3 carry SCK/MISO/MOSI. These four exactly match the
+  vendor's own currently-published pins_arduino.h (see the raw GitHub source
+  above) - i.e., this is SparkFun's own deliberate default SPI pin mapping
+  for this specific board, not a boilerplate value copy-pasted from an
+  unrelated template into the wrong file. No independent source documents an
+  onboard SPI device consuming these pins, so they remain general-purpose
+  (consistent with the I2S KEEP reasoning above) and were NOT deleted -
+  deleting a vendor-published, genuinely-board-specific alias would be
+  incorrect, unlike deleting a stale/mis-copied boilerplate alias.
+
+GPIO10 (LED_BUILTIN) - CONFIRMED onboard STAT (blue) LED per the vendor's own
+  hookup guide, which has users define LED_BUILTIN=10 and flash the stock
+  Blink example against it - not a guess. However, LED polarity (active-high
+  vs active-low) could not be confirmed: the schematic PDF linked from
+  SparkFun's resources page did not return machine-readable text, and the
+  Blink-example instructions don't state whether the logic is inverted.
+  Because other ESP32-C3 boards are known to vary (some active-high, some
+  active-low), no led_high/led_low capability tag was added - guessing
+  polarity risks giving Designer users a hardware-damaging or simply wrong
+  toggle direction. Capabilities left unchanged; an informational "note" was
+  added to GPIO10's chipGpios entry instead, also documenting that this same
+  physical pin doubles as the default SPI SS pin and the I2S frame-select
+  alt-function (three declared roles on one GPIO - a Designer user should
+  understand only one can be used at a time).
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0-4, 8, 9, 11, 20, 21) were left at the
+chip-level esp32c3/board.json default - no evidence found of any other
+dedicated onboard hardware beyond the Qwiic I2C bus and the STAT LED already
+covered above. TX(21)/RX(20) checked against all candidate GPIOs - no
+conflict. GPIO0/1/3 (SCK/MISO/MOSI) carry no I2S alt-function name and no
+onboard-device evidence either - left untouched at the chip-level default,
+same reasoning as the SS/MOSI/MISO/SCK discussion above.
+
+What was tagged/changed
+-------------------------
+Created variants/esp32/esp32c3/sparkfun_pro_micro_esp32c3/board.json (none
+existed before) as a full copy of the chip-level esp32c3/board.json default,
+with:
+  - GPIO5 given an added "note" field describing the Qwiic I2C SDA / I2S
+    data-in dual role; capabilities left unchanged
+    (["analog_input_serial","digital_input","digital_output","pwm_output"])
+  - GPIO6 given an added "note" field describing the Qwiic I2C SCL / I2S
+    SCK dual role; capabilities left unchanged
+    (["digital_input","digital_output","pwm_output"])
+  - GPIO7 given an added "note" field describing the I2S data-out
+    alt-function with no onboard consumer; capabilities left unchanged
+    (["digital_input","digital_output","pwm_output"])
+  - GPIO10 given an added "note" field describing the onboard STAT LED /
+    default SPI SS / I2S frame-select triple role; capabilities left
+    unchanged (["digital_input","digital_output","pwm_output"])
+plus a pfodWeb NOTE comment block at the top of the file citing the sources
+above. No GPIOs were excluded from chipGpios, no capability tags were added
+or removed, no alias was deleted from pins_arduino.h, and no pins_arduino.h
+edit was needed at all (the file was left untouched).
+
+Summary: I2S GPIO5/6/7/10 confirmed general-purpose (no onboard mic/codec
+documented) - KEEP, no exclusion. SDA/SCL/SS/MOSI/MISO/SCK aliases confirmed
+vendor-genuine (byte-for-byte match with SparkFun's own published
+pins_arduino.h) and SDA(5)/SCL(6) additionally confirmed as the real Qwiic
+I2C bus - none deleted. GPIO10's LED_BUILTIN confirmed as a real onboard
+STAT LED but left untagged (polarity unconfirmable from available sources).
+board.json created with informational notes only; pins_arduino.h unchanged.

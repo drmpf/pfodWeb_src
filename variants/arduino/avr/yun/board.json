@@ -1,0 +1,113 @@
+{
+  // This directory (`variants/arduino/avr/yun/`) backs THREE boards.txt
+  // entries: `yun` (Arduino Yún), `yunmini` (Arduino Yún Mini), `one`
+  // (Linino One) — all `atmega32u4 @ 16MHz`, and all three `pins_arduino.h`
+  // #include the Leonardo file unmodified (see that file's own comment
+  // for the ancestor-fallback note). Until this file was added, all four
+  // (including chiwawa, see below) fell back to `../leonardo/board.json`
+  // implicitly; this file makes that explicit and documents Yún-family-
+  // specific findings researched 2026-07-14 (see
+  // boardsDetails/arduino/avr/yun/notes.txt for full sources).
+  //
+  // `chiwawa` (Arduino Industrial 101) was SPLIT OFF into its own
+  // `variants/arduino/avr/chiwawa/` directory later the same day, since
+  // it physically exposes far fewer pins than the other 3 boards — see
+  // the "IMPORTANT KNOWN LIMITATION" note further down (now resolved)
+  // and boardsDetails/arduino/avr/chiwawa/notes.txt for that split's
+  // full details.
+  "boardName": "yun",
+  "displayName": "Arduino Yún",
+
+  "family": "avr",
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  "dac": {},
+
+  "adc": { "bits": 10, "max": 1023, "defaultRefVolts": "5.0" },
+
+  "inputOnlyGpios": [],
+
+  // pfod connections for 32U4 boards: hardware serial only (D0=RX1, D1=TX1).
+  // On the Yún family this Serial1 pair is the AVR<->Linux "Bridge"/"Ciao"
+  // link to the onboard Atheros AR9331 (Linino/OpenWRT) co-processor, not a
+  // free-standing UART — confirmed via the official Arduino Yún docs
+  // ("Digital pins 0 and 1 are used for serial communication between the
+  // 32U4 and the AR9331") and the Arduino Industrial 101 datasheet
+  // (identical wording, adding "not reported on final layout" for that
+  // board's compact header). The existing parser already excludes D0/D1
+  // as serial_rx/serial_tx automatically (same as every other AVR board),
+  // so no additional chipGpios action is needed here — this note just
+  // records *why* that exclusion is doubly correct for this family.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // D13 — onboard status LED, active-high, inherited unchanged from the
+  // Leonardo pin map (confirmed, not assumed): the official Arduino Yún
+  // docs and the Arduino Yún Mini docs both state verbatim "There is a
+  // built-in LED connected to digital pin 13. When the pin is HIGH
+  // value, the LED is on, when the pin is LOW, it's off." Confirmed
+  // present and unchanged on all 3 boards.txt entries now sharing this
+  // directory, including the compact yunmini form factor (i.e. the LED
+  // was NOT omitted to save space/cost on the smaller board, unlike some
+  // other compact variants elsewhere in this audit). (Industrial 101 —
+  // "chiwawa" — was independently reconfirmed to have the identical D13
+  // LED via its own datasheet before being split into its own directory;
+  // see boardsDetails/arduino/avr/chiwawa/notes.txt.)
+  //
+  // Other status LEDs Yún-family boards additionally carry (power, WLAN,
+  // WAN/ETH, USB, or PWR/TX/RX depending on the specific board) are ALL
+  // confirmed driven by the Atheros AR9331 Linux co-processor's own GPIOs,
+  // not the ATmega32U4 — e.g. official docs: "The SD, Ethernet, and USB-A
+  // connectors are not physically connected to the 32U4 processor, they
+  // are connected to the AR9331", and a confirming Arduino Forum reply
+  // from a Linino/OpenWRT-literate user describing these as AR9331 GPIOs
+  // configured via LuCI/OpenWRT LED triggers. Out of scope for this AVR
+  // pins_arduino.h audit — not AVR pins at all.
+  //
+  // Reset buttons — confirmed via official docs which side of the bridge
+  // each is wired to: none are AVR-side GPIOs, so none need a chipGpios
+  // "button" tag on this file:
+  //   - "Yún RST" — resets the AR9331 (Linux side only).
+  //   - "32U4 RST" — resets the ATmega32U4, but this is the chip's actual
+  //     hardware RESET pin, not a general-purpose digital pin — same as
+  //     every other AVR board's reset button, nothing Yún-specific to tag.
+  //   - "WLAN RST" — confirmed wired to the AR9331 (it performs Linux-side
+  //     WiFi/factory-reset actions that only the AR9331's OpenWRT firmware
+  //     can carry out), not the ATmega32U4.
+  // (Industrial 101's own distinct "USER1"/"USER2" AR9331-side buttons were
+  // documented when it still shared this file; see
+  // boardsDetails/arduino/avr/chiwawa/notes.txt now that it has its own
+  // directory.)
+  //
+  // SPI note (Yún-family-specific, applies to all 3 remaining boards,
+  // confirmed via official Yún docs): "The SPI pins are also connected to
+  // the AR9331 gpio pins, where it has been implemented in software the
+  // SPI interface. This means that the ATMega32u4 and the AR9331 can also
+  // communicate using the SPI protocol." I.e. the ICSP-header SPI bus (D14
+  // MISO/D15 SCK/D16 MOSI/D17 SS, per Leonardo's pin map) is a second,
+  // optional communication path to the AR9331 in addition to Serial1, only
+  // used if a sketch/Linux service opts into it — not a fixed onboard
+  // peripheral permanently driving the bus. Per this audit's established
+  // KEEP-vs-EXCLUDE policy (general-purpose SPI/I2C buses without an
+  // exclusive, always-active onboard consumer stay available, same
+  // reasoning as inherently-multi-drop I2C), the SPI pins are NOT
+  // excluded/tagged here — this is documentation of a real dual-use fact,
+  // not a restriction.
+  //
+  // RESOLVED (2026-07-14, same day, follow-up pass) — Arduino Industrial
+  // 101 ("chiwawa") was split off into its own
+  // `variants/arduino/avr/chiwawa/` directory: its official datasheet
+  // (Arduino part A000126) proved it physically exposes only 7 of the 20
+  // pins on a usable header (D5, D6, D13, A0-A3 — spec table states
+  // "Digital I/O Pins: 20 (7 exported on header)"), unlike this directory's
+  // remaining 3 boards, which all genuinely expose the full pinout. This
+  // directory's `chipGpios` now only needs to be correct for
+  // yun/yunmini/one. See boardsDetails/arduino/avr/chiwawa/notes.txt for
+  // that split's full research trail and chiwawa's own board.json for its
+  // narrower pin map.
+  "chipGpios": {
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "Onboard status LED, active-high." }
+  }
+}

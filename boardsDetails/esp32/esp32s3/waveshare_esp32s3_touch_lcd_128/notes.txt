@@ -1,0 +1,92 @@
+Board: waveshare_esp32s3_touch_lcd_128 (Waveshare ESP32-S3 Touch LCD 1.28"), chip esp32s3
+Audit date: 2026-07-14
+Batch H independent-verification pass. A prior audit pass (documentation
+backfill citing only vendor pins_arduino.h, not independently checked
+against a real vendor page) had excluded GPIO2/3/4/5/8/9/10/11/12/13/14 as
+all being consumed by the onboard LCD/touch/IMU/SPI bus. This pass fetched
+Waveshare's own wiki page directly and cross-checked every exclusion
+against its full "Pin connection" table and descriptive text.
+
+SOURCES CONSULTED
+-----------------
+1. https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-1.28 (official
+   Waveshare wiki for this exact board), fetched and read in full,
+   including the "Pin connection" table (ESP32-S3R2 / LCD / SH1.0 / MX1.25
+   / QMI8658 / other columns) and the "Interfaces" section prose.
+2. This board's own pins_arduino.h (LCD_BACKLIGHT/DC/RST, TP_INT/RST,
+   IMU_INT1/INT2 macros), cross-checked against the wiki table - exact
+   match on every GPIO number.
+
+PIN-BY-PIN FINDINGS (per Waveshare's own wiki pin table + prose)
+-----------------------------------------------------------------
+- GPIO0: BOOT0 strapping pin - standard ESP32 boot-mode pin, not a
+  general-purpose "button" tag per this repo's established convention.
+  Unchanged (plain default + existing strapping pinNote).
+- GPIO1: MX1.25 connector ADC - wiki confirms a REAL onboard divider:
+  "The GPIO1 of the development board is used for measuring the battery
+  voltage pin. The battery voltage is connected to GPIO1 through a voltage
+  divider consisting of 200K and 100K in series." Kept available (already
+  correct) - this is a stronger, directly-documented case than most
+  ADC_BAT/_VBAT findings elsewhere in this repo (compare XIAO_ESP32S3_Plus
+  batch H notes, where no divider could be confirmed for that board).
+- GPIO2: LCD_BL (backlight brightness control) - dedicated, no SH1.0 header
+  breakout mentioned anywhere on the page. CONFIRMED excluded, unchanged.
+- GPIO3: QMI8658 INT2 only - the wiki's pin table lists only "INT2" for
+  GPIO3, with no header/MOSFET breakout column entry (contrast with
+  GPIO4/5 below). CONFIRMED excluded (dedicated IMU interrupt), unchanged.
+- GPIO4 and GPIO5: CORRECTED (no longer excluded). The wiki's own pin table
+  lists GPIO4 as "INT1 / MOSFET1_CS" and GPIO5 as "TP_INT / MOSFET2_CS" -
+  i.e. both GPIOs do double duty as an internal IMU/touch interrupt line
+  AND an SH1.0-header-broken-out, user-drivable output. The page's prose is
+  explicit: "two MOS tube control switch contacts are also drawn out around
+  the battery holder, which are connected to GPIO4 and GPIO5 respectively,
+  and can be used to solder small current devices such as vibration
+  motors, etc." This is a SHARED, not exclusively-dedicated, pin - directly
+  analogous to this repo's already-established "shared, not dedicated"
+  precedent for ws_esp32_s3_matrix's GPIO11/12 (I2C bus shared with the
+  onboard IMU). Restored to plain chip-level default capabilities
+  (analog_input/digital_input/digital_output/pwm_output), each with a
+  chipGpios "note" documenting the dual IMU-interrupt/MOSFET-header role so
+  a Designer user isn't surprised these pins are also silently read by the
+  onboard IMU/touch chip.
+- GPIO6, 7: TP_SDA/SDA and TP_SCL/SCL - I2C bus shared between the onboard
+  QMI8658 IMU, the CST816S touch controller, and general use. Wiki
+  confirms: "currently using GPIO6 (SDA) and GPIO7 (SCL) pins for the I2C
+  bus. The QMI8658 six-axis inertial measurement unit and LCD touch control
+  chip are mounted on the board" - shared bus, matches existing
+  "stays available" treatment. CONFIRMED unchanged.
+- GPIO8: LCD_DC - dedicated LCD data/command SPI control line. CONFIRMED
+  excluded, unchanged.
+- GPIO9: LCD_CS - dedicated LCD SPI chip-select. CONFIRMED excluded,
+  unchanged.
+- GPIO10: LCD_CLK - dedicated LCD SPI clock. CONFIRMED excluded, unchanged.
+- GPIO11: LCD_MOSI - dedicated LCD SPI data out. CONFIRMED excluded,
+  unchanged.
+- GPIO12: LCD_MISO - dedicated LCD SPI data in. CONFIRMED excluded,
+  unchanged.
+- GPIO13: TP_RST - dedicated touch-panel reset. CONFIRMED excluded,
+  unchanged.
+- GPIO14: LCD_RST - dedicated LCD reset. CONFIRMED excluded, unchanged.
+- GPIO15-18, 21, 38-48: left at plain chip-level defaults, matching the
+  wiki table's "GPIO15 GPIO15" / "GPIO21 GPIO21"-style entries (i.e. no
+  special onboard function - ordinary header pins). Unchanged.
+- GPIO43/44: UART_TXD/UART_RXD via the onboard CH343P USB-UART chip - wiki
+  confirms these are the standard programming/log UART, matching this
+  board's serial_tx/serial_rx treatment. Unchanged.
+- Onboard RESET and BOOT buttons exist (per wiki's "Onboard Resources"
+  list) but are the standard EN/IO0 strapping buttons, not tagged
+  "button" - matches this repo's established ESP32-family convention of
+  never tagging the BOOT/IO0 strapping pin.
+
+CORRECTION SUMMARY
+------------------
+GPIO4 and GPIO5 were incorrectly excluded by a prior pass that only
+consulted this board's own pins_arduino.h (which declares IMU_INT1/TP_INT
+macros but doesn't mention the SH1.0-header MOSFET breakout at all).
+Checking the real vendor wiki page revealed these two pins are
+purpose-documented by Waveshare as user-drivable, header-exposed outputs
+(for small external loads such as vibration motors) that merely ALSO
+happen to be wired to the onboard IMU/touch interrupt lines - a shared,
+not dedicated, pin, per the same standard already applied elsewhere in
+this repo. All other exclusions (GPIO2/3/8/9/10/11/12/13/14) are directly
+confirmed by the wiki's own pin-connection table and are unchanged.

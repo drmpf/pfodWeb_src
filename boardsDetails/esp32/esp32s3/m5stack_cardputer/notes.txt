@@ -1,0 +1,84 @@
+m5stack_cardputer - button/LED capability research notes
+==========================================================
+
+Sources consulted
+------------------
+https://docs.m5stack.com/en/arduino/m5cardputer/button
+  Official M5Stack docs page for the Cardputer Button API. States "only the
+  G0 button located on the top side supports the button APIs" and describes
+  using it to enter download/flash mode (hold G0 while powering on). Does
+  not itself state the raw GPIO number or active polarity.
+
+https://docs.m5stack.com/en/core/Cardputer
+  Official Cardputer product/pinmap page. Lists dedicated peripheral pin
+  groups (ST7789V2 LCD incl. backlight G38, SPM1423 mic G43/G46, microSD
+  G12/G14/G39/G40, speaker NS4168 G41-G44, keyboard matrix G3-G11/G13/G15,
+  Grove port G1/G2). Confirms these dedicated-peripheral pins (already
+  excluded from chipGpios in the earlier pin-exclusion audit pass). Does
+  not clearly state the onboard RGB LED GPIO in the fetched text extract
+  (a schematic PDF is linked but is image-only/non-text-extractable - see
+  below).
+
+https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/docs/static/pdf/static/en/core/Cardputer.pdf
+  Official Cardputer schematic/datasheet PDF. Attempted to extract the
+  pinout table but the PDF content is image-based (scanned/rendered), not
+  selectable text, and could not be parsed by available tooling. Not used
+  as a source of confirmation; superseded by the M5Unified library source
+  evidence below, which is unambiguous and text-based.
+
+https://github.com/m5stack/M5Unified (src/M5Unified.cpp, fetched directly
+and grepped locally, branch master)
+  Official M5Stack Arduino/ESP-IDF hardware abstraction library source.
+  Direct, unambiguous, text-based confirmation of both button and LED:
+    - Line ~1934: `case board_t::board_M5Cardputer: ... m5gfx::pinMode(GPIO_NUM_0, m5gfx::pin_mode_t::input);`
+      GPIO0 is configured as the board's input button pin.
+    - Line ~2847: `case board_t::board_M5Cardputer: ... btn_rawstate_bits = (!m5gfx::gpio_in(GPIO_NUM_0)) & 1;`
+      Confirms GPIO0 drives the physical "BtnA"/G0 button (active-low read,
+      inverted in software), matching the docs.m5stack.com G0 button page.
+    - Lines 208-219: `_pin_table_other0` array, comment header "//RGBLED",
+      entry `{ board_t::board_M5Cardputer, GPIO_NUM_21 }`.
+      This is the vendor's own onboard-RGB-LED pin table; GPIO21 is listed
+      as the Cardputer's RGB LED pin.
+    - Line ~1768-1775: `pin_rgb_led = M5.getPin(m5::pin_name_t::rgb_led); ...
+      busled = make_shared<m5::LedBus_RMT>(); ... led_strip =
+      make_shared<m5::LED_Strip_Class>();` - confirms the RGB LED is driven
+      via the RMT peripheral as an addressable LED strip (WS2812/NeoPixel
+      style single-data-pin device), not a set of discrete R/G/B GPIOs and
+      not a simple on/off single-color LED.
+
+https://github.com/m5stack/M5Cardputer
+  Official Cardputer Arduino library repo (thin wrapper depending on
+  M5Unified/M5GFX). Repo file listing checked; no low-level pin
+  definitions live here (they live in M5Unified, used above) - listed for
+  completeness only, not itself a source of the GPIO numbers.
+
+https://github.com/m5stack/m5-docs/issues/175
+  Checked on the chance it discussed Cardputer pin restrictions; it
+  actually only discusses the original M5Stack Basic (Core), not
+  Cardputer. Not used.
+
+Pins considered but NOT tagged
+-------------------------------
+- Keyboard matrix pins (G3-G9, G11, G13, G15): explicitly out of scope per
+  task instructions ("full QWERTY keyboard matrix ... NOT individual GPIO
+  buttons"). Already removed from chipGpios in the earlier pin-exclusion
+  audit pass; left untouched, no guess made.
+- GPIO38 (LCD backlight, DISP_BL) considered and rejected as a candidate
+  "LED" tag: it is a display backlight enable line for the ST7789V2 panel,
+  not a discrete user-facing status LED, and it already sits inside the
+  existing LCD pin-exclusion range (GPIO33-38) removed from chipGpios by
+  the earlier audit. No guess made; left excluded/untagged as-is.
+- No other GPIO candidates for "LED" were found - the M5Unified RGB LED
+  table only lists GPIO21 for board_M5Cardputer, and no discrete R/G/B
+  GPIO triplet exists for this board (it's a single addressable NeoPixel-
+  style LED, not a 3-pin discrete RGB LED).
+- Checked GPIO21 and GPIO0 against this board's TX/RX (pins_arduino.h:
+  TX=43, RX=44) - neither candidate pin conflicts with the hard-reserved
+  serial TX/RX pins, so both were safe to tag.
+
+What was tagged
+-----------------
+GPIO0 -> ["digital_input","button"] (physical G0 button).
+GPIO21 -> ["digital_output","led_neopixel","pwm_output"] (onboard
+addressable RGB LED; pwm_output retained because it was already present
+on this pin's existing capability set).

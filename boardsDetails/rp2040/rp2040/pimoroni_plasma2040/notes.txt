@@ -1,0 +1,219 @@
+pimoroni_plasma2040 (chip: rp2040) — button/LED/NeoPixel audit notes
+Date: 2026-07-13
+
+BOARD
+-----
+Pimoroni "Plasma 2040" (PIM582) — an RP2040 board marketed specifically as a
+USB-C-powered driver for EXTERNAL WS2812/Neopixel/SK6812 and APA102/Dotstar/
+SK9822 addressable LED strip, output via two screw terminals (CLK + DAT).
+It also carries its own small onboard status RGB LED and three onboard
+buttons (BUTTON_A, BUTTON_B, USER_SW/BOOT).
+
+This board's own pins_arduino.h (variants/rp2040/rp2040/pimoroni_plasma2040/
+pins_arduino.h) cites
+  https://github.com/rp-rs/rp-hal-boards/blob/main/boards/pimoroni-plasma-2040/src/lib.rs
+as the source of its pin definitions, but only transcribes a subset: LED_R/
+LED_G/LED_B (GPIO16-18), PIN_NEOPIXEL (GPIO15), A0-A2 (GPIO26-28), and Wire0
+SDA/SCL (GPIO20/21). It omits the buttons (GPIO12, 13, 23) and the APA102
+CLK pin (GPIO14) entirely.
+
+SOURCES CONSULTED
+-----------------
+1. raw.githubusercontent.com/rp-rs/rp-hal-boards/main/boards/
+   pimoroni-plasma-2040/src/lib.rs — PRIMARY/AUTHORITATIVE source (fetched
+   directly via curl; this is the exact file pins_arduino.h's own header
+   comment cites, and is far more complete). Verbatim `bsp_pins!` table:
+     GPIO0/1   -> i2c0_sda / i2c0_scl
+     GPIO2/3   -> i2c1_sda / i2c1_scl
+     GPIO4/5   -> gpio4 / gpio5 (plain, no special function documented)
+     GPIO12    -> button_a          "GPIO 12 is connected to button A, active low"
+     GPIO13    -> button_b          "GPIO 13 is connected to button B, active low"
+     GPIO14    -> clk               "GPIO 14 is connected to CLK for APA102 only"
+     GPIO15    -> data              "GPIO 15 is connected to DAT for Apa102 and Ws2812"
+     GPIO16    -> led_red           "GPIO 16 is red LED, active low"
+     GPIO17    -> led_green         "GPIO 17 is green LED, active low"
+     GPIO18    -> led_blue          "GPIO 18 is blue LED, active low"
+     GPIO19    -> i2c_int           "GPIO 19 is I2C_INT"
+     GPIO20/21 -> i2c_sda / i2c_scl (matches this board's own PIN_WIRE0_SDA=20/SCL=21)
+     GPIO23    -> user_sw           "GPIO 23 is connected to the USER_SW, the BOOT button, active low"
+     GPIO26-28 -> adc0/adc1/adc2 (matches this board's own A0-A2)
+     GPIO29    -> current_sense     "GPIO 29 is connected to ADC3 which is used for low side current sensing"
+       (matches this board's own deliberate exclusion of A3 — see
+       pins_arduino.h's existing pfodWeb NOTE about the 31u "not pinned
+       out" sentinel; GPIO29/current-sense is a dedicated ADC channel, not
+       a general analog pin, consistent with rp-hal-boards' own framing).
+
+2. shop.pimoroni.com/en-us/products/plasma-2040 (official product page):
+   "There are three useful buttons that you could use for turning the
+   lights on and off or to switch between colours or effects, plus a reset
+   button and an eternally popular onboard RGB LED." / "an all-in-one,
+   USB-C powered controller for WS2812/Neopixel and APA102/Dotstar
+   addressable LED strip" / "I2C pins, analog pins and debug pins are
+   broken out so you can solder things like breakouts or analog
+   potentiometers directly." Confirms 3 buttons (matches source #1's
+   button_a/button_b/user_sw) distinct from the separate physical RESET
+   button (drives the RUN/hardware-reset pin directly, not a GPIO — same
+   out-of-scope rationale already used for every other RP2040 board in
+   this repo, e.g. rpipico, waveshare_rp2040_zero).
+
+3. learn.pimoroni.com/article/plasma-2040 (official getting-started guide,
+   CircuitPython section): `dots = dotstar.DotStar(board.CLK, board.DATA,
+   30, brightness=0.2)`, and separately a `board.LED_R`/`LED_G`/`LED_B`
+   RGBLED example. Confirms:
+     - CLK/DATA are ordinary board pin objects consumed directly by the
+       USER's own strip-driver library call (PIO-based, like any RP2040
+       GPIO) — NOT a dedicated/fixed-function silicon pin forced into that
+       one role. Matches this repo's adafruit_feather_scorpio GPIO16-23
+       "general-purpose, merely well-suited to strip-driving" precedent.
+     - The onboard RGB LED (LED_R/G/B) is a distinct, separate element
+       from the CLK/DATA strip-output pins — confirms the task's expected
+       "status LED vs strip-output connector" distinction.
+
+4. forums.pimoroni.com "Plasma 2040 pinouts" thread: independently
+   confirms SDA/SCL broken out on the board edge are GPIO20/GPIO21, and
+   the screw terminal labeled "DA" is GPIO15 — corroborates source #1's
+   GPIO15=data / GPIO20-21=I2C_SDA/SCL mapping via a second, independent
+   community source.
+
+5. github.com/pimoroni/pimoroni-pico
+   micropython/examples/plasma2040/rgb-led-and-buttons.py:
+     `led = RGBLED(plasma2040.LED_R, plasma2040.LED_G, plasma2040.LED_B)`
+     `user_sw  = Button(plasma2040.USER_SW)`
+     `button_a = Button(plasma2040.BUTTON_A)`
+     `button_b = Button(plasma2040.BUTTON_B)`
+   Confirms the USER_SW (BOOT) button is read via the exact same Button()
+   helper as BUTTON_A/BUTTON_B in ordinary running application code
+   (toggling the LEDs off on press in the example) — no vendor
+   documentation anywhere describes diode isolation or any other special
+   electrical caveat for this pin, unlike the Pimoroni Tiny 2040's
+   explicitly diode-protected BOOTSEL line (see
+   variants/rp2040/rp2040/pimoroni_tiny2040/board.json).
+
+PER-PIN REASONING (chipGpios entries applied)
+----------------------------------------------
+GPIO12 (BUTTON_A): digital_input, digital_output, pwm_output, button.
+  General-purpose pushbutton, active-low, no special circuitry documented
+  anywhere. Full capability retained (ordinary GPIO wired to a switch to
+  GND), matching adafruit_feather_scorpio's GPIO7 BOOT-button precedent.
+
+GPIO13 (BUTTON_B): digital_input, digital_output, pwm_output, button.
+  Same rationale/sources as GPIO12.
+
+GPIO14 (CLK, APA102 clock line to the strip screw terminal): digital_input,
+  digital_output, pwm_output. General-purpose GPIO, confirmed via sources
+  #1 and #3 (learn.pimoroni.com CircuitPython example passes board.CLK
+  straight into the user's own dotstar.DotStar() call). No strip-specific
+  capability tag applied — none exists in this repo's vocabulary, and none
+  is warranted since this pin drives an external, user-attached device,
+  not board-owned hardware. NOT declared anywhere in this board's own
+  pins_arduino.h (no PIN_ alias at all) — added purely via chipGpios,
+  matching the general "GPIO absent from pins_arduino.h but present in
+  chipGpios" mechanism already used for pimoroni_tiny2040's GPIO23.
+
+GPIO15 (DAT, WS2812+APA102 data line to the strip screw terminal; this
+  board's own pins_arduino.h calls it PIN_NEOPIXEL): digital_input,
+  digital_output, pwm_output. Despite the "PIN_NEOPIXEL" alias name, this
+  is NOT an onboard NeoPixel — confirmed via sources #1, #3, and #4 to be
+  the external-strip data screw terminal, a general-purpose GPIO the
+  user's own strip-driver library chooses to run on, not a dedicated
+  silicon function. No led_neopixel tag applied (that tag is reserved for
+  a board's own onboard addressable LED, e.g. adafruit_feather_scorpio's
+  GPIO4 — this pin drives an external strip the user attaches instead).
+
+GPIO16 (LED_R): digital_output, pwm_output, led_r_low. Onboard status RGB
+  LED red channel, active-low per source #1 ("GPIO 16 is red LED, active
+  low"), corroborated by source #2 and source #5's RGBLED(plasma2040.LED_R,
+  ...) usage. digital_input dropped to match this repo's established
+  led_r/g/b_low precedent for dedicated onboard RGB status LEDs
+  (pimoroni_tiny2040 GPIO18); pwm_output kept since arduino-pico's
+  analogWrite() works on any RP2040 GPIO, enabling brightness/colour
+  dimming (same as every other RP2040 LED precedent in this repo).
+
+GPIO17 (LED_G): digital_output, pwm_output, led_g_low. Same
+  sources/rationale as GPIO16 ("GPIO 17 is green LED, active low").
+
+GPIO18 (LED_B): digital_output, pwm_output, led_b_low. Same
+  sources/rationale as GPIO16 ("GPIO 18 is blue LED, active low").
+
+GPIO23 (USER_SW / BOOT): digital_input, digital_output, pwm_output,
+  button. Third onboard button; doubles as the BOOT-select switch but
+  confirmed (source #5) freely reusable as a plain input by running
+  application code, read identically to BUTTON_A/B. No vendor source
+  documents diode isolation or any other special circuitry for this pin
+  (contrast with the Pimoroni Tiny 2040's explicitly diode-protected
+  BOOTSEL line, which received a conservative input-only treatment in
+  pimoroni_tiny2040/board.json). Full capability retained here, matching
+  adafruit_feather_scorpio's GPIO7 BOOT-button precedent instead.
+
+BUS-COLLISION BUG CLASS (SDA/SCL/SS/MOSI/MISO/SCK auto-append)
+----------------------------------------------------------------
+Checked and does NOT apply: none of the tagged pins (12, 13, 14, 15, 16,
+17, 18, 23) coincide with this board's own PIN_WIRE0_SDA=20 / SCL=21 (its
+only bus aliases; it declares no SPI pins at all). No `#define` removal
+was needed or made.
+
+SEPARATE FINDING — OUT OF SCOPE, NOT FIXED (flagged for a follow-up pass)
+--------------------------------------------------------------------------
+Unlike every sibling RP2040 board in this repo (rpipico, pimoroni_tiny2040,
+adafruit_feather_scorpio, etc.), this board's pins_arduino.h does NOT
+`#include` either ../generic/common.h or ../generic_full/common.h. Those
+shared headers are what supply the `static const uint8_t ALIAS = ...;`
+declarations that build_boards.js's parser (parseEsp32Consts) actually
+scans for — plain `#define PIN_X (n)` macros alone are NOT picked up as
+pin aliases by that parser pass. Practical effect: LED_R/G/B, PIN_NEOPIXEL,
+and Wire0 SDA/SCL (all declared only via #define in this board's own
+pins_arduino.h) would NOT have appeared in the generated board at all
+without this session's explicit chipGpios entries — and BUTTON_A/B,
+USER_SW, and CLK (not declared via any alias mechanism at all) likewise
+require chipGpios to appear. This session's chipGpios entries cover every
+button/LED/strip-output pin needed for this audit's mandate, but GPIO0-3
+(I2C0/I2C1), GPIO4/5 (plain), GPIO19 (I2C_INT), and GPIO29 (current-sense
+ADC3) remain entirely absent from the generated board profile — none of
+these are button/LED/NeoPixel hardware, so fixing this is left to a
+dedicated follow-up pass rather than expanding this audit's scope.
+(A minimal fix would be adding `#include "../generic/common.h"` or
+`../generic_full/common.h"` to this board's pins_arduino.h, matching every
+sibling board — but that determination needs its own care, since neither
+shared header's blanket D0-D22/D0-D29 identity-alias behavviour has been
+checked against Plasma 2040's actual pinout for correctness, and is out of
+scope for this button/LED/NeoPixel-focused pass.)
+
+Also separately noted (not fixed, same reason — out of scope): this
+board's pins_arduino.h has a `#if 0 ... #endif`-disabled block (lines
+14-26) declaring `static const uint8_t D0 = (26u); ... D10 = (3u);`. Since
+build_boards.js's .h parser is a plain regex text scan with NO
+preprocessor awareness (confirmed by reading build_boards.js — it only
+resolves #include directives, never evaluates #if/#ifdef/#endif), this
+disabled block's `static const uint8_t` lines ARE still matched by the
+parser despite being wrapped in `#if 0`. This currently leaks phantom
+D0-D10 aliases for GPIO26,27,28,29,6,7,0,1,2,4,3 into the generated board
+— most harmlessly duplicate existing A0/A1/A2 aliases (GPIO26-28), but
+D3=(29u) directly re-leaks GPIO29 (current-sense ADC3) as a full-capability
+phantom pin, undermining this exact board's own existing pfodWeb NOTE
+(further up in pins_arduino.h) that deliberately excludes A3/GPIO29 as
+"not pinned out". This is the same general "regex-parser-doesn't-respect-C-
+disabling-mechanisms" bug class already fixed twice elsewhere in this same
+file (the A3 exclusion and the SPI SS/MOSI/MISO/SCK comment-removal fix),
+just via `#if 0` instead of `//` comments — but touching it is outside this
+task's explicit mandate (button/LED/NeoPixel tagging + the specific SDA/
+SCL/SS/MOSI/MISO/SCK bus-collision bug class), so it was NOT edited here.
+Flagging clearly for a follow-up pass: the fix would be deleting the
+`#if 0 ... #endif` block (lines 14-26 of pins_arduino.h) outright, matching
+how the SPI SS/MOSI/MISO/SCK comment block was already handled elsewhere
+in this file.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/pimoroni_plasma2040/board.json (new file,
+did not exist before). Tagged 8 GPIOs via chipGpios: GPIO12/13/23 as
+buttons (full capability), GPIO16/17/18 as the onboard RGB status LED
+(led_r_low/led_g_low/led_b_low, output+pwm only), and GPIO14/15 as
+general-purpose GPIO (the external LED-strip screw-terminal CLK/DAT lines
+— confirmed NOT onboard NeoPixel hardware despite the misleading
+PIN_NEOPIXEL alias name on GPIO15, and NOT dedicated/fixed-function
+silicon). No pins_arduino.h edits made — the SDA/SCL/SS/MOSI/MISO/SCK
+bus-collision bug class does not apply to any tagged pin. Two separate,
+out-of-scope issues were discovered and documented above (missing
+generic/common.h include; a `#if 0`-disabled D0-D10 block still leaking
+phantom aliases including a re-leak of the already-excluded GPIO29/A3) but
+deliberately left unfixed, flagged for a dedicated follow-up pass.

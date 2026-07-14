@@ -1,0 +1,150 @@
+amyboard (chip esp32s3) - dedicated-hardware pin-exclusion audit + opportunistic
+button/LED/sensor-pin check (this board had never been individually reviewed -
+no board.json override, no NOTE comment existed before this pass).
+Date: 2026-07-12
+
+Sweep flag verification:
+- Read C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\amyboard\pins_arduino.h in
+  full (28 lines). The discovery sweep's summary ("only USB descriptor macros
+  present") is INCOMPLETE, not accurate: besides USB_VID/USB_PID/
+  USB_MANUFACTURER/USB_PRODUCT/USB_SERIAL, the file also declares eight
+  `static const uint8_t` pin aliases: TX=43, RX=44 ("UART, directly exposed on
+  header"), SDA=17, SCL=18 ("I2C master bus (PCM9211, OLED display, ADC,
+  etc.)"), and SS=10, MOSI=11, MISO=13, SCK=12 ("SPI, directly exposed on
+  header for SD card, etc."). However, the sweep's underlying CONCLUSION (no
+  dedicated/internal hardware pin needing exclusion) still holds after full
+  review: all eight are genuine, comment-documented, externally-exposed header
+  buses, not internal-only/reserved pins masquerading as normal I/O - so
+  nothing needs to be EXCLUDED from chipGpios. No other non-boilerplate
+  declaration exists in the file (no LED_BUILTIN, no RGB_DATA/NEOPIXEL, no
+  BUTTON/BOOT alias, no battery-sense pin, no camera/I2S pin aliases of any
+  kind).
+- Verified our local pins_arduino.h is a byte-for-byte match of the upstream
+  vendor file (see source 1 below) - so this is a confirmed-accurate copy,
+  not a stale/hand-edited one.
+
+Product research - what AMYboard actually is:
+- AMYboard is a $29.90 DIY Eurorack-compatible (10HP) music synthesizer
+  module built around an ESP32-S3-WROOM-1 module (dual-core Xtensa LX7,
+  8 MB RAM/PSRAM), designed by Brian Whitman (Shorepine) to run the
+  open-source "AMY" fixed-point synthesis engine (virtual analog, FM,
+  wavetable, sample playback). Ships MicroPython firmware by default; also
+  usable from Arduino sketches via the AMY-Arduino library (available in
+  Arduino Library Manager). Confirms the "AMY synthesizer engine" hypothesis
+  from the task brief.
+- I/O is entirely audio/music-domain, not general-purpose GPIO: ten 3.5 mm
+  jacks (stereo audio in/out, 2x CV, MIDI in/out, stereo S/PDIF digital
+  audio), microSD card slot for samples, onboard DIP switches for
+  1 Vpp/10 Vpp level selection, USB-C (power/MIDI/serial/file access), an
+  I2C "host port for accessories - encoders, displays, and more" (external
+  Grove-style connector, matches the SDA=17/SCL=18 bus and the file's own
+  "PCM9211, OLED display, ADC" comment), and a 10-pin Eurorack power
+  connector. PCM9211 (TI 24-bit stereo ADC / S/PDIF-AES3 receiver) is a real
+  audio chip, consistent with the file's I2C comment.
+
+Sources consulted:
+1. https://raw.githubusercontent.com/espressif/arduino-esp32/master/variants/amyboard/pins_arduino.h
+   - Upstream vendor file. Confirmed byte-for-byte match with the local copy:
+     USB_VID/PID/MANUFACTURER/PRODUCT/SERIAL plus TX=43, RX=44, SDA=17,
+     SCL=18, SS=10, MOSI=11, MISO=13, SCK=12. No LED/button/NeoPixel alias
+     exists in the vendor source either - this is not a local omission.
+2. https://linuxgizmos.com/amyboard-esp32-s3-synth-board-supports-midi-cv-and-eurorack-integration/
+   - Feature roundup (audio I/O, MIDI, CV, Eurorack 10HP, SD, I2C, DIP
+     switches). No onboard LED/NeoPixel/button mentioned anywhere.
+3. https://www.embedsbc.com/amyboard-esp32-s3-audio-development-board/
+   - Similar feature roundup (10 jacks, microSD, I2C connector, USB, DIP
+     switches). No onboard LED/NeoPixel/button mentioned.
+4. https://variogram.com/2026/05/18/amyboard/ - Brian Whitman's (the
+   designer's) own blog post announcing the board. Lists all hardware in
+   detail (audio DAC/ADC, S/PDIF, MIDI, 2x CV, I2C host port for optional
+   external OLED/encoder accessories, SD, 10HP faceplate, modular power).
+   No onboard LED/NeoPixel/status-indicator/button described as a built-in
+   board feature anywhere.
+5. https://github.com/shorepine/tulipcc/blob/main/docs/amyboard/README.md
+   - Official hardware README. Lists connectors, DIP switches, I2C
+     accessory port. No onboard button/LED/NeoPixel mentioned.
+6. https://github.com/shorepine/tulipcc/blob/main/docs/amyboard/firmware.md
+   - Official firmware-flashing guide. States: "Hold down both buttons on
+     the side of the AMYboard, then release RST first, then release BOOT" -
+     i.e. the only physical pushbuttons on the board are the standard
+     RST (tied to chip EN, not a GPIO) and BOOT (tied to the GPIO0 strapping
+     pin) pair used purely to enter UF2/download mode - the same
+     "generic BOOT/EN pair" this codebase's prior audits (e.g. pico32,
+     XIAO_ESP32S3, um_tinys3) have consistently treated as out of scope for
+     a "button" capability tag, since neither is documented anywhere as a
+     general-purpose, user-code-readable input.
+7. https://github.com/shorepine/tulipcc/blob/main/docs/amyboard/faq.md
+   - FAQ. "Press BOOT to start the firmware"; "Hold BOOT while powering on
+     to skip the sketch (runs a hardware self-test)"; "RST, then BOOT" to
+     leave DFU mode. Confirms BOOT/RST are download-mode/self-test-trigger
+     controls only - never described as a general user-input button
+     available to sketches. Also states an external Adafruit Seesaw quad
+     rotary encoder accessory exposes its own NeoPixel LEDs via
+     `amyboard.neopixel_init(pin=18, n=4)` - this "pin=18" is the Seesaw
+     I2C-GPIO-expander's OWN internal pin numbering on that external
+     accessory chip, unrelated to this board's ESP32-S3 GPIO18 (which is
+     SCL on this board) - not a NeoPixel on the AMYboard PCB itself. Also:
+     "the unused ESP32-S3 GPIOs aren't broken out to any header" - confirms
+     no other pins beyond the 8 already declared in pins_arduino.h are
+     exposed at all.
+8. https://en.hwlibre.com/Amyboard-ESP32-S3-synthesizer-board-with-MIDI-and-CV:-in-depth-analysis/
+   - Independent write-up; discusses GPIO use in the abstract (sensor
+     integration, multiplexers for velocity detection as project ideas) but
+     documents no onboard LED/button/NeoPixel as a stock hardware feature.
+9. https://www.embedsbc.com and https://www.makerfabs.com/amyboard.html
+   product listings - 403 Forbidden at fetch time; not used directly, but
+   their content was independently covered by sources 2, 3 and the search
+   summaries above.
+
+Alias-collision check (per this session's methodology - a GPIO tagged
+button/LED must not also be a boilerplate SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+alias elsewhere in pins_arduino.h, since build_boards.js unconditionally
+appends those bus capabilities regardless of chipGpios):
+- Not applicable here - no button/LED/NeoPixel candidate GPIO was found at
+  all (see below), so there is nothing to check for collision. For
+  completeness: the only GPIO that could ever be considered a button
+  candidate is GPIO0 (BOOT strapping pin), which does NOT collide with any
+  of TX(43)/RX(44)/SDA(17)/SCL(18)/SS(10)/MOSI(11)/MISO(13)/SCK(12) - it
+  simply was never tagged in the first place (see below).
+
+Pins considered but NOT tagged:
+- GPIO0 (BOOT/strapping pin, already carries the chip-level pinNote "Must be
+  HIGH for normal boot"): considered as a possible "button" candidate since
+  ESP32-S3 boards commonly wire BOOT to GPIO0. Every source found (README,
+  firmware.md, faq.md) describes BOOT (with RST) purely as a download-mode /
+  hardware-self-test trigger, never as a documented general-purpose,
+  sketch-readable user button (contrast with um_pros3's board.json
+  precedent, where a third-party board-support page explicitly enumerated
+  it as "BTN0 GPIO0 labeled as BOOT button" - no equivalent explicit
+  "this is also a usable button in your code" statement exists for
+  AMYboard). Left untagged - consistent with this codebase's more common
+  precedent for BOOT-only buttons (pico32, XIAO_ESP32S3, um_tinys3).
+- No other pin (LED, NeoPixel, battery-sense, camera, etc.) was found
+  anywhere in vendor documentation, the designer's own blog post, or
+  third-party write-ups. The board's entire non-power I/O surface is
+  audio/MIDI/CV jacks, SD, and I2C - none of which map to a GPIO capability
+  this designer tracks.
+
+Applied:
+- NO CHANGE. No board.json override was created for this board - the
+  existing chip-level default (variants/esp32/esp32s3/board.json) already
+  correctly represents every GPIO amyboard exposes; TX(43)/RX(44) are
+  handled generically by build_boards.js's serial_rx/serial_tx branch, and
+  SDA(17)/SCL(18)/SS(10)/MOSI(11)/MISO(13)/SCK(12) correctly pick up their
+  i2c_sda/i2c_scl/spi_ss/spi_mosi/spi_miso/spi_sck capabilities from the
+  generic alias-matching in build_boards.js with no override needed. Per
+  established precedent (e.g. pico32's notes.txt), a board.json is only
+  created when there is an actual capability change to apply - there is
+  none here.
+
+Summary: Discovery-sweep flag description was imprecise (the file has more
+than USB macros - 8 real bus-pin aliases), but its underlying "no dedicated
+hardware to exclude" conclusion is correct and now independently confirmed
+via the byte-for-byte-matching upstream vendor file plus 6+ independent
+AMYboard documentation/press sources. AMYboard (Shorepine's AMY-synth-engine
+Eurorack module) has no onboard general-purpose button, LED, or NeoPixel -
+only the standard BOOT/RST bootloader-entry buttons, which per this
+codebase's established precedent are not tagged as a "button" capability
+without explicit vendor confirmation of general-purpose/user-code use. No
+board.json was created; this notes.txt is the sole record of the review so
+the board is not re-flagged in a future sweep.

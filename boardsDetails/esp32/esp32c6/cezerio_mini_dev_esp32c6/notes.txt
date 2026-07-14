@@ -1,0 +1,186 @@
+cezerio_mini_dev_esp32c6 board.json dedicated-hardware pin-exclusion audit research notes
+==========================================================================================
+
+Board: cezerio_mini_dev_esp32c6 (variants/esp32/esp32c6/cezerio_mini_dev_esp32c6), chip esp32c6.
+Vendor: RFtek Electronics (USB_MANUFACTURER string), product line "cezerio" (cezerio.com).
+Audit date: 2026-07-12
+
+pins_arduino.h summary (read in full before any edits):
+  #define PIN_RGB_LED 20; LED_BUILTIN encoded as SOC_GPIO_PIN_COUNT + PIN_RGB_LED
+  (the ESP32 Arduino core's NeoPixel/RGB-LED pin-number convention, distinct from
+  a plain digital LED_BUILTIN); RGB_BUILTIN/RGBLED/RGB_BRIGHTNESS=64 also defined.
+  static const uint8_t BUT_BUILTIN = 9; #define BOOT BUT_BUILTIN.
+  TX=7, RX=14. SDA=23, SCL=22. MOSI=19, MISO=21, SCK=18, SS=17.
+  A0..A3 = GPIO0..3, A6 = GPIO6.
+  static const uint8_t MATRIX = 4; (no other alias for it - not TX/RX/SDA/SCL/
+  SS/MOSI/MISO/SCK).
+  No IMUSD/IMUSC or any other IMU-related alias anywhere in the file.
+  No existing board.json override before this audit (used the chip-level
+  esp32c6/board.json default).
+
+Flagged by the discovery sweep for PIN_RGB_LED=20, RGB_BRIGHTNESS=64,
+BUT_BUILTIN=9/BOOT, and MATRIX=4 (all never individually reviewed). Sibling
+board cezerio_dev_esp32c6 (non-mini) was flagged in the same wave with
+different GPIO numbers and IMUSD/IMUSC present - this Mini variant has no
+IMU alias at all, independently confirming (from this board's own file, not
+assumed from the sibling) that it lacks an onboard IMU.
+
+Sources consulted
+------------------
+1. https://cezerio.com/cezerio_mini_dev_esp32c6 (WebFetch, multiple targeted
+   fetches). Vendor's own product page. First fetch returned a feature list
+   that appeared to mix two SKUs together ("25 x WS2812B 1010 RGB LED" plus
+   "1x addressable RGB LED"), so a second, narrower fetch was made asking
+   the page to disambiguate SKUs explicitly. That fetch confirmed the page
+   actually lists TWO distinct products:
+     - "cezerio mini dev ESP32C6" - $5.00 - "1x addressable RGB LED (2835
+       type)", "1x Power LED" - NO 5x5 matrix mentioned for this SKU.
+     - "cezerio mini dev matrix ESP32C6" - $8.50 - adds "25 x WS2812B 1010
+       RGB LED" arranged as a "5x5 RGB LED Matrix" that can "scroll text,
+       show icons or even display cool animating patterns".
+   Also confirms "2 x Button (Boot & Reset)" as onboard hardware common to
+   the line, and general specs (ESP32-C6FH4, 4MB flash, USB-C, Qwiic/Stemma
+   Qt I2C connector, footprint compatible with Adafruit QT Py / Seeed XIAO).
+2. https://github.com/espressif/arduino-esp32/pull/10648 ("Add our new
+   development board 'cezerio mini dev ESP32C6'" by DogushC, merged
+   2024-11-26). This is the actual upstream PR that added this exact
+   variant's boards.txt entry and variants/cezerio_mini_dev_esp32c6/
+   pins_arduino.h (47 additions) - the same pins_arduino.h present in this
+   repo. Fetched the "Files changed" tab specifically to check whether a
+   SEPARATE variant directory exists for the "matrix" SKU: confirmed only
+   ONE variant directory was added, "cezerio_mini_dev_esp32c6" - i.e. RFtek
+   ships one shared PCB/pin design and one shared Arduino-core variant for
+   both the base and matrix SKUs, differing only in whether the 25-LED
+   matrix chip is populated at manufacture time. The PR description itself
+   gave no further hardware-specific commentary beyond naming the board.
+3. WebSearch general corroboration (multiple result summaries) repeated the
+   "5x5 RGB LED Matrix... scroll text, show icons or animating patterns"
+   description tied to the cezerio mini dev product line, consistent with
+   source #1's disambiguated matrix-SKU description.
+4. cezerio_dev_esp32c6 (non-mini) sibling, audited in parallel this wave -
+   not used as a direct source for this board's pin decisions, but its
+   presence motivated an explicit double-check of this file's own IMUSD/
+   IMUSC absence (see below) rather than assuming it from the sibling.
+
+Reasoning per pin
+------------------
+GPIO20 (PIN_RGB_LED) - CONFIRMED onboard addressable RGB LED for the exact
+  "cezerio mini dev ESP32C6" SKU this variant directory represents.
+  cezerio.com explicitly lists "1x addressable RGB LED (2835 type)" as
+  onboard hardware on the $5.00 base SKU (this board, not the matrix one).
+  This board's own pins_arduino.h independently corroborates: it encodes
+  LED_BUILTIN as SOC_GPIO_PIN_COUNT + PIN_RGB_LED and defines RGB_BUILTIN/
+  RGBLED/RGB_BRIGHTNESS - the ESP32 Arduino core's specific "this is a
+  NeoPixel-class RGB LED, not a plain GPIO LED" encoding convention. High
+  confidence. Tagged capabilities ["digital_output","led_neopixel",
+  "pwm_output"], matching this repo's led_neopixel precedent
+  (waveshare_esp32_c6_zero GPIO8, esp32c6/esp32c6 GPIO8,
+  adafruit_qtpy_esp32c3 GPIO2).
+
+  Alias-collision check: compared GPIO20 against this board's own TX/RX/
+  SDA/SCL/SS/MOSI/MISO/SCK alias values (7/14/23/22/17/19/21/18) - GPIO20
+  is not aliased as any of those, so no conflicting bus capability gets
+  silently appended by build_boards.js. No pins_arduino.h edit was needed
+  for this pin.
+
+GPIO9 (BUT_BUILTIN/BOOT) - CONFIRMED onboard physical BOOT/user button.
+  cezerio.com lists "2 x Button (Boot & Reset)" as onboard hardware common
+  to this board line. This is also the ESP32-C6's standard strapping pin -
+  the chip-level pinNotes entry "Must be HIGH for normal boot" is expected
+  and was retained unchanged, not removed. Tagged capabilities
+  ["digital_input","button"] only, per this session's button-pin convention
+  (waveshare_esp32_c6_zero GPIO9, Pcbcupid_GLYPH_C6 GPIO9) - no analog/
+  output/pwm mixed in.
+
+  Alias-collision check: GPIO9 is not TX/RX/SDA/SCL/SS/MOSI/MISO/SCK on
+  this board either (values are 7/14/23/22/17/19/21/18) - no conflict, no
+  pins_arduino.h edit was needed.
+
+GPIO4 (MATRIX) - EXCLUDED. Removed entirely from chipGpios in board.json,
+  and the "static const uint8_t MATRIX = 4;" line was deleted outright from
+  this variant's pins_arduino.h (not commented out, and no verbatim copy of
+  the old declaration was placed in any comment, per this session's
+  comment-blind-parser rule).
+
+  Reasoning: cezerio.com's disambiguated SKU listing (source #1) shows this
+  exact PCB/variant is sold under two SKUs that share ONE upstream Arduino
+  variant directory (confirmed via source #2 - only one variants/ folder
+  was added in the PR that created this exact pins_arduino.h): the $5.00
+  base "cezerio mini dev ESP32C6" (no matrix populated) and the $8.50
+  "cezerio mini dev matrix ESP32C6" (adds a populated 5x5 WS2812B matrix).
+  Espressif's own upstream PR explicitly names and wires GPIO4 as "MATRIX"
+  - a single, vendor-reserved, always-wired data line dedicated to driving
+  that matrix hardware on the shared PCB design, present in the pin
+  definition regardless of which SKU a given unit is populated as. This is
+  a genuine dedicated-hardware data line by vendor's own naming/wiring
+  choice, not a generic breakout pin - unlike Pcbcupid_GLYPH_C6's
+  BAT_MEASURE pin (kept, because that one is explicitly documented as
+  optional/solder-bridge-only with no circuitry attached by default).
+  Matches this project's "EXCLUDE if confirmed dedicated onboard display"
+  policy from the task brief.
+
+  Note on confidence: this is not a "matrix definitely lit up on every unit
+  of this exact SKU" confirmation (the base SKU ships with no LEDs
+  populated on that data line) - it is a "vendor reserved/wired this GPIO
+  exclusively for driving matrix hardware on this PCB design, shared across
+  both SKUs of this exact Arduino variant" confirmation, which is the
+  standard this project's playbook uses for dedicated-hardware exclusion
+  (compare: um_squixl's RGB-LCD data-line pins are excluded on the whole
+  variant even though a differently-populated unit is not being modeled
+  separately here either).
+
+  Alias-collision check: GPIO4 was not aliased as TX/RX/SDA/SCL/SS/MOSI/
+  MISO/SCK either way (this board's TX/RX/SDA/SCL/SS/MOSI/MISO/SCK are
+  7/14/23/22/17/19/21/18), so no bus-capability contamination would have
+  occurred regardless of the exclusion decision - the exclusion here is
+  purely the dedicated-onboard-display policy, not an alias-collision fix.
+
+IMU check (opportunistic, per sibling-board flag) - this board's own
+  pins_arduino.h contains no IMUSD, IMUSC, or any other IMU-related alias
+  anywhere in the file. Independently confirms (from this file directly,
+  not inferred from the cezerio_dev_esp32c6 sibling) that this Mini variant
+  has no onboard IMU sensor. No chipGpios change needed - the chip-level
+  default already has no IMU-tagged pins to remove.
+
+Pins considered and NOT changed
+---------------------------------
+All other chipGpios entries (0-3, 5-8, 10, 11, 14-19, 21-23, excluding
+4/9/20) were left at the chip-level esp32c6/board.json default - no
+evidence found of any other dedicated onboard hardware beyond the RGB LED,
+BOOT button, and matrix data line. GPIO23/22 (SDA/SCL) and GPIO19/21/18/17
+(MOSI/MISO/SCK/SS) are left as general-purpose bus-capable GPIOs - cezerio.
+com's own hardware list names an external Qwiic/Stemma Qt I2C connector
+(user expansion, not a fixed onboard-only consumer), consistent with this
+project's "general-purpose bus without exclusive onboard consumer stays
+kept" policy.
+
+What was tagged/changed
+-------------------------
+Created variants/esp32/esp32c6/cezerio_mini_dev_esp32c6/board.json (none
+existed before) as a full copy of the chip-level esp32c6/board.json
+default, with:
+  - GPIO9 capabilities changed to ["digital_input","button"] (was
+    ["digital_input","digital_output","pwm_output"])
+  - GPIO20 capabilities changed to ["digital_output","led_neopixel",
+    "pwm_output"] (was ["digital_input","digital_output","pwm_output"])
+  - GPIO4 entry removed entirely (excluded - dedicated matrix data line)
+plus a pfodWeb NOTE comment block at the top of the file citing the
+sources and reasoning above.
+
+Edited variants/esp32/esp32c6/cezerio_mini_dev_esp32c6/pins_arduino.h:
+deleted the line "static const uint8_t MATRIX = 4;" (and its surrounding
+blank line) outright - no comment was left in its place referencing the
+old declaration text, per this session's comment-blind-parser rule.
+
+No alias-collision bug was found on GPIO4/GPIO9/GPIO20 (none of the three
+is double-aliased as SDA/SCL/SS/MOSI/MISO/SCK/TX/RX on this board), so no
+further pins_arduino.h edits were needed beyond the MATRIX deletion.
+
+Summary: GPIO20 confirmed as a genuine onboard addressable RGB LED (kept,
+tagged led_neopixel); GPIO9 confirmed as a genuine onboard BOOT/user button
+(kept, tagged button); GPIO4 confirmed as a vendor-dedicated LED-matrix data
+line shared across this variant's two SKUs (excluded from chipGpios and
+its alias deleted from pins_arduino.h); no onboard IMU present on this Mini
+variant (no alias found, no action needed).
+
+No build commands were run this pass, per task instructions.

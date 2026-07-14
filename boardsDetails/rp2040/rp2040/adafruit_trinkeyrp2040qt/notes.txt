@@ -1,0 +1,101 @@
+Board: Adafruit Trinkey QT2040 (variant dir: adafruit_trinkeyrp2040qt)
+Audit date: 2026-07-13
+Task: re-verify pre-existing board.json (this board predates the RP2040-family
+audit and was the schema precedent file for other agents) against vendor docs
+and this session's newer conventions (led_neopixel tagging, button capability
+tag, chipGpios-driven capability overrides).
+
+Sources consulted
+------------------
+1. learn.adafruit.com/adafruit-trinkey-qt2040/overview — "Built-in RGB
+   NeoPixel LED"; describes reset button and bootloader/user button, "can
+   also be safely used in 'user' code".
+2. learn.adafruit.com/adafruit-trinkey-qt2040/pinouts — "the boot button
+   (labeled BOOT" on the silk, distinct from the separate reset button
+   (labeled RST). No mention of capacitive touch anywhere on this page.
+3. learn.adafruit.com/adafruit-trinkey-qt2040/circuitpython and
+   github.com/adafruit/Adafruit_Learning_System_Guides
+   QT2040_Trinkey/Digital_Input/code.py (fetched raw) — authoritative
+   worked example:
+     pixel = neopixel.NeoPixel(board.NEOPIXEL, 1)
+     button = digitalio.DigitalInOut(board.BUTTON)
+     button.switch_to_input(pull=digitalio.Pull.UP)
+     ... if not button.value: pixel.fill((255, 0, 0))
+   This confirms (a) board.NEOPIXEL drives a real neopixel.NeoPixel object
+   (WS2812-style addressable LED, not a plain LED), and (b) board.BUTTON is
+   read with plain digitalio + pull-up, the textbook mechanical-pushbutton
+   pattern — NOT touchio / capacitive touch.
+4. docs.zephyrproject.org/latest/boards/adafruit/trinkey_qt2040/ — explicit
+   peripheral map: "RGB LED (Neopixel): GPIO27", "Boot/User button: GPIO12",
+   and clarifies the button "will pull down the QSPI chip-select line (via a
+   diode) for entering the built-in USB bootloader at startup" — i.e. a
+   diode-protected pin shared with BOOTSEL, same electrical pattern as
+   ../pimoroni_tiny2040 GPIO23 (BOOTSEL button).
+5. raw.githubusercontent.com/earlephilhower/arduino-pico
+   variants/adafruit_trinkeyrp2040qt/pins_arduino.h — declares
+   PIN_NEOPIXEL=27, PIN_SWITCH=12 (labeled "User input button" in the
+   header), confirming both GPIO numbers used in the pre-existing
+   board.json were already correct; only the capability/identity tagging
+   needed correction.
+6. www.adafruit.com/product/5056 (product page) — "Built-in RGB NeoPixel
+   LED"; "Both Reset button and Bootloader select buttons for quick
+   restarts" — mechanical pushbuttons, no capacitive-touch language.
+7. Cross-checked against this session's established RP2040 precedents:
+   ../waveshare_rp2040_zero/board.json (GPIO16 NeoPixel: led_neopixel,
+   digital_output only, pwm_output dropped) and
+   ../pimoroni_tiny2040/board.json (GPIO23 BOOTSEL button: digital_input +
+   button, output capabilities deliberately omitted, diode-protected
+   shared-with-bootloader pin).
+
+Per-pin reasoning
+------------------
+GPIO27 (PIN_NEOPIXEL) — CONFIRMED genuine WS2812-style NeoPixel data line
+(not a plain LED): Adafruit's own CircuitPython example instantiates it via
+neopixel.NeoPixel(board.NEOPIXEL, 1). Capabilities changed from
+["digital_output", "pwm_output"] to ["digital_output", "led_neopixel"] —
+added the missing led_neopixel identity tag and dropped pwm_output per this
+session's established NeoPixel convention (a WS2812 data line is a
+bit-serial protocol pin, not a PWM-dimmable one — matches
+waveshare_rp2040_zero's GPIO16 precedent exactly).
+
+GPIO12 (PIN_SWITCH / board.BUTTON) — RECLASSIFIED. The pre-existing
+board.json described this pin as "a capacitive touch switch" and handled it
+purely via inputOnlyGpios: [12]. That description does not hold up: no
+vendor source (Adafruit learn guide, product page, Zephyr board doc, or the
+arduino-pico pins_arduino.h header itself) mentions capacitive touch or
+touchio anywhere for this board. Every source instead independently
+confirms it is the board's mechanical BOOT/user pushbutton — physically
+labeled "BOOT" on the silkscreen, read via plain digitalio.DigitalInOut with
+a pull-up resistor in Adafruit's own example code, and additionally
+diode-shared with the QSPI chip-select bootloader-select line (per Zephyr's
+board doc) — electrically identical in pattern to pimoroni_tiny2040's
+GPIO23 BOOTSEL pin, which this repo already tags digital_input + button
+with output capabilities deliberately omitted.
+
+Decision: added a chipGpios["12"] entry with capabilities
+["digital_input", "button"], matching the pimoroni_tiny2040 GPIO23
+precedent exactly (button tag applies — this is a genuine "wired to a
+switch" pin, just diode-shared with the QSPI-CS/BOOTSEL function, not a
+capacitive-only pad). digital_output/pwm_output deliberately omitted: no
+vendor source confirms it's safe to drive this diode-coupled QSPI-CS-shared
+line as an output. Since chipGpios capability entries fully override the
+default input/output derivation in build_boards.js (chipEntry.capabilities
+short-circuits the inputOnlySet-based fallback — see buildEsp32Board() in
+pfodWeb_src/build_boards.js), inputOnlyGpios was emptied back to [] to avoid
+a redundant/inert declaration; GPIO12's input-only behavior is now fully
+expressed through the chipGpios capability list itself.
+
+pinNotes / comments — the top-of-file board.json comments were rewritten to
+document both findings (the corrected NeoPixel tag and the reclassified
+button) plus the "likely originated from confusion with other Trinkey
+products (Neo Trinkey, Rotary Trinkey, etc., which DO have genuine
+capacitive touch pads)" explanation for how the original "capacitive touch"
+description probably arose.
+
+One-line summary
+------------------
+GPIO27 confirmed genuine NeoPixel (added led_neopixel, dropped pwm_output);
+GPIO12 confirmed to be a mechanical diode-protected BOOT/user pushbutton
+(NOT capacitive touch as previously documented) and re-tagged from
+inputOnlyGpios to chipGpios digital_input+button, matching the
+pimoroni_tiny2040 GPIO23 BOOTSEL precedent.

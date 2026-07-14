@@ -1,0 +1,196 @@
+esp32_s3r8n16 (chip esp32s3) - dedicated-hardware pin-exclusion audit + opportunistic
+button/LED/sensor-pin check (never individually reviewed before - no board.json
+override, no NOTE comment existed before this pass).
+Date: 2026-07-12
+
+Sweep flag verification:
+- Read C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\esp32_s3r8n16\pins_arduino.h in
+  full (24 lines). The discovery sweep's summary ("only USB descriptor macros
+  present") is INCOMPLETE, not accurate: besides USB_VID/USB_PID/
+  USB_MANUFACTURER/USB_PRODUCT, the file also declares eight `static const
+  uint8_t` pin aliases: TX=43, RX=44, SDA=17, SCL=18, and SS=-1, MOSI=-1,
+  MISO=-1, SCK=-1 (each commented "// Modified elsewhere"). Unlike amyboard,
+  four of these eight are NOT real fixed values - they are literal -1
+  placeholders, i.e. deliberately left unset by the vendor.
+
+Product research - what this module actually is:
+- USB_PRODUCT string: "4D Systems gen4-ESP32 16MB Modules (ESP32-S3R8n16)".
+  4D Systems (4dsystems.com.au) is an Australian embedded-display-module
+  vendor. The gen4-ESP32 family is a single ESP32-S3R8N16 (8MB PSRAM/16MB
+  Flash) "engine" MCU module that is soldered/FFC-connected to one of MANY
+  different TFT display panels (2.4" to 9.0", resistive/capacitive/no-touch,
+  with or without cover-lens-bezel), each using a different physical display
+  bus: standard SPI, QSPI, or 16-bit RGB-parallel.
+- CRITICAL FINDING: local boards.txt (variants\esp32\boards.txt, search
+  "gen4-ESP32-S3R8n16") shows this ONE Arduino board ID / ONE build.variant
+  (esp32_s3r8n16, i.e. this exact directory) is shared across the ENTIRE
+  gen4-ESP32/gen4-ESP32Q/ESP32-90 family via a "DisplayModel" Tools-menu
+  option with ~26 entries (esp32s3_24 through esp32s3_90ct_clb, covering
+  gen4-ESP32-24/28/32/35/43/50/70, gen4-ESP32Q-43 (QSPI), and ESP32-90
+  (RGB)). This confirms the file's own "Modified elsewhere" comment: the
+  actual display/touch/SD pin roles are chosen at COMPILE TIME by which
+  DisplayModel the user selects, not fixed by this pins_arduino.h/variant.
+- Confirmed via 4D Systems' own open-source GFX4dESP32 Arduino library
+  (github.com/4dsystems/GFX4dESP32, src/), which defines per-panel-type pin
+  macros:
+  - Legacy SPI-panel displays (gfx4desp32_spi_common.h): MISO=12, MOSI=13,
+    CLK=14, DC=21, RST=7, Backlight=4; SD-on-SPI: SCK=42, MISO=41, MOSI=2,
+    CS=1.
+  - QSPI-panel displays (gen4-ESP32Q-43 etc, same file): DATA0=9, DATA1=7,
+    DATA2=4, DATA3=3, CLK=5, CS=6, RST=8, Backlight=2; SD-on-QSPI: SCK=12,
+    MISO=13, MOSI=11, CS=10. These exactly match the DEFAULT_SD_SCK=12/
+    DEFAULT_SD_MISO=13/DEFAULT_SD_MOSI=11/DEFAULT_SD_CS=10/
+    DEFAULT_PIN_NUM_BK_LIGHT=2 constants in the shared gfx4desp32.h - i.e.
+    this variant's SS/MOSI/MISO/SCK=-1 in pins_arduino.h are set at runtime
+    by the library to GPIO10/11/12/13 IF-AND-ONLY-IF the user's sketch
+    selects a QSPI DisplayModel and calls the SD-init code path.
+  - RGB-parallel-panel displays (gfx4desp32_rgb_common.h, e.g. the
+    gen4-ESP32-RGB / ESP32-90 series): HSYNC=39, VSYNC=41, DE=40, PCLK=42,
+    Backlight=2, DATA0-15 = GPIO 8,3,46,9,1,5,6,7,15,16,4,45,48,47,21,14.
+    This consumes nearly EVERY GPIO the chip exposes.
+- CONCLUSION FROM THE ABOVE: because the three display-bus pin sets
+  (SPI/QSPI/RGB) are mutually different and, between them, collectively
+  touch almost every GPIO 0-48 depending on which of the ~26 DisplayModel
+  submenu options a given physical product/sketch uses, there is NO single
+  fixed board-level "these GPIOs are internally reserved for the display"
+  exclusion that would be correct for this variant. Any exclusion applied
+  here would be wrong for whichever of the many physical gen4-ESP32-xx
+  products doesn't happen to use that specific pin for its display/SD bus
+  (e.g. GPIO10 is free general I/O on every non-QSPI panel model but SD_CS
+  on QSPI models; GPIO1 is free on SPI/QSPI panel models but RGB DATA4 on
+  RGB panel models). Leaving chipGpios untouched (matching the chip-level
+  esp32s3 default) is the only correct representation, consistent with the
+  vendor's own decision to leave SS/MOSI/MISO/SCK unset (-1) in
+  pins_arduino.h rather than hardcode any one panel's pin set.
+- I2C bus (SDA=17/SCL=18): WebSearch results (4dsystems.com.au resource
+  center summaries) confirm "The gen4-ESP32 Series has 2 dedicated I2C pins
+  (Pins 2 and 3) [FFC connector] ... due to I2C being utilised internally
+  for the Touch, Real Time Clock, and IO Expander [TCA9554APWR] ... these
+  pins can be utilised by the User for general purpose I2C devices also."
+  Independently confirmed in GFX4dESP32 source: gfx4desp32_rtc.cpp line 15
+  calls `Wire.begin(17, 18, 400000)` to talk to the onboard PCF8563 RTC -
+  i.e. GPIO17/18 genuinely is the SAME bus used by onboard Touch/RTC/IO-
+  expander AND explicitly vendor-documented as available to user code for
+  additional I2C devices (module is I2C bus master; only slave devices may
+  be added; heavy user I2C traffic can interfere with onboard devices per
+  vendor caveat, but the pins themselves are not internal-only). This
+  matches this codebase's established KEEP precedent for shared/dual-use
+  I2C buses (cf. amyboard's SDA/SCL shared with onboard PCM9211/OLED). No
+  exclusion warranted; build_boards.js's generic SDA/SCL alias matching
+  already correctly attaches i2c_sda/i2c_scl to GPIO17/18 with no override
+  needed.
+- TX(43)/RX(44): standard exposed UART (confirmed "single serial UART...
+  broken out to the 30-way FFC connector... Pins 23 and 24, GPIO43/44" per
+  4D Systems resource-center summary). Already handled generically by
+  build_boards.js's serial_rx/serial_tx branch - no override needed.
+
+Alias-collision check (per this session's methodology - a GPIO tagged
+button/LED must not also be a boilerplate SDA/SCL/SS/MOSI/MISO/SCK/TX/RX
+alias elsewhere in pins_arduino.h, since build_boards.js unconditionally
+appends those bus capabilities regardless of chipGpios):
+- No button/LED/NeoPixel candidate GPIO was found at all (see below), so
+  there is nothing to check for collision.
+- For completeness on the SS/MOSI/MISO/SCK=-1 declarations specifically:
+  verified in pfodWeb_src/build_boards.js (buildEsp32Board, ~line 526) that
+  `aliasesByGpio` construction skips any alias whose value fails
+  `Number.isInteger(gpio) || gpio < 0`, and the later per-GPIO capability
+  loop (~lines 698-703) only ever compares `g === ss` etc. against real
+  GPIO numbers (0-48) from `sortedGpios`. Since ss/mosi/miso/sck all equal
+  -1 here, `g === -1` can never be true for any g in range, so these four
+  aliases are a confirmed no-op: they cannot silently leak spi_ss/spi_mosi/
+  spi_miso/spi_sck onto any pin. No fix required.
+
+Pins considered but NOT tagged:
+- No onboard pushbutton, status LED, or NeoPixel exists on this bare
+  "engine" module. Confirmed by: (a) 4D Systems resource-center summary
+  describing "20 general-purpose GPIO available to the user" with no
+  mention of an onboard indicator LED or button; (b) full read of the
+  GFX4dESP32 library source (gfx4desp32.h/.cpp, spi_common.h, rgb_common.h,
+  touch.cpp, rtc.cpp) found no LED_PIN/BUTTON_PIN/NEOPIXEL-style constant
+  anywhere - only display/touch/RTC/SD pin macros. The one hit for "User
+  LED Widgets" (4D-AN-00291 app note title) refers to GUI widgets rendered
+  on the touchscreen by the graphics library, not physical hardware.
+  GPIO0 (BOOT strapping pin) was considered as a possible button candidate
+  per this codebase's usual ESP32-S3 pattern, but no source found describes
+  it as a general-purpose sketch-readable button on this module (module has
+  no exposed physical BOOT/RST buttons at all - being a bare FFC-connected
+  engine module, not a dev-kit with tactile switches) - left untagged,
+  consistent with prior precedent (amyboard, pico32, XIAO_ESP32S3, um_tinys3).
+
+Sources consulted:
+1. C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\esp32_s3r8n16\pins_arduino.h -
+   local file, read in full.
+2. C:\ai\aicode\pfodWeb\variants\esp32\boards.txt (grep "gen4-ESP32-S3R8n16")
+   - confirms one variant folder is shared across a 26-entry DisplayModel
+   menu spanning the whole gen4-ESP32/gen4-ESP32Q/ESP32-90 product family.
+3. https://resources.4dsystems.com.au/datasheets/esp32/gen4-esp32/ and
+   related gen4-ESP32Q-43 / ESP32-90 resource-center pages - blocked by
+   Cloudflare bot-check on direct/proxy fetch; content triangulated via
+   WebSearch snippet summaries instead (I2C pin-2/3 dedication, shared
+   Touch/RTC/IO-expander bus, single UART on pins 23/24 = GPIO43/44, 30-way
+   FFC connector, "20 general-purpose GPIO" claim).
+4. https://www.mouser.com/datasheet/2/451/gen4_ESP32_Series_Datasheet_R_1_0-3361726.pdf
+   and https://resources.4dsystems.com.au/downloads/esp32/gen4-ESP32-32/ -
+   both blocked (403 / bot-protection) on direct and proxy (r.jina.ai)
+   fetch; not used directly.
+5. https://github.com/4dsystems/GFX4dESP32 (4D Systems' own open-source
+   Arduino graphics/touch/RTC/SD library for this exact module family) -
+   fetched via GitHub API + raw.githubusercontent.com (bypasses the
+   Cloudflare block on the main site). This was the decisive source:
+   - src/gfx4desp32.h - DEFAULT_PIN_NUM_BK_LIGHT=2, DEFAULT_SD_SCK=12,
+     DEFAULT_SD_MISO=13, DEFAULT_SD_MOSI=11, DEFAULT_SD_CS=10.
+   - src/gfx4desp32_spi_common.h - full SPI-panel and QSPI-panel pin macro
+     sets (quoted above).
+   - src/gfx4desp32_rgb_common.h - full 16-bit RGB-parallel panel pin macro
+     set (quoted above) - shows this variant, under the RGB DisplayModel
+     option, uses nearly every GPIO on the chip.
+   - src/gfx4desp32_rtc.cpp line 15 - `Wire.begin(17, 18, 400000)` for the
+     onboard PCF8563 RTC, confirming GPIO17/18 is the same bus as pins_
+     arduino.h's SDA/SCL and is genuinely shared with onboard peripherals.
+   - src/gfx4desp32.cpp / gfx4desp32_touch.cpp / gfx4desp32_rgb_common.h -
+     searched, no button/LED/NeoPixel pin definitions found.
+6. https://forum.4dsystems.com.au/node/81005 ("Touch and i2c on ESP32") -
+   fetch blocked (403); WebSearch snippet confirms user-reported I2C
+   conflict between an external accelerometer and gfx.touch_Set(ENABLE) on
+   Wire1(17,18) - independently corroborates GPIO17/18 being a real,
+   documented, dual-use (internal + external) I2C bus.
+7. https://docs.platformio.org/en/latest/boards/espressif32/4d_systems_esp32s3_gen4_r8n16.html -
+   fetched successfully; generic PlatformIO board metadata only (240MHz,
+   16MB flash, 320KB RAM, esptool upload) - no pinout detail, but confirms
+   board identity/naming.
+
+Applied:
+- NO CHANGE. No board.json override was created for this board - the
+  existing chip-level default (variants/esp32/esp32s3/board.json) already
+  correctly represents every GPIO this module's silicon exposes.
+  TX(43)/RX(44) are handled generically by build_boards.js's serial_rx/
+  serial_tx branch. SDA(17)/SCL(18) correctly pick up i2c_sda/i2c_scl from
+  the generic alias-matching in build_boards.js - this is deliberately a
+  shared internal+external I2C bus per vendor documentation, not an
+  internal-only bus, so KEEP is correct. SS/MOSI/MISO/SCK=-1 are confirmed
+  no-ops (see collision check above) and correctly contribute no
+  capabilities to any pin. No display/touch/SD/backlight GPIO exclusion was
+  applied because none can be board-variant-correct: this single variant
+  folder is multiplexed at compile time across ~26 different physical
+  display products (SPI-panel, QSPI-panel, and RGB-parallel-panel) whose
+  display-bus pin sets are mutually different and, collectively, cover
+  almost the entire GPIO range - excluding any subset would be wrong for
+  whichever sub-products don't use those particular pins for their display.
+
+Summary: Discovery-sweep flag description was imprecise (the file has more
+than USB macros - TX/RX/SDA/SCL real aliases plus four deliberately-unset
+-1 placeholders), but its underlying "no dedicated hardware to exclude"
+conclusion is correct, and is now much more strongly justified than a
+typical single-fixed-hardware board: this ESP32-S3R8N16 module is a shared
+"engine" reused across ~26 different 4D Systems gen4-ESP32/-Q/ESP32-90
+display products (2.4"-9.0", SPI/QSPI/RGB-parallel panel interfaces),
+selected via a compile-time DisplayModel menu, so no single fixed pin
+exclusion list could be correct across the family - confirmed via 4D
+Systems' own open-source GFX4dESP32 library source, which shows the three
+panel-interface pin sets are mutually different and collectively span
+nearly every GPIO. SDA(17)/SCL(18) is confirmed (via Wire.begin(17,18) in
+the library's RTC driver, plus vendor doc) to be a genuinely dual-use bus
+(onboard Touch/RTC/IO-expander AND user-accessible), matching this
+codebase's established KEEP precedent. No onboard button/LED/NeoPixel
+exists. No board.json was created; this notes.txt is the sole record of
+the review so the board is not re-flagged in a future sweep.

@@ -1,0 +1,135 @@
+esp32p4_core_board (Espressif "ESP32P4 Core Board", chip esp32p4) - button/LED research notes
+Date: 2026-07-12
+
+Context: board.json already had a dedicated-hardware-exclusion pass (GPIO47-54 excluded as the
+onboard ESP32-C6 WiFi companion SDIO pins per BOARD_SDIO_ESP_HOSTED_* defines). That earlier pass
+never applied button/LED capability tagging - this pass covers that.
+
+Sources consulted:
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\esp32p4_core_board\pins_arduino.h (local, vendor file) -
+  full file read. Key lines:
+    #define PIN_RGB_LED 44
+    static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
+    #define RGB_BUILTIN LED_BUILTIN
+    #define RGB_BRIGHTNESS 64
+  and boilerplate comments (no #define):
+    // BOOT_MODE 35
+    // BOOT_MODE2 36 pullup
+  SDA=7, SCL=8, SS=30, MOSI=33, MISO=32, SCK=31, TX=37, RX=38 - none of these alias GPIO44, 35 or 36,
+  so no bus-alias collision to strip for the pins being tagged/considered.
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\esp32p4_core_board\board.json (pre-existing) - had a
+  NOTE about the GPIO47-54 exclusion but no button/LED NOTE yet.
+- C:\ai\aicode\pfodWeb\variants\esp32\boards.txt (lines ~3180-3346) - boards.txt entry name is
+  literally "ESP32P4 Core Board" (esp32p4_core_board.name=ESP32P4 Core Board), chip_variant
+  esp32p4_es/esp32p4, build.defines=-DBOARD_HAS_PSRAM, flash_size=16MB, default USB-OTG (TinyUSB).
+- WebFetch https://github.com/espressif/arduino-esp32/pull/12230/files - confirms this variant was
+  added to the official espressif/arduino-esp32 core by maintainer me-no-dev
+  ("feat(board): Add Support for ESP32-P4 Core Board"), matching PIN_RGB_LED=44, TX=37/RX=38,
+  SDA=7/SCL=8, MOSI=33/MISO=32/SCK=31/SS=30, and the SDIO ESP-Hosted WiFi-via-ESP32-C6 wiring - i.e.
+  this is Espressif's own generic/reference "core board" definition, not a single easily-identified
+  third-party consumer product page.
+- WebSearch + WebFetch for the closest matching physical product ("ESP32-P4 Core Board" /
+  "ESP32-P4 Module Core Board" with onboard ESP32-C6, 32MB PSRAM/16MB flash) turned up several
+  different vendors selling visually-similar "P4 + C6 core board" modules (Spotpear
+  "ESP32-P4 Module Core Board PSRAM 32MB Flash 16MB N16R32 Onboard ESP32-C6", a generic AliExpress
+  listing "ESP32-P4 Core Board 32MB PSRAM 16MB Flash, Onboard ESP32-C6", Waveshare
+  ESP32-P4-Module-DEV-KIT, GUITION JC-ESP32P4-M3-C6) - none could be confirmed as THE exact board this
+  Arduino-core variant models, and their SDIO/GPIO wiring details (e.g. Spotpear's C6 link described
+  via C6_U0RXD/TXD + GPIO4-15) do not match this variant's own BOARD_SDIO_ESP_HOSTED_* pins
+  (47-54), so none of them were treated as confirming evidence for this specific variant's hardware.
+- WebFetch https://spotpear.com/wiki/ESP32-P4-C6-Module-32MB-PSRAM-16MB-Flash-MIPI-DSI-CSI.html
+  (closest-named candidate product) - explicitly states no onboard RGB LED, and no dedicated physical
+  BOOT/RESET button ("GPIO36 (BOOT)... if pulled down before power-on" and "ESP_EN" are described as
+  bare GPIO/enable pins, not as button hardware). This is a different vendor product (does not match
+  this variant's GPIO47-54 SDIO wiring) so it is not used as confirming/denying evidence for this
+  variant, only as corroboration that "P4 Core Board"-class bare modules commonly ship WITHOUT a
+  physical BOOT pushbutton.
+- WebSearch "Espressif ESP32P4 Core Board BOOT button GPIO35 GPIO36" - confirms GPIO35/36 are standard
+  ESP32-P4 strapping pins used for serial-bootloader entry across Espressif's ESP32-P4 reference
+  designs generally (GPIO35 pulled low = download mode, GPIO36 must be HIGH), but this is generic
+  chip-level strapping-pin behavior, not confirmation of a physical pushbutton soldered on THIS
+  specific board.
+- Cross-checked sibling variants in this repo sharing the identical boilerplate comment text
+  ("// BOOT_MODE 35" / "// BOOT_MODE2 36 pullup"):
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\esp32p4\pins_arduino.h (generic esp32p4),
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\m5stack_tab5\pins_arduino.h,
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\dfrobot_firebeetle2_esp32p4\pins_arduino.h - all four
+  variants carry the exact same two comment lines verbatim, confirming this text is inherited
+  boilerplate copied across ESP32-P4 variants generally, not board-specific documentation.
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\dfrobot_firebeetle2_esp32p4\board.json shows that for
+  THAT board, GPIO35 WAS tagged "button" - but only after finding independent DFRobot wiki
+  confirmation (SKU_DFR1172 pinout page explicitly documents an onboard BOOT pushbutton on IO35).
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32p4\m5stack_tab5\board.json shows NO button tag was applied
+  there despite the identical boilerplate comment, consistent with the same "don't guess" policy
+  applied here.
+- Precedent for LED capability-tag naming and policy: reviewed
+  C:\ai\aicode\pfodWeb\boardsDetails\esp32\esp32s3\um_tinys3\notes.txt (Unexpected Maker TinyS3) -
+  confirms the same RGB_BUILTIN = RGB_DATA + SOC_GPIO_PIN_COUNT virtual-pin encoding pattern, tagged
+  "led_neopixel" with capabilities reduced to ["digital_output","led_neopixel","pwm_output"]
+  (digital_input dropped), and a "deliberate no-guess" policy of leaving an unconfirmed BOOT-adjacent
+  pin (GPIO0 there) untagged. Same capability-set convention was cross-checked against
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32c6\esp32c6\board.json (generic ESP32-C6 devkit, GPIO8
+  tagged led_neopixel with the identical 3-capability set).
+
+Virtual-pin resolution (LED_BUILTIN):
+  pins_arduino.h defines:
+    #define PIN_RGB_LED 44
+    static const uint8_t LED_BUILTIN = SOC_GPIO_PIN_COUNT + PIN_RGB_LED;
+  This is the same offset-encoding gotcha seen on Unexpected Maker boards this session
+  (RGB_BUILTIN = PIN_NEOPIXEL + SOC_GPIO_PIN_COUNT): LED_BUILTIN is NOT a real GPIO number - it is a
+  sentinel value that the Arduino-ESP32 core's digitalWrite()/rgbLedWrite() layer detects and
+  redirects to the RMT-driven addressable-LED driver on the REAL underlying pin, PIN_RGB_LED = GPIO44.
+  So the addressable RGB LED genuinely lives on GPIO44, not on some GPIO "80-something" virtual
+  number. build_boards.js does not resolve this encoding, so it was resolved manually here from the
+  vendor header alone (self-consistent, no external source needed to establish the real GPIO number -
+  only used external sources to look for corroborating product documentation and to check for a
+  physical button).
+
+Bus-alias collision check (per this session's repeated build_boards.js gotcha):
+  GPIO44 was checked against every other alias/const in the file: SDA(7), SCL(8), SS(30), MOSI(33),
+  MISO(32), SCK(31), TX(37), RX(38), A0-A7(16-23), T0-T13(2-15). No collision - GPIO44 is not
+  aliased as any bus pin anywhere in this file, so no boilerplate bus-alias line needed deleting.
+  (GPIO35/36, the strapping/BOOT_MODE pins under consideration for a button tag, were checked too -
+  also no bus-alias collisions - but the check is moot since neither was tagged.)
+
+Tagged:
+- GPIO44 -> "led_neopixel". Confirmed directly from vendor pins_arduino.h (#define PIN_RGB_LED 44,
+  used as the real pin behind the LED_BUILTIN/RGB_BUILTIN virtual-pin encoding for the new
+  rgbLedWrite() API). Capabilities changed from
+  ["digital_input","digital_output","pwm_output"] to
+  ["digital_output","led_neopixel","pwm_output"] (digital_input dropped), matching this repo's
+  established led_neopixel tagging convention.
+
+Considered but NOT tagged:
+- GPIO35 ("BOOT_MODE 35" comment) and GPIO36 ("BOOT_MODE2 36 pullup" comment) - considered as
+  candidates for a "button" capability tag because ESP32-P4 dev boards commonly wire a physical BOOT
+  pushbutton to GPIO35 (confirmed generically true by esptool/Espressif documentation, and confirmed
+  board-specifically true for the sibling dfrobot_firebeetle2_esp32p4 variant via DFRobot's own wiki).
+  However, for THIS specific "ESP32P4 Core Board" variant:
+    - pins_arduino.h has only a bare comment, no #define, and the identical comment text is copied
+      verbatim across all four ESP32-P4 variants in this repo regardless of whether they have a
+      confirmed physical button (dfrobot=yes, m5stack_tab5=no tag applied) - so the comment alone is
+      not board-specific evidence.
+    - No single vendor product could be confidently identified as THE exact hardware this official
+      Espressif Arduino-core variant models (multiple similarly-named "P4 + C6 core board" products
+      exist from different vendors with differing GPIO/SDIO wiring, none matching this variant's
+      GPIO47-54 SDIO pin assignment exactly).
+    - The one closely-matching candidate product page found (Spotpear ESP32-P4-C6 Module Core Board)
+      explicitly describes GPIO36 as a bare pull-up/pull-down pad, not a soldered pushbutton, and does
+      not mention any onboard RGB LED - consistent with (not contradicting) leaving both unconfirmed
+      hardware features untagged here, though this is a different vendor product so it is not treated
+      as authoritative for this variant either way.
+  This is a deliberate no-guess decision, consistent with the same policy already applied to
+  m5stack_tab5 in this repo for the identical boilerplate comment. Left completely untagged; a human
+  reviewer with the exact vendor's schematic for the specific physical board Espressif modeled this
+  Arduino-core variant on could confirm/deny a physical BOOT button and its real GPIO if desired.
+
+Summary of changes made: Tagged GPIO44 capabilities to
+["digital_output","led_neopixel","pwm_output"] in board.json (onboard addressable RGB LED, resolved
+from the LED_BUILTIN/RGB_BUILTIN virtual-pin offset encoding in pins_arduino.h to its real GPIO 44).
+Added a pfodWeb NOTE comment block at the top of board.json documenting this and the button
+non-decision. No button was tagged - no board-specific vendor confirmation of a physical BOOT/user
+pushbutton was found for this exact "ESP32P4 Core Board" variant (only generic ESP32-P4 strapping-pin
+behavior and boilerplate comment text shared across unrelated sibling variants, some tagged, some not).
+No bus-alias collisions were found for GPIO44 (or for GPIO35/36, moot since untagged), so no
+boilerplate alias lines needed deleting from pins_arduino.h.

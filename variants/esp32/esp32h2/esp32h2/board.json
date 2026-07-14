@@ -1,0 +1,79 @@
+// pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+// Board: Espressif's own generic "ESP32H2 Dev Module" entry, which
+// represents the official ESP32-H2-DevKitM-1 reference board. No
+// board.json override existed before this audit (used the chip-level
+// esp32h2/board.json default). Flagged by the discovery sweep for
+// having PIN_RGB_LED 8 / RGB_BRIGHTNESS 64 declared in pins_arduino.h
+// but never individually reviewed.
+//
+// Sources consulted:
+//  - https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32h2/esp32-h2-devkitm-1/user_guide.html
+//    Official Espressif esp-dev-kits documentation for the
+//    ESP32-H2-DevKitM-1. States: "Addressable RGB LED, driven by
+//    GPIO8. This means that all color data is transmitted serially
+//    through a single data line (GPIO8) to control the color of the
+//    RGB LED." The J3 pin header table also lists GPIO8 with a
+//    footnote "Used for driving RGB LED inside the module." The guide
+//    references an LED blink example for using the onboard RGB LED.
+//  - Same page's strapping-pin discussion confirms GPIO8/GPIO9 are
+//    strapping pins, matching this variant's own pinNotes below and
+//    the sibling esp32c3/c6 boards' precedent (RGB LED circuit is
+//    pre-tuned by Espressif not to interfere with boot on this pin).
+//
+// GPIO8 (PIN_RGB_LED / RGB_BUILTIN): CONFIRMED onboard WS2812
+// addressable RGB LED, directly stated by Espressif's own official
+// user guide for this exact reference board. High confidence - primary
+// vendor source for the exact physical board this generic Arduino IDE
+// entry models. Matches this repo's existing led_neopixel precedent
+// (esp32c3/esp32c3 GPIO8, esp32c6/esp32c6 GPIO8, waveshare_esp32_s3_zero
+// GPIO21, adafruit_qtpy_esp32c3 GPIO2).
+// Checked this variant's pins_arduino.h alias list - TX=24, RX=23,
+// SDA=12, SCL=22, SS=0, MOSI=25, MISO=11, SCK=10 - GPIO8 is not
+// aliased as any of those, so no conflicting boilerplate bus alias
+// exists for this pin. No pins_arduino.h edit was needed (unlike
+// esp32c3/esp32c3, which had to null out a colliding SDA=8 default).
+// Tagged capabilities ["digital_output","led_neopixel","pwm_output"]
+// (digital_input dropped, matching the esp32c3/esp32c6 led_neopixel
+// precedent for this exact dedicated-purpose pin).
+//
+// pinNotes "8": "Must be HIGH or floating on reboot" retained as-is -
+// expected/documented strapping behavior for this exact pin, consistent
+// with the onboard LED circuit being pre-tuned by Espressif for safe
+// boot per the user guide.
+//
+// See boardsDetails/esp32/esp32h2/esp32h2/notes.txt for the full
+// research trail.
+
+{
+  "boardName": "ESP32H2",
+  "displayName": "ESP32-H2 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble"],
+  "pinNotes": {
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "10": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "12": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "13": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "14": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "22": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "23": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "24": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "25": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

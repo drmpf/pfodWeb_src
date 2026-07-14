@@ -43,8 +43,8 @@
 
 //i2c
 
-static const uint8_t SDA = 40;
-static const uint8_t SCL = 39;
+// pfodWeb NOTE: SDA/SCL not declared — shared with the onboard
+// touch/RTC/IMU chips, not a general expansion port (see board.json).
 
 // UART0 pins
 static const uint8_t TX = 43;

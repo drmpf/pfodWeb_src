@@ -20,8 +20,6 @@
  *     "boardName":      "Uno",                  // required, output filename
  *     "displayName":    "Arduino Uno",          // required, shown in UI
  *     "family":         "avr" | "esp32",        // required, picks parser
- *     "defaultBaud":    9600,                   // required
- *     "supportedBauds": [300, ..., 115200],     // required
  *     "inputOnlyGpios": [34, 35, ...],          // optional, ESP32-style
  *     "usableGpios":    [0, 1, 2, ...]          // optional, ESP32-style
  *   }
@@ -99,8 +97,6 @@ const REQUIRED_BOARD_FIELDS = [
   'boardName',
   'displayName',
   'family',
-  'defaultBaud',
-  'supportedBauds',
   'inputOnlyGpios',
   // List of transports the board can talk pfod over.  Values are the
   // lowercase machine identifiers pfodCommon.html uses on the protocol
@@ -109,14 +105,22 @@ const REQUIRED_BOARD_FIELDS = [
   // via Bluetooth LE, TCP via the WiFi stack, HTTP via the WiFi stack
   // with a small server library).
   'connections',
-  // Map of GPIO-number-as-string to plain-text note shown under the pin
-  // label in the pin picker.  Use {} when a chip family has no boot-time
-  // pin restrictions (AVR) or when the notes have not yet been researched.
+  // Map of GPIO-number-as-string (ESP32/ESP8266/RP2040) or digital-pin-
+  // number-as-string (AVR — same number used for D<n>/A<n> naming, no
+  // GPIO concept applies) to plain-text note shown under the pin label
+  // in the pin picker.  Use {} when a chip family has no boot-time pin
+  // restrictions or when the notes have not yet been researched.
   'pinNotes',
-  // Map of GPIO-number-as-string to {capabilities, note?} describing every
-  // GPIO the chip silicon exposes.  GPIOs absent from pins_arduino.h are
-  // added as "GPIO<n>" with "Check if available on board" note.  Use {}
-  // for AVR boards (no GPIO concept applies).
+  // Map of GPIO-number-as-string (ESP32/ESP8266/RP2040) or digital-pin-
+  // number-as-string (AVR) to {capabilities, note?}.  For ESP32/ESP8266/
+  // RP2040 this describes every GPIO the chip silicon exposes — GPIOs
+  // absent from pins_arduino.h are added as "GPIO<n>" with "Check if
+  // available on board" note.  For AVR, an entry is optional per-pin: its
+  // `capabilities` array COMPLETELY REPLACES the auto-derived list for
+  // that digital pin (confirmed button/LED/NeoPixel tag, or `[]` to
+  // exclude a pin dedicated to onboard hardware) — the pin keeps its
+  // normal D<n>/A<n> name and label style, never "GPIO<n>".  Use {} when
+  // no pin on an AVR board has been researched/confirmed yet.
   'chipGpios',
   // Default PWM output range and Arduino method name.  All current boards
   // use analogWrite with 8-bit resolution: { min: 0, max: 255, method: "analogWrite" }.
@@ -133,7 +137,7 @@ const REQUIRED_BOARD_FIELDS = [
 /// Parsers known to this script — values that may appear in board.json's
 /// `family` field.  Adding support for a new MCU family means writing a
 /// build<Family>Board() function and registering its key here.
-const SUPPORTED_FAMILIES = new Set(['unlistedBoard', 'ccode', 'avr', 'esp32']);
+const SUPPORTED_FAMILIES = new Set(['unlistedBoard', 'ccode', 'avr', 'esp32', 'esp8266', 'rp2040']);
 
 /// Strip JSONC-style `//` line comments and `/* ... */` block comments
 /// from a text payload so the result is plain JSON ready for JSON.parse.
@@ -190,6 +194,51 @@ function stripJsonComments(text) {
     i++;
   }
   return out;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Shared hardware-identity capability vocabulary (button/LED/NeoPixel)
+// ──────────────────────────────────────────────────────────────────────
+//
+// Used by both the AVR and ESP32-style parsers so a board.json chipGpios
+// entry can attach a confirmed, researched hardware-identity tag to a
+// pin regardless of chip family — see PinType.js for what each one
+// means and why they're never inferred automatically from pins_arduino.h
+// alias names.
+
+/// Canonical capability emission order for chip-generic capabilities,
+/// plus the board-specific hardware-identity tags (button/LED) a
+/// board.json chipGpios entry can attach alongside them.
+const CAP_ORDER = [
+  'analog_input', 'analog_input_serial', 'digital_input', 'digital_output', 'pwm_output', 'dac_output',
+  'button',
+  'led_high', 'led_low', 'led_neopixel',
+  'led_r_high', 'led_r_low', 'led_g_high', 'led_g_low', 'led_b_high', 'led_b_low',
+];
+
+/// Human-readable text for a pin's chipGpios-tagged hardware identity —
+/// used to override the alias-derived label (e.g. "GPIO0 (Button)"
+/// instead of "GPKEY (GPIO0)", or on AVR "D13 (Led active high)")
+/// since the tag is researched/confirmed, while the pins_arduino.h alias
+/// name is often inconsistent or unclear.
+const HW_IDENTITY_LABEL = {
+  button:      'Button',
+  led_high:    'Led active high',
+  led_low:     'Led active low',
+  led_neopixel:'Led Neopixel',
+  led_r_high:  'Led Red active high',
+  led_r_low:   'Led Red active low',
+  led_g_high:  'Led Green active high',
+  led_g_low:   'Led Green active low',
+  led_b_high:  'Led Blue active high',
+  led_b_low:   'Led Blue active low',
+};
+function _hwIdentityLabel(caps) {
+  if (!caps) return null;
+  for (const c of caps) {
+    if (HW_IDENTITY_LABEL[c]) return HW_IDENTITY_LABEL[c];
+  }
+  return null;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -274,7 +323,7 @@ function countAvrSerials(src) {
 /// transports list + the chip's serial config.  Returned shape:
 ///
 ///   {
-///     serial: { availablePorts, defaultPort, defaultBaud, supportedBauds },
+///     serial: { availablePorts, defaultPort },
 ///     ble:    {},                  // present iff supported, body for future config
 ///     tcp:    {},
 ///     http:   {}
@@ -284,29 +333,33 @@ function countAvrSerials(src) {
 /// non-serial values are empty objects today because no per-protocol
 /// config has been needed yet (a future change can fill them without
 /// touching call sites).  Serial is special-cased because every board
-/// has serial and the serial-specific fields (baud rates, port list)
-/// live at the top level of the source board.json — they get rolled
-/// into the serial entry here.
+/// has serial and the serial-specific fields (port list) live at the
+/// top level of the source board.json — they get rolled into the
+/// serial entry here.
 ///
 /// @param {object}   cfg            — parsed board.json (must carry
-///                                    `connections` array, `defaultBaud`,
-///                                    `supportedBauds`)
+///                                    `connections` array)
 /// @param {string[]} availablePorts — board-specific serial port list
 ///                                    (e.g. ['Serial', 'Serial1'] for mega)
 /// @returns {object}
 function _buildConnectionsBlock(cfg, availablePorts) {
+  const templateIds = cfg.inoTemplateIds || {};
   const out = {};
   for (const proto of cfg.connections) {
     if (proto === 'serial') {
       out.serial = {
         availablePorts,
         defaultPort:    availablePorts[0],
-        defaultBaud:    cfg.defaultBaud,
-        supportedBauds: cfg.supportedBauds,
       };
     } else {
       out[proto] = {};
     }
+    // Reference into the shared INO_TEMPLATES registry (designer/boards/
+    // shared/inoTemplates.js) rather than embedding the .ino text itself —
+    // hundreds of boards share the same handful of template files (e.g.
+    // one root-level serial.ino), so only a small id string is duplicated
+    // per board, not the file content.
+    if (templateIds[proto]) out[proto].inoTemplateId = templateIds[proto];
   }
   return out;
 }
@@ -351,6 +404,17 @@ function buildAvrBoard(src, cfg) {
     serialPinMap[1] = { unit: 0, dir: 'TX' };
   }
 
+  // Optional per-pin research overrides, keyed by digital pin number as
+  // string (same number used for D<n>/A<n> naming — AVR has no GPIO
+  // concept, so this is never "GPIO<n>").  A chipGpios entry's
+  // `capabilities` array COMPLETELY REPLACES the auto-derived list below
+  // for that pin (confirmed button/LED/NeoPixel tag, or `[]` to exclude a
+  // pin dedicated to onboard hardware) — same semantics as the ESP32/
+  // RP2040 parsers.  Both maps default to {} on every board until
+  // researched.
+  const chipGpiosMap = cfg.chipGpios || {};
+  const pinNotesMap  = cfg.pinNotes  || {};
+
   const pins = [];
   for (let p = 0; p < numDigital; p++) {
     const isAnalog = analogOffset !== null
@@ -359,17 +423,32 @@ function buildAvrBoard(src, cfg) {
     const name     = isAnalog ? ('A' + (p - analogOffset)) : ('D' + p);
     // A<n> names are real Arduino constants; D<n> names are not — use the number.
     const codeName = isAnalog ? name : String(p);
+    const chipEntry = chipGpiosMap[String(p)];
 
-    const caps     = [];
-    const fnLabels = [];
+    let caps;
+    let label;
 
     const ser = serialPinMap[p];
     if (ser) {
-      // USART hardware lines: dedicated, no parallel digital role.
-      caps.push(ser.dir === 'RX' ? 'serial_rx' : 'serial_tx');
+      // USART hardware lines: dedicated, no parallel digital role. Not
+      // overridable via chipGpios — a button/LED tag on a pin committed
+      // to the default Serial port could never actually take effect.
+      caps = [ser.dir === 'RX' ? 'serial_rx' : 'serial_tx'];
       const suffix = totalSerials > 1 ? String(ser.unit) : '';
-      fnLabels.push(ser.dir + suffix);
+      label = name + ' (' + ser.dir + suffix + ')';
+    } else if (chipEntry && chipEntry.capabilities) {
+      // Researched override: replaces every auto-derived capability
+      // below, including the bus-role tags, so a confirmed button/LED
+      // pin never silently picks up a spurious SS/MOSI/SDA/etc. tag from
+      // this board's default SPI/Wire pin assignment (the contamination
+      // bug documented in the pin-audit playbook, section 12).
+      const chipSet = new Set(chipEntry.capabilities);
+      caps = CAP_ORDER.filter(c => chipSet.has(c));
+      const hwLabel = _hwIdentityLabel(chipEntry.capabilities);
+      label = hwLabel ? (name + ' (' + hwLabel + ')') : name;
     } else {
+      caps = [];
+      const fnLabels = [];
       if (isAnalog) caps.push('analog_input');
       caps.push('digital_input', 'digital_output');
       if (pwmFn(p)) caps.push('pwm_output');
@@ -379,12 +458,15 @@ function buildAvrBoard(src, cfg) {
       if (p === spiSck)  { caps.push('spi_sck');  fnLabels.push('SCK');  }
       if (p === wireSda) { caps.push('i2c_sda');  fnLabels.push('SDA');  }
       if (p === wireScl) { caps.push('i2c_scl');  fnLabels.push('SCL');  }
+      label = fnLabels.length > 0 ? (name + ' (' + fnLabels.join(', ') + ')') : name;
     }
 
-    const label = fnLabels.length > 0
-                ? (name + ' (' + fnLabels.join(', ') + ')')
-                : name;
-    pins.push({ name, label, codeName, capabilities: caps });
+    const pinObj = { name, label, codeName, capabilities: caps };
+    const noteParts = [];
+    if (pinNotesMap[String(p)]) noteParts.push(pinNotesMap[String(p)]);
+    if (chipEntry && chipEntry.note) noteParts.push(chipEntry.note);
+    if (noteParts.length > 0) pinObj.notes = noteParts.join('\n');
+    pins.push(pinObj);
   }
 
   // Build the Serial port list: Serial, Serial1, Serial2, ... (one per USART).
@@ -440,20 +522,38 @@ function parseEsp32Consts(src) {
   const out     = {};
   const pending = [];   // [aliasName, refName] for pass-2 resolution
 
-  const re = /static\s+(?:const|constexpr)\s+uint8_t\s+(\w+)\s*=\s*(\d+|[A-Za-z_]\w*)\s*;/g;
+  // Numeric literals may be bare (`= 1;`, ESP32/ESP8266 style) or wrapped
+  // in parens with an unsigned suffix (`= (0u);`, arduino-pico/RP2040
+  // style) — both are matched by the first alternative below; the second
+  // alternative is an alias to another const/define.
+  const re = /static\s+(?:const|constexpr)\s+uint8_t\s+(\w+)\s*=\s*(?:\(?\s*(\d+)u?\s*\)?|([A-Za-z_]\w*))\s*;/g;
   let m;
   while ((m = re.exec(src)) !== null) {
-    const name = m[1], rhs = m[2];
-    if (/^\d+$/.test(rhs)) {
-      out[name] = parseInt(rhs, 10);
+    const name = m[1];
+    if (m[2] !== undefined) {
+      out[name] = parseInt(m[2], 10);
     } else {
-      pending.push([name, rhs]);
+      pending.push([name, m[3]]);
     }
   }
 
+  // Some cores (e.g. ESP8266's common.h) declare a pin alias one level
+  // removed from the number, via a #define rather than a peer static
+  // const: `#define PIN_A0 (17)` then `static const uint8_t A0 = PIN_A0;`.
+  // Collect numeric #defines here so pass-2 below can resolve through
+  // them — but only as a fallback for an alias chain that already names
+  // them, never harvested wholesale, so unrelated numeric defines (e.g.
+  // `NEOPIXEL_NUM 1`) are never mistaken for a GPIO.
+  const defines = {};
+  const defineRe = /#define\s+(\w+)\s+\(?\s*(\d+)\s*\)?/g;
+  while ((m = defineRe.exec(src)) !== null) {
+    defines[m[1]] = parseInt(m[2], 10);
+  }
+
   // Fixed-point alias resolution.  Each pass copies any pending alias
-  // whose referent is now known; loop until a pass makes no progress.
-  // Names already in `out` from a direct numeric assignment win over an
+  // whose referent is now known (either a peer static-const pin or a
+  // numeric #define); loop until a pass makes no progress.  Names
+  // already in `out` from a direct numeric assignment win over an
   // alias of the same name (no overwrite).
   let changed;
   do {
@@ -462,6 +562,9 @@ function parseEsp32Consts(src) {
       if (name in out) continue;
       if (ref in out) {
         out[name] = out[ref];
+        changed = true;
+      } else if (ref in defines) {
+        out[name] = defines[ref];
         changed = true;
       }
     }
@@ -571,8 +674,8 @@ function buildEsp32Board(src, cfg) {
     return nonTouch[0];
   }
 
-  // Canonical capability emission order for chip-generic capabilities.
-  const CAP_ORDER = ['analog_input', 'analog_input_serial', 'digital_input', 'digital_output', 'pwm_output', 'dac_output'];
+  // CAP_ORDER / HW_IDENTITY_LABEL / _hwIdentityLabel are defined at module
+  // scope above (shared with buildAvrBoard).
 
   const pins = [];
   const sortedGpios = [...allGpios].sort((a, b) => a - b);
@@ -594,18 +697,29 @@ function buildEsp32Board(src, cfg) {
 
     // TX/RX pins are treated as dedicated USART lines (parallel-digital
     // re-use is technically possible via the pin matrix but conflicts
-    // with the default Serial port — matches the AVR convention).
-    if (g === rx) {
+    // with the default Serial port — matches the AVR convention).  A
+    // chip-level chipGpios entry can also force this role directly —
+    // needed for chips (e.g. ESP8266) whose vendor pins_arduino.h files
+    // don't consistently alias the UART pins as literal TX/RX names.
+    const chipEntry  = chipGpiosMap[String(g)];
+    const hwLabel    = chipEntry && _hwIdentityLabel(chipEntry.capabilities);
+    if (hwLabel) label = gpioToken + ' (' + hwLabel + ')';
+    const forcedRole = chipEntry && chipEntry.capabilities
+      ? (chipEntry.capabilities.includes('serial_rx') ? 'serial_rx'
+         : chipEntry.capabilities.includes('serial_tx') ? 'serial_tx' : null)
+      : null;
+
+    if (g === rx || forcedRole === 'serial_rx') {
       const pinObj = { name, label, codeName, capabilities: ['serial_rx'] };
-      const strapNote = pinNotesMap[String(g)];
-      if (strapNote) pinObj.notes = strapNote;
+      const note = pinNotesMap[String(g)] || (chipEntry && chipEntry.note);
+      if (note) pinObj.notes = note;
       pins.push(pinObj);
       continue;
     }
-    if (g === tx) {
+    if (g === tx || forcedRole === 'serial_tx') {
       const pinObj = { name, label, codeName, capabilities: ['serial_tx'] };
-      const strapNote = pinNotesMap[String(g)];
-      if (strapNote) pinObj.notes = strapNote;
+      const note = pinNotesMap[String(g)] || (chipEntry && chipEntry.note);
+      if (note) pinObj.notes = note;
       pins.push(pinObj);
       continue;
     }
@@ -613,7 +727,6 @@ function buildEsp32Board(src, cfg) {
     // Build base capabilities from chipGpios when available (sourced from
     // datasheets — preferred), else fall back to the old derivation using
     // inputOnlySet and alias analysis.
-    const chipEntry = chipGpiosMap[String(g)];
     let caps;
     if (chipEntry && chipEntry.capabilities) {
       const chipSet = new Set(chipEntry.capabilities);
@@ -641,13 +754,18 @@ function buildEsp32Board(src, cfg) {
 
     // Assemble notes.  Order: strapping note (highest priority), then
     // chip-level note (e.g. flash/USB), then "Check if available on board"
-    // for GPIOs absent from pins_arduino.h.
+    // for GPIOs absent from pins_arduino.h.  Suppressed for the esp32 and
+    // esp8266 families: their per-board pin-exclusion audits already strip
+    // every genuinely-internal/dedicated GPIO out of chipGpios, so a GPIO
+    // that reaches this point without a pins_arduino.h alias is a
+    // confirmed, just-unnamed pin, not an unverified one.  Left in place
+    // for rp2040, which hasn't had the same board-by-board audit.
     const noteParts = [];
     const strapNote = pinNotesMap[String(g)];
     if (strapNote) noteParts.push(strapNote);
     const chipNote = chipEntry && chipEntry.note;
     if (chipNote) noteParts.push(chipNote);
-    if (!inPinsH) noteParts.push('Check if available on board');
+    if (!inPinsH && cfg.family !== 'esp32' && cfg.family !== 'esp8266') noteParts.push('Check if available on board');
     const finalNote = noteParts.join('\n');
 
     const pinObj = { name, label, codeName, capabilities: caps };
@@ -738,9 +856,6 @@ function _loadBoardConfig(jsonPath) {
       issues.push('unsupported family: "' + cfg.family + '"' +
                   '  (known: ' + [...SUPPORTED_FAMILIES].join(', ') + ')');
     }
-    if (!Array.isArray(cfg.supportedBauds)) {
-      issues.push('field "supportedBauds" must be an array');
-    }
     if (!Array.isArray(cfg.inputOnlyGpios)) {
       issues.push('field "inputOnlyGpios" must be an array (use [] when N/A)');
     }
@@ -827,15 +942,22 @@ function _lookupAllBoardsTxt(boardsTxtPath, variantDirName) {
 /// (cached by absolute path) so a single typo is reported once even when
 /// many variants reference the same config.
 ///
-/// @returns {Array<object>} each entry is a shallow clone of the parsed
-///                          board.json with an additional `variantPath`
-///                          (absolute path to the matching pins_arduino.h).
+/// @returns {{boards: Array<object>, inoTemplates: Object<string,string>}}
+///   `boards` — one entry per board, each a shallow clone of the parsed
+///   board.json with an additional `variantPath` (absolute path to the
+///   matching pins_arduino.h).
+///   `inoTemplates` — every distinct `<connectionId>.ino` file discovered,
+///   keyed by its path relative to variants/ (e.g. "serial.ino",
+///   "esp32/ble.ino").  Each board's `inoTemplateIds` field (see below)
+///   references into this map by key rather than embedding the file
+///   text, so a template shared by hundreds of boards is stored once.
 function discoverVariants() {
   const variantsRoot = path.resolve(__dirname, '..', 'variants');
   const out = [];
+  const inoTemplates = {};
   if (!fs.existsSync(variantsRoot)) {
     console.warn('Variants root not found: ' + variantsRoot);
-    return out;
+    return { boards: out, inoTemplates };
   }
 
   // Cache board.json parses so a shared chip-level config is validated
@@ -909,6 +1031,23 @@ function discoverVariants() {
     }
   };
 
+  // Resolve the nearest `<connectionId>.ino` template for a variant
+  // directory (same nearest-ancestor rule as board.json/family.json) and
+  // register its content in the `inoTemplates` registry keyed by its
+  // path relative to variants/ — so a template shared by many boards
+  // (e.g. the root-level serial.ino) is read and stored exactly once,
+  // no matter how many variants resolve to it.  Returns the relative
+  // key, or null if no template of that connection type was found.
+  const registerInoTemplate = (dir, connectionId) => {
+    const inoPath = nearestAncestorFile(dir, connectionId + '.ino');
+    if (inoPath === null) return null;
+    const relKey = path.relative(variantsRoot, inoPath).split(path.sep).join('/');
+    if (!(relKey in inoTemplates)) {
+      inoTemplates[relKey] = fs.readFileSync(inoPath, 'utf8');
+    }
+    return relKey;
+  };
+
   // When a variant has no board.json in its ancestry, follow any
   // `#include "relative/pins_arduino.h"` directive in the variant's own
   // header and search for board.json starting from the included file's
@@ -965,6 +1104,21 @@ function discoverVariants() {
 
         const { familyDisplayName, familySortOrder, familyConnectionTypes } = loadFamilyConfig(dir, cfg.family);
 
+        // Resolve each supported connection's .ino template, nearest
+        // ancestor wins (variant dir overrides chip overrides family
+        // overrides the variants/ root).  'serial' must always resolve —
+        // every board declares it and variants/serial.ino covers the
+        // fallback — so a miss here is a real configuration problem.
+        const inoTemplateIds = {};
+        for (const proto of cfg.connections) {
+          const relKey = registerInoTemplate(dir, proto);
+          if (relKey !== null) inoTemplateIds[proto] = relKey;
+        }
+        if (cfg.connections.includes('serial') && !inoTemplateIds.serial) {
+          _reportConfigIssues(dir, ['no serial.ino found in this directory or any ancestor up to variants/ (expected variants/serial.ino)']);
+          continue;
+        }
+
         if (hits.length > 0) {
           // Clone so per-board boardName / displayName do not leak across
           // boards sharing the same chip-level board.json.
@@ -977,11 +1131,12 @@ function discoverVariants() {
               familyDisplayName,
               familySortOrder,
               familyConnectionTypes,
+              inoTemplateIds,
             }));
           }
         } else {
           // No boards.txt match — use the board.json fallback values.
-          out.push(Object.assign({}, cfg, { variantPath: p, prefix, familyDisplayName, familySortOrder, familyConnectionTypes }));
+          out.push(Object.assign({}, cfg, { variantPath: p, prefix, familyDisplayName, familySortOrder, familyConnectionTypes, inoTemplateIds }));
         }
       }
     }
@@ -994,18 +1149,43 @@ function discoverVariants() {
     const kb = b.prefix + '_' + b.boardName;
     return ka.localeCompare(kb);
   });
-  return out;
+  return { boards: out, inoTemplates };
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Entry point
 // ──────────────────────────────────────────────────────────────────────
 
+/// Write the shared INO_TEMPLATES registry consumed at runtime by
+/// generateCode.js's _generateIno().  One entry per distinct
+/// `<connectionId>.ino` file discovered under variants/, keyed by its
+/// path relative to variants/ (e.g. "serial.ino", "esp32/ble.ino") —
+/// the same key each board's connections[proto].inoTemplateId carries.
+/// Lives under designer/boards/shared/ so build-bundle.js's
+/// discoverBoardJsonFiles() (which skips that directory) never mistakes
+/// it for a per-board data file.
+function writeInoTemplates(scriptDir, inoTemplates) {
+  const outDir  = path.join(scriptDir, 'designer', 'boards', 'shared');
+  const outPath = path.join(outDir, 'inoTemplates.js');
+  fs.mkdirSync(outDir, { recursive: true });
+  const keys = Object.keys(inoTemplates).sort();
+  const body = keys.map((k) => '  ' + JSON.stringify(k) + ': ' + JSON.stringify(inoTemplates[k])).join(',\n');
+  const content =
+    '/*\n' +
+    ' * designer/boards/shared/inoTemplates.js\n' +
+    ' * AUTO-GENERATED by build_boards.js from the .ino files under variants/ — do not edit by hand.\n' +
+    ' * Edit the source .ino file under variants/ and re-run build_boards.js instead.\n' +
+    ' */\n' +
+    'const INO_TEMPLATES = Object.freeze({\n' + body + '\n});\n';
+  fs.writeFileSync(outPath, content, 'utf8');
+  console.log('Wrote ' + path.relative(scriptDir, outPath) + '  (' + keys.length + ' template' + (keys.length === 1 ? '' : 's') + ')');
+}
+
 function main() {
   const scriptDir = __dirname;
   const outBase   = path.join(scriptDir, 'designer', 'boards');
 
-  const boards = discoverVariants();
+  const { boards, inoTemplates } = discoverVariants();
   if (boards.length === 0) {
     console.error('No variant directories with pins_arduino.h + board.json found under ../variants/');
     process.exitCode = 1;
@@ -1015,7 +1195,9 @@ function main() {
   for (const cfg of boards) {
     const src = resolveIncludes(fs.readFileSync(cfg.variantPath, 'utf8'), cfg.variantPath);
 
-    const board = (cfg.family === 'esp32')          ? buildEsp32Board(src, cfg)
+    const board = (cfg.family === 'esp32' ||
+                   cfg.family === 'esp8266' ||
+                   cfg.family === 'rp2040')          ? buildEsp32Board(src, cfg)
                 : (cfg.family === 'ccode'  ||
                    cfg.family === 'unlistedBoard') ? buildCcodeBoard(src, cfg)
                 : buildAvrBoard(src, cfg);
@@ -1043,6 +1225,8 @@ function main() {
                 serialPorts + ' serial port' + (serialPorts === 1 ? '' : 's') +
                 ', transports: ' + protoSummary + ')');
   }
+
+  writeInoTemplates(scriptDir, inoTemplates);
 
   // Any board.json that failed validation already printed its issues —
   // surface the failure to the shell wrapper so build_boards.{bat,sh}

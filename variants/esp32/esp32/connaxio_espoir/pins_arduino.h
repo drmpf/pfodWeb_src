@@ -59,7 +59,8 @@ static const uint8_t SDO = 13;
 static const uint8_t SDI = 12;
 
 /* Ethernet interface */
-static const uint8_t ETH_INT = 35;
+// pfodWeb NOTE: ETH_INT (GPIO35) deliberately NOT declared - dedicated
+// onboard Ethernet PHY interrupt, not general-purpose (see board.json).
 #define ETH_PHY_ADDR  0
 #define ETH_PHY_POWER -1
 #define ETH_PHY_MDC   32

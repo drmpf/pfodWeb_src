@@ -32,12 +32,10 @@ static const uint8_t D6 = 21;  //I/O   SDA GPIO21, VSPIHD, EMAC_TX_EN
 static const uint8_t D7 = 22;  //I/O   SCl GPIO22, VSPIWP, U0RTS, EMAC_TXD1
 
 //Second Segment - Sector -02 (Voltage (*5v or 3.3V) can be selected by using D8-11 Jumper
-static const uint8_t D8 = 5;  //I/O  GPIO5, VSPICS0, HS1_DATA6, EMAC_RX_CLK
-static const uint8_t D9 =
-  23;  //I/O GPIO23, VSPID, HS1_STROBE  **********************************************Don not use when display "ON or USE"*************************
-static const uint8_t D10 = 19;  //I/O GPIO19, VSPIQ, U0CTS, EMAC_TXD0
-static const uint8_t D11 =
-  18;  //I/O GPIO18, VSPICLK, HS1_DATA7 **********************************************Don not use when display "ON or USE"*************************
+// pfodWeb NOTE: D8-D11 (GPIO5/23/19/18) deliberately NOT declared - the
+// vendor's own comments flag D9/D11 as unusable while the onboard
+// display is active, and D8/D10 are the rest of that same "Software
+// VSPI" bus (see VMOSI/VMISO/VSCK/VSS below).
 
 // Analog to Digital Converter (Support 5V) ADC2 pins not recommended while using Wifi
 static const uint8_t A0 /*ADC2_CH3 */ = 12;  //MAX 5V,I/O GPIO12, ADC2_CH5, TOUCH5, RTC_GPIO15, MTDI, HSPIQ, HS2_DATA2,SD_DATA2, EMAC_TXD3
@@ -68,18 +66,10 @@ static const uint8_t MISO = 12;  // 12;
 static const uint8_t SCK = 14;   // 14;
 static const uint8_t SS = 15;    // 15;
 
-/* Software VSPI [Note : D9 and D11 Do not use when display "ON or USE"]*/
-static const uint8_t VMOSI = 23;  //23 /*Do not use when display "ON or USE"*/
-static const uint8_t VMISO = 19;  // 19
-static const uint8_t VSCK = 18;   // 18 /*Do not use when display "ON or USE"*/
-static const uint8_t VSS = 5;     // 5
-
-// Inbuilt Display Unit 128*128 ST7735 Driver
-static const uint8_t RST = 33;      // - RESET GPIO33, XTAL_32K_N (32.768 kHz crystal oscillator output),ADC1_CH5, TOUCH8, RTC_GPIO8
-static const uint8_t CLK = 18;      // - (18) CLK  (D11) and  D9 pin will engaged when display "ON or USE"
-static const uint8_t CS = 27;       // - CS    GPIO27, ADC2_CH7, TOUCH7, RTC_GPIO17, EMAC_RX_DV
-static const uint8_t DC = 32;       //- DC/A0 GPIO32, XTAL_32K_P (32.768 kHz crystal oscillator input), ADC1_CH4,TOUCH9, RTC_GPIO9
-static const uint8_t ST_MOSI = 23;  // - MOSI (D9) This D9 pin will engaged when display "ON or USE"
+// pfodWeb NOTE: VMOSI/VMISO/VSCK/VSS (the "Software VSPI" bus) and
+// RST/CLK/CS/DC/ST_MOSI deliberately NOT declared - dedicated onboard
+// 128x128 ST7735 display, per the vendor's own "do not use when display
+// ON or USE" comments (see board.json chipGpios override).
 
 static const uint8_t MTDO = 15;  // A4 JTAG SIGNAL -> TDO
 static const uint8_t MTDI = 12;  // A0 JTAG SIGNAL -> TDI

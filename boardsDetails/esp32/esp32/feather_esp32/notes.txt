@@ -1,0 +1,148 @@
+Board: feather_esp32 (chip: esp32)
+Directory: variants/esp32/esp32/feather_esp32/
+Audit date: 2026-07-12
+Task: dedicated-hardware pin-exclusion audit, flagged for:
+      static const uint8_t BATT_MONITOR = 35;
+      #define BAT_VOLT_PIN BATT_MONITOR
+      (TX1/RX1 are just `#define TX1 TX` / `#define RX1 RX` aliases of the
+      existing primary TX(17)/RX(16), not new GPIOs - false positive.)
+      Also flagged per playbook precedent: two commented-out
+      "//static const uint8_t Ax = 0;" / "...Ax = 2;" reference lines,
+      needing verification the parser truly ignores them.
+
+SOURCES CONSULTED
+-----------------
+1. https://learn.adafruit.com/adafruit-huzzah32-esp32-feather/pinouts?view=all
+   Confirms this is Adafruit's "HUZZAH32 - ESP32 Feather" (product 3405).
+   - "A13 - This is general purpose input #35 and also an analog input
+     A13, which is a resistor divider connected to the VBAT line."
+   - "13 - This is GPIO #13 and also an analog input A12 on ADC #2. It's
+     also connected to the red LED next to the USB port."
+   - No exact resistor divider values (ohms) found on this page.
+
+2. https://learn.adafruit.com/adafruit-huzzah32-esp32-feather/power-management
+   - "You can read half of the battery voltage off of A13 also known as
+     GPIO 35. Don't forget to double the voltage you read, since there is
+     a divider." Confirms a 2x (i.e. equal-resistor, R_series = R_shunt)
+     divider ratio, but does not give the actual resistor values.
+
+3. GitHub schematic/board files
+   (https://github.com/adafruit/Adafruit-HUZZAH32-ESP32-Feather-PCB -
+   Adafruit HUZZAH32 ESP32 Feather.sch / .brd) - DEAD END for exact
+   resistor values via automated fetch: the Eagle .sch is XML but the
+   fetch tool could only retrieve the component-footprint library
+   section, not the actual placed-component/net-list body, so the real
+   R1/R2 designators and ohm values could not be confirmed this session.
+   A WebSearch snippet claimed "100k ohms voltage divider" but did not
+   show both resistor values, so it was not treated as a confirmed exact
+   figure - only the doubling relationship from source 2 (an official
+   Adafruit statement) was used.
+
+4. https://learn.adafruit.com/adafruit-huzzah32-esp32-feather/overview?view=all
+   and https://www.adafruit.com/product/3405 - fetched but did not
+   surface button/LED-specific text (fetch tool's summarization missed
+   it); not used as a primary source for the button/LED findings below.
+
+5. https://learn.adafruit.com/huzzah32-esp32-breakout-board/pinouts
+   (sibling "Breakout Board" product 4172, same HUZZAH32 module/pinout
+   convention) - "IO0 - Used primarily for bootloader detect. Hold low
+   while resetting to enter the bootloader. This is also connected to a
+   small tactile button on the board." Cross-checked against a WebSearch
+   summary of the Feather-specific pinouts guide returning the identical
+   text ("hold down the GPIO #0 button and click Reset button, then
+   release the #0 button") attributed to the Feather page itself -
+   treated as confirmed for feather_esp32 too, since both HUZZAH32-based
+   boards share the same GPIO0 boot-select tactile-button hardware
+   convention and this board's own board.json pinNotes already document
+   "Must be HIGH or floating on reboot" for GPIO0, consistent with a
+   button that pulls it LOW when pressed.
+
+6. General knowledge of the Adafruit Feather ESP32 product line's LED
+   convention (multiple other Feather-family boards already audited in
+   this session's playbook use active-HIGH for their onboard LED, e.g.
+   esp32thing_plus's GPIO13 "led_high") - used only as corroborating
+   context for the LED polarity, not as the sole basis; the primary
+   basis is Adafruit's own pinouts-page confirmation that GPIO13 drives
+   the red LED next to the USB port.
+
+FINDINGS AND DECISIONS
+-----------------------
+GPIO35 (BATT_MONITOR / A13, #define BAT_VOLT_PIN BATT_MONITOR):
+  Confirmed genuine onboard battery-voltage-sense pin via Adafruit's own
+  docs (sources 1 and 2). KEEP per playbook policy for battery/voltage-
+  monitor analog pins - this is exactly the kind of reading pfodWeb's
+  own UI is meant to display. No capability change needed (GPIO35 is
+  already restricted to analog_input/digital_input via the chip-level
+  inputOnlyGpios list, since it's in the 34-39 input-only range).
+  ADC reference decision: the divider only scales THIS pin's reading
+  (read raw, multiply by 2), not the board's ADC hardware reference
+  itself - board.json's "adc.defaultRefVolts" stays at the chip default
+  3.3V (unchanged), matching the esp32-devkit-lipo precedent for the
+  same situation. Added an informational pinNotes["35"] entry describing
+  the doubling relationship, citing source 2's exact wording. Exact
+  resistor values (for a formal "3.3V * (R_series+R_shunt)/R_shunt"
+  computation) were not found (see source 3's dead end) - per the task's
+  own instruction, left as documented-but-uncomputed rather than guessed.
+
+Commented-out "//static const uint8_t Ax = 0;" / "...Ax = 2;" lines:
+  NOT harmless. build_boards.js's actual parser regex
+  (`/static\s+(?:const|constexpr)\s+uint8_t\s+(\w+)\s*=\s*.../g` in
+  parseEsp32Consts()) is a plain regex scan of the whole flattened file
+  text with no line-start anchor and no comment-stripping step - it
+  matched both "commented-out" lines despite the leading "//", producing
+  a phantom alias entry "Ax" that (since direct numeric assignments
+  overwrite `out[name]` unconditionally, with no "already assigned"
+  guard, unlike the alias-resolution pass) resolved to whichever line's
+  match ran last in the scan (Ax = 2, i.e. GPIO2 - the second line in the
+  file). This would have caused GPIO2 to be labelled/coded using the
+  nonexistent identifier "Ax" (via _primaryAlias/_codeAlias, since "Ax"
+  doesn't match the A<digits> regex and so isn't recognized as a normal
+  analog alias) in the generated board JSON and any device code that
+  referenced it - a real, not hypothetical, instance of playbook section
+  5 gotcha #2 ("commented-out reference lines still match"). Confirmed
+  no other live (non-comment) declaration of the name "Ax" exists
+  anywhere else in the file. Fix applied: deleted both lines entirely
+  from pins_arduino.h (not just left as comments) - see board.json's own
+  `// pfodWeb NOTE:` header, which describes this in plain English
+  without repeating the original declaration text.
+
+GPIO0 (no alias in this board's own pins_arduino.h - chip-level-only):
+  Confirmed onboard tactile "0" button used for bootloader-select (hold
+  low while tapping Reset to enter bootloader), per sources 1 and 5.
+  Tagged "button" - chipGpios["0"].capabilities = ["digital_input",
+  "button"] only, per section 7a (no analog_input_serial/digital_output/
+  pwm_output alongside the tag). Checked against TX(17)/RX(16) - no
+  collision, tag takes effect normally.
+
+GPIO13 (LED_BUILTIN, also A12/T4 in this board's own pins_arduino.h):
+  Confirmed onboard red LED next to the USB port, per source 1. Tagged
+  "led_high" (active-high) - chipGpios["13"].capabilities =
+  ["digital_output", "pwm_output", "led_high"] only (digital_input/
+  analog_input_serial dropped per section 7a's exclusion rule; pwm_output
+  retained since GPIO13 is a normal bidirectional/PWM-capable pin, not
+  input-only). Checked against TX(17)/RX(16) - no collision.
+
+SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias-collision check (critical check
+for this session): this board's own pins_arduino.h declares SDA=23,
+SCL=22, SS=33, MOSI=18, MISO=19, SCK=5, TX=17, RX=16. None of these
+equal 0, 13, or 35 - no collision with any of the three candidate GPIOs
+tagged/documented above. (Note: SS=33 and A9=33 do coincide, and A12=13
+overlaps with the LED pin, T8=33, T4=13 etc. - these are all pre-existing
+chip-level-default pins untouched by this audit, not new findings, and
+out of scope for this pass.)
+
+SUMMARY
+-------
+No pin exclusions were warranted - GPIO35/BATT_MONITOR is a genuine,
+KEEP-policy battery-sense pin (documented via pinNotes, no capability
+change; board-wide ADC reference left at chip default since the divider
+is per-pin, not board-wide, and exact resistor values weren't available).
+Fixed a real parser hazard: deleted two commented-out
+"static const uint8_t Ax = ..." lines that the regex-based parser would
+otherwise have mis-parsed into a phantom "Ax" alias on GPIO2. Applied the
+section 7a button/LED retrofit opportunistically: GPIO0 tagged "button"
+(onboard bootloader-select tactile switch) and GPIO13 tagged "led_high"
+(onboard red LED), both vendor-confirmed via learn.adafruit.com, neither
+colliding with TX/RX or any SPI/I2C bus alias. Created board.json (full
+copy of the esp32/esp32 chip-level default) to carry these three changes
+plus the informational pinNotes entry and this research-trail comment.

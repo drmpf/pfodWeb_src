@@ -1,0 +1,77 @@
+lilygo_twatch_ultra - button/LED confirmation research notes
+==============================================================
+
+Sources consulted:
+------------------
+1. https://github.com/Xinyuan-LilyGO/LilyGoLib/blob/master/docs/hardware/lilygo-t-watch-ultra.md
+   Official LilyGO hardware doc page for T-Watch Ultra. Hardware pinout diagram/table
+   labels three physical buttons:
+     - "(GPIO0) Custom Button or Enter download Mode"
+     - "PWR Button - In shutdown state, press 1 second to turn on. In the power-on
+       state, press for 6 seconds to shut down. Programmable, can monitor key status
+       in program."
+     - "RESET Button - Click to reset the device, it cannot be programmed or
+       controlled by the program."
+   No LED / neopixel / RGB LED mentioned anywhere on the page.
+
+2. https://raw.githubusercontent.com/Xinyuan-LilyGO/LilyGoLib/master/docs/hardware/lilygo-t-watch-ultra.md
+   Raw fetch of the same doc, used to confirm GPIO0 is explicitly tied to the
+   "Custom Button" label in the hardware diagram (not inferred from any
+   pins_arduino.h alias). Confirms no LED/neopixel/RGB text anywhere in the doc.
+   GPIO pin table did not list separate rows for GPIO0/15/16/46 (only marks most
+   GPIOs used/reserved elsewhere in the table).
+
+3. https://lilygo.cc/products/t-watch-ultra
+   Official LilyGO product page. Specs list MCU, memory, wireless, and onboard
+   peripherals (PDM microphone, MAX98357A, RTC, NFC, vibration motor, SD card,
+   GNSS) but do not mention any LED, RGB LED, or neopixel component. No button
+   GPIO detail given here (button info came from source 1/2 instead).
+
+4. WebSearch: "LilyGO T-Watch Ultra schematic GPIO0 button BOOT PWR"
+   Search summary corroborated GPIO0 = custom button / download-mode button, and
+   PWR button = power on/off + programmable key-status monitoring. Used to locate
+   source 1's URL; no separate LED info found.
+
+5. WebSearch: "T-Watch Ultra" LED charging indicator specification
+   No T-Watch-Ultra-specific LED/charging-indicator documentation found. General
+   smartwatch results only (not applicable to this specific board). Confirms no
+   findable evidence of an onboard LED for this board.
+
+Pins considered but NOT tagged:
+--------------------------------
+- PWR button: vendor doc says it is "Programmable, can monitor key status in
+  program," but on this board's PMU-managed design (USING_PMU_MANAGE, AXP2101),
+  key-press status for the PWR button is read through the PMU chip's interrupt/
+  status registers (PMU_INT = GPIO7), not through a dedicated free GPIO exposed
+  to sketches. GPIO7 (PMU_INT) is already excluded from this board's chipGpios
+  by the earlier pin-exclusion audit (see board.json's existing top-of-file
+  NOTE comment, "touch/PMU/NFC/sensor interrupt lines ... (1,4,5,7,8,12)").
+  Per task rules, re-adding an excluded pin is out of scope for this task, so
+  PWR button was deliberately left untagged. This is a judgment call based on
+  the PMU-managed architecture described in pins_arduino.h (USING_PMU_MANAGE)
+  combined with the vendor doc's "monitor key status in program" wording
+  implying PMU-register polling rather than a raw GPIO edge - flagged here for
+  human review in case a future revision confirms a discrete GPIO for it.
+
+- RESET button: vendor doc explicitly states "it cannot be programmed or
+  controlled by the program" - hardware-only reset, not applicable to any GPIO
+  capability tag. No judgment call needed; explicitly excluded by the vendor.
+
+- LED / NeoPixel / RGB LED: no onboard LED of any kind found in any consulted
+  source (hardware doc, raw doc, product page, or web search results). No best
+  guess made - concluded the board has no software-controllable onboard LED.
+  (pins_arduino.h for this board also does not define any LED_BUILTIN or similar
+  macro, consistent with this finding.)
+
+- GPIO15, GPIO16, GPIO46 (present in board.json chipGpios but otherwise
+  unreferenced in pins_arduino.h): not mentioned as button/LED pins in any
+  vendor source consulted. Left untouched/untagged as before this task.
+
+What was tagged:
+-----------------
+GPIO0 -> capabilities set to ["digital_input", "button"] (was
+["digital_input","digital_output","pwm_output"]) in
+variants/esp32/esp32s3/lilygo_twatch_ultra/board.json, confirmed via the
+official LilyGO LilyGoLib hardware doc labeling GPIO0 as "Custom Button or
+Enter download Mode." GPIO0 is not this board's TX/RX pin (TX=43, RX=44 per
+pins_arduino.h), so no TX/RX reservation conflict applies.

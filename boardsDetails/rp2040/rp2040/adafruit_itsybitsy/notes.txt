@@ -1,0 +1,144 @@
+Board: Adafruit ItsyBitsy RP2040 (product #4888)
+Chip family: rp2040 (variants/rp2040/rp2040/adafruit_itsybitsy)
+Audit date: 2026-07-13
+Part of: RP2040/RP2350 family button/LED/NeoPixel tagging + dedicated-hardware
+pin exclusion audit (never done for this family before this session).
+
+RESULT: CHANGE APPLIED. Created variants/rp2040/rp2040/adafruit_itsybitsy/board.json
+(previously absent - board relied on the chip-level ../board.json default, which
+has an empty chipGpios{} and therefore gave GPIO11 and GPIO17 generic full
+digital_input/digital_output/pwm_output capability with no LED/NeoPixel identity,
+and left the BOOT button on GPIO13 entirely un-selectable since it has no alias
+in this board's pins_arduino.h).
+
+Sources consulted
+------------------
+1. https://learn.adafruit.com/adafruit-itsybitsy-rp2040/pinouts
+   Official Adafruit Learn guide pinout page (authoritative vendor source).
+   Re-fetched with a targeted "quote every sentence mentioning BOOT/button/
+   GPIO13" prompt (after an earlier, less targeted fetch produced a summary
+   that looked suspicious/possibly conflated with another board's page) to
+   guard against WebFetch summarizer hallucination. Verbatim quotes obtained:
+     "The little red LED is located towards the middle of the board between
+     13 and 12 on the silk... It is controllable in CircuitPython code using
+     the pin board.LED. It is on RP2040 pin GPIO11."
+     "The RGB NeoPixel LED is located near A0 and A1 on the silk... It is
+     controllable in CircuitPython code using the pin board.NEOPIXEL."
+     "Power to the NeoPixel is supplied by GPIO16, which must be high to
+     enable the NeoPixel."
+     "The BOOT (boot select) button is used to enter the bootloader... This
+     button is also usable as an input in CircuitPython code, on pin
+     board.BUTTON. It is on RP2040 pin GPIO13."
+2. https://raw.githubusercontent.com/adafruit/circuitpython/main/ports/raspberrypi/boards/adafruit_itsybitsy_rp2040/pins.c
+   CircuitPython's own board pin file. Independently corroborates all four
+   vendor pin assignments: LED->GPIO11, BUTTON->GPIO13, NEOPIXEL->GPIO17,
+   NEOPIXEL_POWER->GPIO16.
+3. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr/main/boards/adafruit/itsybitsy_rp2040/adafruit_itsybitsy_rp2040.dts
+   Official upstream Zephyr board port devicetree (independent third source,
+   cross-referencing the same physical hardware). Quotes:
+     gpio_keys { user_button: button {
+       gpios = <&gpio0 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; ... }; }
+     leds { red_led: red_led {
+       gpios = <&gpio0 11 GPIO_ACTIVE_HIGH>; ... }; }
+     ws2812: ws2812 { gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>; ... }
+   This confirms polarity/pull details Adafruit's own prose guide does not
+   spell out explicitly: LED active-high, BOOT button active-low with
+   internal pull-up (read via the standard gpio-keys abstraction, i.e. a
+   genuine digitalRead()-able GPIO — NOT the QSPI-flash-CS BOOTSEL silicon
+   trick used by the plain Raspberry Pi Pico, whose BOOTSEL is deliberately
+   out of scope for this repo's GPIO-keyed tagging, see rpipico/board.json),
+   and onboard NeoPixel data line active-high WS2812 protocol on GPIO17.
+4. This board's own pins_arduino.h (variants/rp2040/rp2040/adafruit_itsybitsy/
+   pins_arduino.h) — pre-existing pfodWeb NOTE at line 66-68 already records
+   that D16 (NEOPIXEL_POWER) is deliberately not declared as an alias
+   ("confirmed... to be an internal-only power gate for the onboard
+   NeoPixel, not broken out to any header/pad") from an earlier pass over
+   this file. No PIN_BUTTON alias exists anywhere in the file for GPIO13.
+
+Per-pin reasoning
+------------------
+GPIO11 (PIN_LED, aliased as D13 in pins_arduino.h - board silkscreen "13"
+labels this LED's position, not its GPIO number): CONFIRMED onboard red
+status LED, active-high (sources 1 + 3). Tagged
+["digital_output","pwm_output","led_high"] - digital_input dropped to match
+this repo's established led_high precedent for dedicated onboard LED pins
+(rpipico GPIO25, adafruit_feather_scorpio GPIO13, wiznet_5500_evb_pico,
+vccgnd_yd_rp2040); pwm_output kept since arduino-pico's analogWrite() works
+on any RP2040 GPIO, enabling brightness dimming. Checked against this
+board's own primary bus aliases (MOSI=19, MISO=20, SCK=18, SDA=24, SCL=25,
+no SS declared) - no collision with GPIO11, so no pins_arduino.h edit was
+needed (unlike the adafruit_feather_scorpio precedent, which did need a
+PIN_SPI0_SS removal).
+
+GPIO17 (PIN_NEOPIXEL, aliased as D17): CONFIRMED onboard single status
+NeoPixel (WS2812), output-only data line (sources 1 + 2 + 3). Tagged
+["digital_output","led_neopixel"], matching this repo's
+adafruit_feather_scorpio GPIO4 precedent exactly (no digital_input/
+pwm_output - NeoPixel protocol timing is driven via the RP2040 PIO
+peripheral, not analogWrite/digitalRead). No bus-alias collision (checked
+against the same primary aliases as GPIO11 above).
+
+GPIO16 (NEOPIXEL_POWER): CONFIRMED internal-only NeoPixel power-gate line -
+"must be high to enable the NeoPixel" (source 1), independently corroborated
+by CircuitPython's pins.c (source 2). This board's own pins_arduino.h
+already omits a D16 alias for this GPIO from an earlier pass. Under the
+RP2040 mechanism (empty chip-level chipGpios{}; a GPIO needs either a
+pins_arduino.h alias or an explicit chipGpios entry to appear as a pin at
+all - verified by reading build_boards.js's buildEsp32Board(), which unions
+aliasesByGpio.keys() with Object.keys(chipGpiosMap) to build the full pin
+set), GPIO16 simply does not surface as a selectable pin - no chipGpios
+entry was added, matching this repo's repo-wide NEOPIXEL_POWER exclusion
+precedent already established on the ESP32 side (adafruit_qtpy_esp32,
+adafruit_qtpy_esp32s2, adafruit_qtpy_esp32s3_nopsram/n4r2,
+adafruit_itsybitsy_esp32 - all exclude the power-gate pin from the pin
+picker as a fixed internal function that a sketch drives once in setup(),
+not a pin meant for arbitrary pfod widgets). NO CHANGE for this pin (kept
+excluded, consistent with the pre-existing pins_arduino.h note).
+
+GPIO13 (BOOT button): CONFIRMED genuine physical pushbutton, usable as a
+general digital input when application code is running (sources 1 + 2 + 3 -
+three independent authoritative sources agree). Unlike
+adafruit_feather_scorpio's GPIO7 BOOT button (which already had a
+PIN_BUTTON alias in its vendor pins_arduino.h), this board's pins_arduino.h
+as shipped by arduino-pico declares NO alias at all for GPIO13 - added
+directly as a brand-new chipGpios entry keyed by bare GPIO number. Verified
+via direct reading of build_boards.js (buildEsp32Board(), lines ~531-539)
+that this is a supported, intentional mechanism: chipGpios keys are unioned
+into the full pin set regardless of whether the GPIO has a pins_arduino.h
+alias, and an unaliased-but-chipGpios-tagged GPIO gets labeled "GPIO<n>
+(Button)" via the existing HW_IDENTITY_LABEL override. Raw pin number 13 is
+directly usable via pinMode(13,...)/digitalRead(13) on arduino-pico, since
+RP2040 Arduino pin numbers equal raw GPIO numbers (no D-pin remapping layer
+like ESP8266 has). Active-low with the RP2040's internal pull-up enabled,
+per Zephyr's gpio_keys node (source 3) - no external pull-up on this line.
+Tagged ["digital_input","digital_output","pwm_output","button"] - full
+capability set retained (ordinary GPIO wired to a switch to GND, not a
+dedicated/capacitive-only pin), matching the adafruit_feather_scorpio GPIO7
+BOOT-button precedent exactly. No bus-alias collision (checked against the
+same primary aliases as GPIO11/GPIO17 above) - GPIO13 does not need any
+pins_arduino.h edit.
+
+Bug-class check performed (per playbook): confirmed none of GPIO11, GPIO13,
+or GPIO17 collides with this board's primary SDA/SCL/SS/MOSI/MISO/SCK
+aliases (SDA=24, SCL=25, MOSI=19, MISO=20, SCK=18, SS not declared/not
+pinned out) - build_boards.js's unconditional bus-alias auto-append
+(SDA/SCL/SS/MOSI/MISO/SCK) therefore cannot contaminate any of the three
+confirmed tags. No pins_arduino.h edit was necessary for this board (a
+difference from the adafruit_feather_scorpio precedent, which did require
+removing a colliding PIN_SPI0_SS default).
+
+JSON validity: verified via a scratch Node script that strips `//` line
+comments (skipping any `//` that occurs after an odd number of double-quotes
+on the same line, i.e. inside a JSON string) and then JSON.parse()s the
+result - confirmed valid, chipGpios keys = ["11","13","17"] as expected. No
+build command and no require() of build_boards.js was run, per instructions.
+
+Summary: Created adafruit_itsybitsy/board.json (previously missing).
+Confirmed and tagged: GPIO11 red status LED (active-high, led_high),
+GPIO17 onboard NeoPixel data (led_neopixel), GPIO13 BOOT button
+(active-low w/ internal pull-up, button) - the last of these newly surfaced
+as a selectable pin via a chipGpios entry despite having no pins_arduino.h
+alias. GPIO16 NeoPixel power-gate pin confirmed internal-only and left
+excluded (NO CHANGE), consistent with this repo's existing NEOPIXEL_POWER
+exclusion precedent and this board's own pre-existing pins_arduino.h note.
+No pins_arduino.h edits were needed (no bus-alias contamination found).

@@ -1,0 +1,84 @@
+twinaiot (esp32s3/twinaiot) - button/LED capability research notes
+====================================================================
+
+Sources consulted:
+--------------------------------------------------------------------
+https://github.com/espressif/arduino-esp32/pull/11718
+  - Original (closed/superseded) PR adding the "Twin AIoT Module" board.
+    Confirms board = Twin Science's ESP32-S3-MINI-1 based module with
+    "led matrix", "touchpad", "rgb led". Links to the vendor's own
+    Arduino library repo. No pin table shown in the PR body itself.
+
+https://github.com/espressif/arduino-esp32/pull/11755
+  - Successor PR that was actually merged (2026-08-26) adding this
+    variant's files (variants/twinaiot/pins_arduino.h etc). Same
+    feature description as #11718; confirms merged/shipped status.
+    No pin table visible in the PR body/diff summary retrieved.
+
+https://github.com/twin-science-robotics/hw_twin_aiot_module_arduino_library
+  (README.md, master branch)
+  - Vendor's own official Arduino library/examples repo for this board.
+  - Turkish-language README states: "RGB Led Modul uzerindeki RGB Led
+    mikrodenetleyicinin 15 numarali pinine bagli dir" = the RGB LED is
+    connected to microcontroller pin 15. Only a single pin is cited for
+    the whole "RGB Led Modul", consistent with a single-wire addressable
+    LED rather than 3 discrete R/G/B GPIOs.
+  - Also states the touchpad is connected to pin 13 ("Modul uzerindeki
+    Touchpad, 13 numarali pine baglidir").
+
+https://raw.githubusercontent.com/twin-science-robotics/hw_twin_aiot_module_arduino_library/master/examples/01.%20RGB%20LED/Blink/Blink.ino
+  - Confirms the RGB LED on GPIO15 is driven with the FastLED library
+    using a WS2812B addressable-LED type declaration
+    (FastLED.addLeds<WS2812B, ...>()), i.e. a genuine NeoPixel-style
+    single-data-pin addressable RGB LED, not a discrete 3-pin RGB LED.
+
+https://raw.githubusercontent.com/twin-science-robotics/hw_twin_aiot_module_arduino_library/master/examples/02.%20Touchpad/Touchpad_buton/Touchpad_buton.ino
+  - Confirms GPIO13 (TOUCH_PIN) is read via touchRead() (ESP32 capacitive
+    touch peripheral), not digitalRead(). This is a capacitive touchpad,
+    not a mechanical/physical digital pushbutton.
+
+Local files inspected (not web sources):
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\twinaiot\pins_arduino.h
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\board.json (chip-level default)
+  - pins_arduino.h defines RGB_PIN 15 / RGB_BUILTIN RGB_PIN (used with the
+    Arduino-ESP32 core's rgbLedWrite() addressable-LED API - consistent
+    with the FastLED/WS2812B confirmation above).
+  - pins_arduino.h also defines LED_BUILTIN = 35, TX = 39, RX = 40.
+  - Chip-level board.json's chipGpios table has no entry for GPIO33-37
+    (comment: "GPIOs ... 33-37 (octal flash/PSRAM) ... excluded").
+
+Pins considered but NOT tagged:
+--------------------------------------------------------------------
+- GPIO35 (LED_BUILTIN alias in pins_arduino.h): NOT tagged. GPIO35 falls
+  inside the ESP32-S3 chip-level default's pre-existing 33-37 octal-
+  flash/PSRAM exclusion range (no chipGpios entry exists for it). Per
+  task rules, re-adding an excluded pin is out of scope for this pass -
+  left untagged, flagged here for human review. No guess made either way
+  on whether this alias is even physically meaningful hardware (it may
+  simply be a leftover/incorrect alias copied from another variant,
+  since RGB_BUILTIN/RGB_PIN=15 is the pin actually documented and used
+  by the vendor's own examples for the "onboard LED").
+
+- GPIO13 (TOUCH_PIN): considered as a possible "button" but NOT tagged.
+  Vendor's own example code confirms it is read via touchRead()
+  (capacitive touch sensing), not a mechanical digital pushbutton wired
+  to a GPIO with digitalRead(). This does not match the pfodWeb "button"
+  capability's simple digital_input/button semantics. This is a
+  deliberate judgment call, not a guess - the evidence is that it is
+  NOT a plain digital button, so it was left untagged.
+
+- No other physical/mechanical user pushbutton (e.g. a dedicated BOOT-
+  style user button separate from the standard ESP32 GPIO0 strapping
+  pin) was found documented anywhere in the vendor's PR, library repo,
+  or README. No guess was made for GPIO0 or any other pin as a "button" -
+  no evidence was found either way, so nothing was tagged.
+
+- Serial TX/RX check: GPIO15 (the tagged pin) is not TX (39) or RX (40),
+  so no TX/RX conflict applies to the tag that was made.
+
+Summary of what was tagged:
+--------------------------------------------------------------------
+GPIO15 tagged ["digital_output", "pwm_output", "led_neopixel"] (kept
+pre-existing pwm_output; dropped analog_input_serial/digital_input) -
+confirmed onboard WS2812B/addressable RGB LED via Twin Science's own
+Arduino library (README + FastLED WS2812B example on GPIO15).

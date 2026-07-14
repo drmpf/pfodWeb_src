@@ -12,10 +12,9 @@ static const uint8_t RX = 3;
 static const uint8_t SDA = 25;
 static const uint8_t SCL = 32;
 
-static const uint8_t SS = 15;
-static const uint8_t MOSI = 12;
-static const uint8_t MISO = 13;
-static const uint8_t SCK = 14;
+// pfodWeb NOTE: SS/MOSI/MISO/SCK deliberately NOT declared - dedicated
+// onboard E-ink/SD shared SPI bus (confirmed via M5Stack Paper docs:
+// CS=15/MOSI=12/MISO=13/SCK=14 exact match).
 
 static const uint8_t G25 = 25;
 static const uint8_t G32 = 32;
@@ -26,12 +25,13 @@ static const uint8_t G33 = 33;
 static const uint8_t G18 = 18;
 static const uint8_t G19 = 19;
 
-static const uint8_t G21 = 21;
-static const uint8_t G22 = 22;
-
-static const uint8_t G36 = 36;
+// pfodWeb NOTE: G21/G22 deliberately NOT declared - internal touch/RTC/
+// EEPROM/sensor I2C bus (separate from the general Grove ports declared
+// via SDA/SCL/G25-G33/G18-19 above). G36 deliberately NOT declared -
+// dedicated touch controller interrupt line. G4 deliberately NOT
+// declared - additional dedicated E-ink signal (see board.json
+// chipGpios override).
 static const uint8_t G2 = 2;
-static const uint8_t G4 = 4;
 static const uint8_t G5 = 5;
 static const uint8_t G23 = 23;
 

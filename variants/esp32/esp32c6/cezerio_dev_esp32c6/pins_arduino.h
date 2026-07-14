@@ -44,7 +44,16 @@ static const uint8_t A4 = 4;
 static const uint8_t A5 = 5;
 static const uint8_t A6 = 6;
 
-static const uint8_t MATRIX = 18;
+// pfodWeb NOTE: the vendor header's alias for the onboard 5x5 addressable
+// RGB LED matrix data line has been removed. This board (cezerio dev
+// ESP32C6, RFtek Electronics) carries a dedicated onboard LED matrix
+// display driven by a single-wire addressable-LED protocol on this pin,
+// confirmed via the vendor's own product page. Leaving the alias in
+// pins_arduino.h would cause the board build script to re-add this GPIO
+// as a plain user-selectable digital/PWM pin even after excluding it from
+// board.json's chipGpios map, because the parser treats any declared
+// static-const pin alias as a routable pin regardless of its name. See
+// boardsDetails/esp32/esp32c6/cezerio_dev_esp32c6/notes.txt for sources.
 
 static const uint8_t IMUSD = 8;
 static const uint8_t IMUSC = 7;

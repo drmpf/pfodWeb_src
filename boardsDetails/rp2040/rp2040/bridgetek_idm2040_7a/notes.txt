@@ -1,0 +1,375 @@
+Board: bridgetek_idm2040_7a (chip: rp2040)
+Bridgetek "IDM2040-7A" — official Bridgetek embedded touch-display module:
+RP2040 MCU + 7" 800x480 (WVGA) capacitive-touch TFT panel driven by an
+onboard BT817Q "EVE4" graphics/touch/audio controller, an onboard microSD
+card socket, AND (unlike the sibling 4.3" board) an onboard MAX33072E
+RS-485 transceiver feeding an RJ45 connector for BRT LDSBus sensor control
+or DMX512 lighting-control device control.
+Audit date: 2026-07-13.
+
+SOURCES CONSULTED
+
+1. This repo's own files:
+   - variants/rp2040/rp2040/bridgetek_idm2040_7a/pins_arduino.h (already
+     present before this audit; byte-for-byte identical GPIO layout to
+     bridgetek_idm2040_43a's pins_arduino.h, only its header comment
+     differs, citing
+     https://brtchip.com/ic-module/wp-content/uploads/sites/3/2022/07/
+     DS_IDM2040-7A-Revised.pdf. Declares D0,D1,D6-D9,D14-D22,A0-A2 and
+     deliberately omits D2-D5 and D10-D13 with inline comments already
+     identifying GPIO2-5 as the onboard EVE display's SPI0 bus and
+     GPIO10-13 as the onboard SD card's SPI1 bus).
+   - variants/rp2040/rp2040/bridgetek_idm2040_43a/pins_arduino.h,
+     board.json, and boardsDetails/rp2040/rp2040/bridgetek_idm2040_43a/
+     notes.txt — sibling board audited earlier this session (same day).
+     Used as the structural/style template for this audit and as the
+     baseline for identifying what is IDENTICAL vs DIFFERENT between the
+     two modules (per the task brief's warning that "7A" likely means a
+     7" display with a possibly different pin layout — confirmed below
+     that the pins_arduino.h layout is in fact identical, but the real
+     onboard hardware differs: this board adds an RS-485 transceiver that
+     the 43A does not have, and uses a different EVE chip, BT817Q vs
+     BT883Q).
+   - variants/rp2040/boards.txt entries for bridgetek_idm2040_7a —
+     confirms `build.extra_flags=-DFT8XX_TYPE=BT817 -DDISPLAY_RES=WVGA
+     -DPLATFORM_RP2040` (BT817 = BT817Q EVE4 controller, WVGA = 800x480)
+     and `build.usb_product="IDM2040-7A"`, `build.usb_manufacturer=
+     "BridgeTek"`. No LDSBus/RS-485-related extra_flags present (that
+     hardware isn't gated by a build flag, just physically wired).
+   - variants/rp2040/rp2040/board.json (chip-level defaults,
+     chipGpios={}).
+
+2. Bridgetek's official IDM2040-7A datasheet (Version 1.0, Document
+   Reference No. BRT_000393, Clearance No. BRT#191):
+   https://brtchip.com/ic-module/wp-content/uploads/sites/3/2022/07/
+   DS_IDM2040-7A-Revised.pdf
+   Unlike the 43A datasheet (which had no accessible text layer over its
+   schematic figures), this PDF's schematic figures ARE text-extractable
+   via pdftotext, in addition to its prose sections. Confirmed quotes /
+   findings:
+     - "The module carries the latest generation EVE4 controller BT817..."
+       / "BT817Q chip for graphics, touch and audio controller."
+     - "CN4 is a Micro SD card socket which is supporting SPI-single
+       mode. The physical interface supports the card detection."
+     - Table 6 "CN11 Pinout" (9-position external SPI header — reserved
+       for an *optional* plug-in Adafruit AirLift Wi-Fi breakout module
+       or other peripheral, nothing populated by default): "SPI1_SCK ...
+       GP10", "SPI1_MISO ... GP12", "SPI1_MOSI ... GP11" (shared with the
+       SD card's own SPI1 bus — corroborates the SD-card SPI1 exclusion
+       already present via pins_arduino.h's own D10-D13 omission),
+       "SPI1_CS2# ... GP22" (a *separate* second chip-select for this
+       external header, distinct from the SD card's own SPI1_CS1#=GP13),
+       "BUSY ... GP14" and "RESET# ... GP15" both "Reserve for Adafruit
+       AirLift Breakout Wi-Fi module".
+     - Table 5 "CN9 & CN10 Pinout" (2x Stemma QT/QWIIC I2C JST sockets):
+       I2C0_SDA=GP20, I2C0_SCL=GP21, I2C1_SDA=GP18, I2C1_SCL=GP19.
+     - Table 2 "CN5 Pinout" (3-position header): "GP26/ADC0 ... by
+       default, it is ADC0 input" — only GPIO26 (A0) is broken out here,
+       NOT GPIO27 (A1).
+     - Section 3.4 CN17 description: "CN17 is RJ45 port for RS-485
+       communication, LDSBus sensor control, DMX512 device control. The
+       polarity of RS-485 A/B signal can be controlled by RP2040 GP16.
+       Set GP16 to logic Low for normal A/B operation (for LDSBus), set
+       GP16 to logic High to switch A/B operation (for DMX512)." —
+       confirmed again in section 7.2: "set UART1_POL(GP16) to logic
+       high to switch the output polarity to match... DMX512". This is
+       clean prose text (not a schematic-image extraction), high
+       confidence.
+     - Section 3.4: "SW1 is the hardware reset button. Push to reset MCU
+       RP2040." and "SW1A is the BOOTSEL button to put the RP2040 MCU
+       into programming mode to program the FLASH connected to RP2040
+       QSPI bus." — neither is an application-readable GPIO button.
+     - Figure 7 "RP2040 MCU Schematic" (text-extracted): shows a BOOTSEL
+       pull-resistor network (R1A 5.6K, R10A 10K, R11A 1K, switch SW1A
+       TP-1221U-K9) with a trace labelled "GPIO24" near "BOOTSEL", AND
+       separately a trace "Disable Flash boot (forces USB boot)" wired to
+       "QSPI_SS_N" — the latter is the RP2040's actual, standard internal
+       BOOTSEL boot-strap mechanism (forces the boot ROM into USB mode by
+       driving the flash chip-select pin, not a normal GPIO read). The
+       GPIO24 connection is more ambiguous — it could be a secondary
+       sense line letting software read the BOOTSEL button's current
+       state at runtime (a known pattern on some RP2040 boards), but nu
+       datasheet prose describes reading GPIO24 in software anywhere (the
+       MicroPython/CircuitPython example code only ever references GPIO25
+       for the LED). Per the "confirm via real vendor documentation, never
+       guess" rule: NOT tagged as a button. See GPIO24 reasoning below.
+     - Figure 10 "RP2040 Peripheral Connectors Schematic" (text-
+       extracted, partially garbled by pdftotext's column-reflow of a
+       dense schematic — treated with appropriate caution, see GPIO23
+       reasoning below): a 4-row ADC-pin net-name table pairs
+       "GPIO29/ADC3" -> "GPIO29_ADC3" (self-labelled = general purpose),
+       "GPIO28/ADC2" -> "CARD_DET#", "GPIO27/ADC1" -> "UART1_DE",
+       "GPIO26/ADC0" -> "GPIO26_ADC0" (self-labelled = general purpose).
+       The two self-labelled rows corroborate the extraction is a
+       genuine per-pin function table (not noise), lending confidence to
+       the two distinct labels (CARD_DET#, UART1_DE) being real. Also
+       shows GPIO25 wired through a 470R resistor to a "GREEN" LED
+       (silkscreen "LED"), matching bridgetek_idm2040_43a's identical
+       LED circuit exactly.
+     - Figure 15 "RS-485 Transceiver with Polarity Control": shows IC
+       U14 (MAX33072E) with pin RO -> net "UART1_RXD", pin DI <- net
+       "UART1_TXD", pin DE <- net "UART1_DE", pin POL <- net
+       "UART1_POL" — i.e. the onboard RS-485 transceiver chip that
+       GPIO8 (PIN_SERIAL2_TX), GPIO9 (PIN_SERIAL2_RX), GPIO16
+       (UART1_POL), and GPIO27 (UART1_DE) all permanently feed. This
+       figure is a clean, focused schematic (not the dense full-board
+       one) and its OCR extraction was unambiguous.
+     - MicroPython blink example: `led = Pin(25,Pin.OUT)` /
+       CircuitPython: `led = digitalio.DigitalInOut(board.GP25)` —
+       confirms GPIO25 as the LED pin.
+     - Table 11 "Operating Voltage and Current": lists "VCC=3.3V ...
+       280mA ... With LCD and Backlight LED on" — same phrasing pattern
+       as the 43A datasheet, corroborating GPIO25/LED again.
+
+PER-PIN REASONING / DECISIONS
+
+GPIO0, GPIO1 (PIN_SERIAL1_TX/RX) — primary USB-bridged debug UART
+  (CN13A/CN13, FT232HPQ). Standard role, matches D0/D1. Also tapped
+  (read-only monitor) by CN14 ("used for monitoring the UART0
+  communication"), which doesn't change GPIO0/1's own role. NO CHANGE.
+
+GPIO2 (PIN_SPI0_SCK) — EVE SPI0 clock. Already excluded from
+  pins_arduino.h (no D2 alias). Added chipGpios["2"] = empty capabilities
+  + note, purely to document the dedication, matching the
+  bridgetek_idm2040_43a precedent exactly (this GPIO was already
+  invisible to the Designer before this change).
+
+GPIO3 (PIN_SPI0_MOSI) — EVE SPI0 data-out. Same treatment as GPIO2.
+
+GPIO4 (PIN_SPI0_MISO, also the vendor's unused PIN_WIRE0_SDA #define) —
+  EVE SPI0 data-in. Same treatment as GPIO2. Checked the audit's
+  "confirmed dedicated pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK" bug
+  class: PIN_WIRE0_SDA (4u) is a raw #define only, never promoted to a
+  `static const uint8_t SDA = ...` alias (the file ends with the same
+  explicit note as 43A: "no SS/MOSI/MISO/SCK/SDA/SCL aliases declared").
+  build_boards.js's parseEsp32Consts() only parses `static const uint8_t
+  NAME = ...` declarations into consts.SDA/SCL, so the i2c_sda
+  auto-append never fires here. No pins_arduino.h edit needed.
+
+GPIO5 (PIN_SPI0_SS, also the vendor's unused PIN_WIRE0_SCL #define) — EVE
+  SPI0 chip-select. Same reasoning as GPIO4.
+
+GPIO6, GPIO7 — declared as plain D6/D7. No board-specific vendor source
+  names these two pins for any dedicated function (the RP2040 MCU
+  schematic's pin list shows them only as bare physical-pin-position
+  labels "GPIO6"/"GPIO7" with no attached net name, unlike GPIO27/28
+  which got distinct labels). Matches bridgetek_idm2040_43a's identical
+  "no evidence found" conclusion for the same two GPIOs (that audit also
+  noted Bridgetek's generic pico-brteve reference wiring guide places
+  INT/PWD on GP6/GP7 for a *generic* breakout, not this specific module —
+  same caveat applies here, still no module-specific confirmation).
+  NO CHANGE.
+
+GPIO8 (PIN_SERIAL2_TX, D8) — NEW FINDING vs 43A. Datasheet Figure 15
+  confirms this feeds the DI (driver input) pin of the onboard MAX33072E
+  RS-485 transceiver (U14), which drives CN17's RJ45 connector for BRT
+  LDSBus/DMX512 control — this board's headline extra feature vs the
+  43A. Unlike bridgetek_idm2040_43a (which has no RS-485 hardware at all,
+  and where the identically-numbered GPIO8/PIN_SERIAL2_TX was correctly
+  left as a free general-purpose spare UART pin, "NO CHANGE"), on THIS
+  module GPIO8 is permanently wired to an always-populated onboard chip
+  — the same "onboard chip already consumes this pin's electrical
+  behavior" pattern used to justify excluding the EVE/SD-card buses.
+  Tagged empty capabilities in chipGpios, removing it from the Designer's
+  generic digital/PWM pin-picker pool. This does NOT prevent the user's
+  sketch from using Serial2 normally for its actual RS-485/LDSBus/DMX512
+  purpose — chipGpios only affects the Designer's GUI-control pin
+  picker, not Arduino-core Serial object usage in code.
+
+GPIO9 (PIN_SERIAL2_RX, D9) — NEW FINDING vs 43A. Fed by the RO (receiver
+  output) pin of the same onboard MAX33072E transceiver (Figure 15). Same
+  reasoning and treatment as GPIO8.
+
+GPIO10 (PIN_SPI1_SCK / PIN_SD_SCK) — onboard microSD card (CN4) SPI1
+  clock. Confirmed via pins_arduino.h AND independently corroborated by
+  this datasheet's own CN11 table ("SPI1_SCK ... GP10", noting CN11's SPI
+  bus signals are explicitly described as "shared with Micro-SD card
+  except for the chip select signal"). Already excluded from
+  pins_arduino.h. Documented with an empty-capability chipGpios entry.
+
+GPIO11 (PIN_SPI1_MOSI / PIN_SD_MOSI) — onboard SD card SPI1 data-out.
+  Corroborated by CN11 table ("SPI1_MOSI ... GP11"). Same treatment as
+  GPIO10.
+
+GPIO12 (PIN_SPI1_MISO / PIN_SD_MISO) — onboard SD card SPI1 data-in.
+  Corroborated by CN11 table ("SPI1_MISO ... GP12"). Same treatment as
+  GPIO10.
+
+GPIO13 (PIN_SPI1_SS / PIN_SD_SS) — onboard SD card SPI1 chip-select.
+  Datasheet's schematic text labels this net "SPI1_CS1#" at the RP2040's
+  physical pin position corresponding to GPIO13, distinguishing it from
+  CN11's separate external "SPI1_CS2#" (GP22). Consistent with
+  pins_arduino.h's own PIN_SPI1_SS/PIN_SD_SS=13 declaration. Same
+  treatment as GPIO10.
+
+GPIO14, GPIO15 — declared as plain D14/D15. Datasheet's CN11 table
+  explicitly names these "BUSY" and "RESET#", both "Reserve for Adafruit
+  AirLift Breakout Wi-Fi module" — i.e. reserved pin *assignments* on an
+  optional external expansion header (CN11), not permanently wired to
+  any onboard-populated chip. Since nothing is soldered there unless the
+  user adds their own module, matches the CN11/CN9/CN10 "unpopulated
+  header, still general-purpose" pattern (same conclusion
+  bridgetek_idm2040_43a reached for its own D14/D15, which had no
+  confirmed dedication either). NO CHANGE.
+
+GPIO16 — NEW FINDING vs 43A. Datasheet-confirmed (clean prose, section
+  3.4 and 7.2, not just a schematic extraction) as UART1_POL: the RS-485
+  A/B polarity-select output for the onboard MAX33072E transceiver.
+  Permanently wired to onboard hardware — this line's logic level
+  actually determines LDSBus-vs-DMX512 output mode, so leaving it in the
+  Designer's generic pin-picker pool (implying it's a spare digital I/O)
+  would be actively misleading. Tagged empty capabilities.
+
+GPIO17 — declared as plain D17. No vendor source names this pin for any
+  purpose. NO CHANGE.
+
+GPIO18-21 (D18-D21) — CN9 & CN10 Stemma QT/QWIIC I2C JST connectors
+  (I2C0_SDA=GP20, I2C0_SCL=GP21, I2C1_SDA=GP18, I2C1_SCL=GP19). These are
+  external plug-in connectors for the user's own I2C peripherals, not
+  permanently wired to any onboard-populated chip, so left general-
+  purpose, matching this board's own existing D18-D21 declarations
+  (consistent with the CN11/CN9/CN10 "unpopulated header" pattern
+  discussed above). NO CHANGE. Also: PIN_WIRE0_SDA/SCL and PIN_WIRE1_SDA/
+  SCL remain raw #defines only in this file (never promoted to
+  `static const uint8_t SDA/SCL`), so the audit's SDA/SCL bus-collision
+  bug class does not apply to GPIO18-21 (or GPIO4/5/26/27) either — same
+  conclusion as bridgetek_idm2040_43a's notes for the same reason.
+
+GPIO22 (D22) — CN11's "SPI1_CS2#... GP22": a second, separate chip-select
+  output for the CN11 external SPI expansion header (distinct from the
+  SD card's own SPI1_CS1#=GP13), "On board 10k pull-up to 3.3V". Same
+  "unpopulated optional header" reasoning as GPIO14/15 — NO CHANGE,
+  matches existing D22 declaration.
+
+GPIO23 — NOT declared as a D-alias in pins_arduino.h (already invisible
+  to the Designer, same as GPIO24/25). One schematic-text fragment
+  extracted a stray "SPI1_CS2#" label adjacent to a "GPIO23" position
+  marker, but this directly conflicts with CN11's own clean, properly-
+  tabulated pinout (Table 6), which unambiguously states SPI1_CS2#=GP22,
+  not GP23. Given this internal contradiction — almost certainly a
+  column-reflow artefact of pdftotext extracting a visually dense,
+  multi-column schematic page — and per the audit's "confirm via real
+  vendor documentation, never guess" rule, GPIO23 is treated as NO
+  CONFIRMED FUNCTION FOUND. No chipGpios entry added (nothing to
+  document; it was already excluded from pins_arduino.h by the board
+  author with no explanation, and this audit found no reliable vendor
+  confirmation either way).
+
+GPIO24 — NOT declared as a D-alias in pins_arduino.h (already invisible
+  to the Designer). Datasheet's RP2040 MCU schematic (Figure 7) shows a
+  BOOTSEL-adjacent pull-resistor network (R1A/R10A/R11A) with a trace
+  labelled "GPIO24" near the "BOOTSEL" node, distinct from the RP2040's
+  own standard internal BOOTSEL mechanism (which forces USB boot mode by
+  driving the QSPI_SS_N flash chip-select pin, not a GPIO). This COULD
+  plausibly be a secondary sense line letting application code read the
+  BOOTSEL button's live state at runtime post-boot (a pattern seen on
+  some other RP2040 boards) — which would make it a genuine "button" —
+  but no prose in the datasheet describes reading GPIO24 in software
+  anywhere, and neither the MicroPython nor CircuitPython example code
+  references it (only GPIO25/LED is shown). Per the "confirm via real
+  vendor documentation, never guess — report NO CHANGE rather than
+  guess" rule: NOT tagged as a button. No chipGpios entry added (already
+  has no D-alias, so already invisible to the Designer regardless of
+  this finding).
+
+GPIO25 (PIN_LED) — onboard status LED. Standard, unmodified Raspberry Pi
+  Pico-form-factor LED circuit (schematic shows a 470R resistor to a
+  "GREEN" LED, silkscreen-labelled "LED" — identical component values to
+  bridgetek_idm2040_43a's own LED circuit). This codebase's rpipico,
+  wiznet_5500_evb_pico, and bridgetek_idm2040_43a boards already confirm
+  this exact standard circuit is active-high. Independently, GPIO25
+  appears as a LED output in both the MicroPython (`Pin(25,Pin.OUT)`,
+  `led.value(1)`) and CircuitPython (`board.GP25`) example code in this
+  datasheet. Tagged capabilities:
+  ["digital_output","pwm_output","led_high"] (pwm_output kept since
+  arduino-pico's analogWrite() works on any RP2040 GPIO, matching the
+  bridgetek_idm2040_43a/wiznet_5500_evb_pico precedent).
+
+GPIO26 (A0, also PIN_WIRE1_SDA=26) — CN5's 3-position header explicitly
+  breaks this GPIO out to its own external pin ("GP26/ADC0 ... by
+  default, it is ADC0 input... or it could also be configured as GPIO
+  port"), for the user's own analog/GPIO use. Not committed to any
+  onboard-populated chip. NO CHANGE, matches existing A0 declaration.
+
+GPIO27 (A1, also the vendor's unused PIN_WIRE1_SCL=27 #define) — NEW
+  FINDING vs 43A. Datasheet's Figure 10 net-name table identifies this
+  GPIO's function as UART1_DE, independently corroborated by Figure 15's
+  MAX33072E schematic (DE pin fed from net "UART1_DE") — the driver-
+  enable control line for the onboard RS-485 transceiver. Notably, CN5's
+  external header breaks out ONLY GPIO26 (A0), not GPIO27 (A1) — this
+  asymmetry between the two nominally-equivalent ADC pins corroborates
+  that A1 is internally committed while A0 is genuinely free. Tagged
+  empty capabilities, removing it from the Designer's analog/digital/PWM
+  pin-picker pool. This is the key reason bridgetek_idm2040_43a's
+  "NO CHANGE" conclusion for its own Wire1/A1 pins does NOT carry over
+  unmodified to this sibling board — the two modules differ here.
+
+GPIO28 (A2) — NEW FINDING vs 43A. Datasheet's Figure 10 net-name table
+  identifies this GPIO's function as CARD_DET#: the onboard microSD card
+  socket (CN4)'s card-detect switch line, consistent with CN4's own
+  description ("The physical interface supports the card detection").
+  This board's own `#define SDCARD_DETECT 33` in pins_arduino.h (same
+  value as bridgetek_idm2040_43a) is an inert placeholder — GPIO33 is
+  outside the RP2040's valid GPIO0-29 range, so that specific macro is
+  never actually read by any card-detect logic and is never parsed by
+  build_boards.js (only `static const uint8_t` aliases are parsed, never
+  #defines) — but the datasheet shows the REAL card-detect signal is
+  wired to GPIO28. Since GPIO28 is committed to sensing the physical SD
+  card-detect switch, offering it as a generic Designer digital/analog
+  control pin would be misleading (its logic level reflects card
+  presence, not a spare GPIO). Tagged empty capabilities.
+
+SW1 (hardware reset) and SW1A (BOOTSEL) — confirmed via the datasheet
+  text quoted above. Neither is an application-readable GPIO button in
+  the normal sense (SW1 is a hard MCU reset line; SW1A is the standard
+  RP2040 boot-mode strap read by the on-chip boot ROM). No "button"
+  capability tagged anywhere on this board, matching the rpipico/
+  wiznet_5500_evb_pico/bridgetek_idm2040_43a "no onboard user button
+  beyond BOOTSEL" precedent. (See GPIO24 above for the one ambiguous,
+  deliberately-not-acted-on finding related to BOOTSEL sensing.)
+
+SDCARD_DETECT — `#define SDCARD_DETECT 33` in pins_arduino.h, identical
+  inert placeholder value to bridgetek_idm2040_43a. See GPIO28 above:
+  this macro is inert/unused, but the datasheet reveals the actual
+  card-detect line is GPIO28 — now documented via chipGpios.
+
+RS-485 hardware summary (CN17/U14/GP8/GP9/GP16/GP27) — this is the
+  single biggest hardware difference from bridgetek_idm2040_43a. The
+  IDM2040-7A adds an onboard MAX33072E RS-485 transceiver (U14) wired to
+  UART1 (GPIO8 TX / GPIO9 RX) plus two control lines: GPIO16 (A/B
+  polarity select) and GPIO27 (driver-enable). All four GPIOs are now
+  documented as dedicated to this onboard hardware, none of which exists
+  on the 43A board.
+
+SUMMARY
+Created variants/rp2040/rp2040/bridgetek_idm2040_7a/board.json (new file
+— none existed before). This board's pins_arduino.h is byte-for-byte
+identical in layout to its sibling bridgetek_idm2040_43a's, so the same
+8 GPIOs (2-5: onboard BT817Q EVE display SPI0 bus; 10-13: onboard
+microSD card SPI1 bus) are documented with empty-capability chipGpios
+entries exactly as done for the 43A. However, THIS board carries
+genuinely different onboard hardware not present on the 43A — an
+onboard MAX33072E RS-485 transceiver (for the BRT LDSBus/DMX512 RJ45
+feature) plus a real (non-inert) SD-card card-detect line — which the
+vendor's official datasheet's own schematic figures (text-extractable,
+unlike the 43A datasheet) confirm consumes 4 additional GPIOs that
+pins_arduino.h does NOT already exclude: GPIO8 (RS-485 TX/DI), GPIO9
+(RS-485 RX/RO), GPIO16 (RS-485 A/B polarity select), and GPIO27/A1
+(RS-485 driver-enable). Also newly documented: GPIO28/A2 (real SD-card
+card-detect line, distinct from the file's own inert
+`SDCARD_DETECT=33` placeholder). GPIO25 tagged as the confirmed
+active-high onboard status LED, same as 43A. No onboard button found
+(BOOTSEL/reset only, out of scope) — including one inconclusive
+BOOTSEL-adjacent GPIO24 sense-line finding that was investigated and
+deliberately left unacted-on per the "report NO CHANGE rather than
+guess" rule. GPIO6/7, GPIO14/15/17/18-22/26, and GPIO23 were
+investigated and left UNCHANGED — no onboard-hardware dedication
+confirmed for any of them (CN9/CN10/CN11's Stemma QT and SPI headers are
+unpopulated optional expansion connectors, not permanently-wired onboard
+chips, so those GPIOs remain general-purpose). No pins_arduino.h edit
+was made or needed: none of this audit's findings require removing a
+#define (the SDA/SCL-bus-collision bug class named in the audit brief
+does not occur on this board, for the same reason it doesn't on the
+43A — PIN_WIRE0/1_SDA/SCL are unpromoted #defines, never parsed into an
+i2c_sda/i2c_scl-triggering `static const uint8_t SDA/SCL` by
+build_boards.js).

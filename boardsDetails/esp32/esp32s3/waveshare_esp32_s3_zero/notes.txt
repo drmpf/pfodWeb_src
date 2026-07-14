@@ -1,0 +1,55 @@
+waveshare_esp32_s3_zero - button/LED research notes
+Board: Waveshare ESP32-S3-Zero (Pico/QT-Py form factor tiny dev board)
+Variant path: variants/esp32/esp32s3/waveshare_esp32_s3_zero
+
+Sources consulted:
+- https://docs.waveshare.com/ESP32-S3-Zero
+  Waveshare's own documentation platform. States: "the board includes a
+  BOOT button on GPIO0 ... Hold this button and then press the Reset
+  button to enter download mode." Also: "The ESP32-S3-Zero uses GPIO21
+  to connect the WS2812 RGB LED." (fetched via WebFetch)
+- https://www.espboards.dev/esp32/esp32-s3-zero/
+  Independent third-party board database. Confirms "both a BOOT button
+  and a RESET button" and "Onboard WS2812 RGB LED connected to GPIO21."
+  (fetched via WebFetch)
+- https://www.waveshare.com/wiki/ESP32-S3-Zero
+  Vendor wiki page (the primary source named in the task). Returned
+  HTTP 403 Forbidden when fetched directly via WebFetch (blocked
+  request), so could not be read directly. Its content is mirrored by
+  docs.waveshare.com above, which was successfully read and used as the
+  primary vendor citation instead.
+- WebSearch: "Waveshare ESP32-S3-Zero BOOT button GPIO0 WS2812 GPIO21
+  schematic" - search summary corroborated GPIO0 BOOT button (strapping
+  pin, LOW = bootloader mode) and GPIO21 WS2812 RGB LED, matching the
+  two docs sources above. Also surfaced but not separately fetched:
+  mischianti.org write-up, circuitstate.com tutorial, espboards.dev
+  (fetched separately, see above).
+- pins_arduino.h (local, already in repo) - `#define WS_RGB 21` and
+  LED_BUILTIN/RGB_BUILTIN wired to GPIO21 as the onboard NeoPixel; no
+  BOOT/button alias is declared in this file (GPIO0 BOOT is a chip
+  strapping pin, not usually given an alias), so pins_arduino.h alone
+  was NOT used as evidence per task rules - only used as corroboration
+  after the two independent doc sources above confirmed it.
+
+Pins considered and NOT tagged:
+- None. Both candidate pins (GPIO0 button, GPIO21 NeoPixel) were
+  confirmed by independent vendor/third-party documentation and were
+  tagged. No guesswork was required for either pin.
+- Checked for TX/RX conflict: this board's pins_arduino.h declares
+  TX = 43, RX = 44. Neither GPIO0 nor GPIO21 conflicts with TX/RX, so
+  both tags are safe from the build_boards.js TX/RX hard-reservation
+  silent-discard bug.
+- Checked GPIO0 and GPIO21 against the chip-level pin-exclusion ranges
+  (flash/PSRAM/USB reservations) - neither falls in an excluded range,
+  both have a normal chipGpios entry in the chip-level default
+  board.json.
+
+Summary of what was tagged:
+- Created new board.json for waveshare_esp32_s3_zero (none existed
+  before), as a full copy of the esp32s3 chip-level default board.json.
+- GPIO0: capabilities changed to ["digital_input", "button"] - BOOT
+  button, confirmed by docs.waveshare.com and espboards.dev.
+- GPIO21: capabilities changed to ["digital_output", "led_neopixel",
+  "pwm_output"] (pwm_output retained since it was already present on
+  this pin) - onboard WS2812 NeoPixel, confirmed by docs.waveshare.com,
+  espboards.dev, and the board's own pins_arduino.h WS_RGB=21 define.

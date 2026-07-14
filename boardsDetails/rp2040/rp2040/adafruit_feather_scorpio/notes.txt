@@ -1,0 +1,161 @@
+Board: adafruit_feather_scorpio ("Adafruit Feather RP2040 SCORPIO", product 5650,
+marketed as an "8 Channel NeoPixel Driver") — chip family: rp2040
+Audit date: 2026-07-12 (RP2040/RP2350 family button/LED/NeoPixel audit)
+
+pins_arduino.h identity pins:
+  #define PIN_LED        (13u)
+  #define PIN_NEOPIXEL   (4u)
+  #define PIN_BUTTON     (7u)   // comment in file: "'Boot0' button also on GPIO #7"
+  #define PIN_NEOPIXEL0 (16u)
+  #define PIN_NEOPIXEL1 (17u)
+  #define PIN_NEOPIXEL2 (18u)
+  #define PIN_NEOPIXEL3 (19u)
+  #define PIN_NEOPIXEL4 (20u)
+  #define PIN_NEOPIXEL5 (21u)
+  #define PIN_NEOPIXEL6 (22u)
+  #define PIN_NEOPIXEL7 (23u)
+  PIN_SPI0_SS (13u) — shares GPIO13 with PIN_LED (no onboard SPI device;
+  this is a spare Feather-standard default, same pattern as other Adafruit
+  Feather RP2040 boards).
+  (rest of file includes ../generic_full/common.h for the blanket D0-D31
+  fallback; Serial1/SPI0/Wire0 aliases point at ordinary breakout pins
+  with no other dedicated onboard hardware.)
+
+Sources consulted:
+1. https://learn.adafruit.com/introducing-feather-rp2040-scorpio/overview
+   — board identity/purpose confirmation.
+2. https://learn.adafruit.com/introducing-feather-rp2040-scorpio/pinouts
+   (official Adafruit guide) — quoted verbatim in board.json's pfodWeb
+   NOTE comment. Confirms: D13 red LED controllable via digital pin 13,
+   pulses in bootloader mode; onboard status NeoPixel is digital pin 4;
+   BOOT button (digital pin 7) usable as a general input when the
+   bootloader isn't being entered; NEOPIXEL0-7/GPIO16-23 each listed
+   individually under "Digital Pins" with multiple alternate peripheral
+   functions (SPI/UART/I2C/PWM) alongside plain digital I/O — i.e.
+   ordinary GPIOs, not fixed-function pins.
+3. https://learn.adafruit.com/introducing-feather-rp2040-scorpio/8x-i-o-header
+   (official Adafruit guide) — THE key source for the GPIO16-23
+   question. Quotes verbatim: "eight sequential general-purpose
+   inputs/outputs (not shared by any other pins on the board)";
+   "uniquely suited to certain types of parallel logic projects...
+   large-scale NeoPixel installations, logic analyzers, etc."; "From the
+   factory, SCORPIO is configured for 5V output on these eight pins.
+   Solder pads on the back of the board allow reconfiguring this for 8
+   inputs and/or 3.3V logic"; "All 8 board-end pins are either input or
+   output; there is no mixed-direction operation." This CONCLUSIVELY
+   confirms GPIO16-23 are general-purpose, user-reconfigurable GPIO that
+   merely happen to be well-suited to NeoPixel driving via the RP2040's
+   PIO peripheral (like any RP2040 GPIO can be), not dedicated/fixed
+   NeoPixel-output-only pins.
+4. https://github.com/adafruit/circuitpython
+   ports/raspberrypi/boards/adafruit_feather_rp2040_scorpio/
+   mpconfigboard.h: `#define MICROPY_HW_NEOPIXEL (&pin_GPIO4)` — no
+   polarity/inverted flags present (none needed for a NeoPixel data
+   line). pins.c: LED -> pin_GPIO13 (D13), NEOPIXEL -> pin_GPIO4,
+   NEOPIXEL0-7 -> pin_GPIO16..pin_GPIO23, BOOT -> pin_GPIO7. No separate
+   BUTTON alias exists in CircuitPython either — matches this board's
+   pins_arduino.h "PIN_BUTTON == GPIO7 (shared with BOOT)" mapping.
+5. https://raw.githubusercontent.com/zephyrproject-rtos/zephyr (main)
+   boards/adafruit/feather_scorpio_rp2040/adafruit_feather_scorpio_rp2040.dts
+   — official upstream Zephyr RTOS board port for this exact board,
+   independently cross-referencing the same hardware. Quotes:
+     leds { red_led: led_0 { gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>; label = "Red LED"; }; };
+     gpio_keys { button0: button_0 { gpios = <&gpio0 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; label = "on-board button"; }; };
+     onboard ws2812 node: gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>; chain-length = <1>;
+     external ws2812 example node: gpios = <&gpio0 16 GPIO_ACTIVE_HIGH>; chain-length = <4>;
+       (comment: "Adjust to your number of LEDs" — this is a sample/
+       demo overlay showing how a user could wire an external NeoPixel
+       strip to the first header pin, GPIO16; it is NOT evidence of
+       hardware dedication of GPIO16-23 to NeoPixel-only use — it
+       directly corroborates source #3's "general-purpose, user-
+       reconfigurable" description instead, since the devicetree
+       treats it as just another ws2812-gpio consumer of an ordinary
+       GPIO, the same way any RP2040 GPIO could be used.)
+   This source independently CONFIRMS: D13 LED is active-high; BOOT/
+   GPIO7 button is active-low with the RP2040's internal pull-up
+   enabled (GPIO_PULL_UP flag), matching Adafruit's own "can be used as
+   an input" description; onboard status NeoPixel is GPIO4.
+
+Per-pin reasoning:
+
+GPIO4 (PIN_NEOPIXEL):
+  Onboard single status WS2812 NeoPixel, output-only data line.
+  capabilities: ["digital_output", "led_neopixel"]
+  Confirmed by sources #2, #4, #5 above (all three independently name
+  GPIO4 as the status NeoPixel). digital_input/pwm_output omitted,
+  matching this repo's established NeoPixel-tagging vocabulary
+  (vccgnd_yd_rp2040 GPIO23 precedent) — pwm_output is not meaningful
+  for a WS2812 data line (PIO/bit-banged timing, not analogWrite()).
+
+GPIO7 (PIN_BUTTON / BOOT):
+  Onboard bootloader-select pushbutton, also documented by Adafruit as
+  usable as a general digital input when application code is running.
+  Active-low, RP2040 internal pull-up enabled (GPIO_PULL_UP flag in the
+  Zephyr devicetree; no external pull-up on this line).
+  capabilities: ["digital_input", "digital_output", "pwm_output", "button"]
+  Full GPIO capability retained (not marked input-only) — this is an
+  ordinary GPIO wired to a switch to GND, not a dedicated/capacitive-
+  only pin (unlike adafruit_trinkeyrp2040qt's capacitive touch GPIO12).
+  Matches this repo's vccgnd_yd_rp2040 PIN_USRKEY precedent, which keeps
+  full digital_input/digital_output/pwm_output plus "button" on ordinary
+  GPIO-wired pushbuttons.
+
+GPIO13 (PIN_LED, also PIN_SPI0_SS):
+  Onboard status LED, active-high (confirmed independently by source #5,
+  the Zephyr devicetree's GPIO_ACTIVE_HIGH flag — Adafruit's own guide
+  describes the LED's behavior/control method but does not state
+  polarity in text, so the Zephyr source was needed as the deciding
+  confirmation rather than inferring from the sibling-board convention
+  alone).
+  capabilities: ["digital_output", "pwm_output", "led_high"]
+  digital_input dropped to match this repo's established led_high
+  precedent for dedicated onboard LED pins (rpipico/board.json,
+  wiznet_5500_evb_pico/board.json, vccgnd_yd_rp2040/board.json);
+  pwm_output kept since arduino-pico's analogWrite() works on any
+  RP2040 GPIO, enabling brightness dimming. Note: this GPIO doubles as
+  PIN_SPI0_SS in this board's pins_arduino.h (no onboard SPI device —
+  a spare Feather-standard default, also seen on the plain
+  adafruit_feather board's D13/"SPI1 CS" pinout per Adafruit's guide for
+  that sibling board); build_boards.js's unconditional spi_ss capability
+  auto-append still applies on top of this override regardless, per the
+  established wiznet_5500_evb_pico precedent for SPI-role auto-append
+  behavior.
+
+GPIO16-23 (PIN_NEOPIXEL0-7, "SCORPIO end connector"):
+  NO CHANGE — left at the chip-level default full general-purpose
+  capability set (no chipGpios override).
+  Reasoning: source #3 (Adafruit's own dedicated "8X I/O Header" guide
+  page) explicitly and unambiguously documents these as general-purpose,
+  factory-default-output-but-solder-jumper-reconfigurable-to-input GPIO,
+  NOT fixed/dedicated NeoPixel-output-only pins — despite the board's
+  marketing name ("8 Channel NeoPixel Driver") and the CircuitPython/
+  Arduino alias names (NEOPIXEL0-7) suggesting otherwise. Per this
+  audit's explicit guidance ("general-purpose GPIO that merely CAN
+  drive NeoPixels like any other pin... leave them as plain
+  general-purpose"), these are intentionally left untagged. Tagging them
+  led_neopixel/output-only would be incorrect and would prevent
+  Designer users from using them as ordinary bidirectional digital I/O
+  or PWM pins, contradicting the vendor's own documented flexibility
+  (input-reconfigurable via solder jumper, "logic analyzers" and
+  "multiple-servo projects" cited as alternate use cases by Adafruit).
+
+Result: board.json created at
+  variants/rp2040/rp2040/adafruit_feather_scorpio/board.json
+with chipGpios overrides for GPIO4 (status NeoPixel, output-only),
+GPIO7 (BOOT button, active-low + internal pull-up, full GPIO + button
+tag), and GPIO13 (status LED, active-high, also shares the PIN_SPI0_SS
+alias). GPIO16-23 (the 8-pin NeoPixel-driver end connector) received
+NO CHANGE — confirmed general-purpose GPIO, not dedicated hardware, per
+Adafruit's own "8X I/O Header" documentation page. No other pins on
+this board carry dedicated onboard hardware requiring exclusion.
+
+Summary: Confirmed and tagged all three identity pins (status NeoPixel
+GPIO4, BOOT button GPIO7 active-low, status LED GPIO13 active-high) via
+Adafruit's own official learn.adafruit.com guide cross-referenced with
+CircuitPython's mpconfigboard.h/pins.c and the upstream Zephyr RTOS
+board port's devicetree (which supplied the deciding GPIO_ACTIVE_HIGH/
+GPIO_ACTIVE_LOW/GPIO_PULL_UP flags Adafruit's prose guide didn't state
+explicitly). Explicitly confirmed and left GPIO16-23 UNCHANGED as
+general-purpose GPIO despite the board's NeoPixel-driver marketing and
+NEOPIXEL0-7 alias names, per Adafruit's own "8X I/O Header" page
+describing them as reconfigurable general-purpose inputs/outputs.

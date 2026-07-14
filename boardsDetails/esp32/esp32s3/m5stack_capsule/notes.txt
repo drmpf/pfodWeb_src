@@ -1,0 +1,80 @@
+m5stack_capsule button/LED research notes
+==========================================
+
+Sources consulted:
+
+https://docs.m5stack.com/en/core/M5Capsule
+  Official M5Stack docs page. Gives header pin table (with a "WAKE" and
+  "Boot"/"EN" column in the connector position table - these are dedicated
+  power-management/download-mode signals, NOT plain GPIOs with an alias
+  in this variant's pins_arduino.h). Mentions BMI270 IMU, SPM1423 mic,
+  BM8563 RTC, IR TX, microSD, GPIO46 HOLD-for-power. Does NOT document
+  any onboard LED or a user/programmable button GPIO directly - only the
+  power WAKE/RST/download-mode buttons, which are not usable as an
+  application button.
+
+https://m5stack-doc.oss-cn-shenzhen.aliyuncs.com/496/Sch_M5Capsule.pdf
+  Schematic PDF - text extraction was not usable (Altium-exported PDF,
+  net labels not legible via text extraction). Did not yield useful
+  confirming/denying evidence either way; not relied upon.
+
+https://github.com/m5stack/M5Capsule/blob/master/examples/Basic/button/button.ino
+  Official M5Stack example sketch. Confirms the Capsule exposes a
+  library-level "M5Capsule.BtnA" button object, but the example itself
+  does not show the underlying GPIO number (abstracted via M5Unified).
+
+https://github.com/m5stack/M5Capsule/blob/master/src/M5Capsule.cpp
+  Thin wrapper delegating to M5Unified; no pin numbers here.
+
+https://raw.githubusercontent.com/m5stack/M5Unified/master/src/M5Unified.cpp
+  (fetched/queried 3 times with different targeted prompts, cross-checked
+  for consistency)
+  - Found, in the "/// setup Hardware Buttons" switch statement inside
+    M5Unified::_begin():
+      case board_t::board_M5Capsule:
+      case board_t::board_M5Dial:
+      case board_t::board_M5DinMeter:
+        m5gfx::pinMode(GPIO_NUM_42, m5gfx::pin_mode_t::input);
+        break;
+    i.e. GPIO42 is set up as the onboard case button input for
+    board_M5Capsule (grouped with M5Dial/M5DinMeter, both of which are
+    known to have a single physical case button). This result was
+    reproduced identically across two separate targeted fetches of the
+    same file, so treated as reliable (not a summarizer hallucination).
+  - Found, in the rgb_led pin lookup table ("_pin_table_other0"):
+      { board_t::board_M5Capsule    , GPIO_NUM_21 },
+    i.e. GPIO21 drives the onboard addressable RGB LED (WS2812/NeoPixel
+    style, via M5Unified's LedBus_RMT / pin_name_t::rgb_led mechanism).
+    Reproduced identically across two separate targeted fetches.
+  - Also found (for context, not tagged): speaker/buzzer on GPIO2,
+    microphone pin_data_in=GPIO41/pin_ws=GPIO40, internal I2C
+    SCL=GPIO10/SDA=GPIO8 - all consistent with, and corroborating, the
+    existing pin-exclusion NOTE already in this board's pins_arduino.h
+    and board.json from the earlier audit pass.
+
+Pins considered but NOT tagged:
+
+- GPIO6 ("WAKE" signal shown in the docs.m5stack.com connector-position
+  table): An earlier automated fetch pass mis-reported this as "WAKE
+  button on G6", but re-reading the actual table makes clear "6" in that
+  table is the connector PIN POSITION NUMBER (not a GPIO number) whose
+  Function column reads "WAKE" - i.e. WAKE is a dedicated power-path
+  signal on a specific header pin, not GPIO6. GPIO6 itself is a normal,
+  already-generic, unexcluded pin in this board's pins_arduino.h/board.json
+  (analog_input/digital_input/digital_output/pwm_output) and is left
+  untouched. This was a judgment call to NOT tag - I found no vendor
+  evidence GPIO6 is a readable application button.
+- EN pin (RST button) and G0 (StampS3 download-mode button): both are
+  standard ESP32 strapping/reset pins used for power-off/firmware-flash
+  entry, not application-usable buttons - explicitly excluded by the
+  task's own guidance not to infer from generic strapping-pin behaviour.
+  No guess made; not tagged.
+- No onboard single-color or discrete RGB LED was found anywhere (only
+  the one addressable/NeoPixel-style RGB LED on GPIO21) - no additional
+  LED tags were considered.
+
+Summary of what was tagged:
+- GPIO42: button -> ["digital_input", "button"]
+- GPIO21: addressable RGB LED -> ["digital_output", "led_neopixel", "pwm_output"]
+  (pwm_output kept because it was already present on GPIO21's existing
+  capability set before this change)

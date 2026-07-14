@@ -1,0 +1,167 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  // GPIO11 (PIN_SWITCH, see chipGpios below) is a genuine physical
+  // pushbutton wired as an ordinary bidirectional GPIO (not a dedicated
+  // silicon trick like the plain Raspberry Pi Pico's BOOTSEL), so it is
+  // handled entirely via the chipGpios "button" tag, not via
+  // inputOnlyGpios.
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (RP2040/RP2350 family button/LED/NeoPixel audit,
+  // 2026-07-13):
+  //
+  // Board: Adafruit "STEMMA Friend RP2040" — confirmed as a real,
+  // officially-supported arduino-pico board (variants/adafruit_stemmafriend
+  // in earlephilhower/arduino-pico, and independently listed by name/USB
+  // IDs in that repo's tools/makeboards.py: MakeBoard("adafruit_stemmafriend",
+  // "rp2040", "Adafruit", "STEMMA Friend RP2040", "0x239a", "0x80e3", ...) —
+  // "0x239a" is Adafruit's own registered USB VID). This board is a small
+  // handheld I2C/UART diagnostic "multi-tool": a 240x240 IPS TFT display
+  // dominates its front face, with two STEMMA QT connectors (I2C bus 0)
+  // plus one Grove/JST connector (I2C bus 1, switchable to UART), a JST
+  // battery connector, and a single physical pushbutton. It appears to be
+  // an Adafruit-internal/limited-release engineering tool (announced only
+  // via Adafruit's own blog + a Hackster.io writeup in 2020 as a SAMD21E
+  // design) rather than a mainstream retail product — no dedicated
+  // learn.adafruit.com guide or adafruit.com product-page/pinout diagram
+  // could be found for it (searches for "STEMMA Friend" pinouts/schematics
+  // only surface the original SAMD21 blog coverage). This RP2040 variant is
+  // presumably a later hardware revision of the same tool, added directly
+  // to arduino-pico's variants tree, reusing the same functional pin roles
+  // documented in the file's own header comment (image asset URL
+  // learn.adafruit.com/assets/100337).
+  //
+  // Sources consulted:
+  // 1. This board's own pins_arduino.h (variants/rp2040/rp2040/
+  //    adafruit_stemmafriend/pins_arduino.h, verbatim copy of
+  //    earlephilhower/arduino-pico's variants/adafruit_stemmafriend/
+  //    pins_arduino.h — confirmed identical via direct fetch of the
+  //    upstream raw file). Declares:
+  //      PIN_LED (12u)      // author's own comment: "backlight, weird but
+  //                         // why not?" — i.e. this is NOT a general
+  //                         // status LED, it drives the TFT backlight.
+  //      PIN_NEOPIXEL (17u), NUM_NEOPIXEL (1u)  // no NEOPIXEL_POWER macro
+  //                         // anywhere in the file — single onboard
+  //                         // NeoPixel with no separate power-gate pin
+  //                         // (unlike adafruit_qtpy's GPIO11/12 pair).
+  //      PIN_SWITCH (11u)   // a physical pushbutton (macro name itself
+  //                         // states "switch", matching this repo's
+  //                         // established PIN_SWITCH/BOOT-button
+  //                         // precedent naming elsewhere in arduino-pico).
+  //      SPI0 MOSI=7 ("TFT data"), SCK=2 ("TFT clock"), SS=1 ("TFT CS"),
+  //      MISO=4 ("unconnected") — corroborates the onboard TFT display
+  //      referenced by source 2 below; these 4 GPIOs are already excluded
+  //      from this board's own D-pin alias list via a pre-existing
+  //      pfodWeb NOTE at the top of the file (D1/D2/D4/D7 deliberately not
+  //      declared), so no further pins_arduino.h edit is needed for them.
+  // 2. blog.adafruit.com/2020/10/19 ("STEMMA Friend Is an I2C Multi-Tool")
+  //    and blog.adafruit.com/2020/10/13 ("STEMMA Friend is your I2C pal —
+  //    I2C scanner demo") — confirm: "barely larger than the 240 x 240
+  //    pixel IPS TFT display that dominates the front face of the board",
+  //    "based around the Microchip SAM D21E MCU" (original hardware
+  //    revision), native USB CDC serial output of I2C-scan results, two
+  //    STEMMA QT connectors on I2C bus 0 plus a Grove-compatible JST
+  //    connector on I2C bus 1 (matching this file's WIRE0/WIRE1 split
+  //    exactly), and a JST battery connector. Neither post's available
+  //    excerpt explicitly states the backlight's active polarity or
+  //    confirms the pushbutton's specific UI role (e.g. "scan"/"next"),
+  //    so those two specifics are NOT asserted as vendor-confirmed below.
+  // 3. earlephilhower/arduino-pico tools/makeboards.py (fetched raw) —
+  //    confirms the official board name "Adafruit STEMMA Friend RP2040",
+  //    USB VID 0x239a / PID 0x80e3, 8MB flash, 0MB PSRAM — independent
+  //    confirmation this is a real, currently-supported board definition
+  //    (not a hypothetical/abandoned entry).
+  // 4. WebSearch sweep for a CircuitPython "adafruit_stemmafriend" boards
+  //    directory (ports/raspberrypi/boards/adafruit_stemmafriend) returned
+  //    404 — this board has no CircuitPython port, consistent with it
+  //    being a fixed-firmware diagnostic tool rather than a general
+  //    CircuitPython dev board, so no independent pins.c cross-check was
+  //    available (unlike the adafruit_qtpy precedent).
+  //
+  // GPIO11 (PIN_SWITCH, aliased as D11): CONFIRMED genuine physical
+  // pushbutton (macro name itself, source 1) on a handheld tool that per
+  // source 2 has an integrated screen and no other described input —
+  // consistent with it being the tool's primary UI button (e.g. trigger
+  // an I2C re-scan). Tagged with full digital_input/digital_output/
+  // pwm_output/button capability, matching this repo's adafruit_qtpy
+  // GPIO21 / adafruit_itsybitsy GPIO13 precedent for an ordinary GPIO
+  // wired to a mechanical switch (not a dedicated silicon trick). Checked
+  // against this board's bus aliases (SPI0 MOSI=7/MISO=4/SCK=2/SS=1,
+  // WIRE0 SDA=20/SCL=21, WIRE1 SDA=26/SCL=27) — no collision, no
+  // pins_arduino.h edit needed.
+  //
+  // GPIO12 (PIN_LED, aliased as D12): CONFIRMED to be the TFT backlight
+  // control line, NOT a general-purpose status LED — this board's own
+  // pins_arduino.h author comment ("backlight, weird but why not?") plus
+  // source 2's description of an integrated 240x240 TFT dominating the
+  // board face together rule out a plain indicator-LED interpretation.
+  // digital_input dropped (dedicated backlight-control output, matching
+  // this repo's led_high/led_low precedent for dedicated onboard LED
+  // pins), pwm_output kept (arduino-pico's analogWrite() works on any
+  // RP2040 GPIO, and PWM-dimmed backlights are the norm on small TFT
+  // panels). Tagged led_high on the same idiom-based basis this repo
+  // already applies to every other arduino-pico PIN_LED/LED_BUILTIN pin
+  // (digitalWrite(LED_BUILTIN, HIGH) // LED on convention used uniformly
+  // across arduino-pico's bundled examples) — NOTE this specific pin's
+  // active polarity is not independently vendor-confirmed (no
+  // learn.adafruit.com pinout/schematic page could be located for this
+  // board), so this tag carries lower confidence than the rpipico GPIO25
+  // precedent (which had an official datasheet backing it); flagged here
+  // for visibility rather than silently matched to that precedent's
+  // confidence level.
+  //
+  // GPIO17 (PIN_NEOPIXEL, aliased as D17): CONFIRMED single onboard status
+  // NeoPixel (WS2812), output-only data line — NUM_NEOPIXEL=1 in this
+  // board's own pins_arduino.h, and no NEOPIXEL_POWER macro appears
+  // anywhere in the file, so (unlike adafruit_qtpy) there is no separate
+  // power-gate pin to exclude. Tagged ["digital_output","led_neopixel"],
+  // matching this repo's adafruit_qtpy GPIO12 / adafruit_itsybitsy GPIO17
+  // precedent (no digital_input/pwm_output — NeoPixel protocol timing is
+  // driven via the RP2040 PIO peripheral, not analogWrite/digitalRead).
+  // Checked against this board's bus aliases — no collision, no
+  // pins_arduino.h edit needed.
+  //
+  // GPIO1/2/4/7 (SPI0 TFT SS/SCK/MISO/MOSI): already excluded from this
+  // board's own D-pin alias list by a pre-existing pfodWeb NOTE at the top
+  // of pins_arduino.h (from an earlier session) — no chipGpios entry
+  // needed or possible (GPIOs with no alias at all do not surface as
+  // pins under the RP2040 "empty chip-level chipGpios" mechanism).
+  //
+  // Full findings/sources trail:
+  // boardsDetails/rp2040/rp2040/adafruit_stemmafriend/notes.txt
+  "chipGpios": {
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output", "button"], "note": "PIN_SWITCH — onboard physical pushbutton on this handheld I2C/UART diagnostic tool. Ordinary GPIO wired to a mechanical switch (not a dedicated silicon trick), full capability retained. Confirmed via this board's own pins_arduino.h macro name; see notes.txt for full sourcing." },
+    "12": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED — this board's TFT backlight control line (NOT a general status LED; confirmed via this board's own pins_arduino.h author comment \"backlight, weird but why not?\" plus Adafruit/Hackster.io descriptions of an integrated 240x240 TFT display). led_high tagged on the same digitalWrite(LED_BUILTIN, HIGH)-idiom basis used repo-wide for arduino-pico PIN_LED pins; active polarity not independently vendor-confirmed for this specific board — see notes.txt." },
+    "17": { "capabilities": ["digital_output", "led_neopixel"], "note": "PIN_NEOPIXEL — single onboard status NeoPixel (WS2812), output-only data line. No NEOPIXEL_POWER pin exists on this board (no power-gate macro anywhere in pins_arduino.h), unlike adafruit_qtpy. Confirmed via this board's own pins_arduino.h (NUM_NEOPIXEL=1); see notes.txt for full sourcing." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference — same as every
+  // other RP2040 board. This board's pins_arduino.h declares A0-A3 =
+  // GPIO26/27/28/29 (NUM_ANALOG_INPUTS = 4), matching the chip-level
+  // default — this audit found no reason to override it.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

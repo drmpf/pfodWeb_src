@@ -1,0 +1,126 @@
+XIAO_ESP32C5 (Seeed Studio XIAO ESP32C5, chip esp32c5) - dedicated-hardware
+pin-exclusion audit for BAT_VOLT_PIN/BAT_VOLT_PIN_EN, plus opportunistic
+button/LED check and SDA/SCL/SPI alias-collision check (this board had no
+board.json override before this pass).
+Date: 2026-07-12
+
+Sweep flag:
+- Read C:\ai\aicode\pfodWeb\variants\esp32\esp32c5\XIAO_ESP32C5\pins_arduino.h
+  in full (46 lines). Confirmed non-boilerplate declarations flagged by the
+  discovery sweep:
+    static const uint8_t BAT_VOLT_PIN = 6;
+    static const uint8_t BAT_VOLT_PIN_EN = 26;
+  USB_VID/USB_PID are USB descriptor macros, not pins - ignored per task
+  instructions.
+- Also present (not flagged, but checked opportunistically per section 7a):
+  static const uint8_t LED_BUILTIN = 27; - a genuine onboard-LED
+  declaration the #define-only sweep would not have caught.
+- No button alias of any kind in this file.
+
+Sources consulted:
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32c5\XIAO_ESP32C5\pins_arduino.h
+  (local, vendor-derived) - full read. Aliases: TX=11, RX=12, SDA=23,
+  SCL=24, SS=7, MOSI=10, MISO=9, SCK=8, LED_BUILTIN=27, BAT_VOLT_PIN=6,
+  BAT_VOLT_PIN_EN=26, plus A0-A4/D0-D10 aliases.
+- https://wiki.seeedstudio.com/xiao_esp32c5_getting_started/ (Seeed Studio
+  Wiki, authoritative) - fetched. Confirmed:
+  * "On the XIAO ESP32C5, the pin corresponding to BAT_VOLT_PIN is GPIO6,
+    and the pin corresponding to BAT_VOLT_PIN_EN is GPIO26." Board uses
+    "two 100K resistors for voltage division" to measure battery voltage
+    up to ~3300 mV, read via analogReadMilliVolts() (factory-calibrated).
+  * Official example code (quoted in full, confirms BAT_VOLT_PIN_EN is
+    NOT purely internal/automatic - it must be actively driven by user
+    code):
+      pinMode(BAT_VOLT_PIN, INPUT);
+      pinMode(BAT_VOLT_PIN_EN, OUTPUT);
+      digitalWrite(BAT_VOLT_PIN_EN, HIGH);
+      ...
+      Vbatt += analogReadMilliVolts(BAT_VOLT_PIN);
+    This differs from the task's cited EXCLUDE precedent (NeoPixel
+    power-gate confirmed internal via vendor docs, driven automatically by
+    library code) - here the enable line is only asserted in the user's
+    own sketch, so pfodWeb should not hide it from the pin picker.
+  * LED_BUILTIN: "corresponds to the L LED"; example code
+    `digitalWrite(LED_BUILTIN, LOW); // LED ON` confirms active-low
+    behaviour, consistent wording with the sibling XIAO_ESP32S3/
+    XIAO_ESP32S3_Plus boards' existing "led_low" precedent (GPIO21 on
+    those chips) for the same product family's USER_LED convention. Pin
+    map also separately lists a "User Light_Yellow" LED on GPIO27,
+    matching LED_BUILTIN=27 in pins_arduino.h.
+  * Onboard user button: page documents only a "Reset / Boot Button"
+    (Boot = GPIO28, standard ESP32 strapping/download-mode button); no
+    dedicated general-purpose user button is documented - not tagged,
+    consistent with the no-tag precedent on other esp32 boards for the
+    same BOOT role (e.g. um_tinys3, XIAO_ESP32S3).
+- https://wiki.seeedstudio.com/xiao_esp32c5_pin_multiplexing/ (Seeed
+  Studio Wiki) - fetched for a full GPIO table; page did not contain a
+  complete per-GPIO text table (only front/back pinout diagrams and a few
+  code-sample pin references: Serial1 RX=D7/TX=D6, I2C SCL=D5/SDA=D4,
+  matching this board's D-number aliases D7=GPIO12, D6=GPIO11, D5=GPIO24,
+  D4=GPIO23 - which line up exactly with this file's TX=11/RX=12/SCL=24/
+  SDA=23, corroborating the vendor pins_arduino.h aliases as genuine).
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\XIAO_ESP32S3\board.json and
+  boardsDetails notes.txt, and
+  C:\ai\aicode\pfodWeb\variants\esp32\esp32s3\XIAO_ESP32S3_Plus\board.json
+  (local, sibling XIAO boards previously audited) - used as direct
+  precedent for the led_low tag/capability set
+  (["digital_output","pwm_output","led_low"], digital_input dropped) and
+  for board.json/notes.txt structure and the alias-collision methodology.
+- C:\ai\aicode\pfodWeb\variants\esp32\esp32c3\VALTRACK_V4_MFW_ESP32_C3\board.json,
+  VALTRACK_V4_VTS_ESP32_C3\board.json, Pcbcupid_GLYPH_C3\board.json,
+  Pcbcupid_GLYPH_H2\board.json (local, other previously-audited boards
+  with battery-sense pins) - used as precedent for the KEEP-with-"note"
+  pattern on a battery-voltage pin's chipGpios entry, rather than
+  excluding it.
+
+Alias-collision check (per this session's new methodology - a GPIO being
+tagged/re-capability'd must not also be a boilerplate SDA/SCL/SS/MOSI/
+MISO/SCK/TX/RX alias elsewhere in the same pins_arduino.h, since
+build_boards.js unconditionally appends those bus capabilities regardless
+of chipGpios):
+- This file's aliases: TX=11, RX=12, SDA=23, SCL=24, SS=7, MOSI=10,
+  MISO=9, SCK=8.
+- GPIO6 (BAT_VOLT_PIN): matches none of the above. Clean.
+- GPIO26 (BAT_VOLT_PIN_EN): matches none of the above. Clean.
+- GPIO27 (LED_BUILTIN, tagged led_low): matches none of the above. Clean.
+- No alias line needed deletion.
+
+Applied:
+- Created C:\ai\aicode\pfodWeb\variants\esp32\esp32c5\XIAO_ESP32C5\board.json
+  as a board-specific override of the chip-level default
+  (C:\ai\aicode\pfodWeb\variants\esp32\esp32c5\board.json), identical
+  except:
+  * chipGpios["6"]: capabilities unchanged (analog_input, digital_input,
+    digital_output, pwm_output); added "note" documenting BAT_VOLT_PIN
+    usage and the GPIO26 dependency. Existing pinNotes["6"] strapping
+    warning ("Must be LOW or floating on reboot") left untouched - both
+    surface together in the pin picker (build_boards.js joins
+    pinNotesMap + chipEntry.note with '\n').
+  * chipGpios["26"]: capabilities unchanged (digital_input, digital_output,
+    pwm_output - digital_output was already present, which is what user
+    code needs to drive it HIGH); added "note" explaining it must be set
+    OUTPUT and driven HIGH before reading GPIO6, per Seeed's own example
+    code. KEPT (not excluded) per the task's decision rule, since this is
+    user-driven, not purely internal/automatic.
+  * chipGpios["27"]: capabilities changed from
+    ["digital_input","digital_output","pwm_output"] to
+    ["digital_output","pwm_output","led_low"] (digital_input dropped),
+    matching the XIAO_ESP32S3/XIAO_ESP32S3_Plus led_low precedent for the
+    same product family's onboard USER_LED.
+  * Top-of-file "// pfodWeb NOTE:" comment added citing sources/reasoning
+    for both decisions.
+- No button capability added (no confirmable onboard general-purpose
+  button; Boot/Reset are not general-purpose I/O, matching precedent).
+- No SDA/SCL/SS/MOSI/MISO/SCK/TX/RX alias lines needed deletion in
+  pins_arduino.h (checked, no collisions with GPIO6/26/27).
+
+Summary: GPIO6 (BAT_VOLT_PIN) and GPIO26 (BAT_VOLT_PIN_EN) both KEPT
+(not excluded) - confirmed via Seeed's own wiki and official example code
+that BAT_VOLT_PIN_EN must be actively driven HIGH by user code before
+reading BAT_VOLT_PIN, so it is not a purely-internal/automatic power-gate
+and must stay available/documented. Both pins got explanatory "note"
+fields in the new board.json. Opportunistic check found LED_BUILTIN=27
+(active-low "L LED"/"User Light_Yellow"), now tagged "led_low" matching
+sibling XIAO board precedent. No onboard general-purpose button exists.
+Alias-collision and TX/RX-conflict checks both passed clean - no
+pins_arduino.h edits were needed.

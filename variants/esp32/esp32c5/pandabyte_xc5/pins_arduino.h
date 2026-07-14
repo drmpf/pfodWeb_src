@@ -11,8 +11,13 @@ static const uint8_t BUTTON_BUILTIN = 24;
 static const uint8_t TX = 11;
 static const uint8_t RX = 12;
 
-// static const uint8_t USB_DM = 13;
-// static const uint8_t USB_DP = 14;
+// pfodWeb NOTE: the native USB D-/D+ pin aliases for this chip were removed
+// entirely during the 2026-07-12 audit (a prior pass had only commented
+// them out, which does NOT work: build_boards.js's ESP32 alias parser does
+// not strip comments before matching pin declarations, so a commented-out
+// declaration of the same shape still gets parsed and leaks the two GPIOs,
+// already excluded from chipGpios, back into the routable pin list). See
+// boardsDetails/esp32/esp32c5/sparkfun_esp32c5_thing_plus/notes.txt.
 
 static const uint8_t SDA = 0;
 static const uint8_t SCL = 1;
@@ -20,7 +25,14 @@ static const uint8_t SCL = 1;
 static const uint8_t SS = 6;
 static const uint8_t MOSI = 8;
 static const uint8_t MISO = 9;
-static const uint8_t SCK = 10;
+
+// pfodWeb NOTE: SCK alias (was GPIO10) deleted - this is generic ESP32-C5
+// template boilerplate, never vendor-confirmed as a real onboard SPI clock
+// line, and it silently contaminated the confirmed RGB_BUILTIN NeoPixel's
+// capability list with "spi_sck" (build_boards.js appends spi_sck to any
+// GPIO matching the SCK alias, unconditionally, regardless of chipGpios
+// overrides). SS/MOSI/MISO (GPIO6/8/9) left as-is - none collide with a
+// tagged pin. See boardsDetails/esp32/esp32c5/pandabyte_xc5/notes.txt.
 
 static const uint8_t A0 = 1;
 static const uint8_t A1 = 2;

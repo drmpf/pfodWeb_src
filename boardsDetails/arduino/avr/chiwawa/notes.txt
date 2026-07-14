@@ -1,0 +1,95 @@
+Arduino Industrial 101 ("chiwawa") — split off from the shared "yun" directory
+================================================================================
+Date: 2026-07-14 (follow-up pass, split executed per explicit user request
+after being flagged-not-fixed in the original 2026-07-14 AVR audit)
+
+Reason for split: variants/arduino/avr/yun/ backs FOUR boards.txt entries
+(yun, yunmini, chiwawa, one), all atmega32u4 @ 16MHz sharing the same
+Leonardo-derived pins_arduino.h/board.json. Yún/Yún Mini/Linino One
+genuinely expose the full 20-pin set. Arduino Industrial 101 does NOT —
+confirmed via its own official datasheet (Arduino part A000126,
+downloaded from media.digikey.com/pdf/Data%20Sheets/Arduino%20PDFs/Industrial_101_Web.pdf
+and read directly as a PDF during the original 2026-07-14 session; same
+source reused here, no new fetch needed).
+
+Sources consulted
+------------------
+1. Official Industrial 101 datasheet (A000126), already fully cited in
+   boardsDetails/arduino/avr/yun/notes.txt source #7 — reused verbatim.
+   Key facts: spec table states "Digital I/O Pins: 20 (7 exported on
+   header)" and "Analog I/O Pins: 12 (4 exported on header)"; the header
+   pinout diagram (connector J7, the only general-purpose header on this
+   board) lists exactly: GND, 5V, 5V, GND, 13, 6, 5, A0, A1, A2, A3.
+   D0-D7 (except 5/6) are instead routed to a separate OLED-expansion-
+   only connector (J6, "for dogOLED"), not general-purpose.
+2. variants/arduino/avr/leonardo/pins_arduino.h — the underlying
+   mechanical pin map (unchanged on this board, same chip): confirms the
+   dual-numbering of D4=A6(24), D6=A7(25), D8=A8(26), D9=A9(27),
+   D10=A10(28), D12=A11(29).
+3. variants/arduino/avr/yun/board.json and
+   boardsDetails/arduino/avr/yun/notes.txt — the prior session's full
+   research trail for the shared Yún-family facts (D13 LED, Serial1
+   bridge, SPI/AR9331 software-SPI channel) — reused as the baseline,
+   narrowed to what's actually exposed on this specific board.
+
+Per-pin findings
+-----------------
+KEPT (physically exposed on the J7 header, per the datasheet's own
+pinout diagram):
+- D5, D6 — general-purpose digital pins on the J7 header. D6 is also
+  dual-numbered as A7 (index 25) on this chip; since D6 really is the
+  physical pin wired to J7, both its D6 and A7 index are left available
+  (same physical pin, both Arduino API names valid).
+- D13 — onboard status LED, active-high (same confirmed fact as
+  yun/yunmini), physically exposed on J7. Tagged
+  ["digital_output","pwm_output","led_high"].
+- A0, A1, A2, A3 (indices 18-21) — general-purpose analog pins on J7.
+
+EXCLUDED (capabilities: [], not physically exposed on the J7 header —
+routed instead to the OLED-only J6 connector or simply absent from any
+header):
+- D2 (SDA), D3 (SCL) — general I2C bus on yun/yunmini/one, but not
+  exposed on this board's J7 header at all.
+- D4/A6(24), D8/A8(26), D9/A9(27), D10/A10(28), D12/A11(29) — each
+  excluded under BOTH its D<n> and A<n> index, since this chip
+  dual-numbers these physical pins (excluding only one index would leave
+  the identical physical pin exposed under the other name — same lesson
+  as the leonardoeth D4/D10 dual-numbering finding from the original
+  session).
+- D7, D11 — not physically exposed, no dual-numbering to worry about.
+- D14 (MISO), D15 (SCK), D16 (MOSI), D17 (SS) — the ICSP SPI bus,
+  confirmed on yun/board.json to also serve an AR9331 software-SPI
+  channel, but not exposed on this board's J7 header regardless.
+- A4 (22), A5 (23) — datasheet's header diagram lists only A0-A3; these
+  two are absent from J7.
+- D0 (RX1), D1 (TX1) — already automatically excluded by the existing
+  parser as serial_rx/serial_tx (Serial1 bridges to the AR9331 Linux
+  console, same as every other Yún-family board) — no additional
+  chipGpios entry needed, this is standard behavior already correct.
+- D30 (TXLED, PD5) — caught during post-build verification: Leonardo's
+  internal USB-TX-activity indicator line, an extra index beyond the
+  chip's 20 counted digital I/O pins (not part of the "20 digital I/O
+  pins (7 exported)" spec table at all). Not exposed on the J7 header.
+  Left available on plain leonardo/yun (a pre-existing gap from the
+  original audit, out of scope to fix there), but excluded here since
+  chiwawa's whole chipGpios map is specifically built to reflect only
+  what the datasheet confirms is physically accessible.
+
+boards.txt edit
+----------------
+Changed line 1225 from `chiwawa.build.variant=yun` to
+`chiwawa.build.variant=chiwawa` — targeted single-line edit, verified via
+grep that no other line in the shared boards.txt file was touched.
+
+Summary
+--------
+Arduino Industrial 101 — split off from the shared "yun" directory into
+its own `variants/arduino/avr/chiwawa/` (pins_arduino.h stays a plain
+`#include` of Leonardo's mechanical pin map, since the chip itself is
+unchanged; only the chipGpios map narrows what's actually usable). 7
+pins kept available (D5, D6/A7, D13, A0-A3), 20 chipGpios exclusion
+entries applied (13 logical pins + 5 dual-numbered aliases + D13's LED
+tag already counted among the kept pins), all confirmed via the official
+Industrial 101 datasheet's own header pinout diagram. yun/yunmini/one
+are unaffected — they remain on the original shared "yun" directory with
+their full 20-pin pinout intact.

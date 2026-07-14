@@ -1,0 +1,145 @@
+Board: esp32s2-devkit-lipo (chip: esp32s2)
+Directory: variants/esp32/esp32s2/esp32s2-devkit-lipo/
+Audit date: 2026-07-12
+
+SUMMARY
+-------
+Olimex "ESP32-S2-DevKit-Lipo" board, confirmed by vendor GitHub repo and
+example firmware. GPIO0 = onboard USER button (KEEP, tagged
+["digital_input","button"]). GPIO18 = onboard WS2812 "NeoPixel" RGB LED
+(KEEP, tagged ["digital_output","pwm_output","led_neopixel"]). No
+pins_arduino.h alias conflicts found on either pin. board.json created as
+an override of the chip-level esp32s2/board.json default.
+
+SOURCES CONSULTED
+------------------
+1. variants/esp32/esp32s2/esp32s2-devkit-lipo/pins_arduino.h (read in full)
+   - PIN_RGB_LED / RGB_BUILTIN = GPIO18, RGB_BRIGHTNESS = 64
+   - BUT_BUILTIN = GPIO0
+   - TX=43, RX=44, SDA=8, SCL=9, SS=34, MOSI=35, MISO=37, SCK=36
+   - Commented-out (inactive) sense pins: PWR_SENSE=7, BAT_SENSE=8
+     ("check the schematic" comments — solder-jumper gated, disabled by
+     default)
+   - A0..A19 (GPIO1-20), T1..T14 (GPIO1-14 touch), DAC1=17, DAC2=18
+
+2. variants/esp32/esp32s2/board.json (chip-level default, read in full) —
+   used as the base for the new board.json override.
+
+3. variants/esp32/esp32s2/esp32s2-devkit-lipo-usb/pins_arduino.h and
+   board.json — sibling variant in the same directory, already audited
+   this session. Its pins_arduino.h is functionally identical (same
+   PIN_RGB_LED=18, BUT_BUILTIN=0, TX/RX/SDA/SCL/SS/MOSI/MISO/SCK values,
+   same commented-out PWR_SENSE=7/BAT_SENSE=8). Its board.json already
+   tags GPIO0 as ["digital_input","button"] and GPIO18 as
+   ["digital_output","pwm_output","led_neopixel"] with an equivalent
+   comment citing the Olimex product page. Used as the direct convention
+   template for this board (same physical Olimex family, this variant is
+   the non-USB-C sibling).
+
+4. https://github.com/OLIMEX/ESP32-S2-DevKit-LiPo — official Olimex
+   hardware/software repo. Description: "ESP32-S2 IoT developement board
+   with WiFi, USB programmer, RGB LED, LiPo charger, GPIOs." Hardware
+   under CERN OHL v2, software GPL3.
+
+5. https://raw.githubusercontent.com/OLIMEX/ESP32-S2-DevKit-LiPo/master/SOFTWARE/ARDUINO/ESP32-S2-DevKit-RGB-LED-button-serial/ESP32-S2-DevKit-RGB-LED-button-serial.ino
+   Official Olimex example sketch (fetched raw, full contents reviewed).
+   Ground-truth vendor firmware written specifically for this board:
+     #define LED_PIN 18
+     #define BUTTON_PIN 0
+     ...
+     pinMode(BUTTON_PIN, INPUT_PULLUP);
+     ws2812_init();  // configures an RMT TX channel on LED_PIN with
+                      // WS2812 bit timing (bit0/bit1 duration/level pairs)
+     Serial.println("Press USER button to change LED mode");
+   Comment header: "Serial/button/RGB LED demo for Olimex
+   ESP32-S2-DevKit-Lipo ... press button to change mode". This is direct,
+   unambiguous vendor confirmation that GPIO18 drives the onboard WS2812
+   RGB LED and GPIO0 reads the onboard USER button.
+
+6. https://www.olimex.com/Products/IoT/ESP32-S2/ESP32-S2-DevKit-Lipo/open-source-hardware
+   Official product page. Lists board features including "Reset button",
+   "User button", "RGB LED", and "Optional battery monitoring and
+   external power sense."
+
+7. https://www.olimex.com/forum/index.php?topic=8224.0 — Olimex forum
+   thread "ESP32S2 devkit lipo battery voltage measurement". Confirms
+   GPIO8 is BAT_SENS (matches this file's commented "BAT_SENSE = 8"
+   placeholder exactly) and that the battery-measurement path is "not
+   connected" by default, requiring the user to close solder-jumper pads
+   to enable it. General web search results additionally corroborated
+   GPIO7 as PWR_SENS for this board family, matching the commented
+   "PWR_SENSE = 7" placeholder.
+
+REASONING
+---------
+GPIO0 (BUT_BUILTIN):
+  - Confirmed onboard physical USER button via vendor example firmware
+    (BUTTON_PIN=0, INPUT_PULLUP, runtime message "Press USER button to
+    change LED mode").
+  - Also the ESP32-S2's standard boot-strapping pin (must be HIGH for
+    normal boot) — expected and already covered by the chip-level
+    board.json's pinNotes entry, left unchanged.
+  - KEEP, capabilities set to ["digital_input","button"] only (no
+    digital_output/pwm_output mixed in), matching the sibling
+    esp32s2-devkit-lipo-usb board and the general playbook convention for
+    confirmed button pins.
+
+GPIO18 (PIN_RGB_LED / RGB_BUILTIN):
+  - Confirmed onboard WS2812 "NeoPixel" RGB LED via vendor example
+    firmware (LED_PIN=18 driven through the RMT peripheral with WS2812
+    bit timing) and the product page's "RGB LED" feature listing.
+  - KEEP, capabilities set to ["digital_output","pwm_output","led_neopixel"],
+    matching the sibling esp32s2-devkit-lipo-usb board's GPIO18 entry
+    exactly (both boards carry the identical physical LED). Chip-level
+    default's "analog_input_serial" and "dac_output" capabilities were
+    dropped for this pin since it is soldered to a dedicated LED data
+    line, not available as ADC/DAC on this specific board.
+
+Battery/power sense pins (PWR_SENSE=7, BAT_SENSE=8):
+  - Left as-is / EXCLUDED (no chipGpios override) since they remain
+    commented out (inactive) in this board's pins_arduino.h and are
+    gated behind solder-jumper pads that are open by default per the
+    Olimex forum thread. GPIO7 and GPIO8 keep their normal chip-level
+    default capabilities (both are plain analog+digital+pwm capable
+    pins per the ESP32-S2 chip-level board.json; GPIO8 also happens to
+    be the generic SDA pin per this board's own pins_arduino.h).
+  - Vendor evidence (GPIO8=BAT_SENS, GPIO7=PWR_SENS) matches this file's
+    own commented-out placeholder values exactly, which corroborates
+    that this really is the Olimex ESP32-S2-DevKit-Lipo board and not a
+    mismatched/generic template.
+
+ALIAS-CONFLICT CHECK (new playbook step, this session)
+--------------------------------------------------------
+build_boards.js unconditionally appends i2c_sda/i2c_scl/spi_ss/spi_mosi/
+spi_miso/spi_sck capabilities to whichever GPIO equals the pins_arduino.h
+SDA/SCL/SS/MOSI/MISO/SCK consts, and routes any GPIO equal to TX/RX to a
+forced serial_tx/serial_rx-only pin — regardless of what a board.json
+chipGpios override sets for that pin. Checked this file's pins_arduino.h
+values against GPIO0 and GPIO18:
+
+  TX=43, RX=44, SDA=8, SCL=9, SS=34, MOSI=35, MISO=37, SCK=36
+
+None of these equal 0 or 18, so neither pin can be silently contaminated
+by an unconditional bus-alias append. No pins_arduino.h edit was needed —
+clean result (unlike the sibling esp32c3-devkit-lipo board audited
+earlier this session, which had a real SCL=9/BUT_BUILTIN=9 collision that
+required deleting the boilerplate SCL line).
+
+Note: GPIO18 does coincide with the pins_arduino.h DAC2=18 alias, but
+DAC is NOT one of the unconditionally-appended aliases in build_boards.js
+— the dac_output capability is only auto-added via the fallback branch
+used when a GPIO has no chipGpios entry at all. Since this board.json
+now sets an explicit chipGpios entry for GPIO18, dac_output is fully
+under this file's control and was deliberately omitted (the pin is
+committed to driving the onboard NeoPixel, not usable as a DAC output on
+this board).
+
+FILES CHANGED
+-------------
+- Created: variants/esp32/esp32s2/esp32s2-devkit-lipo/board.json (full
+  copy of the chip-level esp32s2/board.json default, with GPIO0 and
+  GPIO18 chipGpios entries edited per above, plus a pfodWeb NOTE comment
+  block citing sources).
+- Created: boardsDetails/esp32/esp32s2/esp32s2-devkit-lipo/notes.txt
+  (this file).
+- pins_arduino.h: no changes needed (no alias conflicts found).

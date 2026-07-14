@@ -1,0 +1,62 @@
+tamc_termod_s3 - button/LED research notes
+============================================
+
+Sources consulted:
+- https://raw.githubusercontent.com/TAMCTec/termod-s3/main/docs/source/hardware.rst
+  Official vendor (TAMCTec) hardware documentation source (rst) fetched directly via curl.
+  Contains: Specifications table ("Buttons: IO0 and Reset button"), full "Pin Assignment"
+  table listing GPIO0 = "Button", GPIO48 = "TFT Backlight (See Selectable pins)", and the
+  Schematic section text: "Simple setup for ESP32 S3 with buttons(IO0 and EN)" plus a
+  power-management section describing "A 3.3V power indicator LED D1 to indicate the power
+  status" (D1 is a fixed power-on indicator, not GPIO-controlled - not a user LED).
+- https://github.com/TAMCTec/termod-s3
+  Official vendor GitHub repo root - confirmed repo identity ("Termod S3 is a ESP32 S3
+  development board with 2.8 inch capacitive touch display") and pointed to docs/ folder
+  used above.
+- https://termod-s3.readthedocs.io/en/latest/index.html
+  Official hosted docs (Read the Docs) home page - confirmed "IO0 and Reset button" under
+  Buttons, no onboard LED mentioned, and table of contents listing Hardware > Pinout / Pin
+  Assignment / Schematic sections (content retrieved directly from GitHub rst source above
+  since some readthedocs sub-pages 404'd).
+- https://termod-s3.readthedocs.io/en/latest/hardware/pins.html
+  404 Not Found - page path guess was wrong, superseded by the GitHub raw hardware.rst fetch.
+- https://termod-s3.readthedocs.io/en/latest/hardware/pin_assignment.html
+  404 Not Found - page path guess was wrong, superseded by the GitHub raw hardware.rst fetch.
+- https://termod-s3.readthedocs.io/en/latest/hardware/hardware.html
+  404 Not Found - page path guess was wrong, superseded by the GitHub raw hardware.rst fetch.
+- https://www.espboards.dev/esp32/tamc-termod-s3/
+  Third-party aggregator site; listed "Pin 48 is designated as LED_BUILTIN TFT_BCKL" per
+  Arduino core pin mapping table - confirms this is the Arduino LED_BUILTIN alias name is
+  actually just the TFT backlight control pin, NOT a genuine standalone user LED. Used only
+  as corroborating evidence, not as primary source.
+- https://github.com/TAMCTec/termod-s3/blob/main/docs/source/faq.rst
+  Official vendor FAQ - only mentions IO0/reset button in the context of manual flash-mode
+  entry troubleshooting; no additional button/LED info.
+
+Pins considered but NOT tagged:
+- GPIO48 (TFT Backlight / Arduino LED_BUILTIN alias): NOT tagged as an LED. Vendor docs
+  explicitly identify GPIO48 as "TFT Backlight" (Selectable pins section: "JP2 is for
+  selecting the TFT backlight pin... Set IO48 HIGH to turn on backlight"), i.e. a
+  display-subsystem pin, not a standalone user-controllable status LED. It is already
+  excluded from this board's chipGpios entirely (pre-existing pin-exclusion, part of the
+  "GPIO10-14/18/48 dedicated onboard TFT display" note at the top of board.json) and is out
+  of scope to re-add per task rules. This is a confident decision (not a guess) based on
+  the vendor's own schematic/pin-assignment wording.
+- Power indicator LED "D1": NOT tagged. Vendor schematic text states D1 is a fixed "3.3V
+  power indicator LED" with no GPIO connection at all (wired directly across the 3.3V rail)
+  - there is no GPIO to tag. Confident decision, not a guess.
+- No other candidate LED pins were found anywhere in the vendor documentation. This
+  confirms the existing pins_arduino.h comment ("This board has no NeoLED or any User LED")
+  written during the earlier pin-exclusion audit pass.
+
+Pin tagged:
+- GPIO0 tagged ["digital_input","button"] - confirmed genuine onboard physical pushbutton
+  via vendor's official Pin Assignment table ("GPIO0 | Button") and schematic text ("Simple
+  setup for ESP32 S3 with buttons(IO0 and EN)"). Not a TX/RX conflict (board's TX=43,
+  RX=44). This is the same IO0/BOOT-strap button also used for entering flash mode (per
+  FAQ), consistent with the standard convention used elsewhere in this repo (e.g.
+  alksesp32, deneyapkart, heltec_* boards) of tagging the genuine physical IO0 button as
+  "button" despite it doubling as a boot-strapping pin.
+
+Summary: Tagged GPIO0 -> button (digital_input + button). No LED/NeoPixel tag applied -
+this board has no confirmable onboard user LED.

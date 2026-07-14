@@ -1,0 +1,198 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) — for this board that's
+  // "BIGTREETECH SKR-Pico" (variants/rp2040/boards.txt).
+  "displayName": "Raspberry Pi Pico (RP2040)",
+
+  // Same parser dialect as every other RP2040 board — see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports — Serial only (plain non-WiFi "rp2040" chip
+  // bucket; the RP2040 on this board has no onboard WiFi radio).
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (dedicated-hardware pin-exclusion audit, 2026-07-13):
+  //
+  // Board: BigTreeTech "SKR Pico" V1.0 — a real, widely-used 3D printer
+  // motion-control mainboard (Voron 0/0.1, Switchwire, Trident, etc.)
+  // built around a bare RP2040 (no Pico module — the RP2040, its QSPI
+  // flash and support components are laid out directly on the SKR Pico
+  // PCB, per the vendor schematic). Almost every GPIO is permanently
+  // wired to a specific stepper-driver STEP/DIR/EN line, an endstop /
+  // sensorless-homing DIAG input, a thermistor divider, a heater/fan
+  // MOSFET gate, the shared TMC2209 UART bus, or the probe/servo header.
+  // This board's own pins_arduino.h already anticipates this (see the
+  // "pfodWeb NOTE" comment above PINS_COUNT in that file) by only
+  // declaring `static const uint8_t` aliases for D0/D1 (aux Serial1/
+  // Wire0 header), D8/D9 (was intended as reserved, see GPIO8/9 note
+  // below), D24 (NeoPixel) and A0/A1 (thermistors) — every other
+  // GPIO (2-7, 10-23, 25, 28, 29) has NO alias at all in pins_arduino.h,
+  // so build_boards.js's ESP32-style parser (parseEsp32Consts, which
+  // only harvests `static const uint8_t NAME = n;` declarations, not
+  // `#define`s) never sees them as routable pins in the first place —
+  // they are added here via explicit chipGpios entries (capabilities:
+  // [] + a descriptive note) purely so the Designer's pin picker shows
+  // *why* each dedicated GPIO is unavailable, matching the established
+  // wiznet_5500_evb_pico/board.json precedent for chip-driven pins with
+  // no general-purpose role, rather than silently omitting them.
+  //
+  // Sources consulted (full detail + per-pin cross-check trail in
+  // boardsDetails/rp2040/rp2040/bigtreetech_SKR_Pico/notes.txt):
+  //   - github.com/bigtreetech/SKR-Pico (official vendor repo) —
+  //     Hardware/BTT SKR Pico V1.0-PIN.pdf (pinout diagram) and
+  //     Hardware/BTT SKR Pico V1.0-SCH.pdf (schematic), referenced
+  //     directly in this board's pins_arduino.h header comment.
+  //   - github.com/s-light/bigtreetech-SKR-Pico (the CircuitPython
+  //     port this pins_arduino.h itself says it is "based on") — full
+  //     GPIO pinout table, cross-checked against every #define in this
+  //     board's own pins_arduino.h and found to match exactly.
+  //   - 3dwork.io "SKR PICO: Analysis and complete guide" — independent
+  //     writeup confirming driver count/current ratings, connector
+  //     list, ADXL345-via-I2C accelerometer header, probe/servo jumper.
+  //   - gadgetangel.org Voron Switchwire/Trident "SKR Pico Wiring" pages
+  //     — independent wiring tables confirming X/Y-STOP, Z-STOP(probe),
+  //     thermistor and heater GPIO numbers.
+  //
+  // Real defect found and fixed by this audit: GPIO8/GPIO9 (the shared
+  // TMC2209 UART bus that all four onboard stepper drivers multi-drop
+  // off, addressed individually via MS1/MS2 strapping) were declared as
+  // plain `static const uint8_t D8/D9` aliases in pins_arduino.h, so
+  // without this override they were being offered as two innocuous
+  // general-purpose digital_input/digital_output/pwm_output pins even
+  // though driving either of them from a Designer sketch would corrupt
+  // every stepper driver's UART configuration on the board. Fixed here
+  // via a chipGpios capabilities:[] override rather than editing
+  // pins_arduino.h (no bus-alias/button-LED collision of the kind
+  // build_boards.js auto-appends is involved here).
+  //
+  // Per-pin mapping (schematic-confirmed):
+  //   GPIO0  - PIN_SERIAL1_TX / PIN_WIRE0_SDA - aux "Raspberry Pi" header
+  //            (P5), jumper/firmware-selectable as UART0 TX to a host Pi
+  //            OR I2C0 SDA to an optional plug-in ADXL345 accelerometer
+  //            (input-shaper add-on, not populated on the base board) -
+  //            a genuine multi-purpose expansion header, not committed
+  //            onboard hardware. KEPT general-purpose (matches this
+  //            board's own pins_arduino.h "Serial (general comms)"
+  //            design note and this repo's I2C-bus-without-an-exclusive-
+  //            onboard-consumer KEEP policy, e.g. esp32/oroca_edubot).
+  //   GPIO1  - PIN_SERIAL1_RX / PIN_WIRE0_SCL - same aux header as
+  //            GPIO0 (UART0 RX / I2C0 SCL). KEPT, same reasoning.
+  //   GPIO2  - PIN_ZEN - Z-axis TMC2209 stepper driver EN (enable).
+  //   GPIO3  - PIN_YSTOP - Y endstop input / Y driver sensorless-homing
+  //            DIAG line (shared connector).
+  //   GPIO4  - PIN_XSTOP - X endstop input / X driver DIAG line.
+  //   GPIO5  - PIN_YDIR - Y-axis stepper DIR.
+  //   GPIO6  - PIN_YSTP - Y-axis stepper STEP.
+  //   GPIO7  - PIN_YEN - Y-axis stepper EN.
+  //   GPIO8  - PIN_SERIAL2_TX (TX4) - shared TMC2209 UART TX, all four
+  //            onboard drivers (X/Y/Z/E0) multi-drop off this one line
+  //            via per-driver UART address. Real defect fix - see above.
+  //   GPIO9  - PIN_SERIAL2_RX (RX4) - shared TMC2209 UART RX. Same
+  //            defect fix as GPIO8.
+  //   GPIO10 - PIN_XDIR - X-axis stepper DIR.
+  //   GPIO11 - PIN_XSTP - X-axis stepper STEP.
+  //   GPIO12 - PIN_XEN - X-axis stepper EN.
+  //   GPIO13 - PIN_E0DIR - Extruder (E0) stepper DIR.
+  //   GPIO14 - PIN_E0STP - Extruder stepper STEP.
+  //   GPIO15 - PIN_E0EN - Extruder stepper EN.
+  //   GPIO16 - PIN_E0STOP - E0 endstop / filament-runout input, E0
+  //            driver DIAG line (shared connector).
+  //   GPIO17 - PIN_FAN1_PWM - part-cooling fan MOSFET gate PWM output.
+  //   GPIO18 - PIN_FAN2_PWM - hotend fan MOSFET gate PWM output.
+  //   GPIO19 - PIN_ZSTP - Z-axis stepper STEP.
+  //   GPIO20 - PIN_FAN3_PWM / LASER_PWM - always-on/aux fan MOSFET gate
+  //            PWM output (doubles as a 100R-protected laser-module PWM
+  //            signal on laser-mod variants of this board's firmware).
+  //   GPIO21 - PIN_HB_PWM - heated-bed MOSFET gate PWM (rated up to 10A)
+  //            - safety-critical, definitely not general purpose.
+  //   GPIO22 - PIN_P_2 - leveling-probe / proximity-sensor input
+  //            connector, jumper-selectable between the dedicated PROBE
+  //            header and the PS (servo/proximity) header.
+  //   GPIO23 - PIN_HE_PWM - hotend heater MOSFET gate PWM (rated up to
+  //            5A) - safety-critical, definitely not general purpose.
+  //   GPIO24 - PIN_NEOPIXEL - onboard WS2812-style addressable RGB LED
+  //            data line (NUM_NEOPIXEL=1 per this board's pins_arduino.h)
+  //            - tagged led_neopixel per this repo's existing precedent
+  //            (e.g. rp2040w/sparkfun_thingplusrp2350 GPIO14): kept as a
+  //            usable LED output (digital_output+pwm_output+led_neopixel),
+  //            digital_input dropped since the pin is committed to
+  //            driving the LED, not general-purpose input.
+  //   GPIO25 - PIN_ZSTOP - Z endstop input / bed-probe signal connector
+  //            (per gadgetangel.org wiring docs, routed through a BAT85
+  //            protection diode on this header) / Z driver DIAG line.
+  //   GPIO26 - A0 / PIN_THB - bed thermistor NTC divider (ADC0). KEPT
+  //            general-purpose per this repo's established "onboard
+  //            analog sensor (thermistor/battery/etc-class reading)"
+  //            KEEP policy (see esp32/esp32/oroca_edubot/board.json) -
+  //            no chipGpios override, default analog_input+digital
+  //            capabilities from the A0 alias apply unchanged.
+  //   GPIO27 - A1 / PIN_TH0 - hotend thermistor NTC divider (ADC1).
+  //            KEPT, same reasoning as GPIO26.
+  //   GPIO28 - PIN_ZDIR - Z-axis stepper DIR.
+  //   GPIO29 - PIN_SERVOS (also aliased ADC3 via #define, not parsed as
+  //            a routable pin since it's a #define not a static const)
+  //            - dedicated 3-pin servo/BLTouch-probe header signal line,
+  //            purpose-built connector like the other axis/thermistor/
+  //            fan headers, not a general expansion pin.
+  //
+  // No onboard user LED beyond the NeoPixel (GPIO24) - this board's own
+  // pins_arduino.h has `// #define PIN_LED (13u)` commented out (not
+  // active), and GPIO13 is separately confirmed dedicated to PIN_E0DIR
+  // above, consistent with boards.txt's `bigtreetech_SKR_Pico.build.led=`
+  // being empty (no LED_BUILTIN defined for this board at all). No
+  // onboard user button of any kind is documented on this board (only
+  // the RP2040 BOOTSEL, which per the rpipico/board.json precedent is
+  // not a normal GPIO and out of scope for this repo's GPIO-keyed
+  // capability tagging).
+  "chipGpios": {
+    "2":  { "capabilities": [], "note": "Z-axis TMC2209 stepper driver EN (enable) line - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "3":  { "capabilities": [], "note": "Y endstop input / Y driver sensorless-homing DIAG line (shared connector) - dedicated, not general purpose." },
+    "4":  { "capabilities": [], "note": "X endstop input / X driver sensorless-homing DIAG line (shared connector) - dedicated, not general purpose." },
+    "5":  { "capabilities": [], "note": "Y-axis stepper driver DIR - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "6":  { "capabilities": [], "note": "Y-axis stepper driver STEP - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "7":  { "capabilities": [], "note": "Y-axis stepper driver EN (enable) line - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "8":  { "capabilities": [], "note": "Shared TMC2209 UART TX (TX4) - all four onboard stepper drivers (X/Y/Z/E0) multi-drop off this single line via per-driver UART address. Was previously exposed as plain D8 (full digital I/O) due to a static-const alias in pins_arduino.h; corrected here - driving this pin generically would corrupt every driver's UART configuration." },
+    "9":  { "capabilities": [], "note": "Shared TMC2209 UART RX (RX4) - see GPIO8 note; same shared bus, same fix." },
+    "10": { "capabilities": [], "note": "X-axis stepper driver DIR - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "11": { "capabilities": [], "note": "X-axis stepper driver STEP - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "12": { "capabilities": [], "note": "X-axis stepper driver EN (enable) line - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "13": { "capabilities": [], "note": "Extruder (E0) stepper driver DIR - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "14": { "capabilities": [], "note": "Extruder (E0) stepper driver STEP - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "15": { "capabilities": [], "note": "Extruder (E0) stepper driver EN (enable) line - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "16": { "capabilities": [], "note": "E0 endstop / filament-runout input, E0 driver DIAG line (shared connector) - dedicated, not general purpose." },
+    "17": { "capabilities": [], "note": "Part-cooling fan MOSFET gate PWM output - dedicated 3D-printer hardware, not general purpose." },
+    "18": { "capabilities": [], "note": "Hotend fan MOSFET gate PWM output - dedicated 3D-printer hardware, not general purpose." },
+    "19": { "capabilities": [], "note": "Z-axis stepper driver STEP - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "20": { "capabilities": [], "note": "Always-on/aux fan MOSFET gate PWM output (doubles as protected laser-module PWM on laser-mod builds) - dedicated, not general purpose." },
+    "21": { "capabilities": [], "note": "Heated-bed MOSFET gate PWM output (rated up to 10A) - dedicated and safety-critical, not general purpose." },
+    "22": { "capabilities": [], "note": "Leveling-probe / proximity-sensor input connector (jumper-selectable PROBE/PS header) - dedicated, not general purpose." },
+    "23": { "capabilities": [], "note": "Hotend heater MOSFET gate PWM output (rated up to 5A) - dedicated and safety-critical, not general purpose." },
+    "24": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"], "note": "Onboard WS2812-style addressable RGB LED (NeoPixel, NUM_NEOPIXEL=1) data line - confirmed via pins_arduino.h PIN_NEOPIXEL and vendor pinout docs." },
+    "25": { "capabilities": [], "note": "Z endstop input / bed-probe signal connector (BAT85-diode protected), Z driver DIAG line - dedicated, not general purpose." },
+    "28": { "capabilities": [], "note": "Z-axis stepper driver DIR - dedicated 3D-printer motion-control hardware, not general purpose." },
+    "29": { "capabilities": [], "note": "Servo/BLTouch-probe header signal line (PIN_SERVOS) - dedicated purpose-built connector, not general purpose." }
+  },
+
+  // Same 8-bit analogWrite() default as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // RP2040's one 12-bit ADC (0-4095), ~3.3V reference - same as every
+  // other RP2040 board. GPIO26/27 (bed/hotend thermistors) already
+  // carry analog_input via their A0/A1 pins_arduino.h aliases; not
+  // affected by this dedicated-hardware audit (KEEP policy, see above).
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}

@@ -13,11 +13,18 @@
 static const uint8_t SDA = 1;
 static const uint8_t SCL = 2;
 
-static const uint8_t SS = 42;
-static const uint8_t MOSI = 46;
-static const uint8_t MISO = 41;
-static const uint8_t SDO = 46;
-static const uint8_t SDI = 41;
-static const uint8_t SCK = 45;
+// pfodWeb NOTE: the SPI-alias declarations that used to appear here
+// (SS/MOSI/MISO/SDO/SDI/SCK on GPIO41/42/45/46) have been removed
+// entirely. Those four GPIOs are not a general-purpose SPI bus - they
+// go through an onboard TMUX1574RSVR IO multiplexer that switches them
+// between the microSD card SPI bus and the I2S audio bus (MAX98357A
+// amp), confirmed via the vendor's own SQUiXL-DevOS firmware source
+// (MUX_D1-D4 = 41/42/45/46 in squixl.h, matching this file's old
+// SS/MOSI/MISO/SCK values exactly). Leaving any static const alias for
+// these GPIOs here - even commented out - re-adds SPI-bus capability
+// tags to them at build time regardless of the chipGpios exclusion in
+// board.json, so the declarations must stay fully deleted, not just
+// disabled. See board.json and boardsDetails/esp32/esp32s3/um_squixl/
+// notes.txt for the full pin research.
 
 #endif /* Pins_Arduino_h */

@@ -1,0 +1,75 @@
+Board: Fri3d Camp 2024 badge (ESP32-S3 Dev Module variant)
+Date: 2026-07-14 (documentation backfill — findings from an earlier audit pass, not new research)
+
+Sources consulted:
+- board.json's own top-of-file comment, citing vendor pins_arduino.h - basis
+  for excluding TFT_DC/TFT_CS (GPIO4/5), shared TFT+SD SPI bus
+  (GPIO6/7/8/14), IR blaster/receiver (GPIO10/11), I2S mic on the
+  communicator add-on (GPIO15/17), and PIN_AUX auxiliary power-rail
+  control (GPIO42); notes GPIO19/20 (native USB D-/D+) are already excluded
+  chip-wide.
+- Fri3dCamp's official ESPHome doc (fri3dcamp.github.io/badge_2024/esphome/)
+  - lists binary_sensor entries for START/X/A/B/Y/MENU on GPIO0/38/39/40/
+  41/45, all pullup:true inverted:true, matching pins_arduino.h
+  PIN_START/X/A/B/Y/MENU; lists light platform neopixelbus (type GRB,
+  variant WS2812, pin GPIO12, num_leds:5) matching pins_arduino.h
+  PIN_WS2812; lists light platform status_led on GPIO21 with no
+  "inverted" field (ESPHome default false = HIGH-is-on), matching
+  pins_arduino.h LED_BUILTIN/PIN_LED.
+
+Per-pin findings:
+- GPIO0: capabilities [digital_input, button] - tagged "button". Confirmed
+  by Fri3dCamp's ESPHome doc (binary_sensor START, pullup:true,
+  inverted:true), matching pins_arduino.h PIN_START.
+- GPIO1, GPIO2, GPIO3: capabilities [analog_input, digital_input,
+  digital_output, pwm_output] - kept as joystick X/Y (1,3), generic
+  otherwise.
+- GPIO4, GPIO5: excluded (removed from chipGpios entirely) - TFT_DC/TFT_CS
+  (onboard ST7789 display).
+- GPIO6, GPIO7, GPIO8, GPIO14: excluded (removed from chipGpios entirely) -
+  shared TFT+SD SPI bus (MOSI/SCK/MISO/SS).
+- GPIO9: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - kept as general I2C.
+- GPIO10, GPIO11: excluded (removed from chipGpios entirely) - IR
+  blaster/receiver (fixed onboard IR hardware).
+- GPIO12: capabilities [digital_output, led_neopixel, pwm_output] - tagged
+  "led_neopixel". Confirmed by Fri3dCamp's ESPHome doc (neopixelbus, type
+  GRB, variant WS2812, pin GPIO12, num_leds:5), matching pins_arduino.h
+  PIN_WS2812.
+- GPIO13: capabilities [analog_input_serial, digital_input, digital_output,
+  pwm_output] - kept as battery monitor.
+- GPIO15, GPIO17: excluded (removed from chipGpios entirely) - I2S mic on
+  the communicator add-on.
+- GPIO16, GPIO18: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - kept as general I2C.
+- GPIO19, GPIO20: already excluded chip-wide (native USB D-/D+), not
+  present in this board's chipGpios.
+- GPIO21: capabilities [digital_output, pwm_output, led_high] - tagged
+  "led_high". Confirmed by Fri3dCamp's ESPHome doc (status_led, no
+  "inverted" field => ESPHome default false = HIGH-is-on), matching
+  pins_arduino.h LED_BUILTIN/PIN_LED.
+- GPIO38: capabilities [digital_input, button] - tagged "button". Confirmed
+  by Fri3dCamp's ESPHome doc (binary_sensor X), matching PIN_X.
+- GPIO39: capabilities [digital_input, button] - tagged "button". Confirmed
+  by Fri3dCamp's ESPHome doc (binary_sensor A), matching PIN_A.
+- GPIO40: capabilities [digital_input, button] - tagged "button". Confirmed
+  by Fri3dCamp's ESPHome doc (binary_sensor B), matching PIN_B.
+- GPIO41: capabilities [digital_input, button] - tagged "button". Confirmed
+  by Fri3dCamp's ESPHome doc (binary_sensor Y), matching PIN_Y.
+- GPIO42: excluded (removed from chipGpios entirely) - PIN_AUX, the
+  badge's auxiliary power-rail control line.
+- GPIO43, GPIO44: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag (TX/RX).
+- GPIO45: capabilities [digital_input, button] - tagged "button". Confirmed
+  by Fri3dCamp's ESPHome doc (binary_sensor MENU), matching PIN_MENU.
+- GPIO46: capabilities [digital_input, digital_output, pwm_output] - kept
+  as buzzer, generic otherwise.
+- GPIO47, GPIO48: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag.
+
+Summary: Tagged GPIO0/38/39/40/41/45 as "button" (START/X/A/B/Y/MENU),
+GPIO12 as "led_neopixel" (5-pixel WS2812 strip), and GPIO21 as "led_high"
+(status LED), all confirmed via Fri3dCamp's official ESPHome doc; excluded
+the TFT display bus, IR blaster/receiver, communicator add-on I2S mic, and
+PIN_AUX power-rail control line as dedicated hardware per vendor
+pins_arduino.h.

@@ -1,0 +1,142 @@
+pandabyte_xc5 board research notes
+====================================
+
+Board directory: variants/esp32/esp32c5/pandabyte_xc5
+No board.json existed prior to this task; created as a full copy of the
+esp32c5 chip-level default board.json with GPIO10 and GPIO24 capabilities
+modified (see NOTE comment at top of board.json). pins_arduino.h was also
+edited to delete a colliding boilerplate SCK=10 alias (see NOTE comment
+there).
+
+pins_arduino.h candidates found:
+  LED_BUILTIN    = GPIO23
+  RGB_BUILTIN    = GPIO10
+  BUTTON_BUILTIN = GPIO24
+  TX = GPIO11, RX = GPIO12, SDA = GPIO0, SCL = GPIO1
+  SS = GPIO6, MOSI = GPIO8, MISO = GPIO9, SCK = GPIO10  <- collided with
+    RGB_BUILTIN (GPIO10), see "Alias-collision" section below
+  LP_SDA = GPIO2, LP_SCL = GPIO3 (WIRE1_PIN_DEFINED/SDA1/SCL1)
+  LP_RX = GPIO4, LP_TX = GPIO5
+    ("LP I2C Pins are fixed on ESP32-C5" / "LP UART Pins are fixed on
+    ESP32-C5" - comments identical to sibling generic esp32c5/esp32c5
+    board)
+
+Sources consulted
+------------------
+1. https://www.pandabyte.in/product-page/pandabyte-xc5-esp32c5-microcontroller-board-arduino-compatible
+   Official PandaByte product page for the xC5. Confirms peripherals list:
+   "Switches: RST, FLASH, and User Programmable buttons" and
+   "LED: Programmable Single Color and RGB LEDs". Confirms both a
+   single-color LED and an RGB LED physically exist, and a user
+   programmable button exists, but gives no GPIO numbers, no polarity
+   (active-high/low), and no wiring/schematic detail. Also links the
+   generic ESP32-C5-WROOM-1 datasheet (not board-specific).
+
+2. https://github.com/espressif/arduino-esp32/pull/12220
+   "PandaByte Dev Board Support" - PR merged into the official Espressif
+   arduino-esp32 core (merged 2026-01-12), adding pins_arduino.h for 5
+   PandaByte boards (x32, xC3m, xS3, xC5, xC6), including pandabyte_xc5.
+   PR description states the boards were validated on real hardware
+   (Arduino IDE 2.3.7, arduino-esp32 v3.3.5) across: Blink (digitalWrite),
+   RGB LED control using FastLED, digital input handling with switches,
+   USB Serial CDC, WiFi (WiFiClient), and I2C/SPI communication with
+   BMP280/ADXL345 sensors. This is vendor-submitted, hardware-tested
+   confirmation that RGB_BUILTIN drives a real addressable RGB LED
+   (FastLED = addressable/WS2812-style library) and BUTTON_BUILTIN is a
+   real digital-input switch. The I2C/SPI sensor testing (BMP280/ADXL345)
+   is a generic validation performed across all 5 boards against external
+   breakout sensors on header pins - it is not evidence of an onboard
+   sensor soldered to the LP_SDA/LP_SCL/LP_RX/LP_TX pins specifically.
+
+3. WebFetch of the raw pins_arduino.h content for this path (via
+   raw.githubusercontent.com/espressif/arduino-esp32/master/variants/
+   pandabyte_xc5/pins_arduino.h) confirms the merged upstream file matches
+   the local copy (RGB_BUILTIN=10, BUTTON_BUILTIN=24, LED_BUILTIN=23,
+   TX=11, RX=12, SDA=0, SCL=1, SS=6, MOSI=8, MISO=9, SCK=10, LP_SDA=2,
+   LP_SCL=3, LP_RX=4, LP_TX=5).
+
+4. https://github.com/espressif/arduino-esp32/blob/master/cores/esp32/esp32-hal-rgb-led.h
+   and general arduino-esp32 documentation on RGB_BUILTIN / rgbLedWrite() /
+   neopixelWrite(). Confirms "RGB_BUILTIN" is a core-wide, well established
+   Arduino-ESP32 convention specifically for a single-wire addressable
+   WS2812-type LED (driven via the RMT peripheral through rgbLedWrite()/
+   neopixelWrite()) - not a discrete 3-pin R/G/B LED. Combined with source
+   #2's "FastLED" test, this confirms GPIO10 is a NeoPixel/WS2812-class
+   LED.
+
+5. boardsDetails/esp32/esp32c5/esp32c5/notes.txt (this session, sibling
+   generic "esp32c5" board audit) - independently established that on the
+   ESP32-C5 chip, LP_SDA/LP_SCL/LP_RX/LP_TX are a fixed, chip-wide
+   LP-domain I2C/UART controller pin-mux constraint (per Espressif's
+   ESP32-C5-DevKitC-1 official user guide and datasheet), present on every
+   ESP32-C5 module regardless of board, not evidence of a dedicated
+   onboard device. This board's pins_arduino.h carries the identical
+   GPIO2/3/4/5 assignment and the identical "LP I2C/UART Pins are fixed on
+   ESP32-C5" comment text verbatim, and no PandaByte-specific source
+   (product page, PR #12220) documents an onboard sensor soldered to these
+   pins - the same reasoning applies here independently.
+
+Alias-collision check (this session's new playbook step)
+----------------------------------------------------------
+Compared GPIO10 (RGB_BUILTIN) and GPIO24 (BUTTON_BUILTIN) against this
+variant's own TX/RX/SDA/SCL/SS/MOSI/MISO/SCK alias list (11/12/0/1/6/8/9/10):
+  - GPIO10 COLLIDED with SCK (SCK = 10). build_boards.js unconditionally
+    appends "spi_sck" to any GPIO matching the SCK alias regardless of a
+    board.json chipGpios override, which would have silently contaminated
+    the confirmed RGB_BUILTIN NeoPixel's capability list. This SCK=10
+    alias is generic ESP32-C5 template boilerplate (identical SS/MOSI/
+    MISO/SCK block pattern seen on the sibling esp32c5/esp32c5 board,
+    where SCK is also 10 but does not collide there because that board's
+    RGB LED is on GPIO27) - never vendor-confirmed as a real SPI clock
+    line on the pandabyte_xc5 board specifically. Deleted the
+    "static const uint8_t SCK = 10;" declaration from pins_arduino.h and
+    replaced it with a plain-English NOTE comment (avoiding the literal
+    original declaration text per this session's parser-collision
+    caveat, so the comment itself cannot be re-matched by the alias
+    scanner).
+  - GPIO24 did NOT collide with any of TX/RX/SDA/SCL/SS/MOSI/MISO alias
+    values (11/12/0/1/6/8/9). No pins_arduino.h edit needed for GPIO24.
+
+What was tagged
+-----------------
+GPIO10 -> ["digital_output","led_neopixel","pwm_output"] - confirmed
+  onboard WS2812/addressable RGB LED (RGB_BUILTIN + vendor product page +
+  PR #12220 "RGB LED control using FastLED" hardware test). High
+  confidence. Matches this repo's led_neopixel precedent (pandabyte_x32
+  GPIO12, pandabyte_xs3 GPIO12, esp32c5/esp32c5 GPIO27). Colliding
+  boilerplate SCK=10 alias deleted from pins_arduino.h to prevent
+  build_boards.js from appending "spi_sck" to this pin.
+GPIO24 -> ["digital_input","button"] - confirmed onboard user
+  programmable button (BUTTON_BUILTIN + vendor product page "User
+  Programmable buttons" + PR #12220 "Digital input handling with
+  switches" hardware test). High confidence. Matches this repo's button
+  precedent (pandabyte_x32 GPIO4, pandabyte_xs3 GPIO21). No alias
+  collision found for this pin.
+GPIO2/GPIO3 (LP_SDA/LP_SCL) and GPIO4/GPIO5 (LP_RX/LP_TX): left as
+  general-purpose GPIOs, unchanged from chip-level defaults - confirmed
+  chip-wide LP-domain pin-mux capability (fixed LP_I2C/LP_UART controller
+  pins), not dedicated onboard hardware. Same conclusion independently
+  reached for sibling esp32c5/esp32c5 generic board.
+
+Pins considered but NOT tagged
+-------------------------------
+- GPIO23 (LED_BUILTIN): NOT TAGGED. A single-color LED is reasonably well
+  confirmed by the vendor product page ("Programmable Single Color...
+  LEDs") and PR #12220's generic "Blink (digitalWrite)" test, but no
+  source found states the drive polarity (active-high vs active-low) for
+  this specific board, so no led_high/led_low tag was applied (consistent
+  with the same caution applied to pandabyte_x32's LED_BUILTIN=2). Left
+  at default chip capabilities. This pin also carries a chip-level
+  pinNotes strapping warning ("Must be LOW or floating on reboot") which
+  was left unchanged.
+
+Summary: Created variants/esp32/esp32c5/pandabyte_xc5/board.json (full
+copy of the chip-level esp32c5/board.json default) with GPIO10 retagged
+["digital_output","led_neopixel","pwm_output"] for the confirmed onboard
+RGB LED and GPIO24 retagged ["digital_input","button"] for the confirmed
+onboard user button. Found and fixed one alias-collision bug: deleted a
+boilerplate SCK=10 alias from pins_arduino.h that collided with GPIO10
+and would have silently added a false "spi_sck" capability to the
+NeoPixel pin. GPIO2/3/4/5 (LP_SDA/LP_SCL/LP_RX/LP_TX) left as
+general-purpose GPIOs - confirmed chip-level LP pin-mux capability, not
+dedicated onboard hardware.

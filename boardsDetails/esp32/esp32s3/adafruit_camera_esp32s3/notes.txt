@@ -1,0 +1,80 @@
+Board: Adafruit Camera ESP32-S3 (MEMENTO Camera Board, ESP32-S3 Dev Module variant)
+Date: 2026-07-14 (independent verification pass - batch E, real vendor research)
+
+Sources consulted:
+- Adafruit's own official MEMENTO Camera Board pinouts page:
+  https://learn.adafruit.com/adafruit-memento-camera-board/pinouts
+  - Shutter Button: GPIO0 ("labeled 'Boot' and 'Shutter' on board silk")
+  - NeoPixel: GPIO1 ("addressable RGB LED works both as a status LED ...
+    and can be controlled with code")
+  - Camera sensor pins: VSYNC=GPIO5, HREF=GPIO6, XCLK=GPIO8, PCLK=GPIO11,
+    PWDN=GPIO21, DATA2-DATA9=GPIO13/15/16/14/12/10/9/7, RESET=GPIO47
+  - TFT SPI pins: MOSI=GPIO35, SCK=GPIO36, MISO=GPIO37, DC=GPIO40,
+    CS=GPIO39, Backlight=GPIO45, Reset=GPIO38
+  - microSD: SDCS=GPIO48
+  - I2C (STEMMA QT): SDA=GPIO34, SCL=GPIO33
+  - Speaker: GPIO46 ("muted via pin 0 on the AW9523 GPIO expander")
+  - Battery monitor: accessible via ADC, `board.BATTERY_MONITOR`
+    (CircuitPython) / `BATT_MONITOR` (Arduino)
+- Local repo copy of variants/esp32/esp32s3/adafruit_camera_esp32s3/pins_arduino.h,
+  cross-checked pin-for-pin against the above Adafruit page:
+  RESET_GPIO_NUM=47, PWDN_GPIO_NUM=21, XCLK_GPIO_NUM=8, Y9=7, Y8=9, Y7=10,
+  Y6=12, Y5=14, Y4=16, Y3=15, Y2=13, VSYNC=5, HREF=6, PCLK=11, SCL=33,
+  SDA=34, SPEAKER=46, BATT_MONITOR=4, SHUTTER_BUTTON=0, PIN_NEOPIXEL=1,
+  TX=43, RX=44, DAC1/A0=17, DAC2/A1=18. Every one of these matches the
+  Adafruit pinouts page exactly (the page did not give a specific GPIO
+  number for the battery monitor - pins_arduino.h supplies GPIO4 as the
+  concrete pin, consistent with "accessible via ADC").
+
+Per-pin findings (all CONFIRMED against the official Adafruit page above;
+no corrections needed):
+- GPIO0: capabilities [digital_input, button] - tagged "button". CONFIRMED
+  SHUTTER_BUTTON per Adafruit's own pinouts page. pinNotes: "Must be HIGH
+  for normal boot" (standard strapping-pin note, coexists with the button
+  tag - GPIO0 is both the ESP32 boot-strap pin and the physical shutter
+  button, consistent with the page's "labeled 'Boot' and 'Shutter'").
+- GPIO1: capabilities [digital_output, pwm_output, led_neopixel] - tagged
+  "led_neopixel". CONFIRMED onboard NeoPixel per Adafruit's own page.
+- GPIO2, GPIO3: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag. Not claimed as dedicated by any source.
+- GPIO4: capabilities [analog_input, digital_input, digital_output,
+  pwm_output] - generic, no tag; CONFIRMED as the board's battery monitor
+  pin via pins_arduino.h (BATT_MONITOR=4), consistent with Adafruit's page
+  describing a battery-monitor ADC pin (not itself a pfodWeb capability
+  tag, since it's an analog sensor input rather than a button/LED).
+- GPIO5-GPIO16, GPIO21, GPIO47: excluded (no chipGpios entries) - CONFIRMED
+  as the onboard camera sensor's XCLK/PWDN/RESET and Y2-Y9/VSYNC/HREF/PCLK
+  data lines, matching the Adafruit pinouts page exactly.
+- GPIO17, GPIO18: capabilities [analog_input_serial, digital_input,
+  digital_output, pwm_output] - generic, no tag; correctly kept as
+  general analog/DAC-capable pins (Adafruit page doesn't dedicate these).
+- GPIO35-GPIO40, GPIO45: excluded - CONFIRMED as the shared TFT+microSD SPI
+  bus and TFT DC/CS/RESET/backlight lines, matching the Adafruit page.
+- GPIO41, GPIO42: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag; not claimed dedicated by any source.
+- GPIO43, GPIO44: capabilities [digital_input, digital_output, pwm_output]
+  - generic, no tag; CONFIRMED as the board's TX/RX (standard USB-serial
+    pins, not given a special pfodWeb capability tag).
+- GPIO46: capabilities [digital_input, digital_output, pwm_output] -
+  generic, no tag; CONFIRMED as the board's speaker output pin via both
+  the Adafruit page and pins_arduino.h. Carries the standard "Must be LOW
+  or floating on reboot" pinNote.
+- GPIO48: excluded - CONFIRMED as SD_CS (same physical pin as SS, already
+  excluded), matching Adafruit's microSD pinout.
+- GPIO33, GPIO34: general I2C/STEMMA-QT bus, kept per the top comment's
+  "Kept" list - CONFIRMED as SCL=33/SDA=34 on both the Adafruit page and
+  pins_arduino.h; also doubles as the camera's SCCB bus (SIOD/SIOC_GPIO_NUM
+  map to SDA/SCL in pins_arduino.h), consistent with I2C being inherently
+  multi-drop.
+
+Summary: This is a per-board override for the fixed Adafruit MEMENTO
+camera+TFT board. Every existing finding checked out against Adafruit's
+own official pinouts page (learn.adafruit.com/adafruit-memento-camera-board/pinouts),
+independent of this repo's own pins_arduino.h/board.json: GPIO0 as the
+SHUTTER_BUTTON, GPIO1 as the onboard NeoPixel, the camera sensor's
+data/control lines (5-16,21,47), the shared TFT+microSD SPI bus
+(35-40,45), and SD_CS (48) all correctly excluded as dedicated onboard
+hardware, and general I2C/SCCB (33/34), speaker (46), battery monitor (4),
+analog/DAC (17,18), and TX/RX (43,44) all correctly kept general-purpose.
+No corrections were needed; board.json's top comment was updated with the
+real source citations.

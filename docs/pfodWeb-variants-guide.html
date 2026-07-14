@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pfodWeb Designer variants/ Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px 30px;
+            color: #222;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #1a5ca8;
+            border-bottom: 3px solid #1a5ca8;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #1a5ca8;
+            margin-top: 40px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 6px;
+        }
+        h3 {
+            color: #333;
+            margin-top: 24px;
+        }
+        .note {
+            background: #fffbe6;
+            border-left: 4px solid #f0ad00;
+            padding: 10px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .tip {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 10px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 14px 0;
+        }
+        th {
+            background: #1a5ca8;
+            color: white;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        td {
+            border: 1px solid #ccc;
+            padding: 8px 12px;
+            vertical-align: top;
+        }
+        tr:nth-child(even) td {
+            background: #f5f8ff;
+        }
+        code, pre {
+            background: #f0f0f0;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        code {
+            padding: 2px 6px;
+        }
+        pre {
+            padding: 12px 14px;
+            overflow-x: auto;
+        }
+        ol li, ul li {
+            margin-bottom: 6px;
+        }
+        section {
+            margin-bottom: 40px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>pfodWeb Designer — variants/ Guide</h1>
+<p>This document is for anyone maintaining or extending the in-browser Designer's board support — adding a new
+board to an existing chip family, adding a whole new chip family, or editing the generated <code>.ino</code>
+sketch bodies. It describes how the <code>variants/</code> directory is laid out, how
+<code>pfodWeb_src/build_boards.js</code> turns it into the Designer's per-board data, and how the
+per-connection <code>.ino</code> templates are resolved.</p>
+
+<p>Nothing in this document is user-facing — end users never see <code>variants/</code> at all; it only
+exists at build time to generate <code>pfodWeb_src/designer/boards/&lt;Board&gt;/&lt;Board&gt;.json</code>
+files, which are what actually gets bundled into <code>pfodWeb.html</code>.</p>
+
+<!-- ============================================================ -->
+<section>
+<h2>1. Why variants/ exists</h2>
+
+<p>The Designer needs, for every supported board: its display name, which pins exist and what each one can
+do (digital I/O, PWM, analog input, DAC, SPI/I2C roles, serial RX/TX), which connection types it supports
+(Serial/BLE/TCP/HTTP), and the <code>.ino</code> sketch body to generate for each connection type.</p>
+
+<p>Rather than hand-writing that per-board data as JSON, <code>build_boards.js</code> derives most of it
+from the <em>same</em> <code>pins_arduino.h</code> files the Arduino IDE itself uses (via a board's own
+hardware package), plus a small hand-written <code>board.json</code> per chip/variant supplying the facts
+the <code>.h</code> file doesn't carry (default baud, DAC/PWM/ADC ranges, boot-strapping pin notes, etc.).
+This keeps board data trivially updatable — drop in a new <code>pins_arduino.h</code>, write a short
+<code>board.json</code>, re-run the build — instead of hand-authoring a full pin map for every board.</p>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>2. Directory layout</h2>
+
+<p><code>variants/</code> sits at the pfodWeb project root (a sibling of <code>pfodWeb_src/</code>). Two
+layouts are supported, matching how different vendors structure their <code>pins_arduino.h</code> files:</p>
+
+<pre>variants/
+  serial.ino                        # shared Serial .ino template (see section 6)
+  arduino/
+    avr/
+      family.json                   # "Arduino AVR" family, "Serial" connection types
+      boards.txt                    # Arduino-style board-id -> variant-dir mapping
+      standard/
+        board.json                  # shared by every board.json below via ancestor lookup... no --
+        pins_arduino.h              #   see note below: board.json sits BESIDE each variant here
+      mega/
+        board.json
+        pins_arduino.h
+      leonardo/
+        board.json
+        pins_arduino.h
+      ...
+  esp32/
+    family.json                     # "ESP32 and related chips", "Serial, BLE, TCP/IP, HTTP"
+    boards.txt                      # maps esp32/esp32wrover/esp32cam/... -> esp32/esp32/
+    ble.ino                         # family-root BLE .ino template — see section 6
+    tcp.ino
+    http.ino
+    esp32/
+      board.json                   # ONE board.json shared by every board under this chip
+      pins_arduino.h
+      m5stack_core2/
+        pins_arduino.h              # no board.json here -- inherits esp32/esp32/board.json
+      lolin32/
+        pins_arduino.h
+      ...
+    esp32s3/
+      board.json
+      pins_arduino.h
+      ...                           # one directory per esp32s3 board variant
+    esp32c3/
+      board.json
+      ...
+  ccode/
+    family.json                     # "Minimal C code" — no Arduino core, no pins
+    Ccode/
+      board.json
+      pins_arduino.h                # stub file, contents never parsed
+  unlistedBoard/
+    family.json                     # "Unlisted Board" -- generic no-pin Arduino target
+    UnlistedBoard/
+      board.json
+      pins_arduino.h                # stub file, contents never parsed
+</pre>
+
+<p>The two layouts:</p>
+<ul>
+    <li><strong>Arduino AVR:</strong> <code>board.json</code> sits <em>beside</em> its
+    <code>pins_arduino.h</code> — one config per board variant directory.</li>
+    <li><strong>ESP32:</strong> one <code>board.json</code> sits at the <em>chip</em> level
+    (<code>variants/esp32/esp32/board.json</code>) and is shared by every board directory nested under
+    it (<code>m5stack_core2/</code>, <code>lolin32/</code>, ...), each of which supplies only its own
+    <code>pins_arduino.h</code>.</li>
+</ul>
+
+<p>Both layouts work because of one rule, used throughout <code>build_boards.js</code>:</p>
+
+<div class="tip"><strong>Nearest-ancestor lookup.</strong> For a file named <code>X</code>
+(<code>board.json</code>, <code>family.json</code>, <code>boards.txt</code>, or a
+<code>&lt;connectionId&gt;.ino</code> template), the build walks up from a variant's own directory,
+through each parent, until it finds a file called <code>X</code> or reaches <code>variants/</code>
+itself. The closest one found wins. This is what lets ESP32 boards share one chip-level
+<code>board.json</code> while AVR boards each have their own right next to the header, with no special-
+casing in the build script.</div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>3. board.json reference</h2>
+
+<p>Every field below is <strong>required</strong> on every <code>board.json</code> — <code>build_boards.js</code>
+reports both missing <em>and</em> unknown fields as configuration errors, so a typo or a stale schema is
+caught immediately rather than silently ignored. Use the sentinel shown (<code>[]</code>, <code>{}</code>,
+empty string) for anything that doesn't apply to a particular family. The file is JSONC — <code>//</code>
+and <code>/* */</code> comments are allowed and stripped before parsing.</p>
+
+<table>
+<tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+<tr><td><code>boardName</code></td><td>string</td>
+    <td>Fallback output id (directory + filename basename). Overridden per-board when a
+    <code>boards.txt</code> entry matches (see section 5).</td></tr>
+<tr><td><code>displayName</code></td><td>string</td>
+    <td>Fallback human-readable name shown in the Designer UI. Also overridden by
+    <code>boards.txt</code> when present.</td></tr>
+<tr><td><code>family</code></td><td>string</td>
+    <td>Which pin-map parser to use: <code>"avr"</code>, <code>"esp32"</code>, <code>"ccode"</code>, or
+    <code>"unlistedBoard"</code> (see section 4).</td></tr>
+<tr><td><code>inputOnlyGpios</code></td><td>number[]</td>
+    <td>GPIO numbers with no output driver (ESP32-style chips only) — drops
+    <code>digital_output</code>/<code>pwm_output</code> from those pins. <code>[]</code> for AVR (no such
+    concept — every AVR pin is bidirectional).</td></tr>
+<tr><td><code>connections</code></td><td>string[]</td>
+    <td>Transports this board can carry pfod over, lowercase:
+    <code>"serial"</code>, <code>"ble"</code>, <code>"tcp"</code>, <code>"http"</code>. AVR boards
+    typically list only <code>["serial"]</code>; ESP32 chips with WiFi/BLE list all four.</td></tr>
+<tr><td><code>pinNotes</code></td><td>object</td>
+    <td>Map of <code>"&lt;gpio&gt;"</code> → plain-text warning shown under that pin in the picker (e.g.
+    ESP32 strapping-pin cautions). <code>{}</code> when nothing to flag.</td></tr>
+<tr><td><code>chipGpios</code></td><td>object</td>
+    <td>Map of <code>"&lt;gpio&gt;"</code> → <code>{ capabilities: [...], note?: "..." }</code> describing
+    every GPIO the chip <em>silicon</em> exposes (from the datasheet) — used to fill in GPIOs the board's
+    <code>pins_arduino.h</code> doesn't itself declare, tagged "Check if available on board". <code>{}</code>
+    for AVR (no GPIO concept).</td></tr>
+<tr><td><code>pwm</code></td><td>object</td>
+    <td><code>{ min, max, method }</code> for <code>analogWrite()</code>-style output, e.g.
+    <code>{ "min": 0, "max": 255, "method": "analogWrite" }</code>. <code>{}</code> if the target has no
+    pins at all (ccode/unlistedBoard).</td></tr>
+<tr><td><code>dac</code></td><td>object</td>
+    <td><code>{ min, max, minVolts, maxVolts, method }</code> for a hardware DAC, e.g. ESP32's
+    <code>{ "min":0, "max":255, "minVolts":"0.0", "maxVolts":"3.3", "method":"dacWrite" }</code>.
+    <code>{}</code> when the chip has no DAC.</td></tr>
+<tr><td><code>adc</code></td><td>object</td>
+    <td><code>{ bits, max, defaultRefVolts }</code>, e.g. AVR's <code>{ "bits":10, "max":1023,
+    "defaultRefVolts":"5.0" }</code>.</td></tr>
+</table>
+
+<div class="note"><strong>boardName / displayName are fallbacks only.</strong> When a sibling-or-ancestor
+<code>boards.txt</code> has an entry whose <code>&lt;id&gt;.build.variant=</code> matches the variant
+directory's name, that entry's <code>&lt;id&gt;</code> and <code>&lt;id&gt;.name=</code> win instead — see
+section 5. This is what lets one chip-level ESP32 <code>board.json</code> still produce dozens of
+differently-named output boards.</div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>4. family.json and the four <code>family</code> parsers</h2>
+
+<p>One <code>family.json</code> sits at the root of each family's directory tree and supplies the
+human-readable family name + connection-type summary shown in the Designer's target picker. Resolved by
+the same nearest-ancestor lookup as <code>board.json</code>, so it's optional — a brand-new family
+directory builds fine before its <code>family.json</code> is added (falling back to the raw
+<code>family</code> id and a default sort position).</p>
+
+<pre>{
+  "familyDisplayName": "ESP32 and related chips",
+  "connectionTypes": "Serial, BLE, TCP/IP, HTTP"
+}</pre>
+
+<table>
+<tr><th>Field</th><th>Required</th><th>Meaning</th></tr>
+<tr><td><code>familyDisplayName</code></td><td>yes</td><td>Shown as the family name in the target picker.</td></tr>
+<tr><td><code>connectionTypes</code></td><td>yes</td><td>Shown after the display name, e.g.
+"ESP32 - Serial, BLE, TCP/IP, HTTP".</td></tr>
+<tr><td><code>sortOrder</code></td><td>no</td><td>Lower sorts earlier in the family picker. Omit to use
+the default (sorts after any family with an explicit value).</td></tr>
+</table>
+
+<p><code>board.json</code>'s <code>family</code> field picks which of four pin-map parsers
+<code>build_boards.js</code> uses — this is a different, code-level concept from the <em>directory</em>
+family (which is just where the file happens to live):</p>
+
+<table>
+<tr><th><code>family</code> value</th><th>Parser</th><th>Notes</th></tr>
+<tr><td><code>avr</code></td><td><code>buildAvrBoard()</code></td>
+    <td>Reads <code>#define</code>-based pin macros + PROGMEM arrays with <code>USART#_RX/TX</code>
+    trailing comments.</td></tr>
+<tr><td><code>esp32</code></td><td><code>buildEsp32Board()</code></td>
+    <td>Reads <code>static const/constexpr uint8_t NAME = value;</code> pin aliases
+    (<code>TX</code>, <code>RX</code>, <code>SDA</code>, <code>A0..A19</code>, <code>DAC1</code>, ...).</td></tr>
+<tr><td><code>ccode</code></td><td><code>buildCcodeBoard()</code></td>
+    <td>"Minimal C Code" target — no Arduino core, no pins at all.
+    <code>pins_arduino.h</code> is a stub whose contents are never parsed; always emits <code>pins: []</code>.
+    Routes code generation to <code>generateCcode.js</code> (plain C), not the Arduino/C++ generator.</td></tr>
+<tr><td><code>unlistedBoard</code></td><td><code>buildCcodeBoard()</code></td>
+    <td>Same no-pin structure as <code>ccode</code> (also emits <code>pins: []</code>), but
+    <code>board.family</code> stays <code>"unlistedBoard"</code> so <code>generateCode.js</code> routes
+    to the normal Arduino/C++ generator instead. This is the family that lets a user still generate a full
+    sketch for a board that isn't in the picker, using the <code>?</code> placeholder-pin toggle (see
+    <code>editMenuItem.js</code>/<code>editChart.js</code>'s <code>canPlaceholder</code> logic) instead of a
+    real pin list.</td></tr>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>5. boards.txt — one variant, many board ids</h2>
+
+<p>Arduino hardware packages routinely map several distinct board ids onto one shared
+<code>pins_arduino.h</code> (e.g. <code>esp32</code>, <code>esp32wrover</code>, <code>esp32cam</code> and
+<code>kb32</code> all declare <code>build.variant=esp32</code>). <code>build_boards.js</code> reads the
+real Arduino-style <code>boards.txt</code> next to (or above) each variant to recover this, and emits
+<strong>one output JSON per matching board id</strong> — not one per <code>pins_arduino.h</code> file.</p>
+
+<pre># boards.txt format build_boards.js looks for:
+esp32.name=ESP32 Dev Module
+esp32.build.variant=esp32
+
+esp32wrover.name=ESP32 Wrover Module
+esp32wrover.build.variant=esp32</pre>
+
+<p>Both lines above share <code>build.variant=esp32</code>, so both <code>esp32</code> and
+<code>esp32wrover</code> get their own <code>designer/boards/&lt;id&gt;/&lt;id&gt;.json</code>, each using
+the SAME <code>pins_arduino.h</code> + chip-level <code>board.json</code>, but with
+<code>boardName</code>/<code>displayName</code> taken from their own <code>.name=</code> line instead of
+the fallback in <code>board.json</code>.</p>
+
+<p>Entries without a matching <code>.name=</code> line (e.g. Arduino IDE menu sub-options like
+<code>board.menu.Revision.V2.build.variant=...</code>) are silently skipped. A variant directory with no
+<code>boards.txt</code> anywhere on its ancestor path (e.g. AVR's <code>standard/</code>) just uses
+<code>board.json</code>'s own <code>boardName</code>/<code>displayName</code> directly.</p>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>6. The .ino template system</h2>
+
+<p>Each board's <code>connections</code> array lists which transports it supports; for every one of them,
+the Designer needs an actual <code>.ino</code> sketch body to emit when the user clicks <strong>Generate
+Code</strong>. Rather than hard-coding these bodies inside <code>generateCode.js</code>, they live as plain
+<code>.ino</code> files under <code>variants/</code>, resolved by <strong>the same nearest-ancestor lookup</strong>
+used for <code>board.json</code>/<code>family.json</code>:</p>
+
+<table>
+<tr><th>File</th><th>Covers</th></tr>
+<tr><td><code>variants/serial.ino</code></td><td>Every board's Serial connection — sits at the
+<code>variants/</code> root, so it's the fallback for any board/chip that doesn't override it.</td></tr>
+<tr><td><code>variants/esp32/ble.ino</code></td><td>BLE connection for every board under the ESP32 family
+(any chip: esp32, esp32s3, esp32c3, ...) — sits at the family root so all of them inherit it.</td></tr>
+<tr><td><code>variants/esp32/tcp.ino</code></td><td>TCP/IP Socket connection, same family-root scope.</td></tr>
+<tr><td><code>variants/esp32/http.ino</code></td><td>HTTP connection, same family-root scope.</td></tr>
+</table>
+
+<p>The filename (minus <code>.ino</code>) is the connection id — it must match one of the strings that can
+appear in a <code>board.json</code>'s <code>connections</code> array: <code>serial</code>, <code>ble</code>,
+<code>tcp</code>, <code>http</code>.</p>
+
+<div class="tip"><strong>Overriding for one chip/board.</strong> If a specific chip needs different BLE
+code than the rest of its family (a different BLE library, different GATT setup, etc.), drop a
+<code>ble.ino</code> deeper in the tree — e.g. <code>variants/esp32/esp32c3/ble.ino</code> — and every board
+under that chip will resolve to it instead, while every other ESP32 chip keeps using the family-root
+version. Same rule for a single board directory overriding its chip's default. Closest file wins.</div>
+
+<h3>How resolution happens at build time</h3>
+<p>For every board and every connection id it supports, <code>build_boards.js</code>'s
+<code>registerInoTemplate()</code> walks up from the variant's own directory to find the nearest matching
+<code>&lt;connectionId&gt;.ino</code>, then stores the file's contents <strong>once</strong> — keyed by its
+path relative to <code>variants/</code> (e.g. <code>"serial.ino"</code>, <code>"esp32/ble.ino"</code>) — in
+a shared registry written out as <code>designer/boards/shared/inoTemplates.js</code>
+(<code>const INO_TEMPLATES = {...}</code>). Each board's own JSON only carries a small
+<code>connections.&lt;proto&gt;.inoTemplateId</code> string referencing that registry — not a copy of the
+file content — so hundreds of boards sharing <code>serial.ino</code> only store it once in the bundle.</p>
+
+<p><code>serial</code> is required to resolve for every board that lists it (which is effectively every
+board) — <code>build_boards.js</code> reports a config error and fails the build if
+<code>variants/serial.ino</code> is ever missing entirely.</p>
+
+<h3>How the template gets used at runtime</h3>
+<p><code>designer/menus/generateCode.js</code>'s <code>_generateIno()</code> looks up
+<code>state.board.connections[state.connection].inoTemplateId</code>, pulls the matching string out of
+<code>INO_TEMPLATES</code>, and emits it <strong>verbatim</strong> — no placeholder substitution of any
+kind. This is deliberate: every template is expected to be real, directly
+compilable Arduino code you could open and build as-is, not a text template with holes to fill in. Only the
+<code>// Board: ... // Connection: ... /* Code generated by pfodWeb &lt;version&gt; */</code> header lines
+are generated dynamically in JS and prepended — see <code>_fileHeader()</code> in
+<code>generateCode.js</code>.</p>
+
+<div class="note"><strong>Editing an existing template.</strong> Just edit the <code>.ino</code> file under
+<code>variants/</code> directly, then re-run <code>build_boards.js</code> (see section 8) to refresh
+<code>inoTemplates.js</code>, then re-run <code>build-bundle.js</code> (or one of the top-level
+<code>build-*</code> scripts) to fold the refreshed data into <code>pfodWeb.html</code>. No JS code changes
+needed for an edit to an existing template file.</div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>7. Adding a new board to an existing chip/family</h2>
+
+<ol>
+<li><strong>AVR-style family:</strong> create a new directory under <code>variants/arduino/avr/</code>
+(or under whichever family you're extending) containing that board's <code>pins_arduino.h</code>
+(copied from the Arduino core's own hardware package) and its own <code>board.json</code> (copy a sibling
+board's and adjust the fields in section 3).</li>
+<li><strong>ESP32-style chip, board sharing the chip's existing board.json:</strong> just add a new
+directory under the chip (e.g. <code>variants/esp32/esp32s3/my_new_board/</code>) containing only
+<code>pins_arduino.h</code> — no <code>board.json</code> needed, it inherits the chip-level one via
+nearest-ancestor lookup.</li>
+<li>If the board needs a different <code>displayName</code>/id than the chip-level fallback, add (or
+extend) a <code>boards.txt</code> entry per section 5 instead of writing a whole new <code>board.json</code>.</li>
+<li>Re-run <code>build_boards.js</code> (section 8) and check its output for the new board's pin/connection
+summary line, and for any validation errors.</li>
+</ol>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>8. Adding a whole new chip or family</h2>
+
+<ol>
+<li>Decide which of the four <code>family</code> parsers fits (section 4). If neither <code>avr</code> nor
+<code>esp32</code>'s pin-declaration style matches the new chip's <code>pins_arduino.h</code> convention,
+a new parser function needs to be added to <code>build_boards.js</code> and registered in
+<code>SUPPORTED_FAMILIES</code> — this is the one case that genuinely requires a code change, not just new
+data files.</li>
+<li>Create the new directory tree under <code>variants/</code> (e.g. <code>variants/newfamily/</code>),
+with a <code>family.json</code> at its root (section 4).</li>
+<li>Add the chip-level (or per-board) <code>board.json</code> file(s) per section 3, and a
+<code>boards.txt</code> if the vendor's hardware package ships one and you want its per-board id/name
+mapping honoured.</li>
+<li>If the family will support connection types beyond Serial (BLE/TCP/HTTP), decide where the family-root
+<code>.ino</code> templates should live (mirroring section 6's ESP32 example — usually
+<code>variants/newfamily/ble.ino</code> etc.) and write them as real, compilable sketches.</li>
+<li>Run <code>build_boards.js</code>; fix any validation errors it reports (missing/unknown
+<code>board.json</code> fields, unsupported <code>family</code> value, missing <code>serial.ino</code>
+resolution, etc.) until it completes cleanly.</li>
+<li>Run <code>build-bundle.js</code> (or a top-level <code>build-pfodWeb.*</code> script) to fold the new
+per-board JSONs + template registry into <code>pfodWeb.html</code>, then open the Designer and confirm the
+new family/chip/board appears correctly in the target picker.</li>
+</ol>
+</section>
+
+<!-- ============================================================ -->
+<section>
+<h2>9. Running the build</h2>
+
+<p>From <code>pfodWeb_src/</code>:</p>
+<pre>node build_boards.js</pre>
+<p>(or double-click <code>build_boards.bat</code> on Windows). This walks <code>../variants/</code>,
+regenerates every <code>designer/boards/&lt;Board&gt;/&lt;Board&gt;.json</code> file and
+<code>designer/boards/shared/inoTemplates.js</code>, and prints one line per board summarising its pin
+count, serial port count, and supported transports. Any configuration problem (missing field, bad JSON,
+unresolvable <code>board.json</code>/<code>serial.ino</code>) is printed with the offending file's path and
+a non-zero exit code — nothing is silently skipped.</p>
+
+<p><code>build_boards.js</code> only regenerates the per-board JSON/template data; it does not rebuild
+<code>pfodWeb.html</code> itself. Follow it with <code>node build-bundle.js</code> (from
+<code>pfodWeb_src/</code>) or one of the top-level <code>build-pfodWeb.bat</code>/<code>.sh</code> scripts
+to fold the refreshed data into the bundled HTML.</p>
+
+<div class="note"><strong>Nothing under <code>variants/</code> ships in <code>pfodWeb.html</code>
+directly.</strong> It's a build-time-only input — the generated
+<code>designer/boards/&lt;Board&gt;/&lt;Board&gt;.json</code> files and
+<code>designer/boards/shared/inoTemplates.js</code> are what actually get inlined into the bundle.</div>
+</section>
+
+</body>
+</html>

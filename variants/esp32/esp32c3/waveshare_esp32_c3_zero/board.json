@@ -1,0 +1,99 @@
+{
+  // pfodWeb NOTE: dedicated-hardware pin-exclusion audit, 2026-07-12.
+  // Board: Waveshare ESP32-C3-Zero (tiny "Zero" form-factor dev board).
+  // Flagged by the discovery sweep for declaring PIN_RGB_LED=10,
+  // RGB_BRIGHTNESS, and RGB_BUILTIN_LED_COLOR_ORDER. No board.json
+  // override existed before this audit (used the chip-level
+  // esp32c3/board.json default).
+  //
+  // Sources consulted:
+  //  - https://docs.waveshare.com/ESP32-C3-Zero
+  //    Waveshare's own documentation platform (primary vendor source).
+  //    States the onboard WS2812 RGB LED is on GPIO10, and that the
+  //    BOOT button is on GPIO9 ("hold the BOOT (GPIO9) button before
+  //    connecting the Type-C cable" / "Hold this button and then press
+  //    the RESET button to enter download mode"). (fetched via WebFetch)
+  //  - https://mischianti.org/waveshare-esp32-c3-zero-high-resolution-pinout-datasheet-and-specs/
+  //    Independent third-party pinout/datasheet reference. Corroborates:
+  //    "WS2812 RGB LED driven via GPIO10" and "BOOT (GPIO9): Hold low
+  //    to enter serial bootloader." (fetched via WebFetch)
+  //  - https://files.waveshare.com/wiki/ESP32-C3-Zero/ESP32-C3-Zero-Sch.pdf
+  //    Vendor's own published schematic. A web search of its contents
+  //    describes the WS2812B LED component (labelled "WS_L1") with its
+  //    DIN (data input) net connected to IO10, matching the two doc
+  //    sources above. Could not be parsed directly by WebFetch (binary/
+  //    compressed PDF content), so used via search-result summary only,
+  //    as corroboration alongside the two directly-fetched pages.
+  //  - https://www.espboards.dev/esp32/esp32-c3-zero/
+  //    Independent third-party board database. Confirms a BOOT + RESET
+  //    button pair exists but states the RGB LED is on GPIO8, which
+  //    conflicts with both the primary vendor documentation and the
+  //    vendor's own schematic, and also conflicts with this board's own
+  //    pins_arduino.h (`#define PIN_RGB_LED 10`). Treated as an outlier/
+  //    error and not relied on for the GPIO10 conclusion.
+  //  - pins_arduino.h (local, already in repo) - `#define PIN_RGB_LED 10`
+  //    wires LED_BUILTIN/RGB_BUILTIN to GPIO10 as a virtual pin (the
+  //    SOC_GPIO_PIN_COUNT+N convention), corroborating the two doc
+  //    sources above after they independently confirmed GPIO10.
+  //
+  // GPIO10 (PIN_RGB_LED): CONFIRMED onboard WS2812/NeoPixel-style RGB
+  // LED, per docs.waveshare.com and mischianti.org, corroborated by the
+  // vendor's own schematic and this board's own firmware macro. Tagged
+  // capabilities ["digital_output","led_neopixel","pwm_output"] (pwm_output
+  // retained since it was already present on this pin), matching this
+  // repo's existing led_neopixel precedent (e.g. waveshare_esp32_s3_zero
+  // GPIO21, adafruit_qtpy_esp32c3 GPIO2).
+  //
+  // GPIO9 (opportunistic section 7a button check): CONFIRMED onboard
+  // physical BOOT button, per docs.waveshare.com and mischianti.org.
+  // Standard ESP32-C3 strapping pin (chip-level pinNotes "Must be HIGH
+  // for normal boot" retained as-is, not removed - expected/documented
+  // for this exact pin, same treatment as the adafruit_qtpy_esp32c3
+  // precedent). Tagged capabilities ["digital_input","button"] only.
+  //
+  // Alias-conflict check (critical check found earlier this session):
+  // this board's own pins_arduino.h declares TX=21, RX=20, SDA=8,
+  // SCL=9, SS=7, MOSI=6, MISO=5, SCK=4. GPIO10 does not collide with
+  // any of these. GPIO9, however, DID collide - it was also declared as
+  // SCL, which would have let build_boards.js silently append an
+  // I2C-clock capability on top of the button-only capability list
+  // (that append is independent of anything set here in board.json).
+  // Since GPIO9 is a confirmed physical button pin and not a
+  // vendor-confirmed general-purpose I2C header pin, the SCL alias line
+  // was deleted outright from pins_arduino.h (not commented out - the
+  // parser is comment-blind). SDA was left declared since its pin
+  // (GPIO8) has no such conflict.
+  //
+  // See boardsDetails/esp32/esp32c3/waveshare_esp32_c3_zero/notes.txt
+  // for the full research trail.
+
+  "boardName": "ESP32C3",
+  "displayName": "ESP32-C3 Dev Module",
+  "family": "esp32",
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+  "dac": {},
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" },
+  "inputOnlyGpios": [],
+  "connections": ["serial", "ble", "tcp", "http"],
+  "pinNotes": {
+    "2": "Must be HIGH for normal boot",
+    "8": "Must be HIGH or floating on reboot",
+    "9": "Must be HIGH for normal boot"
+  },
+  "chipGpios": {
+    "0":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "1":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "2":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "3":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "4":  { "capabilities": ["analog_input", "digital_input", "digital_output", "pwm_output"] },
+    "5":  { "capabilities": ["analog_input_serial", "digital_input", "digital_output", "pwm_output"] },
+    "6":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "7":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "8":  { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "9":  { "capabilities": ["digital_input", "button"] },
+    "10": { "capabilities": ["digital_output", "led_neopixel", "pwm_output"] },
+    "11": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "20": { "capabilities": ["digital_input", "digital_output", "pwm_output"] },
+    "21": { "capabilities": ["digital_input", "digital_output", "pwm_output"] }
+  }
+}

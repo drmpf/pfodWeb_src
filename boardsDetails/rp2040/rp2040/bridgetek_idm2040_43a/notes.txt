@@ -1,0 +1,206 @@
+Board: bridgetek_idm2040_43a (chip: rp2040)
+Bridgetek "IDM2040-43A" — official Bridgetek embedded touch-display module:
+RP2040 MCU + 4.3" 480x272 (WQVGA) TFT capacitive-touch panel driven by an
+onboard BT883Q "EVE4" graphics/touch/audio controller, plus an onboard
+microSD card socket.
+Audit date: 2026-07-13.
+
+SOURCES CONSULTED
+1. This repo's own files:
+   - variants/rp2040/rp2040/bridgetek_idm2040_43a/pins_arduino.h (already
+     present before this audit; declares D0,D1,D6-D9,D14-D22,A0-A2 and
+     deliberately omits D2-D5 and D10-D13, with inline comments already
+     identifying GPIO2-5 as the onboard EVE display's SPI0 bus and
+     GPIO10-13 as the onboard SD card's SPI1 bus).
+   - variants/rp2040/rp2040/bridgetek_idm2040_7a/pins_arduino.h — sibling
+     board, byte-for-byte identical GPIO layout, whose header comment
+     cites the source datasheet: https://brtchip.com/ic-module/wp-content/
+     uploads/sites/3/2022/07/DS_IDM2040-7A-Revised.pdf
+   - variants/rp2040/boards.txt entries for bridgetek_idm2040_43a —
+     confirms `build.extra_flags=-DFT8XX_TYPE=BT883 -DDISPLAY_RES=WQVGA
+     -DPLATFORM_RP2040` (BT883 = the BT883Q EVE4 controller) and
+     `build.usb_product="IDM2040-43A"`.
+   - variants/rp2040/rp2040/board.json (chip-level defaults, chipGpios={}).
+   - variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json (precedent for
+     documenting dedicated-hardware GPIOs with empty capabilities + a
+     sourced note, and for the standard active-high Pico LED tag).
+   - variants/rp2040/rp2040/adafruit_feather_scorpio/pins_arduino.h and
+     board.json (precedent for the "confirmed pin also aliased as a bus
+     role" bug class mentioned in the audit brief).
+   - pfodWeb_src/build_boards.js — read parseEsp32Consts() and
+     buildEsp32Board() (the parser used for the "rp2040" family) to confirm
+     exactly how pins_arduino.h aliases become Designer pins/capabilities.
+
+2. Bridgetek's official IDM2040-43A datasheet (Version 1.0):
+   https://brtchip.com/wp-content/uploads/2023/11/DS_IDM2040-43A.pdf
+   Fetched via a text-extraction proxy (PDF has no accessible text layer
+   for the schematic/block-diagram figure itself). Confirmed quotes:
+     - "CN6 is a Micro SD card socket supporting single SPI communication
+       mode and auto card detection."
+     - "The module carries new embedded video engine controller BT883Q"
+       / "BT883Q EVE chip for graphics, touch and audio controller."
+     - "SW1 is the BOOTSEL button to put RP2040 MCU into programming
+       mode..." and "SW2 is hardware reset button to reset RP2040 MCU."
+     - CN14 GPIO header table: exposes GPIO0, GPIO1, GPIO16, GPIO17,
+       GPIO26 (ADC0), GPIO29 (ADC3) plus power/ground.
+     - CN13 header table: SPI1_SCK on GP10, SPI1_MOSI on GP11, SPI1_MISO
+       on GP12 — matches this board's PIN_SPI1_SCK/MOSI/MISO=10/11/12
+       exactly, corroborating the SD-card SPI1 bus assignment already in
+       pins_arduino.h.
+     - GPIO25 appears as a LED output in the datasheet's own MicroPython
+       example code ("...with LCD and Backlight LED on").
+   The datasheet text does NOT contain an internal RP2040-to-EVE pin
+   table in prose/table form (only in the embedded "Figure 10 - IDM2040-43A
+   Block Diagram" image, which is not machine-text-extractable) and does
+   NOT mention GPIO2-9 by number anywhere in its text.
+
+3. github.com/Bridgetek/pico-brteve (Bridgetek's own generic RP2040+EVE
+   reference-wiring repo, README): documents GP0/GP1=debug UART,
+   GP2/GP3/GP4/GP5=SPI0 SCK/MOSI/MISO/CS to EVE, GP6=INT, GP7=PWD (power
+   down). The GP0-GP5 assignment matches this board's pins_arduino.h
+   exactly (PIN_SERIAL1_TX/RX=0/1, PIN_SPI0_SCK/MOSI/MISO/SS=2/3/4/5),
+   which is strong corroborating evidence the SPI0 exclusion already in
+   pins_arduino.h is correct. However, this README explicitly describes a
+   *generic* breakout-board wiring guide, not the IDM2040-43A integrated
+   module itself, and no IDM2040-43A-specific source (datasheet text,
+   RP2040-BrtEve library headers, LVGL-Eve repo) confirms GPIO6/GPIO7 are
+   actually wired to the EVE chip's INT/PD_N lines on this module. Checked
+   github.com/Bridgetek/RP2040-BrtEve (IDM2040.h/.cpp — no pin #defines
+   present in the top-level files) and github.com/Bridgetek/LVGL-Eve
+   (only repeats the same generic GP2-GP7 table, not module-specific).
+
+PER-PIN REASONING / DECISIONS
+
+GPIO2 (PIN_SPI0_SCK) — EVE SPI0 clock. Already excluded from
+  pins_arduino.h (no D2 alias). Added chipGpios["2"] = empty capabilities
+  + note, purely to document the dedication (matches wiznet_5500_evb_pico
+  precedent style); this GPIO was already invisible to the Designer before
+  this change since build_boards.js only turns `static const uint8_t`
+  aliases (or chipGpios keys) into routable pins.
+
+GPIO3 (PIN_SPI0_MOSI) — EVE SPI0 data-out. Same treatment as GPIO2.
+
+GPIO4 (PIN_SPI0_MISO, also the vendor's unused PIN_WIRE0_SDA #define) —
+  EVE SPI0 data-in. Same treatment as GPIO2. Checked for the audit's
+  "confirmed dedicated pin also aliased as SDA/SCL/SS/MOSI/MISO/SCK" bug
+  class: PIN_WIRE0_SDA (4u) IS defined in pins_arduino.h, on the SAME
+  GPIO as the EVE MISO line — but it is only a raw `#define`, never
+  promoted to a `static const uint8_t SDA = ...` alias (confirmed by
+  reading the file: it ends with an explicit note "no SS/MOSI/MISO/SCK/
+  SDA/SCL aliases declared"). build_boards.js's parseEsp32Consts() only
+  parses `static const uint8_t NAME = ...` declarations into
+  consts.SDA/SCL (see build_boards.js line ~447); bare #defines are
+  deliberately never harvested (per that function's own doc comment,
+  to avoid misattributing unrelated numeric defines). So
+  build_boards.js's unconditional i2c_sda auto-append (line ~698,
+  `if (g === sda) caps.push('i2c_sda')`) never fires for GPIO4, since
+  `consts.SDA` is undefined. No pins_arduino.h edit was needed — the bug
+  class flagged in the audit brief does not apply here; it was already
+  avoided by the file's existing structure.
+
+GPIO5 (PIN_SPI0_SS, also the vendor's unused PIN_WIRE0_SCL #define) — EVE
+  SPI0 chip-select. Same reasoning as GPIO4 (PIN_WIRE0_SCL is a #define
+  only, never promoted to a `static const uint8_t SCL`, so no i2c_scl
+  auto-append risk). Documented with an empty-capability chipGpios entry.
+
+GPIO6, GPIO7 — Bridgetek's own generic pico-brteve reference wiring guide
+  places INT and PWD (power-down) on these two pins immediately following
+  the identical SPI0 assignment used on this module, which is
+  circumstantial evidence they *could* serve the same role here. However
+  this is a generic breakout-board guide, not IDM2040-43A-specific, and no
+  module-specific source (datasheet text, vendor library headers)
+  confirms this. Per the audit's "confirm via real vendor documentation,
+  never guess — report NO CHANGE rather than guess" rule: LEFT UNCHANGED.
+  These remain the board's own existing general-purpose D6/D7 aliases,
+  inheriting the chip-level default full capability set. NO CHANGE.
+
+GPIO8, GPIO9 (PIN_SERIAL2_TX/RX) — a second UART, exposed as ordinary
+  D8/D9 digital pins in pins_arduino.h (not the board's primary
+  Serial1/TX-RX pair, which is GPIO0/1). No vendor evidence either is
+  dedicated to onboard hardware beyond the optional Serial2 UART role
+  (user-selectable, same pattern as any board with more than one UART).
+  NO CHANGE.
+
+GPIO10 (PIN_SPI1_SCK / PIN_SD_SCK) — onboard microSD card SPI1 clock.
+  Confirmed via pins_arduino.h AND independently corroborated by the
+  IDM2040-43A datasheet's CN13 connector table ("SPI1_SCK ... GP10").
+  Already excluded from pins_arduino.h. Documented with an empty-
+  capability chipGpios entry.
+
+GPIO11 (PIN_SPI1_MOSI / PIN_SD_MOSI) — onboard SD card SPI1 data-out.
+  Corroborated by datasheet CN13 table ("SPI1_MOSI ... GP11"). Same
+  treatment as GPIO10.
+
+GPIO12 (PIN_SPI1_MISO / PIN_SD_MISO) — onboard SD card SPI1 data-in.
+  Corroborated by datasheet CN13 table ("SPI1_MISO ... GP12"). Same
+  treatment as GPIO10.
+
+GPIO13 (PIN_SPI1_SS / PIN_SD_SS) — onboard SD card SPI1 chip-select.
+  Not individually named in the datasheet extract but follows directly
+  from pins_arduino.h's own PIN_SPI1_SS/PIN_SD_SS=13 declaration,
+  consistent with the confirmed SPI1 bus. Same treatment as GPIO10.
+
+GPIO14, GPIO15 — declared as plain D14/D15 in pins_arduino.h with no
+  vendor evidence of onboard dedication found (not part of CN13's SPI1
+  table, not part of CN14's GPIO header table, not mentioned near the EVE
+  or SD sections of the datasheet). NO CHANGE.
+
+GPIO16-22 (D16-D22) — appear in the datasheet's CN14 external GPIO header
+  table (GPIO16, GPIO17) and are otherwise unremarked-on general pins.
+  No onboard-hardware dedication found. NO CHANGE.
+
+GPIO25 (PIN_LED) — onboard status LED. Standard, unmodified Raspberry Pi
+  Pico-form-factor LED circuit; this codebase's rpipico and
+  wiznet_5500_evb_pico boards already confirm this exact standard circuit
+  is active-high. Independently, GPIO25 appears as a LED output in the
+  IDM2040-43A datasheet's own bundled MicroPython example code ("...with
+  LCD and Backlight LED on"). Tagged
+  capabilities: ["digital_output","pwm_output","led_high"] (pwm_output
+  kept since arduino-pico's analogWrite() works on any RP2040 GPIO,
+  matching the wiznet_5500_evb_pico precedent).
+
+GPIO26-28 (A0-A2, also PIN_WIRE1_SDA/SCL=26/27) — Wire1 (I2C1) pins,
+  already available to user sketches via Wire1.begin() even though not
+  surfaced as named SDA/SCL aliases in the Designer (same reasoning as
+  GPIO4/5 above: PIN_WIRE1_SDA/SCL are raw #defines only, per the file's
+  own note). No onboard hardware consumes this bus per any source
+  consulted. NO CHANGE.
+
+GPIO0, GPIO1 (PIN_SERIAL1_TX/RX) — primary USB-bridged debug UART.
+  Standard role, handled by the existing D0/D1 declarations. NO CHANGE
+  (not a "dedicated onboard hardware" pin in the sense this audit
+  targets — it's the board's normal Serial port).
+
+SW1 (BOOTSEL) and SW2 (hardware reset) — confirmed via the datasheet text
+  quoted above. Neither is an application-readable GPIO button (BOOTSEL
+  is the standard RP2040 boot-mode strap read only by the on-chip boot
+  ROM; SW2 is a hardware RUN/reset line). No "button" capability tagged
+  anywhere on this board, matching the rpipico/wiznet_5500_evb_pico
+  "no onboard user button beyond BOOTSEL" precedent.
+
+SDCARD_DETECT — `#define SDCARD_DETECT 33` in pins_arduino.h. GPIO33 is
+  outside the RP2040's valid GPIO0-29 range, so this is an inert sentinel
+  value (no card-detect switch is actually wired to a real GPIO), and the
+  macro is never parsed by build_boards.js in any case (only
+  `static const uint8_t` aliases are parsed, never `#define`s). No action
+  needed.
+
+SUMMARY
+Created variants/rp2040/rp2040/bridgetek_idm2040_43a/board.json (new file
+— none existed before). Added chipGpios documentation entries (empty
+capabilities + sourced note) for GPIO2/3/4/5 (onboard BT883Q EVE display
+controller's SPI0 bus) and GPIO10/11/12/13 (onboard microSD card's SPI1
+bus) — both already excluded from pins_arduino.h's own alias declarations
+before this audit, so this board.json formalizes/documents rather than
+newly changes the Designer's pin exposure. Tagged GPIO25 as the
+confirmed active-high onboard status LED
+(["digital_output","pwm_output","led_high"]). No onboard button found
+(BOOTSEL/reset only, out of scope). GPIO6/GPIO7 were investigated as
+possible EVE INT/PD_N lines (circumstantial evidence from Bridgetek's own
+generic RP2040+EVE breakout-wiring guide) but left UNCHANGED — no
+module-specific vendor confirmation found, and the audit rule is to
+report NO CHANGE rather than guess. No pins_arduino.h edit was needed:
+the SDA/SCL-bus-collision bug class named in the audit brief does not
+occur on this board (PIN_WIRE0_SDA/SCL are unpromoted #defines, never
+parsed into an i2c_sda/i2c_scl-triggering `static const uint8_t SDA/SCL`
+by build_boards.js).

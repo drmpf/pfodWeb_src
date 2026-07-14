@@ -1,0 +1,147 @@
+Board: iLabs "Challenger RP2040 WiFi" (chip family: rp2040)
+Directory: variants/rp2040/rp2040/challenger_2040_wifi/
+Audit date: 2026-07-13 (RP2040/RP2350 family button/LED/NeoPixel + dedicated-hardware pin-exclusion audit)
+
+SOURCES CONSULTED
+------------------
+1. This board's own pins_arduino.h (already carried a pre-existing top-of-file
+   pfodWeb NOTE explaining the ESP8285 co-processor / plain-"rp2040"-bucket
+   rationale, plus a "Connected to ESP8285" comment block above the
+   PIN_SERIAL2_TX/RX/PIN_ESP8285_RST/PIN_ESP8285_MODE defines, and a
+   "D16/D17 deliberately NOT declared" note covering GPIO13/19).
+2. variants/rp2040/rp2040/board.json - chip-level defaults (empty chipGpios,
+   plain "rp2040" bucket = Serial-only connections).
+3. variants/rp2040/rp2040/wiznet_5500_evb_pico/board.json - precedent for
+   dedicated-hardware GPIO exclusion (onboard SPI peripheral) format.
+4. variants/rp2040/rp2040/rpipico/board.json - precedent for simple
+   active-high onboard LED tagging (led_high).
+5. variants/rp2040/rp2040/sea_picro/board.json - precedent for onboard
+   NeoPixel tagging (led_neopixel).
+6. variants/rp2040/rp2040/challenger_2040_wifi_ble/pins_arduino.h - sibling
+   board read for comparison (uses a different co-processor, ESP32-C3 over
+   SPI1 "ESP hosted" protocol, not UART/ESP8285 - confirms the WiFi/BLE
+   sibling is architecturally different from this board, not a copy/paste
+   source of truth for this board's pins).
+7. WebFetch of https://ilabs.se/challenger-rp2040-wifi-datasheet/ (official
+   iLabs vendor datasheet) - PRIMARY authoritative source. Confirmed:
+     - Onboard status LED: "D15 (user programmable green LED)", "Active
+       level: High" ("can easily be controlled by the user program").
+     - ESP8285 WiFi co-processor: connected via UART1, GPIO4 = TXD,
+       GPIO5 = RXD; GPIO19 = ESP8285 reset, "active low"; GPIO13 = ESP8285
+       mode/flash-select pin.
+     - Onboard NeoPixel: "an RGB LED with intensity control, run by a
+       single GPIO pin on the board" (single addressable WS2812 pixel).
+     - No onboard user pushbutton beyond standard reset/BOOTSEL.
+     - Separate "CHG" LED = battery charge-controller status indicator,
+       not RP2040-GPIO-driven (hardware charge IC output) - out of scope.
+8. WebSearch cross-reference against CircuitPython's challenger_rp2040_wifi
+   board pin definitions: independently confirms board.LED = GP12 and
+   board.NEOPIXEL = GP11 - exactly matching this board's own
+   pins_arduino.h (PIN_LED=(12u), NEOPIXEL=(11u), and the D15=(12u) /
+   D14=(11u) aliases).
+9. gitlab.com/invectorlabs/hw/challenger_rp2040_wifi (official iLabs
+   hardware/schematic repo) - fetched but the page excerpt returned did
+   not surface schematic detail beyond confirming the repo is the correct
+   design-files source; not needed as primary source since the vendor
+   datasheet (#7) and independent CircuitPython cross-check (#8) already
+   agree exactly with this board's own pins_arduino.h.
+
+PER-PIN REASONING
+------------------
+GPIO4  (PIN_SERIAL2_TX / PIN_ESP_TX) - ESP8285 co-processor's dedicated
+  UART1 TX line. Not aliased to any Dn header pin in this board's
+  pins_arduino.h (confirmed by inspection: D0-D15 list skips GPIO4/5).
+  No SPI/I2C bus alias on this pin either, so build_boards.js's
+  unconditional bus-capability auto-append does not apply - capabilities
+  set to [] outright, matching the wiznet_5500_evb_pico GPIO20/21
+  "chip-driven, no bus alias to auto-append" precedent.
+
+GPIO5  (PIN_SERIAL2_RX / PIN_ESP_RX) - ESP8285 co-processor's dedicated
+  UART1 RX line. Same reasoning as GPIO4.
+
+GPIO13 (PIN_ESP8285_MODE / PIN_ESP_MODE) - ESP8285 flash-mode select
+  line, driven by the RP2040 host during ESP8285 firmware updates (mode
+  pin pulled low while reset pulses high to enter flash mode, per iLabs
+  datasheet). Not general-purpose. capabilities: [].
+
+GPIO19 (PIN_ESP8285_RST / PIN_ESP_RST) - ESP8285 active-low reset line,
+  driven by the RP2040 host. Confirmed active-low by the vendor
+  datasheet itself. Not general-purpose. capabilities: [].
+
+GPIO11 (NEOPIXEL) - onboard WS2812 single addressable RGB status pixel.
+  Confirmed via iLabs' own datasheet ("RGB LED with intensity control,
+  run by a single GPIO pin") and independently cross-checked against
+  CircuitPython's board.NEOPIXEL=GP11. Tagged
+  ["digital_output","led_neopixel","pwm_output"] - "led_neopixel" (not
+  led_high/led_low, since this is one addressable pixel driven by a
+  timed serial protocol, not a simple on/off LED) matching this repo's
+  established led_neopixel precedent (sea_picro/board.json GPIO25,
+  sparkfun_promicrorp2040/board.json GPIO25). digital_input dropped;
+  pwm_output kept per the same precedent (arduino-pico's analogWrite()
+  works on any RP2040 GPIO, GPIO0-29).
+
+GPIO12 (PIN_LED / LED_BUILTIN) - onboard user LED, vendor-documented as
+  "D15" in the datasheet's own header-pin numbering (this board's own
+  pins_arduino.h separately assigns D15=(12u), i.e. GPIO12 - consistent).
+  Confirmed active-high explicitly by the vendor datasheet ("Active
+  level: High"). Independently cross-checked against CircuitPython's
+  board.LED=GP12. Tagged ["digital_output","pwm_output","led_high"]
+  matching the rpipico/board.json and wiznet_5500_evb_pico/board.json
+  GPIO25 active-high onboard-LED precedent; digital_input dropped,
+  pwm_output kept for brightness dimming.
+
+No onboard user pushbutton beyond BOOTSEL (which is not a normal GPIO on
+RP2040 - read via a special SDK trick, not digitalRead(); out of scope
+per the same reasoning already documented in rpipico/board.json) -
+confirmed via the vendor datasheet, which documents no separate button.
+
+BUS-COLLISION BUG CLASS CHECK (per this audit's standing instruction)
+------------------------------------------------------------------------
+Checked whether any of the confirmed dedicated/tagged pins (GPIO4, 5, 13,
+19, 11, 12) are ALSO aliased as SDA/SCL/SS/MOSI/MISO/SCK elsewhere in
+this board's pins_arduino.h (which would trigger build_boards.js's
+unconditional bus-capability auto-append, defeating a chipGpios
+override). This board's Wire0 SDA/SCL = GPIO0/1, and SPI0
+MISO/MOSI/SCK/SS = GPIO24/23/22/21 - no overlap with GPIO4, 5, 11, 12,
+13, or 19. No collision found; no pins_arduino.h edit was needed (unlike
+the adafruit_feather_scorpio precedent, which did require one).
+
+WIFI CHIP-BUCKETING FLAG (per this audit's standing instruction)
+------------------------------------------------------------------------
+This board genuinely carries onboard WiFi silicon (an ESP8285
+co-processor, confirmed by the vendor datasheet), yet lives in the plain
+"rp2040" chip bucket (variants/rp2040/rp2040/), not "rp2040w"
+(variants/rp2040/rp2040w/, which grants tcp/http/ble connections for
+boards using the native RP2040 + CYW43439 combo).
+
+This is NOT a miscategorization to silently fix - it is architecturally
+correct as-is, and was already explained by a pfodWeb NOTE present in
+this board's pins_arduino.h BEFORE this audit began: the ESP8285 is
+reached over a plain UART (Serial2, GPIO4/5) using an AT-command-style
+co-processor protocol, not the native cyw43 SPI-attached radio that
+variants/rp2040/tcp.ino, http.ino, and ble.ino are written against. This
+board would need its own dedicated co-processor .ino templates before it
+could genuinely offer tcp/http/ble connections through the Designer -
+that is a larger feature-scope change, out of scope for this
+pin-tagging/exclusion audit task. Flagging per the task's standing
+instruction to surface (not silently move) any WiFi-bucketing question.
+No chip-bucket move was made.
+
+Note: the sibling board challenger_2040_wifi_ble (same directory level,
+also plain "rp2040" bucket, not yet audited/no board.json) uses a
+different co-processor (ESP32-C3 over SPI1, "ESP hosted" protocol) and
+would need its own separate audit - not covered by this task.
+
+SUMMARY
+-------
+Created variants/rp2040/rp2040/challenger_2040_wifi/board.json (new file,
+did not exist before). Excluded 4 dedicated ESP8285 WiFi co-processor
+control/UART GPIOs (4, 5, 13, 19) from general-purpose capability
+exposure, and tagged the onboard NeoPixel (GPIO11, led_neopixel) and
+onboard user LED (GPIO12, led_high, active-high per vendor datasheet).
+No onboard button found. No pins_arduino.h edit needed (no bus-collision
+bug found). Flagged (did not fix) a WiFi chip-bucketing question: this
+board has real WiFi silicon but sits in the plain "rp2040" bucket by
+deliberate, pre-existing design (UART co-processor architecture
+incompatible with the native cyw43 .ino templates used by the
+"rp2040w" bucket) - out of scope to change here.

@@ -1,0 +1,115 @@
+{
+  // Output filename and BoardLoader data-variable name:
+  //   boardName "RP2040" -> designer/boards/RP2040/RP2040.json -> const RP2040Data = {...}
+  "boardName": "RP2040",
+
+  // Fallback human-readable name shown in the designer UI.  Overridden
+  // by the matching `<id>.name=` entry in a sibling-or-ancestor
+  // boards.txt when one is present (matched via `<id>.build.variant=`
+  // against this variant's directory name) - variants/rp2040/boards.txt
+  // already sets extelec_rc2040.name=ExtremeElectronics RC2040, so this
+  // is just a matching fallback.
+  "displayName": "ExtremeElectronics RC2040",
+
+  // Same parser dialect as every other RP2040 board - see
+  // ../board.json for the full rationale.
+  "family": "rp2040",
+
+  "inputOnlyGpios": [],
+
+  // Default transports - Serial only.
+  "connections": ["serial"],
+
+  "pinNotes": {},
+
+  // pfodWeb NOTE (2026-07-13): board identified via the vid/pid pair in
+  // variants/rp2040/boards.txt (vid 0x2e8a pid 0xee20/0xef20, usb_manufacturer
+  // "ExtremeElectronics", usb_product "RC2040") as the ExtremeElectronics
+  // RC2040 - a Z80/CP-M80 (RC2014) emulator kit built around a genuine
+  // Raspberry Pi Pico module socketed onto a custom carrier PCB (confirmed:
+  // extkits.co.uk RC2040 product page offers "the option of adding a
+  // programmed PI Pico" to the kit - the carrier board itself is not a
+  // bare-RP2040 design). Firmware/hardware confirmed via the official
+  // https://github.com/ExtremeElectronics/RC2040 repository (RC2040.c
+  // source, "GPIO settings.md", "Neopixel.md", README.md) plus
+  // https://extkits.co.uk/product/rc2040/ (kit contents) and
+  // https://www.extremeelectronics.co.uk/the-rc2040/.
+  //
+  // GPIO25 (PIN_LED) - this is the socketed Pico module's own onboard
+  // LED (GP25), not a carrier-board LED circuit - same pin/polarity as
+  // the plain rpipico board (see ../rpipico/board.json precedent):
+  // active-high, LED anode through series resistor to 3V3. digital_input
+  // dropped to match the established led_high precedent for dedicated
+  // onboard LED pins; pwm_output kept for brightness dimming.
+  //
+  // GPIO7/GPIO8/GPIO9 - three onboard tactile pushbuttons, confirmed via
+  // RC2040.c source (`uint RESETBUT=7; uint AUXBUT=8; uint DUMPBUT=9;`),
+  // each `gpio_init()` + `gpio_set_dir(GPIO_IN)` + `gpio_pull_up()`, and
+  // polled as `gpio_get(x)==0` (active-low, i.e. pressed = LOW) in the
+  // main loop: RESETBUT triggers a Z80 reset, DUMPBUT dumps RAM to SD
+  // card/terminal, AUXBUT ("third button... for Fast file transfer" per
+  // the extkits.co.uk product page) launches serialfile() fast-transfer.
+  // GPIO8 is mislabelled "Free(?)" in this board's own pins_arduino.h
+  // comment block (no #define alias exists for it, since it's a bare
+  // GPIO not one of the named peripheral pins) - the firmware source is
+  // authoritative over that stale/uncertain header comment. digital_output
+  // and pwm_output dropped (external pull-up + pushbutton-to-ground
+  // circuit, not intended as a general-purpose output).
+  //
+  // GPIO28 - fixed NeoPixel/WS2812 data-out pin, confirmed via the
+  // repository's own Neopixel.md: "The neopixel data out pin is on
+  // GPIO 28" (stated as fixed hardware, not configurable); README.md
+  // also lists "RGB LEDs" among the kit's onboard features. This pin
+  // doubles as A2 (analog input, ADC2) in the shared generic/common.h
+  // fallback, but analog_input is dropped here since the pin is
+  // committed to NeoPixel data output on this board.
+  //
+  // Checked for the confirmed button/LED-vs-bus-alias collision bug
+  // (build_boards.js unconditionally auto-appending spi_ss/spi_mosi/
+  // spi_miso/spi_sck/i2c_sda/i2c_scl capabilities whenever a GPIO number
+  // matches a PIN_SPI0_*/PIN_SPI1_*/PIN_WIRE0_* alias, regardless of any
+  // chipGpios override - see adafruit_feather_scorpio precedent): NONE
+  // of GPIO7/8/9/25/28 match any PIN_SPI0_*(2,3,4,5)/PIN_SPI1_*(10,11,12,13)/
+  // PIN_WIRE0_*(4,5) alias on this board, so no #define removal is needed
+  // for these confirmed button/LED/NeoPixel pins.
+  //
+  // Other dedicated hardware noted for completeness but left untouched
+  // (out of scope for this button/LED/NeoPixel pass - no button/LED/
+  // NeoPixel pin is affected by it): GPIO2/3/4/5 are the onboard SD
+  // card's real SPI0 bus (SCK/MOSI/MISO/SS per this board's own
+  // "GPIO settings.md": sck_gpio=2, mosi_gpio=3, miso_gpio=4, ss_gpio=5),
+  // GPIO22 is the SD card-detect switch (card_detect_gpio=22, matches
+  // this board's own pins_arduino.h "HAS_SWITCHES_IO (former SD Card
+  // Detect)" comment), GPIO10/11/12/13 are ROM-select jumpers reusing
+  // the PIN_SPI1_* aliases (flagged by this board's own pins_arduino.h
+  // "ATTENTION -> USED by ROM_SELECT Jumpers" comment), GPIO14/15 are
+  // the speaker/sound-generator outputs (PIN_SERIAL2_TX/RX and
+  // PIN_WIRE0_SDA/SCL at GPIO4/5 also overlap the real SPI0 pins per
+  // this board's own "ATTENTION -> USED by SPI0" comments, and
+  // GPIO16/17/18/19/20/21/26/27 form an 8-bit parallel data port
+  // (PIOAp[]={16,17,18,19,20,21,26,27} per "GPIO settings.md"). None of
+  // these carry a button/LED/NeoPixel function, so per this audit's
+  // scope they are reported here rather than remediated.
+  "chipGpios": {
+    "7":  { "capabilities": ["digital_input", "button"], "note": "RESETBUT - onboard Z80 reset pushbutton, active-low (pull-up), confirmed via ExtremeElectronics/RC2040 RC2040.c source" },
+    "8":  { "capabilities": ["digital_input", "button"], "note": "AUXBUT - onboard fast file-transfer pushbutton, active-low (pull-up), confirmed via ExtremeElectronics/RC2040 RC2040.c source (mislabelled 'Free(?)' in this board's own pins_arduino.h comment)" },
+    "9":  { "capabilities": ["digital_input", "button"], "note": "DUMPBUT - onboard RAM-dump pushbutton, active-low (pull-up), confirmed via ExtremeElectronics/RC2040 RC2040.c source" },
+    "25": { "capabilities": ["digital_output", "pwm_output", "led_high"], "note": "PIN_LED / LED_BUILTIN - onboard LED of the socketed Raspberry Pi Pico module, active-high (see pfodWeb NOTE above)" },
+    "28": { "capabilities": ["digital_output", "pwm_output", "led_neopixel"], "note": "Fixed NeoPixel/WS2812 data-out pin, confirmed via ExtremeElectronics/RC2040 repository's Neopixel.md ('The neopixel data out pin is on GPIO 28')" }
+  },
+
+  // arduino-pico's analogWrite() defaults to an 8-bit range (0-255) -
+  // same as every other RP2040/RP2350 board.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on RP2040/RP2350.
+  "dac": {},
+
+  // 3 analog channels (A0-A2 = GPIO26-28), 12-bit ADC - matches this
+  // board's generic/common.h (NUM_ANALOG_INPUTS = 3, ADC_RESOLUTION = 12).
+  // Note GPIO28/A2 is committed to NeoPixel data output on this board
+  // (see chipGpios above), so it is analog-capable at the chip level but
+  // not practically usable as an analog input while the onboard NeoPixel
+  // is present.
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.3" }
+}
