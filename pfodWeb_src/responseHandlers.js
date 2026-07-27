@@ -175,13 +175,22 @@ Object.assign(DrawingViewer.prototype, {
     return true;
   },
 
-  // Extract the leading [A-Za-z_]\w* token from a request cmd, after stripping
-  // "{" and any "V<n>:" version prefix.  This is the cmd's leading identifier:
+  // Extract the leading identifier from a request cmd, after stripping "{"
+  // and any "V<n>:" version prefix.  This is the cmd's leading identifier:
   //   - For drawing-fetch types (menuItemDwg/insertDwg/refresh/refresh-insertDwg)
-  //     the cmd is "{<loadCmd>}" or "{V<n>:<loadCmd>}" — token IS the loadCmd.
+  //     the cmd is "{<loadCmd>}" or "{V<n>:<loadCmd>}" — token IS the loadCmd,
+  //     i.e. the ENTIRE remaining body (a dwg-designer loadCmd is
+  //     DWG_PREVIEW_KEY_PREFIX + a DwgLibrary dwg name, which is free text —
+  //     spaces and other non-word characters are legal and must survive here
+  //     intact, since drawingsData/etc are keyed by this exact string
+  //     elsewhere — e.g. menuData.drawingItems[].loadCmd — and a mismatch
+  //     silently orphans the fetched content under the wrong key).
   //   - For touch-style cmds the cmd is "{<menuItemCmd>~..." — token is the
   //     menuItemCmd (NOT the loadCmd; use _resolveLoadCmdFromRequest for that).
-  // Returns "" if the cmd has no leading-alpha identifier (e.g. "{.}", "{ }").
+  // Stops only at a genuine wire delimiter (~ ` | }), never at a plain
+  // "non-word" character — those delimiters are the only real terminators
+  // in either case.
+  // Returns "" if the cmd body is empty at this point (e.g. "{.}", "{ }").
   _extractCmdToken(cmd) {
     if (!cmd || cmd[0] !== '{') return '';
     let body = cmd.slice(1);
@@ -189,8 +198,8 @@ Object.assign(DrawingViewer.prototype, {
     if (colon > 0 && /^[A-Za-z0-9_]+$/.test(body.slice(0, colon))) {
       body = body.slice(colon + 1);
     }
-    const m = body.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
-    return m ? m[1] : '';
+    const m = body.match(/^([^~`|}]*)/);
+    return m && m[1] ? m[1] : '';
   },
 
   // Resolve the dwg loadCmd from a request's cmd by parsing the leading
@@ -235,7 +244,7 @@ Object.assign(DrawingViewer.prototype, {
   //                                             else STAMP 'menu'
   //   keepAlive / dataRefresh                 → no stamp (no item to track)
   handleEmptyResponse(request, data) {
-    console.log(`[QUEUE] Received empty command response {} - acknowledging without processing`);
+    console.info(`[QUEUE] Received empty command response {} - acknowledging without processing`);
 
     const reqType = request.requestType;
 
@@ -304,12 +313,12 @@ Object.assign(DrawingViewer.prototype, {
     if (data.cmd) {
       cmd = data.cmd;
     } else {
-      console.log('[QUEUE] No cmd field in server response ', JSON.stringify(data));
+      console.info('[QUEUE] No cmd field in server response ', JSON.stringify(data));
       return false;
     }
     const msgType = cmd[0];
     if (!(msgType.startsWith("{,") || msgType.startsWith("{;"))) {
-      console.log('[QUEUE] Not a menu response ', JSON.stringify(data));
+      console.info('[QUEUE] Not a menu response ', JSON.stringify(data));
       return false;
     }
 
@@ -348,7 +357,7 @@ Object.assign(DrawingViewer.prototype, {
         console.log('[MENU_CACHE] {;} response is forward-nav to cached submenu "' + bareCmd + '" - showing from cache with update applied');
         this._navigateToMenu(baseMenuDataForReqCmd, menuData, reqCmd, reqType, request, self);
       } else if (window.pfodMenuDisplay.isVisible()) {
-        console.log('[QUEUE] {;} in-place update to visible menu - merging');
+        console.info('[QUEUE] {;} in-place update to visible menu - merging');
         window.pfodMenuDisplay.update(menuData);
         // Stamp 'menu' last-response.  {; can update header.reRequestMs
         // (pfodMenuDisplay.update applies non-null values); read the merged
@@ -401,7 +410,7 @@ Object.assign(DrawingViewer.prototype, {
             if (!this.itemRefreshTimes.has(drawingName)) {
               this.itemRefreshTimes.set(drawingName, null);
             }
-            console.log('[QUEUE] Refresh: re-requesting drawing "' + drawingName + '" cmd=' + drawingCmd);
+            console.info('[QUEUE] Refresh: re-requesting drawing "' + drawingName + '" cmd=' + drawingCmd);
             this.addToRequestQueue(drawingCmd, request.options, null, 'refresh');
           }
         }
@@ -420,7 +429,7 @@ Object.assign(DrawingViewer.prototype, {
         // targets the menu BEFORE it, and surface the error.  Stay in the
         // transient message-mode (the "Requesting Menu" overlay) — user
         // retries via toolbar back/reload.
-        console.error(`[QUEUE] {;} response for "${reqCmd}" but no cached parsed menu — popping nav stack and showing error`);
+        console.info(`[QUEUE] {;} response for "${reqCmd}" but no cached parsed menu — popping nav stack and showing error`);
         if (this.menuNavStack.length > 1) {
           const popped = this.menuNavStack.pop();
           console.log(`[MENU_NAV] Popped failed back target "${popped}" — stack now: ${JSON.stringify(this.menuNavStack)}`);
@@ -437,7 +446,20 @@ Object.assign(DrawingViewer.prototype, {
       return true;
     }
 
-    // {,} full new menu — record cmd, cache it, and display
+    // {,} full new menu — record cmd, cache it, and display. ANY cmd
+    // whose response is a full menu gets recorded/pushed here, regardless
+    // of requestType — matches the real pfodApp/device protocol model
+    // (a client may legitimately re-request any cmd at any later time;
+    // it's the device's job to answer correctly from its own state, not
+    // the client's job to avoid ever re-asking). A handler whose response
+    // has a real side effect (e.g. addMenuItem.js's {ks`<idx>} picker
+    // submit, which creates a new item) MUST be idempotent against being
+    // re-invoked with the exact same rawCmd later — see that file's own
+    // state._addMenuItemHistory for how it does that at the state level
+    // (mirrors DesignerMsgProcessor.java's per-level cmdOverrideMapsList,
+    // which rewrites a resent "ks" create-item cmd to the edit-item cmd
+    // instead of preventing the resend), rather than trying to prevent
+    // the resend from happening here.
     this.menuCmdSet.add(reqCmd);
     console.log('[MENU_NAV] Recorded menu cmd:', reqCmd, '- known set:', JSON.stringify([...this.menuCmdSet]));
     if (this.menuCache) {
@@ -513,6 +535,17 @@ Object.assign(DrawingViewer.prototype, {
     }
 
     window.pfodMenuDisplay.show(menuData, function(clickedCmd) {
+      // Designer connection's "Create/Edit Dwg" main-menu button: switch
+      // into the Dwg Controls Panel's full-bleed custom UI mode directly,
+      // client-side — same pattern as the toolbar's own Chart button
+      // (toolbarAndMenu.js). Gated on protocol==='designer' so this cmd
+      // byte can't be misinterpreted on a real device's own menu. The
+      // {f} request below still goes out unchanged and resolves to a
+      // harmless PFOD_EMPTY ack (see dwgDesigner/dwgControlsPanel.js).
+      if (clickedCmd === DWG_CONTROLS_PANEL_CMD && self.protocol === 'designer'
+          && window.designerDwgPanel) {
+        window.designerDwgPanel.show();
+      }
       // Send versioned request if this is a known menu cmd with a cached version
       let fullCmd = '{' + clickedCmd + '}';
       if (self.menuCache && self.menuCmdSet.has(fullCmd)) {
@@ -573,7 +606,7 @@ Object.assign(DrawingViewer.prototype, {
         }
         const drawingName = dwgItem.loadCmd;
         this.currentIdentifier = dwgItem.cmd;
-        console.log(`[QUEUE] Menu contains drawing item - queuing drawing request for "${drawingName}", identifier="${this.currentIdentifier}"`);
+        console.info(`[QUEUE] Menu contains drawing item - queuing drawing request for "${drawingName}", identifier="${this.currentIdentifier}"`);
 
         if (connectionId && !this.redraw.redrawDrawingManager.drawingsData[drawingName]?.data) {
           this.redraw.redrawDrawingManager.loadDrawingDataFromStorage(drawingName, connectionId);
@@ -609,7 +642,7 @@ Object.assign(DrawingViewer.prototype, {
    * batches don't trigger N redraws.
    */
   handleDwgResponse(data, request) {
-    console.log('[QUEUE] Handling dwg response');
+    console.info('[QUEUE] Handling dwg response');
 
     // Check if this DRAG response should be discarded due to newer drag requests in queue
     if (request.touchZoneInfo && request.touchZoneInfo.filter === TouchZoneFilters.DRAG) {
@@ -621,25 +654,25 @@ Object.assign(DrawingViewer.prototype, {
       );
 
       if (hasNewerDragRequest) {
-        console.log(`[QUEUE] Discarding DRAG response for cmd="${cmd}" - newer request exists in queue`);
+        console.info(`[QUEUE] Discarding DRAG response for cmd="${cmd}" - newer request exists in queue`);
         return false; // Discard this response
       }
     }
 
     try {
       if (document.body.className === 'input-mode' && window.pfodInputDisplay) {
-        console.log('[QUEUE] Exiting input-mode before processing drawing response');
+        console.info('[QUEUE] Exiting input-mode before processing drawing response');
         window.pfodInputDisplay.hide();
       }
       if (document.body.className === 'numeric-input-mode' && window.pfodNumericInputDisplay) {
-        console.log('[QUEUE] Exiting numeric-input-mode before processing drawing response');
+        console.info('[QUEUE] Exiting numeric-input-mode before processing drawing response');
         window.pfodNumericInputDisplay.hide();
       }
       if (document.body.className === 'selection-mode' && window.pfodSelectionDisplay) {
-        console.log('[QUEUE] Exiting selection-mode before processing drawing response');
+        console.info('[QUEUE] Exiting selection-mode before processing drawing response');
         window.pfodSelectionDisplay.hide();
       }
-      console.log(`[QUEUE] Processing ${request.requestType} response for "${request.cmd}"`);
+      console.info(`[QUEUE] Processing ${request.requestType} response for "${request.cmd}"`);
 
       // Derive data.name (the routing key for processDrawingData →
       // drawingsData[name] / unindexedItems[name] / etc.) from the request cmd.
@@ -675,8 +708,8 @@ Object.assign(DrawingViewer.prototype, {
       this.processDrawingData(data, null, request.requestType);
       return true;
     } catch (error) {
-      console.error(`[QUEUE] Error processing dwg response:`, error);
-      console.error(`[QUEUE] Error stack:`, error.stack);
+      console.info(`[QUEUE] Error processing dwg response:`, error);
+      console.info(`[QUEUE] Error stack:`, error.stack);
 
       // Additional diagnostics for debugging — derive the loadCmd from the
       // request cmd via the same helpers the response router uses.
@@ -684,7 +717,7 @@ Object.assign(DrawingViewer.prototype, {
                    || this._extractCmdToken(request.cmd)
                    || " ";
       const dm = this.redraw.redrawDrawingManager;
-      console.log(`[QUEUE] Debugging state for "${dwgName}":`);
+      console.info(`[QUEUE] Debugging state for "${dwgName}":`);
       console.log(`- Registered drawings: ${JSON.stringify(dm.drawings)}`);
       console.log(`- Drawing in drawings array: ${dm.drawings.includes(dwgName)}`);
       console.log(`- Drawing in drawingsData: ${dm.drawingsData[dwgName] ? 'yes' : 'no'}`);
@@ -694,7 +727,7 @@ Object.assign(DrawingViewer.prototype, {
 
       // Try to fix any missing collections
       if (dwgName !== " " && (!dm.unindexedItems[dwgName] || !dm.indexedItems[dwgName])) {
-        console.log(`[QUEUE] Attempting to fix missing collections for "${dwgName}"`);
+        console.info(`[QUEUE] Attempting to fix missing collections for "${dwgName}"`);
         dm.ensureItemCollections(dwgName);
       }
 
@@ -713,7 +746,7 @@ Object.assign(DrawingViewer.prototype, {
         this.showNoConnectionAlert();
       } else {
         // For inserted drawings, just log the error but continue processing
-        console.warn(`[QUEUE] ERROR: Failed to load inserted drawing "${dwgName}" - continuing without it`);
+        console.info(`[QUEUE] ERROR: Failed to load inserted drawing "${dwgName}" - continuing without it`);
       }
       return false;
     }
@@ -725,19 +758,19 @@ Object.assign(DrawingViewer.prototype, {
    * Processes based on response type
    */
   handleNonDwgResponse(data, request, requestType) {
-    console.log('[QUEUE] Handling non-dwg response');
+    console.info('[QUEUE] Handling non-dwg response');
 
     // Handle menu responses
     if (data.cmd && data.cmd[0] && (data.cmd[0].startsWith('{,') || data.cmd[0].startsWith('{;'))) {
-      console.log('[QUEUE] Processing menu response');
+      console.info('[QUEUE] Processing menu response');
 
       // Exit other display modes before processing a new menu response
       if (document.body.className === 'chart-mode') {
-        console.log('[QUEUE] Exiting chart display before processing menu response');
+        console.info('[QUEUE] Exiting chart display before processing menu response');
         this.exitChartDisplay();
       }
       if (document.body.className === 'rawdata-mode') {
-        console.log('[QUEUE] Exiting raw data display before processing menu response');
+        console.info('[QUEUE] Exiting raw data display before processing menu response');
         this.exitRawDataDisplay();
       }
       // exitStreamingData is idempotent — call it whenever a streaming panel exists,
@@ -745,26 +778,26 @@ Object.assign(DrawingViewer.prototype, {
       // panel was left in the DOM by an intermediate chart-mode (toolbar "..."→Chart
       // from streaming) and is still visible when the menu tries to show.
       if (document.getElementById('streaming-data-display')) {
-        console.log('[QUEUE] Cleaning up leftover streaming panel before processing menu response');
+        console.info('[QUEUE] Cleaning up leftover streaming panel before processing menu response');
         this.exitStreamingData();
       }
       if (document.body.className === 'input-mode' && window.pfodInputDisplay) {
-        console.log('[QUEUE] Exiting input-mode before processing menu response');
+        console.info('[QUEUE] Exiting input-mode before processing menu response');
         window.pfodInputDisplay.hide();
       }
       if (document.body.className === 'numeric-input-mode' && window.pfodNumericInputDisplay) {
-        console.log('[QUEUE] Exiting numeric-input-mode before processing menu response');
+        console.info('[QUEUE] Exiting numeric-input-mode before processing menu response');
         window.pfodNumericInputDisplay.hide();
       }
       if (document.body.className === 'selection-mode' && window.pfodSelectionDisplay) {
-        console.log('[QUEUE] Exiting selection-mode before processing menu response');
+        console.info('[QUEUE] Exiting selection-mode before processing menu response');
         window.pfodSelectionDisplay.hide();
       }
       // For {,} responses, hide the current menu before processMenuResponse shows the new one.
       // For {;} responses, _navigateToMenu handles the hide when needed (cache-valid path).
       const isMenuUpdate = data.cmd[0].startsWith('{;');
       if (document.body.className === 'menu-mode' && window.pfodMenuDisplay && !isMenuUpdate) {
-        console.log('[QUEUE] Exiting previous menu-mode before processing new menu response');
+        console.info('[QUEUE] Exiting previous menu-mode before processing new menu response');
         window.pfodMenuDisplay.hide();
         this.redraw.clearMenuCanvases();
       }
@@ -783,27 +816,27 @@ Object.assign(DrawingViewer.prototype, {
       // Exit menu-mode before switching to chart/rawdata display so the canvas is
       // restored to #canvas-wrapper before chartDisplay tries to resize and render it.
       if (document.body.className === 'menu-mode' && window.pfodMenuDisplay) {
-        console.log('[QUEUE] Exiting menu-mode before processing chart/rawdata response');
+        console.info('[QUEUE] Exiting menu-mode before processing chart/rawdata response');
         window.pfodMenuDisplay.hide();
         this.redraw.clearMenuCanvases();
       }
-      console.log('[QUEUE] Processing response - checking for chart vs raw data');
-      console.log('[QUEUE] Full data.cmd array:', data.cmd);
-      console.log('[QUEUE] window.chartDisplay exists:', !!window.chartDisplay);
+      console.info('[QUEUE] Processing response - checking for chart vs raw data');
+      console.info('[QUEUE] Full data.cmd array:', data.cmd);
+      console.info('[QUEUE] window.chartDisplay exists:', !!window.chartDisplay);
 
       // Try to parse as chart format (with pipe-delimited labels and optional plotNo)
       let chartInfo = null;
       if (window.chartDisplay) {
-        console.log('[QUEUE] Calling parseChartLabelsWithPlotNo with entire cmd array');
+        console.info('[QUEUE] Calling parseChartLabelsWithPlotNo with entire cmd array');
         chartInfo = window.chartDisplay.parseChartLabelsWithPlotNo(data.cmd);
-        console.log('[QUEUE] parseChartLabelsWithPlotNo returned:', chartInfo);
+        console.info('[QUEUE] parseChartLabelsWithPlotNo returned:', chartInfo);
       } else {
-        console.log('[QUEUE] WARNING: window.chartDisplay is not defined! Type:', typeof window.chartDisplay);
+        console.info('[QUEUE] WARNING: window.chartDisplay is not defined! Type:', typeof window.chartDisplay);
       }
 
       if (chartInfo) {
         // This is a chart response
-        console.log('[QUEUE] Processing chart response:', chartInfo);
+        console.info('[QUEUE] Processing chart response:', chartInfo);
 
         // ~C clear is applied SYNCHRONOUSLY at the connection-layer byte
         // boundary (applyClearOption, via the Option-B callback) the moment
@@ -816,7 +849,7 @@ Object.assign(DrawingViewer.prototype, {
         this.displayChartWithPlotNo();
       } else {
         // Section 9 streaming raw data response: {=[<title>]}
-        console.log('[QUEUE] Processing streaming raw data response');
+        console.info('[QUEUE] Processing streaming raw data response');
 
         // Title is between '=' and '}'.  Tilde-separated trailing parts are
         // plot options (single-letter flags).  We support ~C (clear) here;
@@ -853,7 +886,7 @@ Object.assign(DrawingViewer.prototype, {
 
     // Handle string input screen (Section 10: {'cmd[`maxLen][~prompt][|initialText]})
     if (data.cmd && data.cmd[0] && data.cmd[0].startsWith("{'")) {
-      console.log('[QUEUE] Processing string input response');
+      console.info('[QUEUE] Processing string input response');
       const inputData = PfodInputDisplay.parse(data.cmd);
       window.pfodInputDisplay.show(
         inputData,
@@ -871,7 +904,7 @@ Object.assign(DrawingViewer.prototype, {
 
     // Handle numeric input screen (Section 11: {#cmd[~prompt]`current[`max[`min]][~units[~scale[~offset]]})
     if (data.cmd && data.cmd[0] && data.cmd[0].startsWith('{#')) {
-      console.log('[QUEUE] Processing numeric input response');
+      console.info('[QUEUE] Processing numeric input response');
       const inputData = PfodNumericInputDisplay.parse(data.cmd);
       window.pfodNumericInputDisplay.show(
         inputData,
@@ -891,7 +924,7 @@ Object.assign(DrawingViewer.prototype, {
     const _isSingle = data.cmd && data.cmd[0] && data.cmd[0].startsWith('{?');
     const _isMulti  = data.cmd && data.cmd[0] && data.cmd[0].startsWith('{*');
     if (_isSingle || _isMulti) {
-      console.log('[QUEUE] Processing', _isMulti ? 'multi' : 'single', 'selection response');
+      console.info('[QUEUE] Processing', _isMulti ? 'multi' : 'single', 'selection response');
       const inputData = _isMulti
         ? PfodSelectionDisplay.parseMulti(data.cmd)
         : PfodSelectionDisplay.parseSingle(data.cmd);
@@ -923,7 +956,7 @@ Object.assign(DrawingViewer.prototype, {
     // Displays the message then runs the shared exit flow on dismiss.
     if (data.cmd && data.cmd[0] && data.cmd[0].startsWith('{!')) {
       const msg = data.cmd[0].slice(2);
-      console.log('[QUEUE] Close-connection response received:', msg);
+      console.info('[QUEUE] Close-connection response received:', msg);
       document.body.className = 'message-mode';
       pfodAlert(msg, () => {
         this._exitToConnectionScreen();

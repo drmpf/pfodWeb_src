@@ -136,9 +136,17 @@ const DesignerMoveMenuItems = (() => {
       ? 'There are no Items in this menu'
       : 'Select the Item to be moved';
 
+    // Level-suffixed (designerLevelSuffix, formats.js) — not because
+    // {u<idx>}'s own response (a {?...} selection screen) is pushed to
+    // pfodWeb's nav stack (it isn't), but so _sendU can unambiguously
+    // tell a row click apart from editMenu.js's own bare-open button
+    // (also level-suffixed, since ITS {,...} response IS pushed): a
+    // nested-path bare-open like 'u0x' would otherwise misparse as a
+    // row click on item idx 0.
+    const levelSuffix = designerLevelSuffix(state);
     let out = '{,' + DESIGNER_PROMPT_FMT + '~' + promptText;
     menu.items.forEach((item, idx) => {
-      out += '|u' + idx + DESIGNER_MENU_FMT + '~';
+      out += '|u' + levelSuffix + idx + DESIGNER_MENU_FMT + '~';
       out += _leadingText(item) + _menuItemTypeString(item);
     });
     out += '}';
@@ -241,11 +249,15 @@ const DesignerMoveMenuItems = (() => {
 
   // ── Dispatch ─────────────────────────────────────────────────────
 
-  /// Handler for cmd byte 'u'.  Bare {u} renders item selection;
-  /// {u<idx>} stashes the source and renders the destination
-  /// selection SCREEN.
+  /// Handler for cmd byte 'u'.  Cmd shape is `u<levelSuffix><idx?>`
+  /// (see _renderItemSelection's own doc for why the level suffix is
+  /// there and _parseDecimalAt's 'x'-delimiter search below). Bare
+  /// open (no idx after 'x') renders item selection; `u<levelSuffix>
+  /// <idx>` stashes the source and renders the destination selection
+  /// SCREEN.
   function _sendU(rawCmd, state, depth) {
-    const idx = _parseDecimalAt(rawCmd, depth + 1);
+    const xIdx = rawCmd.indexOf('x', depth + 1);
+    const idx = xIdx === -1 ? null : _parseDecimalAt(rawCmd, xIdx + 1);
     if (idx === null) {
       // Bare {u} — fresh start.  Clear any half-finished move.
       _movingItemIdx = null;

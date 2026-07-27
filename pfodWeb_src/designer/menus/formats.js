@@ -223,3 +223,67 @@ function designerInlineFormat(fmt) {
   if (fmt.fontColour)   out += '<' + fmt.fontColour + '>';
   return out;
 }
+
+/// Level suffix appended to a bare, context-dependent cmd byte (e.g.
+/// editMenu.js's 'g'/'J'/'n'/'u'/'w' buttons, editMenuItems.js's
+/// 'K<idx>' rows, addMenuItem.js's 'ks`<idx>' rows) so the cmd string
+/// pfodWeb actually sends is genuinely distinct per menu nesting level
+/// — 'g'/'J'/etc mean a different screen depending on the device's
+/// current activeMenuPath, but that path isn't otherwise encoded in
+/// the cmd string, so the SAME literal cmd can legitimately arise from
+/// two different levels (e.g. opening "Edit Menu" at the root, then
+/// later from inside a sub-menu). pfodWeb's own nav stack
+/// (navigationAndQueue.js's pushMenuNavCmd) collapses a repeated cmd
+/// string as a "circular reference" back to its earlier occurrence —
+/// correct behaviour for a genuine revisit of the SAME screen, but
+/// without this suffix it wrongly conflates two DIFFERENT screens that
+/// merely share a cmd byte, discarding the real navigation history
+/// that led into the deeper level.
+///
+/// Uses 'x' as the trailing delimiter (not a backtick or other
+/// punctuation) because pfodMenuParser.js's parsePfodCmd only accepts
+/// [a-zA-Z0-9_] in a cmd token — anything else would end the cmd token
+/// early, splitting off whatever follows as separate format/value
+/// content instead of staying part of one atomic cmd string. A
+/// handler whose own dispatch NEVER branches on the byte right after
+/// its cmd (e.g. 'g'/'J'/'w' — each simply ignores everything past its
+/// own byte) can just append this and ignore it entirely —
+/// DesignerDispatch already routes on the cmd's first byte only, so
+/// trailing content never affects dispatch. A handler that DOES branch
+/// on the very next byte to pick a sub-action (e.g. editPrompt.js's
+/// 'n', which switches on rawCmd[depth+1] to choose between its own
+/// bare-open and several single-letter sub-commands like 's'/'b'/'i')
+/// must instead recognise the suffix explicitly — see
+/// designerIsLevelSuffixOnly below — since the suffix's own leading
+/// digit/underscore would otherwise reach that switch and either
+/// misroute or hit a default/unknown-cmd path. A handler that needs
+/// real content of its own after the suffix (e.g. 'K<idx>', 'ks`<idx>',
+/// 'u<idx>') appends it after this suffix and parses past it (see each
+/// such handler's own doc comment for the exact shape).
+///
+/// @param {DesignerState} state
+/// @returns {string} e.g. '' + 'x' -> 'x' at the root, '0x' inside
+///          root item 0's sub-menu, '0_2x' two levels deep, etc.
+function designerLevelSuffix(state) {
+  return state.activeMenuPath.join('_') + 'x';
+}
+
+/// True iff rawCmd, starting at `start`, is EXACTLY a designerLevelSuffix
+/// (digits/underscores then 'x') with nothing meaningful after it — the
+/// counterpart check for a handler that branches directly on
+/// rawCmd[depth+1] to choose a sub-action (see designerLevelSuffix's own
+/// doc for why plain byte-only handlers don't need this at all).  Lets
+/// such a handler treat "editMenu.js's level-suffixed bare-open button"
+/// the same as a genuine bare cmd, without that suffix's leading digit
+/// ever reaching the real sub-action switch.
+///
+/// @param {string} rawCmd
+/// @param {number} start — index right after the handler's own cmd byte
+/// @returns {boolean}
+function designerIsLevelSuffixOnly(rawCmd, start) {
+  let i = start;
+  while (rawCmd[i] === '_' || (rawCmd[i] >= '0' && rawCmd[i] <= '9')) i++;
+  if (rawCmd[i] !== 'x') return false;
+  const after = rawCmd[i + 1];
+  return after === undefined || after === '}';
+}

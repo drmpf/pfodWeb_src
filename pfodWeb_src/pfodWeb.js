@@ -280,7 +280,7 @@ class DrawingViewer {
         get() { return _nri; },
         set(v) {
           const stack = (new Error()).stack.split('\n').slice(2, 7).map(l => l.trim()).join(' | ');
-          console.warn(`[NRI_TRACE] ${_nri} -> ${v} :: ${stack}`);
+          console.info(`[NRI_TRACE] ${_nri} -> ${v} :: ${stack}`);
           _nri = v;
         },
         configurable: true,
@@ -293,7 +293,7 @@ class DrawingViewer {
         get() { return _sr; },
         set(v) {
           const stack = (new Error()).stack.split('\n').slice(2, 7).map(l => l.trim()).join(' | ');
-          console.warn(`[SR_TRACE] ${fmt(_sr)} -> ${fmt(v)} :: ${stack}`);
+          console.info(`[SR_TRACE] ${fmt(_sr)} -> ${fmt(v)} :: ${stack}`);
           _sr = v;
         },
         configurable: true,

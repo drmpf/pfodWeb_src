@@ -251,8 +251,12 @@ function _freshLabelItem(autoCmd) {
 }
 
 /// Fresh Drawing item — a pfod `dwg`-type menu item that loads a drawing
-/// when the user clicks it.  For now the designer renders a static
-/// placeholder drawing (50×25 white bg, centred instructional text).
+/// when the user clicks it.  dwgName is the DwgLibrary entry this item
+/// is linked to — null until the user picks or loads one via the
+/// "Choose a Drawing" screen (designer/menus/selectDwgForItem.js),
+/// reached immediately after this item is first created (see
+/// addMenuItem.js's IDX_DRAWING branch) or later via the item editor's
+/// own "Change Drawing" button.
 /// The autoCmd generates the C++ handler stub; text is the button label.
 function _freshDrawingItem(autoCmd) {
   return {
@@ -260,6 +264,7 @@ function _freshDrawingItem(autoCmd) {
     autoCmd: autoCmd,
     text:    DEFAULT_DRAWING_TEXT,
     formats: _freshPromptFormat(),
+    dwgName: null,
   };
 }
 
@@ -795,6 +800,23 @@ function _parseItemTolerant(input, path, warnings) {
     }
   }
 
+  // Drawing-only field: the DwgLibrary entry this item is linked to.
+  // A drawing item with no dwgName is never valid — the UI's own
+  // deferred-creation flow (addMenuItem.js/selectDwgForItem.js) never
+  // persists one until a dwg is actually picked, so this should be
+  // unreachable via normal use; a hand-edited or corrupted file could
+  // still contain one, so it's dropped (whole item removed, not just
+  // defaulted) with a warning rather than silently loaded.
+  if (input.type === ITEM_TYPE_DRAWING) {
+    used.add('dwgName');
+    if (typeof input.dwgName === 'string' && input.dwgName.length > 0) {
+      out.dwgName = input.dwgName;
+    } else {
+      warnings.push(path + '.dwgName: missing or invalid — dropping this Drawing item (a menu item must be linked to a dwg)');
+      return null;
+    }
+  }
+
   for (const key of Object.keys(input)) {
     if (!used.has(key)) warnings.push(path + '.' + key + ': unrecognised field — ignored');
   }
@@ -860,6 +882,43 @@ const CURRENT_KEY        = 'pfodDesigner.v1.current';
 // future schema bump reject a foreign or stale file cleanly.
 const EXPORT_FORMAT_TAG  = 'pfodDesigner';
 
+/// Return a copy of `menu` (a {prompt,promptFormat,items,...} node — same
+/// shape for rootMenu and every subMenu) suitable for JSON export, with
+/// every Drawing-type item's formats trimmed down to just {disabled,
+/// sound, flash, hidden} (recursing into every nested sub-menu's own
+/// items too). A dwg item is rendered as its own canvas, never a text
+/// button (pfodMenuDisplay.js's dwg branch), so fontSize/bold/italic/
+/// underline/fontColour never apply — and bgColour doesn't either, since
+/// the dwg carries its own embedded background colour already.
+/// disabled/sound/flash/hidden are the only fields that still do
+/// something for a dwg item. The live in-memory rootMenu is never
+/// touched; this only ever builds a fresh copy for exportToJSON()/
+/// exportToBlob() and deleteEmptyMenuList.js's own equivalent path.
+/// @param {object} menu
+/// @returns {object} a plain-object copy safe to JSON.stringify
+function _exportableMenu(menu) {
+  return Object.assign({}, menu, {
+    items: menu.items.map((item) => {
+      if (item.type === 'submenu' && item.subMenu) {
+        return Object.assign({}, item, { subMenu: _exportableMenu(item.subMenu) });
+      }
+      if (item.type === ITEM_TYPE_DRAWING) {
+        const copy = Object.assign({}, item);
+        if (copy.formats) {
+          copy.formats = {
+            disabled: copy.formats.disabled,
+            sound:    copy.formats.sound,
+            flash:    copy.formats.flash,
+            hidden:   copy.formats.hidden,
+          };
+        }
+        return copy;
+      }
+      return item;
+    }),
+  });
+}
+
 // ── DesignerState class ─────────────────────────────────────────────
 
 class DesignerState {
@@ -917,6 +976,60 @@ class DesignerState {
     // Cleared by handleSubMenuEntry after the one re-send pfodApp fires
     // before the queued {d} arrives.  IN-MEMORY ONLY.
     this._pendingNewItemIdx = null;
+    // A freshly-created Drawing item, held here rather than in
+    // getActiveMenu().items, until the user actually picks or loads a
+    // dwg on the "Choose a Drawing" screen (selectDwgForItem.js) —
+    // addMenuItem.js's IDX_DRAWING branch stashes it here instead of
+    // adding it to the menu immediately, specifically so that pressing
+    // the real back button out of that screen (which has no hook back
+    // into this dispatcher) leaves the menu completely unchanged instead
+    // of with a dangling dwgName-less item. Committed (pushed into the
+    // menu for real) by selectDwgForItem.js's _linkAndReturn once a dwg
+    // is actually chosen; discarded (just left unused) otherwise.
+    // IN-MEMORY ONLY.
+    this._pendingDrawingItem = null;
+    // Map: rawCmd string of a {ks`<idx>} "Add Menu Item" picker submit
+    // addMenuItem.js's own _applyPick has successfully processed ->
+    // {menuPath, itemIdx} for where it landed (itemIdx === null while
+    // it's still state._pendingDrawingItem — Drawing, not yet linked to
+    // a dwg). A PLAIN OBJECT, not a single "last" slot — real pfodApp/
+    // device semantics require ANY cmd whose response is a full menu to
+    // remain a legitimate, resendable nav target for as long as it's
+    // still reachable (e.g. via the client's own nav-stack back-
+    // navigation — see responseHandlers.js's own comment on why {,}-
+    // shaped responses are always recorded there), and more than one
+    // such cmd can be "live" at once (e.g. a Sub-menu's own creation cmd
+    // stays live the whole time something is later added INSIDE it) — a
+    // single most-recent-only record gets overwritten by the second
+    // creation and stops protecting the first (confirmed by testing: an
+    // earlier single-slot version of this fix failed exactly this way).
+    // Checked at the TOP of _applyPick so an exact resend of any tracked
+    // cmd re-shows what it already created instead of creating a
+    // duplicate — the bug fixed here (see submenuError.txt): a stale
+    // {ks`8} resurfacing via repeated back-presses used to recreate a
+    // duplicate Sub-menu item nested inside the one it had already made,
+    // because the only prior protection (_pendingNewItemIdx above) is
+    // deliberately short-lived and had long since been cleared by the
+    // ordinary navigation in between.
+    // Entries are pruned (not the whole map — see above) only when
+    // addMenuItem.js's own bare {k} is freshly dispatched (a real user
+    // click on "Add Menu Item" — never itself a back-navigation replay
+    // target, since its own response is a select-list, not a menu):
+    // every entry recorded at THAT SAME menuPath is deleted, since
+    // reopening the picker at that exact spot is the only genuine signal
+    // "the user wants to add ANOTHER item here", as opposed to a
+    // historical cmd resurfacing — without this, picking the same item
+    // type twice in a row at the same menu level would be mistaken for a
+    // resend of the first and just re-show it instead of creating a
+    // second. Entries recorded at OTHER menuPaths are left untouched
+    // (still legitimately resendable). Known residual gap, accepted as
+    // disproportionate to fix here: creating type X at menu A, moving to
+    // an unrelated menu B WITHOUT ever reopening {k} back at A in
+    // between, then picking type X again at B, is still misread as a
+    // resend of A's item — narrower and rarer than the bug this fixes,
+    // and no worse than this codebase's pre-existing behaviour around
+    // this edge generally. IN-MEMORY ONLY.
+    this._addMenuItemHistory = {};
     // Server-side editor context stack.  Each frame {menuPath, itemIdx} records
     // the state before entering a sub-menu editor via {s<path>}.  Popped by {d}
     // bare-restore when back-navigating from a sub-menu editMenu to the parent
@@ -1097,6 +1210,8 @@ class DesignerState {
       this.activeMenuPath = [];
       this.activeItemIdx  = null;
       this.contextStack   = [];
+      this._pendingDrawingItem = null;
+      this._addMenuItemHistory = {};
     }
     this._tryLoad();
   }
@@ -1129,6 +1244,8 @@ class DesignerState {
     this.activeMenuPath = [];
     this.activeItemIdx  = null;
     this.contextStack   = [];
+    this._pendingDrawingItem = null;
+    this._addMenuItemHistory = {};
   }
 
   /// Walk the entire menu tree and repair or clear item.pin (and, for
@@ -1265,7 +1382,7 @@ class DesignerState {
       name:     this.name,
       savedAt:  new Date().toISOString(),
       data: {
-        rootMenu:   this.rootMenu,
+        rootMenu:   _exportableMenu(this.rootMenu),
         connection: this.connection,
       },
     };
@@ -1320,6 +1437,8 @@ class DesignerState {
     this.activeMenuPath = [];
     this.activeItemIdx  = null;
     this.contextStack   = [];
+    this._pendingDrawingItem = null;
+    this._addMenuItemHistory = {};
     if (typeof d.connection === 'string' && this.board.connections[d.connection]) {
       this.connection = d.connection;
     }
@@ -1346,6 +1465,14 @@ class DesignerState {
       if (!Array.isArray(arr)) return [];
       return arr.slice();
     } catch (_) { return []; }
+  }
+
+  /// All dwg-library entry names persisted on this machine. Delegates to
+  /// DwgLibrary (dwgDesigner/dwgLibrary.js), which owns the
+  /// pfodDwgLibrary.v1.<name> storage — a separate namespace from this
+  /// class's own pfodDesigner.v1.<name> menu-design storage.
+  static listDwgNames() {
+    return DwgLibrary.listNames();
   }
 
   /// Append name to the index list if not already present.

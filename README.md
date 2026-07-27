@@ -18,8 +18,9 @@ and charts, and talks to devices directly via HTTP and via Serial, BLE and TCP/I
 The minimal Arduino [pfodParser library](https://github.com/drmpf/pfodParser) provides the device side support to display GUI's on pfodWeb and also the Android 
 [pfodApp](https://www.pfod.com.au/)
 
-pfodWeb includes a built-in Designer that lets you create menus and sub-meus of buttons, sliders and charts. pfodWeb charts include data logging and formatting options.   
+pfodWeb includes a built-in Designer that lets you create menus and sub-meus of buttons, sliders, charts and interactive dwgs. pfodWeb charts include data logging and formatting options.   
 See the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
+ and [pfodWeb Designer](https://www.forward.com.au/pfod/pfodWeb/Designer/index.html) for dwg design
 
 pfodWeb is distributed as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in an off-line browser. 
 It can also be served from the microprocessor itself for complete off-line stand alone deployment.
@@ -66,6 +67,7 @@ pfodWeb user documentation is in [`docs/`](docs/index.html):
 - [License](docs/pfodWeb_pfodProxy_License.html) / [Rust Third-Party Licenses](docs/RustThirdPartyLicenses.html)
 
 For pfodWeb Designer see the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
+and [pfodWeb Designer](https://www.forward.com.au/pfod/pfodWeb/Designer/index.html) for dwg design
 
 ## License
 

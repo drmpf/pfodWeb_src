@@ -58,15 +58,15 @@ function getActualFontSize(relativeFontSize) {
 function getBlackWhite(color) {
     // Convert color to RGB values
     function getRGB(color) {
-        // Handle hex colors
-        if (typeof color === 'string' && color.startsWith('#')) {
-            const hex = color.slice(1);
+        // Handle hex colors - '#RRGGBB' (CSS form) or bare 'RRGGBB' (pfod wire form)
+        if (typeof color === 'string' && (color.startsWith('#') || /^[0-9A-Fa-f]{6}$/.test(color))) {
+            const hex = color.startsWith('#') ? color.slice(1) : color;
             const r = parseInt(hex.substr(0, 2), 16);
             const g = parseInt(hex.substr(2, 2), 16);
             const b = parseInt(hex.substr(4, 2), 16);
             return [r, g, b];
         }
-        
+
         // Handle color numbers - convert to hex first, then to RGB using xtermColorToHex
         const hexColor = xtermColorToHex(color);
         const hex = hexColor.slice(1);
@@ -176,12 +176,17 @@ function pfodColorTagToHex(s) {
   return null;
 }
 
-// Convert color value to hex - only supports integers (0-255)
+// Convert color value to hex - supports integers (0-255) and RRGGBB hex strings
 function convertColorToHex(color, backgroundColorNumber = null) {
     // Handle Black/White mode (color -1)
     if (color === -1 && backgroundColorNumber !== null) {
         const blackWhiteColor = getBlackWhite(backgroundColorNumber);
         return xtermColorToHex(blackWhiteColor);
+    }
+
+    // 6-char RRGGBB hex string (bare, no '#' — matches pfod <RRGGBB> tag format)
+    if (typeof color === 'string' && /^[0-9A-Fa-f]{6}$/.test(color)) {
+        return '#' + color.toUpperCase();
     }
 
     // Support both integer colors and string numbers
@@ -395,7 +400,7 @@ class Redraw {
     // drawing's data.
     makeBackup() {
         if (!this.redrawDrawingManager) {
-            console.error(`[TOUCH_ACTION] this.redrawDrawingManager is undefined - cannot create backup!`);
+            console.info(`[TOUCH_ACTION] this.redrawDrawingManager is undefined - cannot create backup!`);
             return null;
         }
         // No drawingName field — the menuDwg loadCmd is recovered from the
@@ -942,9 +947,11 @@ class Redraw {
         const canvasBaseFS = getActualFontSize(relFontSize) * transform.scale * this.canvas.scaleX;
 
         // Base item colour — used for segments that carry no inline colour tag.
-        const itemColorIdx = (item.color !== undefined) ? parseInt(item.color) : -1;
-        const baseColor    = (itemColorIdx >= 0 && itemColorIdx <= 255)
-            ? xtermColorToHex(itemColorIdx) : this.ctx.fillStyle;
+        const isHexColor   = typeof item.color === 'string' && /^[0-9A-Fa-f]{6}$/.test(item.color);
+        const itemColorIdx = (!isHexColor && item.color !== undefined) ? parseInt(item.color) : -1;
+        const baseColor    = isHexColor
+            ? '#' + item.color.toUpperCase()
+            : (itemColorIdx >= 0 && itemColorIdx <= 255) ? xtermColorToHex(itemColorIdx) : this.ctx.fillStyle;
 
         console.log(`[DRAWING_LABEL] Drawing label at canvas coordinates (${canvasX}, ${canvasY}), fontSize: ${canvasBaseFS}`);
 
@@ -1042,9 +1049,11 @@ class Redraw {
         const canvasY      = actualY * this.canvas.scaleY;
         const canvasBaseFS = getActualFontSize(relFontSize) * transform.scale * this.canvas.scaleX;
 
-        const itemColorIdx = (item.color !== undefined) ? parseInt(item.color) : -1;
-        const baseColor    = (itemColorIdx >= 0 && itemColorIdx <= 255)
-            ? xtermColorToHex(itemColorIdx) : this.ctx.fillStyle;
+        const isHexColor   = typeof item.color === 'string' && /^[0-9A-Fa-f]{6}$/.test(item.color);
+        const itemColorIdx = (!isHexColor && item.color !== undefined) ? parseInt(item.color) : -1;
+        const baseColor    = isHexColor
+            ? '#' + item.color.toUpperCase()
+            : (itemColorIdx >= 0 && itemColorIdx <= 255) ? xtermColorToHex(itemColorIdx) : this.ctx.fillStyle;
 
         console.log(`[DRAWING_VALUE] Drawing value at canvas coordinates (${canvasX}, ${canvasY}), fontSize: ${canvasBaseFS}`);
 
@@ -1572,9 +1581,6 @@ class Redraw {
 
             console.log(`[DRAWING_CIRCLE] Circle after canvas scaling: center=(${canvasX}, ${canvasY}), radius=${canvasRadius}`);
 
-            // Match Android V2_ImageCircleUpdate stroke width of 5px.
-            this.ctx.lineWidth = 5;
-
             // Draw the circle.  Android uses FILL_AND_STROKE for filled, STROKE for unfilled.
             this.ctx.beginPath();
             this.ctx.arc(canvasX, canvasY, canvasRadius, 0, 2 * Math.PI);
@@ -1645,10 +1651,6 @@ class Redraw {
             const canvasRadius = transformedRadius * this.canvas.scaleX;
 
             console.log(`[DRAWING_ARC] Arc after canvas scaling: center=(${canvasX}, ${canvasY}), radius=${canvasRadius}`);
-
-            // Match Android V2_ImageCircleUpdate stroke width of 5px (same paint object
-            // is used for both circle and arc rendering in the Android implementation).
-            this.ctx.lineWidth = 5;
 
             // Draw the arc
             this.ctx.beginPath();

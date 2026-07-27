@@ -148,7 +148,7 @@ window.pfodWebMouse = {
 
   // Mouse and touch event handlers
   handleMouseDown: function(e) {
-    console.warn(`[MOUSE_DOWN] called handleMouseDown`);
+    console.info(`[MOUSE_DOWN] called handleMouseDown`);
 
     // Get canvas-relative coordinates and scale factors
     const scale = window.pfodWebMouse.getCanvasScale.call(this);
@@ -172,7 +172,7 @@ window.pfodWebMouse = {
     console.log(`DOWN in touchZone: enlarge by dwg coords ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
 
     // Update touch state
-    console.log(`[MOUSE_DOWN] Setting touchState.isDown = true`);
+    console.info(`[MOUSE_DOWN] Setting touchState.isDown = true`);
     this.touchState.wasDown = this.touchState.isDown;
     this.touchState.isDown = true;
 
@@ -180,7 +180,7 @@ window.pfodWebMouse = {
     if (this.updateTimer) {
       clearTimeout(this.updateTimer);
       this.updateTimer = null;
-      console.log(`[MOUSE_DOWN] Cancelled refresh timer`);
+      console.info(`[MOUSE_DOWN] Cancelled refresh timer`);
     }
 
     this.touchState.startX = x;
@@ -192,19 +192,30 @@ window.pfodWebMouse = {
     this.touchState.hasEnteredZones.clear();
 
 
-      // Create backup using redraw's makeBackup method
-      console.log(`[TOUCH_ACTION] Creating backup using redraw.makeBackup()`);
-      window.pfodWebMouse.touchActionBackups = this.redraw.makeBackup();
-
-      if (!window.pfodWebMouse.touchActionBackups) {
-        console.error(`[TOUCH_ACTION] Failed to create backup - makeBackup() returned null`);
-        return;
-      }
-
-
     // Find the touchZone at this position
     const foundTouchZone = window.pfodWebMouse.findTouchZoneAt.call(this, x, y, colPixelsHalf9mm, rowPixelsHalf9mm);
     this.touchState.targetTouchZone = foundTouchZone;
+
+    // Only back up state when this touchZone actually has a touchAction/
+    // touchActionInput that will fire and need reverting later — a click
+    // outside every touchZone, or on one with neither, never applies any
+    // optimistic edit, so there's nothing to back up or later restore.
+    // Checked against the LIVE DrawingManager (keyed by cmd, same shape
+    // makeBackup's own snapshot uses) rather than any existing backup,
+    // since none may exist yet.
+    if (foundTouchZone) {
+      const dm = this.redraw.redrawDrawingManager;
+      const dwg = this._menuDrawingName;
+      const hasActions = (dm.allTouchActionsByCmd[dwg]?.[foundTouchZone.cmd]?.length > 0);
+      const hasInput = !!dm.allTouchActionInputsByCmd[dwg]?.[foundTouchZone.cmd];
+      if (hasActions || hasInput) {
+        console.info(`[TOUCH_ACTION] Creating backup using redraw.makeBackup()`);
+        window.pfodWebMouse.touchActionBackups = this.redraw.makeBackup();
+        if (!window.pfodWebMouse.touchActionBackups) {
+          console.info(`[TOUCH_ACTION] Failed to create backup - makeBackup() returned null`);
+        }
+      }
+    }
 
     // Handle basic TOUCH filter (default if no filter specified)
     if (foundTouchZone && (foundTouchZone.filter === TouchZoneFilters.TOUCH || foundTouchZone.filter === 0)) {
@@ -473,10 +484,16 @@ window.pfodWebMouse = {
         } 
       } else {
         // Special case: no touchZones defined or clicked outside all touchZones
-        // Only send update request if no touchZones are defined
-        const backup = window.pfodWebMouse.touchActionBackups;
+        // Only send update request if no touchZones are defined. This is
+        // purely "does this drawing have any touchZones at all", nothing
+        // to do with touch-action backup/restore — checked against the
+        // LIVE DrawingManager directly rather than touchActionBackups
+        // (which may legitimately not exist at all now that a backup is
+        // only created when the touched zone actually has a touchAction/
+        // touchActionInput — see handleMouseDown).
+        const dm = this.redraw.redrawDrawingManager;
         const dwg = this._menuDrawingName;
-        const hasTouchZones = Object.keys(backup.allTouchZonesByCmd[dwg] || {}).length > 0;
+        const hasTouchZones = Object.keys(dm.allTouchZonesByCmd[dwg] || {}).length > 0;
 
         if (!hasTouchZones) {
           // No touchZones defined, so queue a general update request
@@ -493,7 +510,7 @@ window.pfodWebMouse = {
     // Safety net: Restore touchActions and process any pending responses if mouse state got out of sync
 
     if (this.pendingResponseQueue.length > 0) {
-      console.log(`[QUEUE] Safety net: Processing ${this.pendingResponseQueue.length} pending responses in handleClick`);
+      console.info(`[QUEUE] Safety net: Processing ${this.pendingResponseQueue.length} pending responses in handleClick`);
       this.processPendingResponses();
     }
 
@@ -517,26 +534,24 @@ window.pfodWebMouse = {
   
   // row col extra in dwg coords
   findTouchZoneAt: function(x, y, colExtra, rowExtra) { 
-    console.warn(`[FIND_TOUCH_ZONE] findTouchZoneAt called with x:${x} y:${y} colExtra:${colExtra} rowExtra:${rowExtra}`);
+    console.info(`[FIND_TOUCH_ZONE] findTouchZoneAt called with x:${x} y:${y} colExtra:${colExtra} rowExtra:${rowExtra}`);
 
     // Collect all visible touchZones
     let visibleTouchZones = [];
 
-    //always use touchActionBackups
-    
-    // Create array from touchZonesByCmd values
-    // Debug check for undefined issues during drag
-//    if (!this.redraw) {
-//        console.error(`[FIND_TOUCH_ZONE] this.redraw is undefined`);
-//        return null;
- //   }
-    
-    const backup = window.pfodWebMouse.touchActionBackups;
+    // Hit-testing is a query, not a revert operation, so it reads the
+    // LIVE DrawingManager rather than touchActionBackups — a backup may
+    // legitimately not exist yet (handleMouseDown calls this BEFORE
+    // deciding whether one is even needed) or not exist at all (a click
+    // whose zone has no touchAction/touchActionInput never gets one — see
+    // handleMouseDown). touchZone geometry itself isn't something a
+    // touchAction mutates, so the live collections are exactly as stable
+    // as a mousedown-time snapshot would be for this purpose.
     const dwg = this._menuDrawingName;
-    const allTouchZones = (backup && dwg) ? backup.allTouchZonesByCmd[dwg] : undefined;
-    console.log(`[FIND_TOUCH_ZONE] DEBUG allTouchZonesByCmd["${dwg}"] returned ${Object.keys(allTouchZones || {}).length} touchZones:`, Object.keys(allTouchZones || {}));
+    const allTouchZones = (this.redraw && dwg) ? this.redraw.redrawDrawingManager.allTouchZonesByCmd[dwg] : undefined;
+    console.info(`[FIND_TOUCH_ZONE] DEBUG allTouchZonesByCmd["${dwg}"] returned ${Object.keys(allTouchZones || {}).length} touchZones:`, Object.keys(allTouchZones || {}));
     if (allTouchZones === undefined) {
-        console.error(`[FIND_TOUCH_ZONE] allTouchZonesByCmd["${dwg}"] returned undefined during ${this.touchState?.isDown ? 'DRAG' : 'NORMAL'} operation`);
+        console.info(`[FIND_TOUCH_ZONE] allTouchZonesByCmd["${dwg}"] returned undefined during ${this.touchState?.isDown ? 'DRAG' : 'NORMAL'} operation`);
         return null;
     }
     for (const cmd in allTouchZones) {
@@ -547,7 +562,7 @@ window.pfodWebMouse = {
         visibleTouchZones.push(zone);
       }
     }
-    console.warn(`[FIND_TOUCH_ZONE] number of visible touchZones ${visibleTouchZones.length}`);
+    console.info(`[FIND_TOUCH_ZONE] number of visible touchZones ${visibleTouchZones.length}`);
 
     // Sort by idx (high idx first) last one wins if it over lays earlier one
     //visibleTouchZones.sort((a, b) => (b.idx || 0) - (a.idx || 0));
@@ -568,7 +583,7 @@ window.pfodWebMouse = {
       bounds.bottom += rowExtra;
       bounds.width = bounds.right - bounds.left;
       bounds.height = bounds.bottom - bounds.top;
-      console.warn(`[FIND_TOUCH_ZONE] TouchZone: cmd=${zone.cmd}, left:${bounds.left} right:${bounds.right} top:${bounds.top} bottom:${bounds.bottom}`);
+      console.info(`[FIND_TOUCH_ZONE] TouchZone: cmd=${zone.cmd}, left:${bounds.left} right:${bounds.right} top:${bounds.top} bottom:${bounds.bottom}`);
       // Check if point is inside bounds
       let insideZone = (x >= bounds.left && x <= bounds.left + bounds.width &&
         y >= bounds.top && y <= bounds.top + bounds.height);
@@ -583,7 +598,7 @@ window.pfodWebMouse = {
         current_colMin = colMin;
         current_rowMin = rowMin;
         currentBounds = bounds;
-         console.warn(`[FIND_TOUCH_ZONE] TouchZone: cmd=${currentZone.cmd}, colMin:${colMin} rowMin:${rowMin})`);
+         console.info(`[FIND_TOUCH_ZONE] TouchZone: cmd=${currentZone.cmd}, colMin:${colMin} rowMin:${rowMin})`);
         continue;
       } else { // have current
         let currentIdx = currentZone.idx;
@@ -600,7 +615,7 @@ window.pfodWebMouse = {
             continue;
           }
         } else { // same idx so compare overlaps  
-           console.warn(`[FIND_TOUCH_ZONE] TouchZone: cmd=${zone.cmd}, colMin:${colMin} rowMin:${rowMin})`);
+           console.info(`[FIND_TOUCH_ZONE] TouchZone: cmd=${zone.cmd}, colMin:${colMin} rowMin:${rowMin})`);
 
           // else // continue to check overlaps
           // Returns true if `a` contains `b`
@@ -634,7 +649,7 @@ window.pfodWebMouse = {
             // MUST overlap since point in both so can skip Math.max(0...
             let colOverlap = Math.min(bounds.right, currentBounds.right) - Math.max(bounds.left, currentBounds.left);
             let rowOverlap = Math.min(bounds.bottom, currentBounds.bottom) - Math.max(bounds.top, currentBounds.top);
-            // console.warn(`[FIND_TOUCH_ZONE] colOverlap:${colOverlap} rowOverlap:${rowOverlap})`);
+            // console.info(`[FIND_TOUCH_ZONE] colOverlap:${colOverlap} rowOverlap:${rowOverlap})`);
 
             let compareCol = true;
             // need this for long rectangles
@@ -642,7 +657,7 @@ window.pfodWebMouse = {
               // check both dimensions point in col dimension
               let col_min = Math.min(current_colMin, colMin);
               let row_min = Math.min(current_rowMin, rowMin);
-              // console.warn(`[FIND_TOUCH_ZONE] col_min:${col_min} row_min:${row_min})`);
+              // console.info(`[FIND_TOUCH_ZONE] col_min:${col_min} row_min:${row_min})`);
               if (col_min < row_min) {
                 // since overlap equal then this also implies col_max > row_max
                 // closest to col boundry
@@ -684,9 +699,9 @@ window.pfodWebMouse = {
       }
     }
     if (currentZone) {
-      console.warn(`[FIND_TOUCH_ZONE] returning TouchZone: cmd=${currentZone.cmd}`);
+      console.info(`[FIND_TOUCH_ZONE] returning TouchZone: cmd=${currentZone.cmd}`);
     } else {
-      console.warn(`[FIND_TOUCH_ZONE] returning TouchZone: null`);
+      console.info(`[FIND_TOUCH_ZONE] returning TouchZone: null`);
     }
     return currentZone; // the one found
   },
@@ -810,8 +825,14 @@ window.pfodWebMouse = {
     // deliberately carries no drawingName field (see redraw.makeBackup).
     const drawingName = this._menuDrawingName;
 
-    // Check for touchActionInput first - it runs before other touchActions
-    const touchActionInput = (window.pfodWebMouse.touchActionBackups.allTouchActionInputsByCmd[drawingName] || {})[touchZone.cmd];
+    // Check for touchActionInput first - it runs before other touchActions.
+    // touchActionBackups may legitimately be null here — handleMouseDown
+    // only creates one when this zone actually has a touchAction/
+    // touchActionInput, so "no backup" just means "neither exists".
+    const backupForActivation = window.pfodWebMouse.touchActionBackups;
+    const touchActionInput = backupForActivation
+      ? (backupForActivation.allTouchActionInputsByCmd[drawingName] || {})[touchZone.cmd]
+      : undefined;
     if (touchActionInput) {
       console.log(`[TOUCH_ACTION_INPUT] Found touchActionInput for cmd=${touchZone.cmd}`);
       window.pfodWebMouse.executeTouchActionInput.call(this, drawingName, touchZone.cmd, touchActionInput, col, row, touchType);
@@ -864,32 +885,37 @@ window.pfodWebMouse = {
 
   // Execute touchAction when touchZone is activated
   executeTouchAction: function(drawingName, cmd, col, row, touchType) {
-    console.log(`[TOUCH_ACTION] executeTouchAction Checking for touchAction: drawing=${drawingName}, cmd=${cmd} touchType=${touchType}`);
+    console.info(`[TOUCH_ACTION] executeTouchAction Checking for touchAction: drawing=${drawingName}, cmd=${cmd} touchType=${touchType}`);
 
     // REQUIREMENT: Always start from basic (untouched) drawing
     // Only make backup once - don't restore during drag operations
 
-    // Get the touchAction for this cmd from merged data
-    const touchActionsByCmdForDwg = window.pfodWebMouse.touchActionBackups.allTouchActionsByCmd[drawingName] || {};
-    console.log(`[TOUCH_ACTION] Available touchActions for "${drawingName}":`, Object.keys(touchActionsByCmdForDwg));
+    // Get the touchAction for this cmd from merged data. touchActionBackups
+    // may legitimately be null here — handleMouseDown only creates one
+    // when this zone actually has a touchAction/touchActionInput, so "no
+    // backup" just means there's nothing to find.
+    const touchActionsByCmdForDwg = window.pfodWebMouse.touchActionBackups
+      ? (window.pfodWebMouse.touchActionBackups.allTouchActionsByCmd[drawingName] || {})
+      : {};
+    console.info(`[TOUCH_ACTION] Available touchActions for "${drawingName}":`, Object.keys(touchActionsByCmdForDwg));
     const touchActions = touchActionsByCmdForDwg[cmd];
 
     if (!touchActions || touchActions.length === 0) {
-      console.log(`[TOUCH_ACTION] No touchAction found for cmd=${cmd}, drawing=${drawingName}`);
+      console.info(`[TOUCH_ACTION] No touchAction found for cmd=${cmd}, drawing=${drawingName}`);
       return;
     }
 
-    console.log(`[TOUCH_ACTION] Found touchAction with ${touchActions.length} actions for cmd=${cmd}, touchType=${touchType}`);
-    console.log(`[TOUCH_ACTION] TouchActions for cmd=${cmd}:`, touchActions);
+    console.info(`[TOUCH_ACTION] Found touchAction with ${touchActions.length} actions for cmd=${cmd}, touchType=${touchType}`);
+    console.info(`[TOUCH_ACTION] TouchActions for cmd=${cmd}:`, touchActions);
 
     
 
     // Get the backup before creating the pseudo response
     const backup = window.pfodWebMouse.touchActionBackups;
-    console.log(`[TOUCH_ACTION] Backup exists:`, !!backup);
+    console.info(`[TOUCH_ACTION] Backup exists:`, !!backup);
     if (backup) {
       const dwg = drawingName;
-      console.log(`[TOUCH_ACTION] Backup contains for "${dwg}": unindexed=${backup.allUnindexedItems?.[dwg]?.length || 0}, indexed=${Object.keys(backup.allIndexedItemsByNumber?.[dwg] || {}).length}, touchZones=${Object.keys(backup.allTouchZonesByCmd?.[dwg] || {}).length}`);
+      console.info(`[TOUCH_ACTION] Backup contains for "${dwg}": unindexed=${backup.allUnindexedItems?.[dwg]?.length || 0}, indexed=${Object.keys(backup.allIndexedItemsByNumber?.[dwg] || {}).length}, touchZones=${Object.keys(backup.allTouchZonesByCmd?.[dwg] || {}).length}`);
     }
     
     // Create a pseudo update response with the touchAction items
@@ -903,51 +929,51 @@ window.pfodWebMouse = {
         if (item.idx !== undefined) {
           const backupIndexedItem = backupIndexedForDwg[item.idx];
           if (!backupIndexedItem) {
-            console.error(`[TOUCH_ACTION] Processing touchAction but no dwg item for this index`, JSON.stringify(item,null,2));
+            console.info(`[TOUCH_ACTION] Processing touchAction but no dwg item for this index`, JSON.stringify(item,null,2));
             return null; // Return null for invalid items, they'll be filtered out
           }
-          console.warn(`[TOUCH_ACTION] Processing touchAction to update `, JSON.stringify(backupIndexedItem,null,2));
+          console.info(`[TOUCH_ACTION] Processing touchAction to update `, JSON.stringify(backupIndexedItem,null,2));
           
           // Apply special touchZone values if they exist (support both string and numeric formats)
           if (item.xOffset === 'COL' || item.xOffset === TouchZoneSpecialValues.TOUCHED_COL) {
             item.xOffset = col;
-            console.log(`[TOUCH_ACTION] Replaced xOffset COL with ${col}`);
+            console.info(`[TOUCH_ACTION] Replaced xOffset COL with ${col}`);
           } else if (item.xOffset === 'ROW' || item.xOffset === TouchZoneSpecialValues.TOUCHED_ROW) {
             item.xOffset = row;
-            console.log(`[TOUCH_ACTION] Replaced xOffset ROW with ${row}`);
+            console.info(`[TOUCH_ACTION] Replaced xOffset ROW with ${row}`);
           }
           if (item.yOffset === 'ROW' || item.yOffset === TouchZoneSpecialValues.TOUCHED_ROW) {
             item.yOffset = row;
-            console.log(`[TOUCH_ACTION] Replaced yOffset ROW with ${row}`);
+            console.info(`[TOUCH_ACTION] Replaced yOffset ROW with ${row}`);
           } else if (item.yOffset === 'COL' || item.yOffset === TouchZoneSpecialValues.TOUCHED_COL) {
             item.yOffset = col;
-            console.log(`[TOUCH_ACTION] Replaced yOffset COL with ${col}`);
+            console.info(`[TOUCH_ACTION] Replaced yOffset COL with ${col}`);
           }
 
                     // Apply special touchZone values if they exist (support both string and numeric formats)
           if (item.xSize === 'COL' || item.xSize === TouchZoneSpecialValues.TOUCHED_COL) {
             item.xSize = col;
-            console.log(`[TOUCH_ACTION] Replaced xSize COL with ${col}`);
+            console.info(`[TOUCH_ACTION] Replaced xSize COL with ${col}`);
           } else if (item.xSize === 'ROW' || item.xSize === TouchZoneSpecialValues.TOUCHED_ROW) {
             item.xSize = row;
-            console.log(`[TOUCH_ACTION] Replaced xSize ROW with ${row}`);
+            console.info(`[TOUCH_ACTION] Replaced xSize ROW with ${row}`);
           }
           if (item.ySize === 'ROW' || item.ySize === TouchZoneSpecialValues.TOUCHED_ROW) {
             item.ySize = row;
-            console.log(`[TOUCH_ACTION] Replaced ySize ROW with ${row}`);
+            console.info(`[TOUCH_ACTION] Replaced ySize ROW with ${row}`);
           } else if (item.ySize === 'COL' || item.ySize === TouchZoneSpecialValues.TOUCHED_COL) {
             item.ySize = col;
-            console.log(`[TOUCH_ACTION] Replaced ySize COL with ${col}`);
+            console.info(`[TOUCH_ACTION] Replaced ySize COL with ${col}`);
           }
 
           // Apply special touchZone values for intValue if item is a value type
           if (item.type === 'value' && item.intValue !== undefined) {
             if (item.intValue === 'COL' || item.intValue === TouchZoneSpecialValues.TOUCHED_COL) {
               item.intValue = col;
-              console.log(`[TOUCH_ACTION] Replaced intValue COL with ${col}`);
+              console.info(`[TOUCH_ACTION] Replaced intValue COL with ${col}`);
             } else if (item.intValue === 'ROW' || item.intValue === TouchZoneSpecialValues.TOUCHED_ROW) {
               item.intValue = row;
-              console.log(`[TOUCH_ACTION] Replaced intValue ROW with ${row}`);
+              console.info(`[TOUCH_ACTION] Replaced intValue ROW with ${row}`);
             }
           }
 
@@ -955,17 +981,17 @@ window.pfodWebMouse = {
           item.transform = backupIndexedItem.transform;// || { x: 0, y: 0, scale: 1 };
           item.clipRegion = backupIndexedItem.clipRegion;// || { x: 0, y: 0, width: 100, height: 20 };
           
-          console.log(`[TOUCH_ACTION] Processing touchAction as pseudo update `, JSON.stringify(item,null,2));
+          console.info(`[TOUCH_ACTION] Processing touchAction as pseudo update `, JSON.stringify(item,null,2));
           return item;
           
         } else {
-          console.error(`[TOUCH_ACTION] Processing touchAction but it has no index`, JSON.stringify(item,null,2));
+          console.info(`[TOUCH_ACTION] Processing touchAction but it has no index`, JSON.stringify(item,null,2));
           return null; // Return null for items without index
         }
       }).filter(item => item !== null)
     };
 
-    console.log(`[TOUCH_ACTION] Processing touchAction as pseudo update with ${pseudoUpdateResponse.items.length} items`);
+    console.info(`[TOUCH_ACTION] Processing touchAction as pseudo update with ${pseudoUpdateResponse.items.length} items`);
 
     // Create a working copy of the menuDwg's merged backup to apply touchAction
     // changes, then hand it to the renderer.  Field names match what
@@ -980,7 +1006,7 @@ window.pfodWebMouse = {
 
     // Apply touchAction changes to the working copy using the processed items from pseudoUpdateResponse
     pseudoUpdateResponse.items.forEach(processedItem => {
-      console.log(`[TOUCH_ACTION] Applying processed item to working copy:`, JSON.stringify(processedItem, null, 2));
+      console.info(`[TOUCH_ACTION] Applying processed item to working copy:`, JSON.stringify(processedItem, null, 2));
 
       // Handle hide/unhide items specially - they modify target item visibility instead of replacing the item
       if (processedItem.idx !== undefined) {
@@ -988,15 +1014,15 @@ window.pfodWebMouse = {
           const targetItem = workingCopy.allIndexedItemsByNumber[processedItem.idx];
           if (targetItem) {
             const newVisible = (processedItem.type === 'unhide');
-            console.log(`[TOUCH_ACTION] ${processedItem.type === 'unhide' ? 'Unhiding' : 'Hiding'} item ${processedItem.idx}: setting visible from ${targetItem.visible} to ${newVisible}`);
+            console.info(`[TOUCH_ACTION] ${processedItem.type === 'unhide' ? 'Unhiding' : 'Hiding'} item ${processedItem.idx}: setting visible from ${targetItem.visible} to ${newVisible}`);
             targetItem.visible = newVisible;
           } else {
-            console.warn(`[TOUCH_ACTION] ${processedItem.type} operation: No item found with idx=${processedItem.idx} to ${processedItem.type === 'unhide' ? 'unhide' : 'hide'}`);
+            console.info(`[TOUCH_ACTION] ${processedItem.type} operation: No item found with idx=${processedItem.idx} to ${processedItem.type === 'unhide' ? 'unhide' : 'hide'}`);
           }
         } else {
           // Normal item replacement for non-hide/unhide items
           workingCopy.allIndexedItemsByNumber[processedItem.idx] = processedItem;
-          console.log(`[TOUCH_ACTION] Updated working copy indexed item ${processedItem.idx} with processed touchAction item`);
+          console.info(`[TOUCH_ACTION] Updated working copy indexed item ${processedItem.idx} with processed touchAction item`);
           console.log(`[TOUCH_ACTION_DEBUG] Working copy item ${processedItem.idx} after update:`, JSON.stringify(workingCopy.allIndexedItemsByNumber[processedItem.idx], null, 2));
         }
       }
@@ -1004,10 +1030,10 @@ window.pfodWebMouse = {
 
 
     // Trigger a redraw to show the touchAction effects using the new direct redraw method
-    console.log(`[TOUCH_ACTION] Triggering redraw to display touchAction effects using working copy`);
-    console.log(`[TOUCH_ACTION] Working copy contains: unindexed=${workingCopy.allUnindexedItems.length}, indexed=${Object.keys(workingCopy.allIndexedItemsByNumber).length}, touchZones=${Object.keys(workingCopy.allTouchZonesByCmd).length}`);
+    console.info(`[TOUCH_ACTION] Triggering redraw to display touchAction effects using working copy`);
+    console.info(`[TOUCH_ACTION] Working copy contains: unindexed=${workingCopy.allUnindexedItems.length}, indexed=${Object.keys(workingCopy.allIndexedItemsByNumber).length}, touchZones=${Object.keys(workingCopy.allTouchZonesByCmd).length}`);
     this.redraw.redrawWithWorkingCopy(workingCopy, drawingName);
-    console.log(`[TOUCH_ACTION] Redraw completed`);
+    console.info(`[TOUCH_ACTION] Redraw completed`);
   },
 
   // Execute touchActionInput - opens text dialog and handles response
@@ -1165,7 +1191,7 @@ window.pfodWebMouse = {
     title.style.marginBottom = '10px';
     title.style.borderRadius = '4px';
     title.style.wordWrap = 'break-word';
-    title.style.color = '#000';
+    // title.style.color is set below, once contrastHex is resolved.
 
     console.log(`[DIALOG] Applying formatting options:`, formatOptions);
 
@@ -1181,9 +1207,32 @@ window.pfodWebMouse = {
     }
     title.style.backgroundColor = titleBgHex;
 
-    // Contrast colour used by any inline <bw> tag in the prompt — chosen against
-    // the title's background so <bw> text remains readable.
-    const contrastHex = xtermColorToHex(getBlackWhite(titleBgHex));
+    // Base text colour for the prompt (also what any inline <bw> tag in the
+    // prompt resolves against). Checked against pfodWebDesigner/src/
+    // pfodWebMouse.js:1077-1088 (the reference implementation): use the
+    // touchActionInput's own declared colour (formatOptions.color) when
+    // specified; when it's not, fall back to BLACK_WHITE — an automatic
+    // black/white contrast chosen against the title's own background —
+    // rather than a hardcoded black. Matches every other item colour
+    // field's "unspecified -> BLACK_WHITE" default (see
+    // dwgDesigner/dwgValidate.js's DWG_COLOUR_BLACKWHITE).
+    let contrastHex;
+    try {
+      contrastHex = convertColorToHex(
+        formatOptions.color !== undefined ? formatOptions.color : -1, titleBgHex);
+    } catch (error) {
+      console.error(`[DIALOG] Error getting color hex for ${formatOptions.color}:`, error);
+      contrastHex = xtermColorToHex(getBlackWhite(titleBgHex));
+    }
+    // pfodSetFormattedText only applies contrastHex to text covered by an
+    // inline <bw> tag (see its own doc comment) — it does NOT set the
+    // container's base colour. Every other caller in this codebase
+    // (pfodButtonRenderer.js, e.g. lines 331-332, 387-388, 550, 1018)
+    // explicitly sets `el.style.color = contrastHex` itself for exactly
+    // this reason; missing that step here is why plain (untagged) prompt
+    // text stayed hardcoded black regardless of what contrastHex resolved
+    // to — invisible on a black/dark background.
+    title.style.color = contrastHex;
 
     // Dialog font-size resolver: pixel-based, matching the dialog's fixed 14 px chrome.
     // (Buttons use the default vw-scaling resolver inside pfodSetFormattedText.)

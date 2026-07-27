@@ -126,6 +126,74 @@ const DesignerZipBuilder = (() => {
     return result;
   }
 
+  // ── ZIP STORE reader ────────────────────────────────────────────
+  // Parses a minimal ZIP archive back into {path, data: Uint8Array}
+  // entries — the exact counterpart to buildZip() above, for reading a
+  // zip this SAME writer produced (loadFromFile.js's own zip-bundled
+  // design + dwgs). Only STORE (uncompressed) entries are supported —
+  // buildZip never writes anything else, so this reader has no need for
+  // general-purpose zip decompression (no new dependency required for
+  // either direction).
+
+  /// Locate the End Of Central Directory record by scanning backward
+  /// from the end of the buffer for its signature — buildZip never
+  /// writes a zip comment, so this is normally found immediately, but
+  /// scanning (rather than assuming a fixed offset) is more robust
+  /// against e.g. a re-zipped/re-saved copy that added one.
+  /// @param {DataView} view
+  /// @param {number} length
+  /// @returns {number} byte offset of the EOCD signature
+  function _findEocd(view, length) {
+    for (let i = length - 22; i >= 0; i--) {
+      if (view.getUint32(i, true) === 0x06054b50) return i;
+    }
+    throw new Error('[DesignerZipBuilder] readZip: not a valid zip (no End Of Central Directory record found)');
+  }
+
+  /// @param {Uint8Array} bytes
+  /// @returns {Array<{path: string, data: Uint8Array}>}
+  function readZip(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const eocdPos       = _findEocd(view, bytes.length);
+    const totalEntries  = view.getUint16(eocdPos + 10, true);
+    const cdOffset      = view.getUint32(eocdPos + 16, true);
+
+    const dec = new TextDecoder();
+    const entries = [];
+    let pos = cdOffset;
+    for (let i = 0; i < totalEntries; i++) {
+      if (view.getUint32(pos, true) !== 0x02014b50) {
+        throw new Error('[DesignerZipBuilder] readZip: malformed central directory record at offset ' + pos);
+      }
+      const method     = view.getUint16(pos + 10, true);
+      const compSize   = view.getUint32(pos + 20, true);
+      const nameLen    = view.getUint16(pos + 28, true);
+      const extraLen   = view.getUint16(pos + 30, true);
+      const commentLen = view.getUint16(pos + 32, true);
+      const localOffset = view.getUint32(pos + 42, true);
+      const path = dec.decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+
+      if (method !== 0) {
+        throw new Error('[DesignerZipBuilder] readZip: "' + path + '" uses unsupported compression method ' +
+          method + ' (only STORE/0 is supported)');
+      }
+      if (view.getUint32(localOffset, true) !== 0x04034b50) {
+        throw new Error('[DesignerZipBuilder] readZip: malformed local file header for "' + path + '"');
+      }
+      // Local header's own name/extra lengths are authoritative for the
+      // data offset (should match the central directory's own, but
+      // reading them directly is the correct zip format contract).
+      const localNameLen  = view.getUint16(localOffset + 26, true);
+      const localExtraLen = view.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + localNameLen + localExtraLen;
+      const data = bytes.slice(dataStart, dataStart + compSize);
+
+      entries.push({ path, data });
+      pos += 46 + nameLen + extraLen + commentLen;
+    }
+    return entries;
+  }
+
   // ── Download trigger ────────────────────────────────────────────
   // Wraps zipBytes in a Blob, triggers a browser download as
   // `<downloadName>`, and (on Windows) shows a one-time overlay
@@ -159,5 +227,5 @@ const DesignerZipBuilder = (() => {
     }
   }
 
-  return Object.freeze({ buildZip, triggerDownload });
+  return Object.freeze({ buildZip, readZip, triggerDownload });
 })();

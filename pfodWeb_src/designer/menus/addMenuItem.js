@@ -114,8 +114,15 @@ const DesignerAddMenuItem = (() => {
   /// as part of the designer UI rather than as one of the options.
   /// Initial selection -1 means no option starts highlighted —
   /// matches Java's line 3079.
-  function _renderPicker() {
-    let out = "{?ks`-1~" + DESIGNER_PROMPT_FMT +
+  ///
+  /// The submit cmd is `ks` + designerLevelSuffix(state) (formats.js)
+  /// — 'k' is reachable identically from every menu nesting level, so
+  /// without the suffix, picking the SAME item type (e.g. Button) at
+  /// two different levels would submit the exact same `{ks`<idx>}`
+  /// string, colliding under pfodWeb's nav-stack circular-reference
+  /// collapse (same bug class as deleteMenuItems.js's own 't' fix).
+  function _renderPicker(state) {
+    let out = '{?ks' + designerLevelSuffix(state) + "`-1~" + DESIGNER_PROMPT_FMT +
               'Select the function of menu item to add.';
     for (const label of MENU_ITEM_OPTIONS) {
       out += '|' + label;
@@ -148,12 +155,51 @@ const DesignerAddMenuItem = (() => {
     const idx = parseInt(rawCmd.substring(argStart + 1, rawCmd.length - 1), 10);
     if (isNaN(idx)) return PFOD_EMPTY;
 
-    // If a new item was already created this session (_pendingNewItemIdx set),
-    // this is a re-request of the same picker submit (e.g. after a text-field
-    // submit inside the item editor returns {}).  Re-show the item editor for
-    // the existing item without creating a duplicate.
+    // An exact resend of a picker submit ALREADY tracked in
+    // state._addMenuItemHistory (see that field's own doc, state.js, for
+    // the full reasoning and submenuError.txt for the bug this fixes) —
+    // matches real pfodApp/device semantics: a cmd whose response is a
+    // full menu is always recorded by the client and may legitimately be
+    // re-requested later (e.g. its own nav-stack back-navigation
+    // replaying it), so this handler must answer idempotently from its
+    // own state rather than assume it's only ever asked once.
+    const priorResult = state._addMenuItemHistory[rawCmd];
+    if (priorResult) {
+      if (priorResult.itemIdx !== null) {
+        state.activeMenuPath = priorResult.menuPath.slice();
+        state.activeItemIdx  = priorResult.itemIdx;
+        return DesignerDispatch.dispatch('{d}', state, DISPATCH_ROOT_DEPTH);
+      }
+      // Drawing item created but not yet linked to a dwg (still
+      // state._pendingDrawingItem) — re-show the picker instead of
+      // discarding the in-progress draft and starting a second one.
+      return DesignerDispatch.dispatch('{dK}', state, DISPATCH_ROOT_DEPTH);
+    }
+
+    // If a new item was already created THIS pfodApp round-trip
+    // (_pendingNewItemIdx set), this is a re-request of the same picker
+    // submit arriving via pfodApp's own pre-emptive nav-stack-top resend
+    // (before the queued {d} fires) — see this field's own doc further
+    // down (state.js). Re-show the item editor for the existing item
+    // without creating a duplicate.
     if (state._pendingNewItemIdx !== null) {
       return DesignerDispatch.dispatch('{d}', state, DISPATCH_ROOT_DEPTH);
+    }
+
+    if (idx === IDX_DRAWING) {
+      // Deferred creation, unlike every other item type below: a Drawing
+      // item with no dwg linked isn't useful on its own, and the "Choose
+      // a Drawing" screen (selectDwgForItem.js) it opens into has no hook
+      // back into this dispatcher for a real toolbar back-button press —
+      // so the item is NOT added to the menu here. It's held on
+      // state._pendingDrawingItem and only actually pushed into the menu
+      // by selectDwgForItem.js's _linkAndReturn, once a dwg is genuinely
+      // picked or loaded. Pressing back out of that screen without
+      // picking anything leaves the menu completely untouched.
+      state._pendingDrawingItem = _freshDrawingItem(_makeAutoCmd('drawing', DEFAULT_DRAWING_TEXT, state.getAllItems()));
+      state.activeItemIdx = null;
+      state._addMenuItemHistory[rawCmd] = { menuPath: state.activeMenuPath.slice(), itemIdx: null };
+      return DesignerDispatch.dispatch('{dK}', state, DISPATCH_ROOT_DEPTH);
     }
 
     const menu = state.getActiveMenu();
@@ -173,8 +219,6 @@ const DesignerAddMenuItem = (() => {
       newItem = _freshDataDisplayItem(_makeAutoCmd('datadisplay', DEFAULT_DATADISPLAY_LEADING_TEXT, state.getAllItems()), boardAdc.max, boardAdc.defaultRefVolts);
     } else if (idx === IDX_CHART) {
       newItem = _freshChartItem(_makeAutoCmd('chart', DEFAULT_CHART_LABEL, state.getAllItems()));
-    } else if (idx === IDX_DRAWING) {
-      newItem = _freshDrawingItem(_makeAutoCmd('drawing', DEFAULT_DRAWING_TEXT, state.getAllItems()));
     } else if (idx === IDX_SUBMENU) {
       newItem = _freshSubMenuItem(_makeAutoCmd('submenu', DEFAULT_SUBMENU_TEXT, state.getAllItems()));
     } else {
@@ -188,6 +232,12 @@ const DesignerAddMenuItem = (() => {
     // ({s<path>} or {a}) BEFORE the queued {d} fires; that re-send must
     // preserve activeItemIdx rather than resetting to null.
     state._pendingNewItemIdx = state.activeItemIdx;
+    // Record so a LATER exact resend of this rawCmd (e.g. a real back-
+    // navigation replaying it, arbitrarily long after this round-trip)
+    // re-shows this same item instead of creating a duplicate — see this
+    // field's own doc (state.js) for why it's a map (not a single "last"
+    // slot) and separate from _pendingNewItemIdx above.
+    state._addMenuItemHistory[rawCmd] = { menuPath: state.activeMenuPath.slice(), itemIdx: state.activeItemIdx };
     console.error('[Designer] addMenuItem: created item idx=' + state.activeItemIdx +
                   ' in path=' + JSON.stringify(state.activeMenuPath) +
                   ', set _pendingNewItemIdx=' + state._pendingNewItemIdx);
@@ -198,8 +248,11 @@ const DesignerAddMenuItem = (() => {
   }
 
   /// Dispatch handler.  depth = index of 'k' in rawCmd.
-  ///   sub byte at depth+1 === 's' → picker submit; create the
-  ///     picked item type and open its edit screen.
+  ///   sub byte at depth+1 === 's' → picker submit `{ks<levelSuffix>
+  ///     `<idx>}` (see _renderPicker's own doc for the level-suffix
+  ///     portion — informational only for pfodWeb's nav-stack string
+  ///     distinctness; find the 'x' delimiter then hand _applyPick the
+  ///     backtick position exactly as before).
   ///   otherwise (bare `{k}`) → render the picker.
   ///
   /// @param {string}        rawCmd
@@ -208,9 +261,31 @@ const DesignerAddMenuItem = (() => {
   /// @returns {string|{pfod, skipSave}}
   function send(rawCmd, state, depth) {
     if (rawCmd[depth + 1] === 's') {
-      return _applyPick(state, rawCmd, depth + 2);
+      const xIdx = rawCmd.indexOf('x', depth + 2);
+      if (xIdx === -1) return PFOD_EMPTY;
+      return _applyPick(state, rawCmd, xIdx + 1);
     }
-    return { pfod: _renderPicker(), skipSave: true };
+    // Bare {k} — a genuine, fresh "Add Menu Item" click at the CURRENT
+    // menu level (its own response is a select-list, never itself a
+    // back-navigation replay target). This is the only real signal that
+    // a PREVIOUSLY recorded picker-submit for THIS SAME level is now
+    // stale/irrelevant — the user is deliberately starting a new add
+    // here, so the next {ks`<idx>}, even if textually identical to an
+    // earlier one (e.g. adding a second Sub-menu at this same level),
+    // must create a genuinely new item rather than being mistaken for a
+    // resend of the first. Only entries recorded AT this exact menuPath
+    // are pruned — entries for OTHER levels (e.g. a Sub-menu created
+    // here earlier, now containing items of its own) stay live, since
+    // they remain legitimately resendable via back-navigation. See
+    // state._addMenuItemHistory's own doc (state.js) for the full
+    // reasoning, including the narrow residual gap this scoping accepts.
+    const herePath = JSON.stringify(state.activeMenuPath);
+    for (const cmd in state._addMenuItemHistory) {
+      if (JSON.stringify(state._addMenuItemHistory[cmd].menuPath) === herePath) {
+        delete state._addMenuItemHistory[cmd];
+      }
+    }
+    return { pfod: _renderPicker(state), skipSave: true };
   }
 
   return Object.freeze({ send });

@@ -306,7 +306,7 @@ Object.assign(DrawingViewer.prototype, {
       const matchIdx = this._findExistingMatch(req);
       if (matchIdx >= 0) {
         const old = this.requestQueue[matchIdx];
-        console.log(`[QUEUE] Replace at idx=${matchIdx}: ${old.requestType}(${old.cmd}) <- ${req.requestType}(${req.cmd})`);
+        console.info(`[QUEUE] Replace at idx=${matchIdx}: ${old.requestType}(${old.cmd}) <- ${req.requestType}(${req.cmd})`);
         this.requestQueue[matchIdx] = req;
         return true;
       }
@@ -315,12 +315,12 @@ Object.assign(DrawingViewer.prototype, {
     for (let i = 0; i < this.requestQueue.length; i++) {
       if (ordinalOf(this.requestQueue[i].requestType) > inOrd) {
         this.requestQueue.splice(i, 0, req);
-        console.log(`[QUEUE] Insert at idx=${i}: ${req.requestType}(${req.cmd}) ord=${inOrd}`);
+        console.info(`[QUEUE] Insert at idx=${i}: ${req.requestType}(${req.cmd}) ord=${inOrd}`);
         return true;
       }
     }
     this.requestQueue.push(req);
-    console.log(`[QUEUE] Append at end: ${req.requestType}(${req.cmd}) ord=${inOrd}`);
+    console.info(`[QUEUE] Append at end: ${req.requestType}(${req.cmd}) ord=${inOrd}`);
     return true;
   },
 
@@ -342,12 +342,12 @@ Object.assign(DrawingViewer.prototype, {
   //   - Merged-update flag uses requestType.
   //   - Response-side data.name uses _extractCmdToken / _resolveLoadCmdFromRequest.
   addToRequestQueue(cmd, options, touchZoneInfo, requestType = 'unknown', isInitial = false) {
-    console.warn(`[QUEUE] Adding request "${cmd}" (type: ${requestType}, isInitial: ${isInitial})`);
-    console.log(`[QUEUE] Queue length before add: ${this.requestQueue.length}, sentRequest: ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}`);
+    console.info(`[QUEUE] Adding request "${cmd}" (type: ${requestType}, isInitial: ${isInitial})`);
+    console.info(`[QUEUE] Queue length before add: ${this.requestQueue.length}, sentRequest: ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}`);
 
     // ----- Hard drops -----
     if (requestType === 'unknown') {
-      console.error(`[QUEUE] Error: Unknown requestType`);
+      console.info(`[QUEUE] Error: Unknown requestType`);
       return;
     }
 
@@ -362,7 +362,7 @@ Object.assign(DrawingViewer.prototype, {
       if (this.connectionManager) this.connectionManager.exitPending = true;
     }
     if (this.exitPending && requestType !== 'exitAbort') {
-      console.log(`[QUEUE] exitPending — ignoring new request (type: ${requestType})`);
+      console.info(`[QUEUE] exitPending — ignoring new request (type: ${requestType})`);
       return;
     }
 
@@ -370,7 +370,7 @@ Object.assign(DrawingViewer.prototype, {
     // menuMouseDown is set by pfodMenuDisplay's pointerdown/pointerup listeners on
     // the scroll area, covering HTML buttons, sliders, toggles, and dwg canvases.
     if (requestType === 'menuRefresh' && window.pfodMenuDisplay?.menuMouseDown) {
-      console.log('[QUEUE] menuRefresh skipped — pointer is down in menu; rescheduling');
+      console.info('[QUEUE] menuRefresh skipped — pointer is down in menu; rescheduling');
       this.scheduleNextUpdate();
       return;
     }
@@ -388,7 +388,7 @@ Object.assign(DrawingViewer.prototype, {
       const inFlightTok = this._extractCmdToken(this.sentRequest.cmd);
       const newTok      = this._extractCmdToken(cmd);
       if (inFlightTok && inFlightTok === newTok) {
-        console.log(`[QUEUE] Dropping ${requestType} for "${newTok}" (cmd=${cmd}) — same-type already in flight`);
+        console.info(`[QUEUE] Dropping ${requestType} for "${newTok}" (cmd=${cmd}) — same-type already in flight`);
         return;
       }
     }
@@ -402,13 +402,13 @@ Object.assign(DrawingViewer.prototype, {
       const tok = this._extractCmdToken(cmd);
       if (tok) {
         this.requestTracker.touchRequests.add(tok);
-        console.log(`[QUEUE] Tracking touch request for "${tok}"`);
+        console.info(`[QUEUE] Tracking touch request for "${tok}"`);
       }
     } else if (requestType === 'insertDwg') {
       const tok = this._extractCmdToken(cmd);
       if (tok) {
         this.requestTracker.insertDwgRequests.add(tok);
-        console.log(`[QUEUE] Tracking insertDwg request for "${tok}"`);
+        console.info(`[QUEUE] Tracking insertDwg request for "${tok}"`);
       }
     }
 
@@ -486,6 +486,19 @@ Object.assign(DrawingViewer.prototype, {
    * Push a command onto the menu navigation stack.
    * If the command is already present in the stack, all entries above it are removed
    * (circular reference prevention) and it becomes the top — no duplicate is added.
+   * Matches the real Android app's own ActivityStack.cleanUpLoops (forward/
+   * pfodAppBase/ActivitySupport/ActivityStack.java) — collapsing the stack
+   * back to an existing occurrence of the same screen, rather than growing
+   * it forever, is real client behaviour, not a bug.
+   *
+   * This correctly collapses a GENUINE loop (re-opening the exact same
+   * screen from the exact same context) but relies on cmd bytes being
+   * distinct per navigation context — a cmd handler whose meaning depends
+   * on the device's current activeMenuPath (not encoded in the cmd string
+   * itself) must embed enough of that context in the cmd it hands to
+   * pushMenuNavCmd for two different contexts to never collide as the
+   * "same" cmd (see deleteMenuItems.js's own path-prefixed 't' cmd for the
+   * pattern to follow for any other level-dependent cmd).
    *
    * @param {string} cmd - The pfod command that produced a full menu response
    */
@@ -545,10 +558,10 @@ Object.assign(DrawingViewer.prototype, {
   clearPendingQueue() {
     const clearTime = Date.now();
     const queueLength = this.requestQueue.length;
-    console.log(`[QUEUE] Clearing queue at ${clearTime}, length=${queueLength}, sentRequest: ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}`);
+    console.info(`[QUEUE] Clearing queue at ${clearTime}, length=${queueLength}, sentRequest: ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}`);
     console.log(`[QUEUE_MUTATION] clearPendingQueue contents before clear (length=${queueLength}):`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})#${r._id}`)));
     this.requestQueue = [];
-    console.log(`[QUEUE] Cleared ${queueLength} pending requests at ${Date.now()}, elapsed: ${Date.now() - clearTime}ms`);
+    console.info(`[QUEUE] Cleared ${queueLength} pending requests at ${Date.now()}, elapsed: ${Date.now() - clearTime}ms`);
   }
 
 });

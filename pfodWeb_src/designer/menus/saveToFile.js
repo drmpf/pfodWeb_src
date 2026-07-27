@@ -2,10 +2,17 @@
  * designer/menus/saveToFile.js
  *
  * Handler for the 'S' (saveToFileCmd) item on the editMenu screen:
- * downloads the currently-active design as a JSON file using the
- * pre-built DesignerState.exportToBlob() serialiser.  Triggers a
- * browser download via a transient `<a download>` element — no DOM
- * residue and no server round-trip.
+ * downloads the currently-active design AS A ZIP — the design's own
+ * `.pfodMenu_json` (DesignerState.exportToJSON()) plus every dwg any
+ * Drawing menu item links to (recursively including whatever each
+ * reaches via insertDwg), each as its own `.pfodDwg_json`
+ * (dwgLibrary.js's buildSaveableDwg()) — so the design is portable on
+ * its own without depending on the browser's local DwgLibrary storage
+ * still having those dwgs loaded. Everything sits under one top-level
+ * `<name>_menuJson/` directory in the zip (dwgs in a `dwgs/`
+ * subdirectory), matching Generate Code's own "one dir so the zip
+ * extracts to something self-contained" convention
+ * (dwgArduinoExport.js's own `<name>_serial/`).
  *
  * Why on the editMenu (not main menu): Save operates on the active
  * design.  Main menu always clears state.name on entry so there's no
@@ -33,25 +40,63 @@
 
 const DesignerSaveToFile = (() => {
 
-  /// Build a Blob URL from state.exportToBlob(), trigger a download
-  /// via a hidden anchor click, then clean up.  Filename is the
-  /// design's name with the canonical `.pfodDesigner_json` extension so
-  /// the matching Load button's accept-filter recognises it.
+  /// Walk `menu` (rootMenu or any subMenu, recursing into every nested
+  /// sub-menu's own items) collecting every Drawing item's dwgName, each
+  /// expanded via DwgArduinoExport.collectAllDwgs (dwgArduinoExport.js)
+  /// into the full set of dwgs it reaches via insertDwg too — accumulates
+  /// into the SAME `collected` Set / `missing` array across every call so
+  /// dwgs linked from different menu items (or different sub-menus) that
+  /// happen to share an insertDwg dependency are only collected once.
+  /// @param {object} menu
+  /// @param {Set<string>} collected
+  /// @param {Array<string>} missing
+  function _collectMenuDwgs(menu, collected, missing) {
+    menu.items.forEach((item) => {
+      if (item.type === 'drawing' && item.dwgName) {
+        DwgArduinoExport.collectAllDwgs(item.dwgName, collected, missing);
+      } else if (item.type === 'submenu' && item.subMenu) {
+        _collectMenuDwgs(item.subMenu, collected, missing);
+      }
+    });
+  }
+
+  /// Build the zip (design .pfodMenu_json + every linked dwg's own
+  /// .pfodDwg_json) and trigger the download via DesignerZipBuilder
+  /// (designer/menus/zipBuilder.js) — same STORE-only writer + Windows
+  /// zone-block overlay Generate Code already uses.  Warns (but still
+  /// proceeds — the menu itself is always fully valid) when a linked
+  /// dwg isn't currently loaded in DwgLibrary, so its content can't be
+  /// included this time.
   ///
-  /// URL.revokeObjectURL is deferred via setTimeout so the browser has
-  /// finished the download initiation before the URL is released —
-  /// revoking synchronously after .click() races with some browsers
-  /// and produces an empty file.
+  /// URL.revokeObjectURL (inside triggerDownload) is deferred via
+  /// setTimeout so the browser has finished the download initiation
+  /// before the URL is released — revoking synchronously after .click()
+  /// races with some browsers and produces an empty file.
   function _triggerDownload(state) {
-    const blob = state.exportToBlob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = state.name + '.pfodDesigner_json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const collected = new Set();
+    const missing = [];
+    _collectMenuDwgs(state.rootMenu, collected, missing);
+
+    if (missing.length > 0) {
+      alert('Warning: ' + missing.length + ' referenced dwg(s) are not currently loaded ' +
+        'and will be missing from the saved file:\n' + missing.join(', '));
+    }
+
+    const topDir = state.name + '_menuJson/';
+    const enc = new TextEncoder();
+    const entries = [
+      { path: topDir + state.name + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
+    ];
+    Array.from(collected).forEach((name) => {
+      const dwg = DwgLibrary.get(name);
+      entries.push({
+        path: topDir + 'dwgs/' + name + '.pfodDwg_json',
+        data: enc.encode(JSON.stringify(buildSaveableDwg(dwg), null, 2)),
+      });
+    });
+
+    const zipBytes = DesignerZipBuilder.buildZip(entries);
+    DesignerZipBuilder.triggerDownload(state.name + '_menuJson.zip', zipBytes);
   }
 
   /// Dispatch handler.  Save only ever fires from the editMenu screen

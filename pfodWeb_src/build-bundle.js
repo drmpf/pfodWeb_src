@@ -216,6 +216,40 @@ const config = {
         // DesignerMainMenu.send to re-emit the main menu after mutation.
         'designer/menus/formats.js',
         'designer/menus/mainMenu.js',
+        // dwgDesigner/ — dedicated home for all dwg-designer code (kept
+        // separate from designer/menus/, which is the menu-TREE editor).
+        // dwgLibrary.js/dwgValidate.js have no dependency on anything
+        // else in the bundle (plain storage + schema/validation). Only
+        // dwgControlsPanelUI.js/state.js's listDwgNames() reference
+        // DwgLibrary, and only at call time, so exact ordering among
+        // these four files isn't load-bearing — grouped together for
+        // readability. dwgControlsPanel.js only needs
+        // DesignerDispatch/PFOD_EMPTY (dispatch.js, loaded above);
+        // dwgControlsPanelUI.js only needs DesignerState (state.js,
+        // loaded above). Neither depends on mainMenu.js at load time —
+        // DWG_CONTROLS_PANEL_CMD is read by responseHandlers.js at click
+        // time, not by these files.
+        'dwgDesigner/dwgLibrary.js',
+        'dwgDesigner/dwgValidate.js',
+        'dwgDesigner/dwgControlsPanel.js',
+        // dwgWireEncoder.js defines window.DWG_PREVIEW_KEY_PREFIX and the
+        // pure DwgLibrary-JS-object -> pfod-wire-text encoders — must load
+        // before dwgDesignerAdapter.js, which calls into it from
+        // DwgDesignerVirtualDevice.processCmd().
+        'dwgDesigner/dwgWireEncoder.js',
+        // dwgDesignerAdapter.js declares `class DwgDesignerVirtualAdapter
+        // extends PfodConnectionBase` — PfodConnectionBase must already be
+        // defined when this file's top-level code runs (class-extends
+        // resolves its superclass immediately, unlike a function body's
+        // identifiers). connectionManager.js (which defines it) is the
+        // 2nd file in this whole bundle, well before this point.
+        'dwgDesigner/dwgDesignerAdapter.js',
+        // dwgArduinoExport.js's own exportDwgAsZip() calls DwgLibrary.get()
+        // and flattenTouchActions() (dwgValidate.js) — both already loaded
+        // above — and must itself load before dwgControlsPanelUI.js, whose
+        // Generate Code buttons call into it.
+        'dwgDesigner/dwgArduinoExport.js',
+        'dwgDesigner/dwgControlsPanelUI.js',
         'designer/menus/mainMenuHelp.js',
         // editConnection.js owns the 'z' and 'y' cmd bytes for the
         // Connection / Baud pickers reached from editMenu's
@@ -257,6 +291,12 @@ const config = {
         // DesignerEditMenuItemPin.send, so the symbol must be defined first.
         'designer/menus/editMenuItemPin.js',
         'designer/menus/editMenuItem.js',
+        // selectDwgForItem.js owns the 'K' (EMI_LINK_DWG_CMD) cmd byte —
+        // the "Choose a Drawing" screen reached from a Drawing-type
+        // item's editor. Must load AFTER editMenuItem.js — the 'K' case
+        // in editMenuItem's dispatch switch calls
+        // DesignerSelectDwgForItem.send.
+        'designer/menus/selectDwgForItem.js',
         // editChart.js owns the 'R', 'Q', 'P' cmd bytes for the
         // chart item editor.  Must load AFTER editMenuItem.js —
         // the chart case in editMenuItem's _renderBody uses 'R'.
@@ -294,11 +334,16 @@ const config = {
         // (Save on editMenu, Load on main menu) backed by the
         // already-existing state.exportToBlob / state.importFromObject
         // methods.  No dependency on the menu files above other than
-        // DesignerDispatch and DesignerState, both loaded earlier.
+        // DesignerDispatch and DesignerState, both loaded earlier. Both
+        // also call into DwgArduinoExport.collectAllDwgs (dwgArduinoExport.js,
+        // loaded earlier) and DesignerZipBuilder.buildZip/readZip
+        // (zipBuilder.js, loaded just below) — function-body references
+        // only, so the load order here doesn't matter at runtime.
         'designer/menus/saveToFile.js',
         'designer/menus/loadFromFile.js',
         // zipBuilder.js — ZIP/CRC-32 writer + browser-download trigger
-        // shared by both code generators below.  Must load before either.
+        // shared by both code generators below (and by saveToFile.js/
+        // loadFromFile.js above).  Must load before the generators.
         'designer/menus/zipBuilder.js',
         'designer/menus/generateCode.js',
         // Raw-text assets for the "Minimal C Code" target's generator —

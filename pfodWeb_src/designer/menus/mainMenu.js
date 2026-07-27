@@ -31,6 +31,7 @@ const NEW_MENU_CMD                = 'a';
 const SELECT_FROM_MENU_LIST_CMD   = 'b';
 const MAIN_MENU_HELP_CMD          = 'e';
 const DELETE_EMPTY_MENU_LIST_CMD  = 'N';
+const DWG_CONTROLS_PANEL_CMD      = 'f';
 
 // ── Handler ─────────────────────────────────────────────────────────
 
@@ -84,6 +85,8 @@ const DesignerMainMenu = (() => {
     out += '|' + NEW_MENU_CMD + DESIGNER_MENU_FMT + '~Start new Menu';
     out += designerSpacing(1);
     out += '|' + DELETE_EMPTY_MENU_LIST_CMD + deleteFmt + '~Delete Menu';
+    out += designerSpacing(2);
+    out += '|' + DWG_CONTROLS_PANEL_CMD + DESIGNER_MENU_FMT + '~Create/Edit Dwg';
     out += designerSpacing(3);
     out += '|' + MAIN_MENU_HELP_CMD + DESIGNER_MENU_FMT + '~Help';
     out += '}';

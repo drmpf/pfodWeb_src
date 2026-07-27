@@ -45,7 +45,12 @@ const EM_SELECT_TO_MOVE_CMD           = 'u';  // Move Items Up/Down
 const EM_EDIT_MENU_NAME_CMD           = 'j';  // Change Menu Name
 const EM_SAVE_TO_FILE_CMD             = 'S';  // Save Design to File
 const EM_EDIT_MENU_HELP_CMD           = 'w';  // Help (top-level)
-const EM_DELETE_MENU_ITEMS_CMD        = 't';  // Delete Items
+// Delete Items ('t') is NOT a plain constant here — its cmd must be
+// path-prefixed per activeMenuPath so it's a distinct string per menu
+// level (see deleteMenuItems.js's own _openCmd/openCmd doc comment for
+// why: without this, pfodWeb's nav-stack circular-reference collapse
+// would conflate "Delete Items at the root" with "Delete Items inside
+// a sub-menu" as the same screen and discard real navigation history).
 
 // Highlight colour for the design name in the header (matches Java's
 // Open_Menu_Name_Color / Close_Menu_Name_Color — light-blue text).
@@ -139,14 +144,26 @@ const DesignerEditMenu = (() => {
     }
 
     // ── Action rows ───────────────────────────────────────────────
-    out += '|' + EM_DISPLAY_CURRENT_MENU_CMD + DESIGNER_MENU_FMT;
-    out += '~Preview Menu\n<-4><i>Use bottom back arrow to return.';
+    // "Menu" -> "Sub-menu" in every action label while editing a
+    // sub-menu, so it's unambiguous which level these actions apply to
+    // (matches the prompt's own "Editing Sub-menu from" wording above).
+    const menuWord = isInSubmenu ? 'Sub-menu' : 'Menu';
 
-    out += '|' + EM_EDIT_MENU_ITEMS_CMD + DESIGNER_MENU_FMT + '~Edit Menu';
+    // g/J/n/u/w below are each level-suffixed (designerLevelSuffix,
+    // formats.js) — their responses are full {,...} menus reachable
+    // identically from every nesting level, so the cmd string itself
+    // must be distinct per level or pfodWeb's nav-stack circular-
+    // reference collapse would conflate two different screens that
+    // merely share a cmd byte (see deleteMenuItems.js's own 't' fix
+    // for the first instance of this bug).
+    out += '|' + EM_DISPLAY_CURRENT_MENU_CMD + designerLevelSuffix(state) + DESIGNER_MENU_FMT;
+    out += '~Preview ' + menuWord + '\n<-4><i>Use bottom back arrow to return.';
 
-    out += '|' + EM_EDIT_PROMPT_CMD + DESIGNER_MENU_FMT + '~Edit prompt';
+    out += '|' + EM_EDIT_MENU_ITEMS_CMD + designerLevelSuffix(state) + DESIGNER_MENU_FMT + '~Edit ' + menuWord;
 
-    out += '|' + EM_ADD_NEW_MENU_ITEM_CMD + DESIGNER_MENU_FMT + '~Add Menu Item';
+    out += '|' + EM_EDIT_PROMPT_CMD + designerLevelSuffix(state) + DESIGNER_MENU_FMT + '~Edit prompt';
+
+    out += '|' + EM_ADD_NEW_MENU_ITEM_CMD + DESIGNER_MENU_FMT + '~Add ' + menuWord + ' Item';
 
     // Refresh Interval — pfod toggle item with 6 fixed options
     // (None / 1s / 5s / 30s / 5min / 15min) from RefreshIntervalEnum.
@@ -167,18 +184,18 @@ const DesignerEditMenu = (() => {
     // Move Items Up/Down — disabled when fewer than two items.
     const moveFmt = _hasFewerThanTwoItems(state) ? DESIGNER_DISABLED_FMT
                                                  : DESIGNER_MENU_FMT;
-    out += '|' + EM_SELECT_TO_MOVE_CMD + moveFmt + '~Move Items Up/Down';
+    out += '|' + EM_SELECT_TO_MOVE_CMD + designerLevelSuffix(state) + moveFmt + '~Move Items Up/Down';
 
     if (!isInSubmenu) out += '|' + EM_EDIT_MENU_NAME_CMD + DESIGNER_MENU_FMT + '~Change Menu Name';
 
     out += '|' + EM_SAVE_TO_FILE_CMD + DESIGNER_MENU_FMT + '~Save Design to File';
 
-    out += '|' + EM_EDIT_MENU_HELP_CMD + DESIGNER_MENU_FMT + '~Help';
+    out += '|' + EM_EDIT_MENU_HELP_CMD + designerLevelSuffix(state) + DESIGNER_MENU_FMT + '~Help';
 
     // Delete Items — disabled when no items.
     const deleteFmt = _isMenuEmpty(state) ? DESIGNER_DISABLED_FMT
                                           : DESIGNER_MENU_FMT;
-    out += '|' + EM_DELETE_MENU_ITEMS_CMD + deleteFmt + '~Delete Items';
+    out += '|' + DesignerDeleteMenuItems.openCmd(state) + deleteFmt + '~Delete Items';
 
     out += '}';
     return out;

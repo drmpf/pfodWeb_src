@@ -556,6 +556,536 @@
             padding: 0;
             margin: 0;
         }
+
+        /* DWG CONTROLS PANEL — left-hand list/actions sidebar, shown
+           alongside the real #canvas-pane (genuine body.menu-mode
+           rendering — a synthetic single-dwg-item menu, see
+           dwgDesigner/dwgControlsPanelUI.js's _renderPreview). Unlike
+           #side-panel (the message/chart-config viewer's sidebar, on the
+           right, resizable via #resize-divider), this one is a NEW static
+           sibling placed BEFORE #canvas-pane in #layout-container (a
+           default-row flex container, pfodCommon.css's own #layout-container
+           rule above) so it lands on the left, and it is fixed-width —
+           no resize divider.
+
+           Both this panel and #canvas-pane are pinned to exactly 500px
+           while the Dwg Controls Panel is showing (dwgControlsPanelUI.js's
+           show()/hide() set #canvas-pane's inline flex/#layout-container's
+           inline overflow-x — #canvas-pane's shared body.menu-mode CSS
+           rule below is flex:1 by default, used by every real menu screen,
+           so it must be overridden inline rather than here). 500+500 =
+           1000px total; #layout-container is position:fixed;width:100%
+           (a "fill the viewport" idiom used everywhere in this app) so a
+           plain CSS min-width on <body> does nothing here (its overflow
+           has no scroll mechanism of its own) — instead
+           dwgControlsPanelUI.js sets #layout-container's overflow-x:auto
+           inline so the two fixed 500px panels overflow into a horizontal
+           scrollbar on any window narrower than 1000px, matching every
+           other single-panel screen's own existing ~500px natural minimum
+           width. */
+        #dcp-left-panel {
+            display: none;
+            flex-direction: column;
+            flex: 0 0 500px;
+            width: 500px;
+            height: 100%;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
+            background: #f4f7fb;
+            border-right: 1px solid #d7dee7;
+            padding: 16px;
+            box-sizing: border-box;
+            color: #1b2430;
+            font-family: "Segoe UI","Helvetica Neue",Arial,sans-serif;
+        }
+        .dcp-back-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+        .dcp-back-link {
+            font-size: 12px;
+            color: #5b6675;
+            text-decoration: none;
+            border: 1px solid #d7dee7;
+            border-radius: 5px;
+            padding: 5px 10px;
+            background: #ffffff;
+            cursor: pointer;
+        }
+        .dcp-back-link.dcp-exit {
+            color: #8f2a1f;
+        }
+        .dcp-title {
+            font-size: 19px;
+            margin: 0 0 16px;
+            color: #1b2430;
+        }
+        .dcp-action-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .dcp-btn {
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid #d7dee7;
+            border-radius: 5px;
+            padding: 7px 12px;
+            cursor: pointer;
+            background: #ffffff;
+            color: #1b2430;
+        }
+        .dcp-btn:hover:not(:disabled) {
+            background: #eef1f6;
+        }
+        .dcp-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.4;
+        }
+        .dcp-btn-primary {
+            background: #1a73e8;
+            border-color: #1a73e8;
+            color: #ffffff;
+        }
+        /* Overrides the generic .dcp-btn:hover above — a primary button
+           stays its own accent blue on hover, no colour change. */
+        .dcp-btn-primary:hover:not(:disabled) {
+            background: #1a73e8;
+        }
+        .dcp-btn-danger {
+            color: #8f2a1f;
+            border-color: #e3b3aa;
+        }
+        .dcp-btn-ghost {
+            background: transparent;
+        }
+        /* Create Dwg screen (matches alt-a-mockup.html's Screen 1) — form
+           fields + background-colour picker, mirroring clean-edit-screen.html's
+           own .field/.color-field/.color-popup exactly (the validated
+           template for this kind of control), just under the dcp- prefix.
+           Rendered in place of the normal list/action-row content, inside
+           #dcp-left-panel, by dwgControlsPanelUI.js's _renderCreateDwgScreen(). */
+        .dcp-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 13px;
+        }
+        .dcp-field label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #5b6675;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+        }
+        .dcp-field input[type=text], .dcp-field input[type=number], .dcp-field textarea {
+            border: 1px solid #b9c3d0;
+            border-radius: 5px;
+            padding: 7px 9px;
+            font-size: 13px;
+            background: #ffffff;
+            color: #1b2430;
+            font-family: inherit;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .dcp-field input[type=text]:disabled, .dcp-field input[type=number]:disabled, .dcp-field textarea:disabled {
+            background: #eef1f4;
+            color: #8a94a3;
+            border-color: #d3dae2;
+            cursor: not-allowed;
+        }
+        .dcp-field-row {
+            display: flex;
+            gap: 10px;
+        }
+        .dcp-field-row .dcp-field {
+            flex: 1;
+        }
+        .dcp-field-row.dcp-num-row input[type=number] {
+            width: 70px;
+        }
+        .dcp-helper {
+            font-size: 11px;
+            color: #5b6675;
+        }
+        .dcp-color-field {
+            position: relative;
+        }
+        .dcp-color-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+        .dcp-color-mode-btn {
+            font-size: 11px;
+            font-weight: 700;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            color: #ffffff;
+            background: #1a73e8;
+        }
+        /* BLACK_WHITE/Color mode toggle (Add Item screen) — distinct
+           from .dcp-color-mode-btn's single always-blue "Choose Color"
+           button, since these two need a neutral/active visual
+           distinction depending on which mode is currently selected. */
+        .dcp-color-toggle-btn {
+            font-size: 11px;
+            font-weight: 700;
+            border: 1px solid #b9c3d0;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            color: #1b2430;
+            background: #ffffff;
+        }
+        .dcp-color-toggle-btn.dcp-mode-active {
+            border-color: #1a73e8;
+            color: #ffffff;
+            background: #1a73e8;
+        }
+        .dcp-swatch-num {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .dcp-swatch-lg {
+            width: 30px;
+            height: 22px;
+            border: 1px solid #b9c3d0;
+            border-radius: 4px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        .dcp-num {
+            font-weight: 700;
+            font-size: 12.5px;
+            white-space: nowrap;
+        }
+        .dcp-color-popup {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 6px;
+            z-index: 20;
+            width: 300px;
+            max-height: 220px;
+            overflow-y: auto;
+            background: #ffffff;
+            border: 1px solid #b9c3d0;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(20,30,50,.06), 0 8px 24px rgba(20,30,50,.08);
+            padding: 10px;
+        }
+        .dcp-color-section-title {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: #5b6675;
+            margin: 8px 0 4px;
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+        .dcp-color-popup .dcp-color-row {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 2px;
+            flex-wrap: wrap;
+        }
+        .dcp-color-popup .dcp-color-cell {
+            width: 16px;
+            height: 13px;
+            border: 1px solid #b9c3d0;
+            cursor: pointer;
+        }
+        .dcp-color-popup .dcp-color-cell.dcp-selected {
+            border: 2px solid #1a73e8;
+        }
+        /* Load Dwg — Validation Errors view (matches alt-a-mockup.html's
+           "Load Dwg — Validation Errors" screen). Rendered in place of the
+           normal list/action-row content, inside #dcp-left-panel, by
+           dwgControlsPanelUI.js's _renderValidationErrors(). */
+        .dcp-file-chip {
+            display: inline-block;
+            font-size: 12px;
+            background: #eef1f6;
+            border: 1px solid #d7dee7;
+            border-radius: 5px;
+            padding: 4px 10px;
+            margin-bottom: 12px;
+            color: #1b2430;
+        }
+        .dcp-errbox {
+            border: 1px solid #d7dee7;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .dcp-errbox-head {
+            font-size: 12px;
+            color: #5b6675;
+            background: #f4f7fb;
+            padding: 10px 14px;
+            border-bottom: 1px solid #d7dee7;
+        }
+        .dcp-err-row {
+            display: flex;
+            gap: 10px;
+            padding: 10px 14px;
+            border-bottom: 1px solid #eef1f6;
+        }
+        .dcp-err-row:last-child {
+            border-bottom: none;
+        }
+        .dcp-err-mark {
+            color: #c0392b;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .dcp-err-body {
+            min-width: 0;
+        }
+        .dcp-err-msg {
+            font-size: 13px;
+            color: #1b2430;
+        }
+        .dcp-err-field {
+            font-family: ui-monospace, Consolas, monospace;
+            font-weight: 700;
+        }
+        .dcp-fix-row {
+            font-size: 12px;
+            color: #1a7a3c;
+            margin-top: 4px;
+        }
+        .dcp-fix-tick {
+            font-weight: 700;
+        }
+        .dcp-empty {
+            font-size: 13px;
+            color: #5b6675;
+            font-style: italic;
+        }
+        /* Dwg list rows — matches alt-a-mockup.html's Screen 0b row
+           exactly (.items/.item-row/.item-type/.dwg-swatch/.dwg-desc
+           there): two lines — "<name> — <x>×<y>, <swatch> · refresh:
+           <n>s · items: <count>" then a description line — stacked via
+           flex-direction:column (Screen 0b's own inline-style override
+           of .item-row's normally-single-row layout). Swatch is a small
+           inline dot, not a leading icon block. */
+        .dcp-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+        .dcp-item-row {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 10px;
+            border: 1px solid #d7dee7;
+            border-radius: 6px;
+            background: #ffffff;
+            cursor: pointer;
+        }
+        .dcp-item-row:hover {
+            background: #f4f7fb;
+        }
+        .dcp-item-row.dcp-item-selected {
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 1px #1a73e8;
+        }
+        .dcp-item-info {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .dcp-item-type {
+            font-size: 12px;
+            color: #0d47a1;
+        }
+        /* Only the dwg's name (<b>) is bold — the byte-size/dimensions/
+           swatch/refresh/items stats after it are not. */
+        .dcp-item-type-suffix {
+            font-weight: 400;
+        }
+        .dcp-item-desc {
+            font-size: 12px;
+            color: #5b6675;
+            min-height: 15px;
+        }
+        /* Per-row Edit/Copy/Unload icons on the dwg list — replaces the
+           old selection-based action-row buttons of the same name. */
+        .dcp-item-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .dcp-mini-btn-copy {
+            background: #0f8a7f;
+        }
+        .dcp-swatch {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+            border: 1px solid #b9c3d0;
+            vertical-align: -1px;
+            margin-right: 2px;
+        }
+        /* Edit Dwg screen (matches alt-a-mockup.html's Screen 2 "Control
+           Panel" — drawing-info head + collapsible properties editor +
+           read-only item list; scoped for now to properties editing only,
+           the per-item add/edit/reorder screens aren't built yet). Mirrors
+           the mockup's .drawing-info/.drawing-info-head/.drawing-meta-line/
+           .drawing-desc-line exactly, under the dcp- prefix. */
+        .dcp-drawing-info {
+            background: #f4f7fb;
+            border: 1px solid #d7dee7;
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+        .dcp-drawing-info-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .dcp-drawing-info-head h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #0d47a1;
+        }
+        .dcp-drawing-meta-line {
+            font-size: 12px;
+            color: #1b2430;
+            margin-bottom: 6px;
+        }
+        .dcp-meta-label {
+            font-weight: 700;
+            color: #5b6675;
+        }
+        .dcp-sep {
+            color: #b9c3d0;
+            margin: 0 8px;
+        }
+        .dcp-drawing-desc-line {
+            font-size: 12px;
+            color: #5b6675;
+        }
+        .dcp-edit-props-panel {
+            margin-bottom: 14px;
+        }
+        /* Read-only item rows on the Edit Dwg screen — same look as the
+           dwg-list rows (.dcp-item-row) minus the pointer/hover/selection
+           affordances, since there's no per-item action yet. */
+        .dcp-item-row-static {
+            cursor: default;
+        }
+        .dcp-item-row-static:hover {
+            background: #ffffff;
+        }
+        /* Edit Dwg screen's item list rows — matches alt-a-mockup.html's
+           Screen 2 .item-row/.item-info/.item-type/.item-detail/
+           .item-actions/.mini-btn exactly (a single row: info left,
+           action buttons right — distinct from the dwg-list's own
+           .dcp-item-row, which stacks two lines column-wise). */
+        .dcp-edit-item-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #ffffff;
+            border: 1px solid #d7dee7;
+            border-radius: 6px;
+            padding: 9px 10px;
+        }
+        .dcp-edit-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .dcp-edit-item-type {
+            font-size: 12px;
+            color: #0d47a1;
+        }
+        /* Only the type name itself (<b>, the browser default bold) is
+           bold — the touchZone-cmd/idxName suffix next to it is not. */
+        .dcp-edit-item-type-suffix {
+            font-weight: 400;
+        }
+        /* insertDwg / hide / unhide / erase item whose target dwg isn't
+           currently loaded in DwgLibrary — see dwgControlsPanelUI.js's
+           own _missingDwgTargetName. */
+        .dcp-missing-dwg-note {
+            font-weight: 400;
+            font-style: italic;
+            color: #c0392b;
+        }
+        .dcp-edit-item-detail {
+            font-size: 11.5px;
+            color: #5b6675;
+            font-family: ui-monospace, Consolas, monospace;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dcp-edit-item-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+        .dcp-mini-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .dcp-mini-btn-up, .dcp-mini-btn-down {
+            background: #ffffff;
+            border: 1px solid #b9c3d0;
+            color: #000000;
+        }
+        .dcp-mini-btn-edit {
+            background: #b8860b;
+            color: #2a2100;
+        }
+        .dcp-mini-btn-remove {
+            background: #c0392b;
+        }
+        /* "Show" — press-and-hold to temporarily hide this item and
+           identify it in the preview; neutral (non-destructive,
+           informational), distinct from edit's gold and remove's red.
+           Uses the project's accent blue (matches .dcp-btn-primary) so it
+           reads as an informational action, not a destructive one. Icon is
+           50% larger than the other mini-btn icons (16.5px vs 11px) for
+           legibility, but the button's own 24x24 footprint (.dcp-mini-btn)
+           is unchanged. */
+        .dcp-mini-btn-show {
+            background: #1a73e8;
+            font-size: 16.5px;
+        }
+        .dcp-mini-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
         #message-overlay {
             display: none;
             position: fixed;

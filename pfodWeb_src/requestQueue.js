@@ -50,21 +50,83 @@ Object.assign(DrawingViewer.prototype, {
            this.requestQueue.some(isNonRefreshType);
   },
 
+  // Undo the optimistic touchAction edits made to allXXX[dwgName] during a
+  // touch — copies the mousedown-time backup (window.pfodWebMouse.
+  // touchActionBackups, made by pfodWebMouse.js's handleMouseDown via
+  // redraw.makeBackup()) back over the live merged collections, then
+  // repaints and clears the backup (a fresh one is built on the next
+  // touch). Extracted from processRequestQueue's own inline
+  // [TOUCH_RESTORE] handling below so dwgDesigner/dwgControlsPanelUI.js's
+  // dwg preview — which reaches this via the exact same
+  // addToRequestQueue -> processRequestQueue -> connectionManager.send
+  // path any real menu touch uses, not a separate re-implementation —
+  // ends up here too, for free.
+  //
+  // The repaint uses document.body.className as performRedrawInMode's
+  // mode argument (rather than a hardcoded 'menu-mode') so this works
+  // whichever mode dwgName's canvas actually lives in: harmless/redundant
+  // for a real menu-mode touch (executeTouchAction already repainted via
+  // redrawWithWorkingCopy when it ran), and exactly the repaint the dwg
+  // preview needs after this restore, since its own empty-response cycle
+  // otherwise short-circuits through handleEmptyResponse with no redraw
+  // (requestQueue.js's own comment there: "should be acknowledged but not
+  // trigger any screen refresh").
+  //
+  // @param {string} dwgName — already-resolved menuDwg loadCmd (the real
+  //        call site below resolves this via _resolveLoadCmdFromRequest;
+  //        the preview already knows its own key directly)
+  _restoreTouchActionBackup(dwgName) {
+    const backup = window.pfodWebMouse && window.pfodWebMouse.touchActionBackups;
+    if (!backup) return;
+    const live = this.redraw && this.redraw.redrawDrawingManager;
+    const fields = ['allTouchZonesByCmd', 'allTouchActionsByCmd',
+                    'allTouchActionInputsByCmd', 'allUnindexedItems',
+                    'allIndexedItemsByNumber'];
+    for (const f of fields) {
+      const snap = JSON.parse(JSON.stringify((backup[f] && backup[f][dwgName]) ||
+                                              (f === 'allUnindexedItems' ? [] : {})));
+      if (live && live[f]) live[f][dwgName] = snap;
+    }
+    console.log(`[TOUCH_RESTORE] Restored allXXX["${dwgName}"] on live from backup before applying touch response`);
+    window.pfodWebMouse.touchActionBackups = null;
+    if (this.redraw) this.redraw.performRedrawInMode(document.body.className, dwgName);
+  },
+
+  // Resolve + restore the touchAction backup for a completed 'touch'
+  // request, if there is one to restore. Shared by both places a
+  // touch's response gets processed: processRequestQueue's own "mouse is
+  // up" branch below, and processPendingResponses (drawingProcessing.js)
+  // draining responses that arrived while the mouse was still down. Both
+  // call this — not a copy of it — so the touch/backup-exists guard and
+  // the dwg resolution live in exactly one place.
+  //
+  // @param {object} request — the completed request (cmd/requestType)
+  _restoreTouchActionForRequest(request) {
+    if (request.requestType !== 'touch'
+        || typeof window === 'undefined'
+        || !window.pfodWebMouse
+        || !window.pfodWebMouse.touchActionBackups) {
+      return;
+    }
+    const dwg = this._resolveLoadCmdFromRequest(request);
+    if (dwg) this._restoreTouchActionBackup(dwg);
+  },
+
   // Process the request queue
   async processRequestQueue() {
     // Safety check: ensure requestQueue is initialized
     if (!this.requestQueue) {
-      console.error('[QUEUE] Error: requestQueue is undefined. Aborting queue processing.');
+      console.info('[QUEUE] Error: requestQueue is undefined. Aborting queue processing.');
       return;
     }
     //if (this.sentRequest) {
-    //  console.log(`[QUEUE] processRequestQueue have sentRequest, queue length: ${this.requestQueue.length}`);
+    //  console.info(`[QUEUE] processRequestQueue have sentRequest, queue length: ${this.requestQueue.length}`);
     //} else {
-    //  console.log(`[QUEUE] processRequestQueue no sentRequest, queue length: ${this.requestQueue.length}`);
+    //  console.info(`[QUEUE] processRequestQueue no sentRequest, queue length: ${this.requestQueue.length}`);
     //}
     // Try to atomically set processing state from false to true
 //    if (!this.trySetProcessingQueue(false, true)) {
-//      console.log(`[QUEUE] Already processing queue - skipping`);
+//      console.info(`[QUEUE] Already processing queue - skipping`);
 //      return;
 //    }
 
@@ -80,23 +142,23 @@ Object.assign(DrawingViewer.prototype, {
         if (document.body.className === 'menu-mode') {
           this.redrawCanvas();
         } else {
-          console.log('[QUEUE] Not in menu-mode - skipping final redraw. Current mode:', document.body.className);
+          console.info('[QUEUE] Not in menu-mode - skipping final redraw. Current mode:', document.body.className);
         }
         this.scheduleNextUpdate();
       }
       return;
     }
 
-    console.log(`[QUEUE] processRequestQueue current queue is:`, JSON.stringify(this.requestQueue, null, 2));
+    console.info(`[QUEUE] processRequestQueue current queue is:`, JSON.stringify(this.requestQueue, null, 2));
 
  //    this.setProcessingQueue(true); // have non-zero queue length
     // Remove the request from queue and move it to sentRequest
     const request = this.requestQueue.shift();
-    console.warn(`[QUEUE] PROCESSING: "${request.cmd}" (${request.requestType})#${request._id} - moved from queue to sentRequest`);
-    console.warn(`[QUEUE] after shift, remaining queue length=${this.requestQueue.length}, contents:`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})#${r._id}`)));
+    console.info(`[QUEUE] PROCESSING: "${request.cmd}" (${request.requestType})#${request._id} - moved from queue to sentRequest`);
+    console.info(`[QUEUE] after shift, remaining queue length=${this.requestQueue.length}, contents:`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})#${r._id}`)));
     this.sentRequest = request;
     console.log(`[SENTREQUEST] ASSIGNED: "${request.cmd}" (${request.requestType})#${request._id} at ${new Date().toISOString()}`);
-    console.warn(`[QUEUE] sentRequest is:`, JSON.stringify(this.sentRequest, null, 2));
+    console.info(`[QUEUE] sentRequest is:`, JSON.stringify(this.sentRequest, null, 2));
 
     // Handle dataRefresh: send pfodWeb?cmd= (no dedup) to collect streaming CSV data.
     // Does not go through the normal pfod response pipeline.  IMPORTANT:
@@ -169,10 +231,10 @@ Object.assign(DrawingViewer.prototype, {
           filter: request.touchZoneInfo.filter,
           timestamp: Date.now()
         });
-        console.log(`[QUEUE] Tracking sent request: cmd="${request.touchZoneInfo.cmd}", filter="${request.touchZoneInfo.filter}"`);
+        console.info(`[QUEUE] Tracking sent request: cmd="${request.touchZoneInfo.cmd}", filter="${request.touchZoneInfo.filter}"`);
       }
       // Use ConnectionManager to send command
-      console.log(`[QUEUE] Sending command: ${request.cmd}`);
+      console.info(`[QUEUE] Sending command: ${request.cmd}`);
 
       // Option B: hand the connection a tiny interface bound to THIS request.
       // The byte boundary (connectionManager.processReadBuffer) invokes these
@@ -225,15 +287,16 @@ Object.assign(DrawingViewer.prototype, {
         text: async () => responseText
       };
 
-      console.warn(`[QUEUE] Received response for "${request.cmd}": status ${response.status}, queue length: ${this.requestQueue.length}`);
+      console.info(`[QUEUE] Received response for "${request.cmd}": status ${response.status}, queue length: ${this.requestQueue.length}`);
+      console.warn(`[QUEUE] Response JSON for "${request.cmd}":`, responseText);
 
       if (!response.ok) {
         throw new Error(`Server returned ${response.status} for cmd "${request.cmd}"`);
       }
 
       // Log the raw JSON that we already have
-      console.log(`[QUEUE] Received raw JSON data for "${request.cmd}":`);
-      console.log(responseText);
+      console.info(`[QUEUE] Received raw JSON data for "${request.cmd}":`);
+      console.info(responseText);
 
       // (No discardResponse path: under the ordinal/overridable model, higher-
       // priority cmds replace lower-priority queued ones at queue time, so
@@ -286,7 +349,7 @@ Object.assign(DrawingViewer.prototype, {
       // Parse the JSON for processing
       const cleanedResponseText = prefilterJSON(responseText);
       const data = JSON.parse(cleanedResponseText);
-      console.log('[QUEUE] parsedText ', JSON.stringify(data,null,2));
+      console.info('[QUEUE] parsedText ', JSON.stringify(data,null,2));
       **/
       // Parse JSON response — all protocols (HTTP, Serial, BLE) now deliver {"cmd":[...]} format.
       // csvCollector and rawDataCollector are fed by processIncoming() in the connection layer
@@ -346,11 +409,11 @@ Object.assign(DrawingViewer.prototype, {
       // Handle the response data
       if (this.touchState.isDown) {
         // Mouse is down - queue the response to prevent flashing
-        console.log(`[QUEUE] Mouse is down (touchState.isDown=${this.touchState.isDown}) - queuing response for "${request.cmd}" to prevent flashing`);
+        console.info(`[QUEUE] Mouse is down (touchState.isDown=${this.touchState.isDown}) - queuing response for "${request.cmd}" to prevent flashing`);
         // Remove the processed request from the queue first
 //         this.sentRequest = null;
 //         this.requestQueue.shift();
-         console.warn(`[QUEUE] after isDown sentRequest the current queue is:`, JSON.stringify(this.requestQueue, null, 2));
+         console.info(`[QUEUE] after isDown sentRequest the current queue is:`, JSON.stringify(this.requestQueue, null, 2));
 
 
         // For DRAG responses, keep only the latest one
@@ -362,7 +425,7 @@ Object.assign(DrawingViewer.prototype, {
               pendingResponse.request.touchZoneInfo.filter === TouchZoneFilters.DRAG &&
               pendingResponse.request.touchZoneInfo.cmd === cmd)
           );
-          console.log(`[QUEUE] Keeping only latest DRAG response for cmd="${cmd}"`);
+          console.info(`[QUEUE] Keeping only latest DRAG response for cmd="${cmd}"`);
         }
 
         // Add this response to the pending queue
@@ -370,7 +433,7 @@ Object.assign(DrawingViewer.prototype, {
           request: request,
           data: data
         });
-        console.log(`[QUEUE] Added to pending queue. Total pending responses: ${this.pendingResponseQueue.length}`);
+        console.info(`[QUEUE] Added to pending queue. Total pending responses: ${this.pendingResponseQueue.length}`);
       } else {
         // Mouse is up - process immediately
 
@@ -380,32 +443,9 @@ Object.assign(DrawingViewer.prototype, {
         // the device's reply will re-apply real changes via the merge that
         // follows.  Backup is cleared in either case — a fresh one is built
         // on the next touch.
-        if (request.requestType === 'touch'
-            && typeof window !== 'undefined'
-            && window.pfodWebMouse
-            && window.pfodWebMouse.touchActionBackups) {
-          const backup = window.pfodWebMouse.touchActionBackups;
-          // Derive the menuDwg loadCmd from the request cmd via menu-items
-          // lookup, NOT from a backup.drawingName field — backup no longer
-          // carries the drawingName.  For non-dwg menu-button touches the
-          // resolution returns null and there's nothing to restore.
-          const dwg = this._resolveLoadCmdFromRequest(request);
-          if (dwg) {
-            const live = this.redraw && this.redraw.redrawDrawingManager;
-            const fields = ['allTouchZonesByCmd', 'allTouchActionsByCmd',
-                            'allTouchActionInputsByCmd', 'allUnindexedItems',
-                            'allIndexedItemsByNumber'];
-            for (const f of fields) {
-              const snap = JSON.parse(JSON.stringify((backup[f] && backup[f][dwg]) ||
-                                                      (f === 'allUnindexedItems' ? [] : {})));
-              if (live && live[f]) live[f][dwg] = snap;
-            }
-            console.log(`[TOUCH_RESTORE] Restored allXXX["${dwg}"] on live from backup before applying touch response`);
-          }
-          window.pfodWebMouse.touchActionBackups = null;
-        }
+        this._restoreTouchActionForRequest(request);
 
-        console.log(`[QUEUE] Processing data for cmd "${request.cmd}" (type: ${request.requestType})`);
+        console.info(`[QUEUE] Processing data for cmd "${request.cmd}" (type: ${request.requestType})`);
 
         // Detect response type for logging
         if (data.pfodDrawing === 'start' || data.pfodDrawing === 'update') {
@@ -445,12 +485,12 @@ Object.assign(DrawingViewer.prototype, {
 
         // If not a valid dwg update, handle as non-dwg response (menu, raw data, etc.)
         if (!isDwgUpdate) {
-          console.log(`[QUEUE] Response is NOT a valid dwg update (${lastRequest}) - handling as non-dwg response (isFullOrPartial=${isFullOrPartialDwgUpdate}, isEmpty=${isEmptyResponse})`);
+          console.info(`[QUEUE] Response is NOT a valid dwg update (${lastRequest}) - handling as non-dwg response (isFullOrPartial=${isFullOrPartialDwgUpdate}, isEmpty=${isEmptyResponse})`);
           this.handleNonDwgResponse(data, request, request.requestType);
           // 'menu' itemRefreshTimes is stamped inside processMenuResponse /
           // _navigateToMenu using the just-merged _currentMenu.header.reRequestMs.
           // Clear the sent request and continue processing
-          console.log(`[QUEUE] COMPLETED: ${lastRequest} response - clearing sentRequest (was ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}; local request was ${request.cmd}(${request.requestType})#${request._id})`);
+          console.info(`[QUEUE] COMPLETED: ${lastRequest} response - clearing sentRequest (was ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}; local request was ${request.cmd}(${request.requestType})#${request._id})`);
           this.sentRequest = null;
           // Reschedule keepAlive polling after response (1 second delay)
           this.scheduleNextKeepAlive();
@@ -471,7 +511,7 @@ Object.assign(DrawingViewer.prototype, {
           // run its own scan and queue its own children the same way.
           const pendingInserts = (data && data._pendingInserts) || [];
           if (pendingInserts.length > 0) {
-            console.log(`[QUEUE] Queueing ${pendingInserts.length} deferred insertDwg item(s) from "${request.cmd}" before clearing sentRequest`);
+            console.info(`[QUEUE] Queueing ${pendingInserts.length} deferred insertDwg item(s) from "${request.cmd}" before clearing sentRequest`);
             for (const item of pendingInserts) {
               this.handleInsertDwg(item);
             }
@@ -482,7 +522,7 @@ Object.assign(DrawingViewer.prototype, {
           // empty responses leave the timestamp alone.
 
           // Clear the sent request and continue processing
-          console.log(`[QUEUE] COMPLETED: ${lastRequest} response - clearing sentRequest (was ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}; local request was ${request.cmd}(${request.requestType})#${request._id})`);
+          console.info(`[QUEUE] COMPLETED: ${lastRequest} response - clearing sentRequest (was ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}; local request was ${request.cmd}(${request.requestType})#${request._id})`);
           this.sentRequest = null;
           // Decide whether to re-merge.  Only touch-style responses WITHOUT
           // a source dwg landed straight in allXXX[menuDwg] (legacy merged
@@ -514,7 +554,7 @@ Object.assign(DrawingViewer.prototype, {
                 }
               }
             } catch (e) {
-              console.warn('[QUEUE] Could not save menuDwg merged cache:', e.message);
+              console.info('[QUEUE] Could not save menuDwg merged cache:', e.message);
             }
           }
           if (this.shouldDeferRedraw()) {
@@ -536,12 +576,12 @@ Object.assign(DrawingViewer.prototype, {
 
           // For inserted drawings, if we're at the end of the queue, proceed with redraw (only if in menu-mode)
           if (this.requestQueue.length === 0 && !this.sentRequest) {
-            console.log(`[QUEUE] Queue empty after failed request. Drawing with available data.`);
+            console.info(`[QUEUE] Queue empty after failed request. Drawing with available data.`);
             this.setProcessingQueue(false);
             if (document.body.className === 'menu-mode') {
               this.redrawCanvas();
             } else {
-              console.log('[QUEUE] Not in menu-mode - skipping redraw after failed request. Current mode:', document.body.className);
+              console.info('[QUEUE] Not in menu-mode - skipping redraw after failed request. Current mode:', document.body.className);
             }
             // Resume update scheduling after failed request cleanup
             this.scheduleNextUpdate();
@@ -561,8 +601,8 @@ Object.assign(DrawingViewer.prototype, {
 
     } catch (error) {
       // Catch any errors from JSON parsing or other non-handler logic
-      console.error(`[QUEUE] Error processing request "${request.cmd}":`, error);
-      console.error(`[QUEUE] Error stack:`, error.stack);
+      console.info(`[QUEUE] Error processing request "${request.cmd}":`, error);
+      console.info(`[QUEUE] Error stack:`, error.stack);
 
       // Check if this is a retry exhaustion error (timeout or no response after retries)
       const isRetryExhausted = error.message && (
@@ -600,13 +640,13 @@ Object.assign(DrawingViewer.prototype, {
       // Display alert to user for all errors
       const isInitialMainMenu = request.isInitial && request.requestType === 'mainMenu';
       if (isBleRetryBackoff) {
-        console.log('[QUEUE] BLE retry backoff active — suppressing connection alert, will keep retrying');
+        console.info('[QUEUE] BLE retry backoff active — suppressing connection alert, will keep retrying');
       } else if (isRetryExhausted && this.exitPending) {
         // User clicked Exit while the cmd was retrying — the retry was abandoned
         // mid-way by the adapter (or hit its last attempt) and we are about to send {!}
         // and tear down.  Suppress the "Connection failed" modal so it can't block the
         // Closing Down overlay / _exitToConnectionScreen reload.
-        console.log('[QUEUE] Retry exhausted but exitPending — suppressing Connection-failed alert');
+        console.info('[QUEUE] Retry exhausted but exitPending — suppressing Connection-failed alert');
       } else if (isRetryExhausted) {
         const maxRetries = this.connectionManager.getMaxRetries();
         const totalAttempts = maxRetries + 1;
@@ -625,7 +665,7 @@ Object.assign(DrawingViewer.prototype, {
             : ``),
           () => {
             // Optional callback after user closes the alert
-            console.log('[QUEUE] User closed retry failure alert');
+            console.info('[QUEUE] User closed retry failure alert');
           }
         );
       } else if (isJSONError) {
@@ -644,7 +684,7 @@ Object.assign(DrawingViewer.prototype, {
             : ``),
           () => {
             // Optional callback after user closes the alert
-            console.log('[QUEUE] User closed JSON error alert');
+            console.info('[QUEUE] User closed JSON error alert');
           }
         );
         } // end if (!this.jsonErrorAlertShown)
@@ -680,7 +720,7 @@ Object.assign(DrawingViewer.prototype, {
           `• Use the pfodWeb toolbar's back button to go back`,
           () => {
             // Optional callback after user closes the alert
-            console.log('[QUEUE] User closed connection issue alert');
+            console.info('[QUEUE] User closed connection issue alert');
           }
         );
       }

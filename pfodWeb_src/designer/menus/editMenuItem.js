@@ -56,6 +56,7 @@ const EMI_DATA_RANGE_CMD      = 'r';   // PWM: Edit Data Variable Range sub-scre
 // — not a 'd' sub-cmd — because the sub-menu opens via a separate
 // pfod navigation rather than re-rendering the editor in place.
 const EMI_HELP_CMD            = 'w';   // Help (stub)
+const EMI_LINK_DWG_CMD        = 'K';   // Drawing: open the "Choose a Drawing" screen (selectDwgForItem.js)
 
 const EMI_HEADING_LABEL_CMD   = 'H';
 
@@ -199,7 +200,9 @@ const DesignerEditMenuItem = (() => {
       out += '|!H2<bg bl><w>~<-2><y><i>Click the button above to edit the plot settings</y>\n' +
              '<b><i>Options for changing the above\nmenu item follow';
     } else if (item.type === 'drawing') {
-      out += '|!H2<bg bl><w>~<-2>This is placeholder drawing to be coded later\nUse the back arrow key to return.';
+      out += item.dwgName
+        ? '|!H2<bg bl><w>~<-2>Linked drawing: <b>' + item.dwgName + '</b>'
+        : '|!H2<bg bl><w>~<-2><y>No drawing selected yet.';
     } else {
       out += '|!H2<bg bl><w>~<-2><b><i>Options for changing the above\nmenu item follow';
     }
@@ -224,7 +227,11 @@ const DesignerEditMenuItem = (() => {
     let out = DESIGNER_PROMPT_FMT + '~';
     out += renderItemHeaderAndPreview(state, item, 'Editing Menu Item');
 
-    if (item.type === 'drawing') return out;
+    if (item.type === 'drawing') {
+      const fmt1 = '<-1>' + DESIGNER_MENU_FMT;
+      out += '|d' + EMI_LINK_DWG_CMD + fmt1 + '~' + (item.dwgName ? 'Change Drawing' : 'Create/Load Drawing');
+      return out;
+    }
 
     // Bind the active item as the target of the "Change Item's
     // Appearance" sub-screen — the format handler reads
@@ -728,6 +735,8 @@ const DesignerEditMenuItem = (() => {
         return DesignerEditMenuItemHelp.send(rawCmd, state, depth);
       case 'P':
         return { pfod: DesignerPreviewMenu.getPlaceholderDrawing(), skipSave: true };
+      case EMI_LINK_DWG_CMD:
+        return DesignerSelectDwgForItem.send(rawCmd, state, depth);
 
       // Chart inline format sub-cmds ('ds','db','di','du','dc','dB').
       // Only active when the current item is a chart (these byte values

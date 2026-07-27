@@ -90,7 +90,7 @@ class DrawingMerger {
             dm.allTouchActionInputsByCmd[drawingName],
             processedDrawings, /*parentClipRegion*/ null, drawingData.data.x);
 
-        console.log(`[DRAWING_MERGER] Merged "${drawingName}": ${dm.allUnindexedItems[drawingName].length} unindexed, ${Object.keys(dm.allIndexedItemsByNumber[drawingName]).length} indices, ${Object.keys(dm.allTouchZonesByCmd[drawingName]).length} touchZones, ${Object.keys(dm.allTouchActionsByCmd[drawingName]).length} touchActions, ${Object.keys(dm.allTouchActionInputsByCmd[drawingName]).length} touchActionInputs`);
+        console.info(`[DRAWING_MERGER] Merged "${drawingName}": ${dm.allUnindexedItems[drawingName].length} unindexed, ${Object.keys(dm.allIndexedItemsByNumber[drawingName]).length} indices, ${Object.keys(dm.allTouchZonesByCmd[drawingName]).length} touchZones, ${Object.keys(dm.allTouchActionsByCmd[drawingName]).length} touchActions, ${Object.keys(dm.allTouchActionInputsByCmd[drawingName]).length} touchActionInputs`);
     }
 
     getDrawingResponseStatus(drawingName) {
@@ -135,20 +135,20 @@ class DrawingMerger {
                       outTouchActions, outTouchActionInputs,
                       processedDrawings, parentClipRegion, parentDrawingWidth) {
         let drawingName = insertDwg.drawingName;
-        console.warn(`[MERGE_DWG] Merging Drawing "${drawingName}".`);
-        console.log(`[MERGE_DWG] Beginning merge process for drawing "${drawingName}" ${JSON.stringify(insertDwg)}`);
+        console.info(`[MERGE_DWG] Merging Drawing "${drawingName}".`);
+        console.info(`[MERGE_DWG] Beginning merge process for drawing "${drawingName}" ${JSON.stringify(insertDwg)}`);
 
         const drawingData = this.drawingManager.drawingsData[drawingName];
         if (!drawingData || !drawingData.data) {
-            console.log(`[DRAWING_MERGER] Drawing "${drawingName}" data not available.`);
+            console.info(`[DRAWING_MERGER] Drawing "${drawingName}" data not available.`);
             return;
         }
 
         let clipRegion = parentClipRegion;
         if (parentClipRegion) {
-            console.log(`[DRAWING_MERGER] Using parent clip region: (${parentClipRegion.x}, ${parentClipRegion.y}, width:${parentClipRegion.width}, height:${parentClipRegion.height})`);
+            console.info(`[DRAWING_MERGER] Using parent clip region: (${parentClipRegion.x}, ${parentClipRegion.y}, width:${parentClipRegion.width}, height:${parentClipRegion.height})`);
         } else {
-            console.log(`[DRAWING_MERGER] No parent clip region provided, using drawing bounds for clipping`);
+            console.info(`[DRAWING_MERGER] No parent clip region provided, using drawing bounds for clipping`);
             clipRegion = {
                 x: 0, y: 0,
                 width: drawingData.data.x, height: drawingData.data.y
@@ -160,10 +160,10 @@ class DrawingMerger {
         const drawingHeight = drawingData.data.y || 50;
         const backgroundColor = drawingData.data.color || 'white';
 
-        console.log(`[DRAWING_MERGER] Drawing "${drawingName}" has dimensions ${drawingWidth}x${drawingHeight}, color: ${backgroundColor}`);
+        console.info(`[DRAWING_MERGER] Drawing "${drawingName}" has dimensions ${drawingWidth}x${drawingHeight}, color: ${backgroundColor}`);
 
         const parentTransform = insertDwg.transform || { x: 0, y: 0, scale: 1.0 };
-        console.log(`[SCALE_MERGE_DWG]  parentTransform transform: ${JSON.stringify(parentTransform)}`);
+        console.info(`[SCALE_MERGE_DWG]  parentTransform transform: ${JSON.stringify(parentTransform)}`);
 
         const drawingUnindexedItems = this.drawingManager.unindexedItems[drawingName]   || [];
         const drawingIndexedItems   = this.drawingManager.indexedItems[drawingName]     || {};
@@ -171,28 +171,28 @@ class DrawingMerger {
         const touchActionItems      = this.drawingManager.touchActionsByCmd[drawingName]|| {};
         const touchActionInputItems = this.drawingManager.touchActionInputsByCmd[drawingName] || {};
 
-        console.log(`[DRAWING_MERGER] Processing ${drawingUnindexedItems.length} unindexed items, ${Object.keys(drawingIndexedItems).length} indexed items, ${Object.keys(touchZoneItems).length} touchZones from "${drawingName}"`);
+        console.info(`[DRAWING_MERGER] Processing ${drawingUnindexedItems.length} unindexed items, ${Object.keys(drawingIndexedItems).length} indexed items, ${Object.keys(touchZoneItems).length} touchZones from "${drawingName}"`);
 
         if (drawingUnindexedItems.length === 0 && Object.keys(drawingIndexedItems).length === 0) {
-            console.log(`[DRAWING_MERGER] Drawing "${drawingName}" has no items, but will still be drawn as a rectangle with background color.`);
+            console.info(`[DRAWING_MERGER] Drawing "${drawingName}" has no items, but will still be drawn as a rectangle with background color.`);
             if (Object.keys(touchZoneItems).length !== 0) {
-                console.log(`[DRAWING_MERGER] Drawing "${drawingName}" has touchZones which will be drawn in debug mode.`);
+                console.info(`[DRAWING_MERGER] Drawing "${drawingName}" has touchZones which will be drawn in debug mode.`);
             }
         }
 
         let dwgTransform = {...insertDwg.transform};
-        console.log(`[SCALE_MERGE_DWG]  insertDwg transform: ${JSON.stringify(dwgTransform)}`);
-        console.log(`[DRAWING_MERGER] For drawing: Raw dimensions: ${drawingWidth}x${drawingHeight}`);
+        console.info(`[SCALE_MERGE_DWG]  insertDwg transform: ${JSON.stringify(dwgTransform)}`);
+        console.info(`[DRAWING_MERGER] For drawing: Raw dimensions: ${drawingWidth}x${drawingHeight}`);
 
         const dwgClipRegion = this.calculateItemClipRegion(dwgTransform, drawingWidth, drawingHeight, parentClipRegion);
-        console.log(`[DRAWING_MERGER] Calculated nested drawing clip region: (${dwgClipRegion.x}, ${dwgClipRegion.y}, width:${dwgClipRegion.width}, height:${dwgClipRegion.height})`);
+        console.info(`[DRAWING_MERGER] Calculated nested drawing clip region: (${dwgClipRegion.x}, ${dwgClipRegion.y}, width:${dwgClipRegion.width}, height:${dwgClipRegion.height})`);
 
         // Apply insertDwg offset move (in scaled space)
         const dwg_xOffset = parseFloat(insertDwg.xOffset || 0);
         const dwg_yOffset = parseFloat(insertDwg.yOffset || 0);
         dwgTransform.x += (-dwg_xOffset) * dwgTransform.scale;
         dwgTransform.y += (-dwg_yOffset) * dwgTransform.scale;
-        console.log(`[DRAWING_MERGER] Using item transform for nested drawing items: (${dwgTransform.x}, ${dwgTransform.y}, ${dwgTransform.scale})`);
+        console.info(`[DRAWING_MERGER] Using item transform for nested drawing items: (${dwgTransform.x}, ${dwgTransform.y}, ${dwgTransform.scale})`);
 
         // ----- Process touchZones -----
         // Per-cmd assign into the per-drawing merged outTouchZones map.
@@ -208,22 +208,22 @@ class DrawingMerger {
             itemTransform.scale = itemTransform.scale * dwgTransform.scale;
             processedItem.transform = itemTransform;
 
-            console.log(`[DRAWING_MERGER] Found touchzone item for drawing "${drawingName}" at offsets (${touchZone.xOffset || 0}, ${touchZone.yOffset || 0})`);
+            console.info(`[DRAWING_MERGER] Found touchzone item for drawing "${drawingName}" at offsets (${touchZone.xOffset || 0}, ${touchZone.yOffset || 0})`);
             const touchZoneCmd = touchZone.cmd || '';
             if (touchZoneCmd.trim().length === 0) {
-                console.warn(`[DRAWING_MERGER] Error empty touchzone cmd in drawing "${drawingName}" ${JSON.stringify(processedItem)}`);
+                console.info(`[DRAWING_MERGER] Error empty touchzone cmd in drawing "${drawingName}" ${JSON.stringify(processedItem)}`);
                 continue;
             }
             if (outTouchZones[touchZoneCmd]) {
                 const currentItem = outTouchZones[touchZoneCmd];
                 if (currentItem.parentDrawingName !== processedItem.parentDrawingName) {
-                    console.warn(`[DRAWING_MERGER] Error: Updating existing touchZone with cmd ${touchZoneCmd} in "${processedItem.parentDrawingName}" with item from different drawing, "${currentItem.parentDrawingName}"`);
+                    console.info(`[DRAWING_MERGER] Error: Updating existing touchZone with cmd ${touchZoneCmd} in "${processedItem.parentDrawingName}" with item from different drawing, "${currentItem.parentDrawingName}"`);
                 }
                 processedItem.transform  = {...currentItem.transform};
                 processedItem.clipRegion = {...currentItem.clipRegion};
-                console.log(`[DRAWING_MERGERG_UPDATE] Update existing touchZone with cmd ${touchZoneCmd} to ${JSON.stringify(processedItem)}`);
+                console.info(`[DRAWING_MERGERG_UPDATE] Update existing touchZone with cmd ${touchZoneCmd} to ${JSON.stringify(processedItem)}`);
             }
-            console.warn(`[DRAWING_MERGER] Added touchZone to outTouchZones  ${JSON.stringify(processedItem)}`);
+            console.info(`[DRAWING_MERGER] Added touchZone to outTouchZones  ${JSON.stringify(processedItem)}`);
             outTouchZones[touchZoneCmd] = processedItem;
         }
 
@@ -234,14 +234,14 @@ class DrawingMerger {
             const touchActions = touchActionItems[cmd];
             if (touchActions && touchActions.length > 0) {
                 outTouchActions[cmd] = [...touchActions];
-                console.log(`[DRAWING_MERGER] Added ${touchActions.length} touchActions for cmd="${cmd}" to merged set`);
+                console.info(`[DRAWING_MERGER] Added ${touchActions.length} touchActions for cmd="${cmd}" to merged set`);
             }
         }
         for (const cmd in touchActionInputItems) {
             const touchActionInput = touchActionInputItems[cmd];
             if (touchActionInput) {
                 outTouchActionInputs[cmd] = {...touchActionInput};
-                console.log(`[DRAWING_MERGER] Added touchActionInput for cmd="${cmd}" to merged set`);
+                console.info(`[DRAWING_MERGER] Added touchActionInput for cmd="${cmd}" to merged set`);
             }
         }
 
@@ -250,19 +250,19 @@ class DrawingMerger {
             const item = drawingUnindexedItems[i];
             item.clipRegion = dwgClipRegion;
 
-            console.log(`[MERGE_DWG] Processing unindexed item ${i} of type '${item.type}' in drawing "${drawingName}"`);
+            console.info(`[MERGE_DWG] Processing unindexed item ${i} of type '${item.type}' in drawing "${drawingName}"`);
 
             if (item.type && item.type === 'insertDwg') {
                 if (item.visible === false) {
-                    console.log(`[MERGE_DWG] Skipping hidden insertDwg for drawing "${item.drawingName}"`);
+                    console.info(`[MERGE_DWG] Skipping hidden insertDwg for drawing "${item.drawingName}"`);
                     continue;
                 }
                 const nestedDrawingName = item.drawingName;
-                console.log(`[MERGE_DWG] Found nested insertDwg item for drawing "${nestedDrawingName}" at offsets (${item.xOffset || 0}, ${item.yOffset || 0})`);
+                console.info(`[MERGE_DWG] Found nested insertDwg item for drawing "${nestedDrawingName}" at offsets (${item.xOffset || 0}, ${item.yOffset || 0})`);
 
                 const hasResponse = this.getDrawingResponseStatus(nestedDrawingName);
                 if (!hasResponse) {
-                    console.warn(`[MERGE_DWG] No response received for drawing "${nestedDrawingName}" - skipping this insertDwg`);
+                    console.info(`[MERGE_DWG] No response received for drawing "${nestedDrawingName}" - skipping this insertDwg`);
                     continue;
                 }
 
@@ -277,7 +277,7 @@ class DrawingMerger {
                     composedTransform.scale = composedTransform.scale * dwgTransform.scale;
                     composedItem.transform  = composedTransform;
 
-                    console.log(`[MERGE_DWG_NESTED] Composed transform for nested drawing "${nestedDrawingName}": parent=${JSON.stringify(dwgTransform)}, local=${JSON.stringify(item.transform)}, composed=${JSON.stringify(composedTransform)}`);
+                    console.info(`[MERGE_DWG_NESTED] Composed transform for nested drawing "${nestedDrawingName}": parent=${JSON.stringify(dwgTransform)}, local=${JSON.stringify(item.transform)}, composed=${JSON.stringify(composedTransform)}`);
 
                     this.mergeDrawingItems(composedItem,
                         outUnindexed, outIndexed, outTouchZones,
@@ -291,7 +291,7 @@ class DrawingMerger {
                     // is valid pfod.  Short-circuit (already done by this
                     // branch) and surface as an error so the device-side
                     // misconfiguration is visible.
-                    console.error(`[MERGE_DWG] Circular / duplicate insertDwg: drawing "${nestedDrawingName}" already in the merge chain (currently merging into "${drawingName}"). Skipping to prevent infinite recursion. Chain so far: [${[...processedDrawings].join(', ')}]`);
+                    console.info(`[MERGE_DWG] Circular / duplicate insertDwg: drawing "${nestedDrawingName}" already in the merge chain (currently merging into "${drawingName}"). Skipping to prevent infinite recursion. Chain so far: [${[...processedDrawings].join(', ')}]`);
                 }
             } else {
                 // Regular drawing item (line, rectangle, label, …)
@@ -302,7 +302,7 @@ class DrawingMerger {
                 itemTransform.y     = itemTransform.y     * dwgTransform.scale + dwgTransform.y;
                 itemTransform.scale = itemTransform.scale * dwgTransform.scale;
                 processedItem.transform = itemTransform;
-                console.warn(`[MERGE_DWG] Added unindexed Item  ${JSON.stringify(processedItem)}`);
+                console.info(`[MERGE_DWG] Added unindexed Item  ${JSON.stringify(processedItem)}`);
                 // Use last-received-wins helper so re-receiving the same item
                 // (same attribute fingerprint) doesn't pile up duplicates.
                 DrawingManager.addUnindexedLastWins(outUnindexed, processedItem);
@@ -313,7 +313,7 @@ class DrawingMerger {
         for (const idx in drawingIndexedItems) {
             const item = drawingIndexedItems[idx];
 
-            console.log(`[MERGE_DWG] Processing indexed item idx=${idx}, type='${item.type}' in drawing "${drawingName}"`);
+            console.info(`[MERGE_DWG] Processing indexed item idx=${idx}, type='${item.type}' in drawing "${drawingName}"`);
             const processedItem = {...item};
             processedItem.clipRegion = dwgClipRegion;
             const itemTransform = {...processedItem.transform};
@@ -330,14 +330,14 @@ class DrawingMerger {
                 processedItem.transform  = {...currentItem.transform};
                 processedItem.clipRegion = {...currentItem.clipRegion};
                 processedItem.visible    = {...currentItem.visible};
-                console.log(`[MERGE_DWG_UPDATE] Update existing item with index ${numericIdx} to ${JSON.stringify(processedItem)}`);
+                console.info(`[MERGE_DWG_UPDATE] Update existing item with index ${numericIdx} to ${JSON.stringify(processedItem)}`);
             }
-            console.warn(`[MERGE_DWG] Added indexed Item  ${JSON.stringify(processedItem)}`);
+            console.info(`[MERGE_DWG] Added indexed Item  ${JSON.stringify(processedItem)}`);
             outIndexed[numericIdx] = processedItem;
         }
 
-        console.log(`[MERGE_DWG] Completed merging items from "${drawingName}" at ${new Date().toISOString()}`);
-        console.log(`[MERGE_DWG] Current status: ${outUnindexed.length} unindexed items, ${Object.keys(outIndexed).length} different indices, ${Object.keys(outTouchZones).length} touchZones `);
+        console.info(`[MERGE_DWG] Completed merging items from "${drawingName}" at ${new Date().toISOString()}`);
+        console.info(`[MERGE_DWG] Current status: ${outUnindexed.length} unindexed items, ${Object.keys(outIndexed).length} different indices, ${Object.keys(outTouchZones).length} touchZones `);
     }
 }
 

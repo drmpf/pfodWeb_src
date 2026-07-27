@@ -715,7 +715,7 @@ const DesignerGenerateCcode = (() => {
       { path: name + '/pfodParserStream.h', data: enc.encode(PFOD_PARSER_STREAM_H_TEXT) },
       { path: name + '/pfodParserStream.c', data: enc.encode(_generateParserStreamC()) },
       { path: name + '/main.c',             data: enc.encode(_generateMainC(state, charts, pulseItems)) },
-      { path: name + '/json/' + name + '.pfodDesigner_json', data: enc.encode(state.exportToJSON()) },
+      { path: name + '/json/' + name + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
     ];
     const zipBytes = DesignerZipBuilder.buildZip(entries);
     DesignerZipBuilder.triggerDownload(name + '.zip', zipBytes);

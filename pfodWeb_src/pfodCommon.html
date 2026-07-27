@@ -1,5 +1,6 @@
 ﻿<body class="message-mode">
     <div id="layout-container">
+        <div id="dcp-left-panel"></div>
         <div id="canvas-pane">
             <div id="canvas-container">
                 <div id="white-border">
@@ -2407,31 +2408,38 @@
             fileInput.click();
         }
 
-        // Clear cached drawings function — preserves designer-saved menus
-        // AND the connection-prompt's remembered settings (IP/baud/proxy
-        // port/Designer target id, etc. — PFOD_SETTINGS_KEY). Removes
-        // every OTHER localStorage entry (the actual menu/drawing display
-        // cache this button is meant to clear). Matching the designer
-        // prefix is forward-compatible: a future STORAGE_PREFIX bump
-        // (e.g. 'pfodDesigner.v2.') still qualifies as designer state and
-        // is preserved. PFOD_SETTINGS_KEY must be excluded explicitly (it
-        // doesn't start with the designer prefix) — previously this
-        // button silently wiped it too, which reset the Designer's
-        // remembered target board back to the hardcoded default on the
-        // next reload/protocol-switch.
+        // Clear cached drawings function — preserves designer-saved menus,
+        // the Dwg Designer's own saved/loaded dwgs (DwgLibrary — dwgDesigner/
+        // dwgLibrary.js's own 'pfodDwgLibrary.v1.' prefix), AND the
+        // connection-prompt's remembered settings (IP/baud/proxy port/
+        // Designer target id, etc. — PFOD_SETTINGS_KEY). Removes every OTHER
+        // localStorage entry (the actual menu/drawing display cache this
+        // button is meant to clear). Matching each prefix (not the exact
+        // versioned key) is forward-compatible: a future version bump (e.g.
+        // 'pfodDesigner.v2.' or 'pfodDwgLibrary.v2.') still qualifies as
+        // saved design state and is preserved. PFOD_SETTINGS_KEY must be
+        // excluded explicitly (it doesn't start with either prefix) —
+        // previously this button silently wiped it too, which reset the
+        // Designer's remembered target board back to the hardcoded default
+        // on the next reload/protocol-switch. DwgLibrary's own prefix was
+        // missing here too — this button was silently deleting every saved/
+        // loaded dwg design as well, which is what this fix addresses.
         function clearCachedDrawings() {
             const DESIGNER_KEY_PREFIX = 'pfodDesigner.';
+            const DWG_LIBRARY_KEY_PREFIX = 'pfodDwgLibrary.';
             try {
                 const toRemove = [];
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
-                    if (key && key !== PFOD_SETTINGS_KEY && !key.startsWith(DESIGNER_KEY_PREFIX)) {
+                    if (key && key !== PFOD_SETTINGS_KEY &&
+                        !key.startsWith(DESIGNER_KEY_PREFIX) && !key.startsWith(DWG_LIBRARY_KEY_PREFIX)) {
                         toRemove.push(key);
                     }
                 }
                 toRemove.forEach((key) => localStorage.removeItem(key));
-                console.log('Local storage cleared (kept ' + DESIGNER_KEY_PREFIX +
-                            '* keys and ' + PFOD_SETTINGS_KEY + '), removed ' + toRemove.length + ' entries');
+                console.log('Local storage cleared (kept ' + DESIGNER_KEY_PREFIX + '*, ' +
+                            DWG_LIBRARY_KEY_PREFIX + '* keys and ' + PFOD_SETTINGS_KEY +
+                            '), removed ' + toRemove.length + ' entries');
             } catch (error) {
                 console.error('Error clearing cache:', error);
             }

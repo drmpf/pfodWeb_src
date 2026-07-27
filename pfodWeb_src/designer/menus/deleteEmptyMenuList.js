@@ -8,7 +8,7 @@
  *   {N}      → list of all saved designs (indexed)
  *   {N<n>}   → download designs[n] then delete it, then re-emit main menu
  *
- * Save-before-delete: the design is exported as a .pfodDesigner_json
+ * Save-before-delete: the design is exported as a .pfodMenu_json
  * download (same format as editMenu's Save Design to File) before the
  * localStorage entry is removed.  This lets the user recover a deleted
  * design by re-importing it via Load Design from File.
@@ -56,7 +56,7 @@ function _deleteDesign(name) {
   }
 }
 
-/// Trigger a browser download of the named design as a .pfodDesigner_json
+/// Trigger a browser download of the named design as a .pfodMenu_json
 /// file before it is deleted, so the user can recover it via Load.
 /// For the active design uses state.exportToBlob() (captures unsaved
 /// in-memory edits).  For other designs reads the localStorage payload
@@ -77,7 +77,7 @@ function _downloadBeforeDelete(state, name) {
           schema:  DESIGNER_STATE_SCHEMA_VERSION,
           name:    name,
           savedAt: new Date().toISOString(),
-          data:    { rootMenu: stored.rootMenu },
+          data:    { rootMenu: _exportableMenu(stored.rootMenu) },
         };
         blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
       }
@@ -87,7 +87,7 @@ function _downloadBeforeDelete(state, name) {
   const url = URL.createObjectURL(blob);
   const a   = document.createElement('a');
   a.href     = url;
-  a.download = name + '.pfodDesigner_json';
+  a.download = name + '.pfodMenu_json';
   document.body.appendChild(a);
   a.click();
   a.remove();

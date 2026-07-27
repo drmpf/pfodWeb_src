@@ -32,7 +32,7 @@ Object.assign(DrawingViewer.prototype, {
   // TouchAction redraws are handled directly by pfodWebMouse calling
   // redraw.redrawForTouchAction(); this method handles all other redraws.
   redrawCanvas() {
-    console.warn(`[QUEUE] redrawCanvas isDown: ${this.touchState.isDown}`);
+    console.info(`[QUEUE] redrawCanvas isDown: ${this.touchState.isDown}`);
     if (!this.touchState.isDown) {
       if (this.touchState.wasDown) {
         this.touchState.wasDown = this.touchState.isDown;
@@ -53,12 +53,12 @@ Object.assign(DrawingViewer.prototype, {
   // reschedules the request queue.
   processPendingResponses() {
     if (this.pendingResponseQueue.length === 0) {
-      console.log(`[QUEUE] No pending responses to process - ensuring refresh timer is restarted`);
+      console.info(`[QUEUE] No pending responses to process - ensuring refresh timer is restarted`);
       this.scheduleNextUpdate();
       return;
     }
 
-    console.log(`[QUEUE] Processing ${this.pendingResponseQueue.length} pending responses after mouse release`);
+    console.info(`[QUEUE] Processing ${this.pendingResponseQueue.length} pending responses after mouse release`);
     const hadPendingResponses = this.pendingResponseQueue.length > 0;
     // Track whether any pending response targeted a per-drawing raw
     // collection (drawingName !== null).  If yes, we must rebuild allXXX
@@ -73,12 +73,28 @@ Object.assign(DrawingViewer.prototype, {
       const request = pendingResponse.request;
       const data = pendingResponse.data;
 
-      console.log(`[QUEUE] Processing queued response for "${request.cmd}"`);
+      console.info(`[QUEUE] Processing queued response for "${request.cmd}"`);
+
+      // Restore-on-response (touch only): clean up the optimistic
+      // touchAction edit FIRST, then process the response as normal below —
+      // whatever it turns out to be (empty, dwg update, new menu, ...).
+      // Calls the exact same _restoreTouchActionForRequest()
+      // (requestQueue.js) processRequestQueue's own "mouse is up" branch
+      // calls — not a re-implementation — so there is exactly one place
+      // that decides whether/what to restore. A response that arrives
+      // while the mouse is STILL down takes processRequestQueue's OTHER
+      // branch instead — queued into pendingResponseQueue rather than
+      // processed immediately — and is drained here once mouse-up calls
+      // processPendingResponses(). This loop was previously missing this
+      // call entirely, so any touch whose response arrives before the
+      // physical mouse-up (routine for a fast/local connection, rare but
+      // possible for a real device) never got undone.
+      this._restoreTouchActionForRequest(request);
 
       // Check for empty command response {} - skip processing
       const isEmptyResponse = this.isEmptyCmd(data.cmd);
       if (isEmptyResponse) {
-        console.log(`[QUEUE] Pending response is empty command {} - skipping processing`);
+        console.info(`[QUEUE] Pending response is empty command {} - skipping processing`);
         continue;
       }
 
@@ -103,7 +119,7 @@ Object.assign(DrawingViewer.prototype, {
       const isDwgUpdate = isFullOrPartialDwgUpdate;
 
       if (!isDwgUpdate) {
-        console.log(`[QUEUE] Pending response is NOT a current dwg update (${responseType}) - handling as non-dwg response (isFullOrPartial=${isFullOrPartialDwgUpdate})`);
+        console.info(`[QUEUE] Pending response is NOT a current dwg update (${responseType}) - handling as non-dwg response (isFullOrPartial=${isFullOrPartialDwgUpdate})`);
         // Handle the non-dwg response (checks flag, restores backup, redraws, and processes based on type)
         this.handleNonDwgResponse(data, request, request.requestType);
         // Skip normal processing for non-dwg responses
@@ -112,7 +128,7 @@ Object.assign(DrawingViewer.prototype, {
 
       // Handle valid dwg response through dedicated method
       if (this.handleDwgResponse(data, request)) {
-        console.log(`[QUEUE] Successfully processed dwg response from pending queue`);
+        console.info(`[QUEUE] Successfully processed dwg response from pending queue`);
         // Drain insertDwg items collected during this response's scan, the
         // same way requestQueue.processRequestQueue does for the live path.
         // Mouse is still down here so sentRequest is whatever the live
@@ -121,7 +137,7 @@ Object.assign(DrawingViewer.prototype, {
         // before the post-batch redraw and tail processRequestQueue.
         const pendingInserts = (data && data._pendingInserts) || [];
         if (pendingInserts.length > 0) {
-          console.log(`[QUEUE] Queueing ${pendingInserts.length} deferred insertDwg item(s) from pending response for "${request.cmd}"`);
+          console.info(`[QUEUE] Queueing ${pendingInserts.length} deferred insertDwg item(s) from pending response for "${request.cmd}"`);
           for (const item of pendingInserts) {
             this.handleInsertDwg(item);
           }
@@ -136,11 +152,11 @@ Object.assign(DrawingViewer.prototype, {
         if (!isMergedUpdate) needsReMerge = true;
       } else {
         // Error was already logged in handleDwgResponse
-        console.error(`[QUEUE] Failed to process dwg response from pending queue`);
+        console.info(`[QUEUE] Failed to process dwg response from pending queue`);
       }
     }
 
-    console.log(`[QUEUE] Finished processing all pending responses`);
+    console.info(`[QUEUE] Finished processing all pending responses`);
 
     // Re-merge (only if any response targeted per-drawing raw) and redraw
     // once for the whole batch.
@@ -148,7 +164,7 @@ Object.assign(DrawingViewer.prototype, {
       if (!this.touchState.isDown) {
         // Clear sentRequest if still set so queue can continue processing insertDwg requests
         if (this.sentRequest) {
-          console.log(`[QUEUE] Clearing sentRequest "${this.sentRequest.cmd}" to allow queue processing`);
+          console.info(`[QUEUE] Clearing sentRequest "${this.sentRequest.cmd}" to allow queue processing`);
           console.log(`[SENTREQUEST] CLEARED: "${this.sentRequest.cmd}" (${this.sentRequest.requestType}) - after processing pending responses`);
           this.sentRequest = null;
         }
@@ -170,7 +186,7 @@ Object.assign(DrawingViewer.prototype, {
               }
             }
           } catch (e) {
-            console.warn('[QUEUE] Could not save menuDwg merged cache (pending batch):', e.message);
+            console.info('[QUEUE] Could not save menuDwg merged cache (pending batch):', e.message);
           }
         }
         // Same deferral rule as the live path — see shouldDeferRedraw()

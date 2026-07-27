@@ -40,18 +40,39 @@
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/// Read a non-negative decimal integer starting at rawCmd[startIdx];
-/// stops at the first non-digit (typically `}`).  Returns the integer
-/// or null when no digits were found (bare `{t}` case).
+/// Read a non-negative decimal integer starting right after the first
+/// 'x' at/after rawCmd[startIdx]; stops at the first non-digit
+/// (typically `}`).  Returns the integer, or null when no digits
+/// followed 'x' (the bare list-open case).
+///
+/// The 'x' is a fixed delimiter separating the cmd's activeMenuPath
+/// prefix (underscore-joined digits, see _openCmd) from the optional
+/// snapshot-slot index — needed because pfodMenuParser.js's own cmd
+/// token reader (parsePfodCmd) only accepts [a-zA-Z0-9_], so path
+/// digits and the index digits would otherwise be indistinguishable;
+/// a backtick or other punctuation can't be used as the separator
+/// since the real parser would stop reading the cmd token there
+/// (treating everything after it as format/value content instead).
 function _parseDeleteIdx(rawCmd, startIdx) {
+  const xIdx = rawCmd.indexOf('x', startIdx);
+  if (xIdx === -1) return null;
   let s = '';
-  for (let i = startIdx; i < rawCmd.length; i++) {
+  for (let i = xIdx + 1; i < rawCmd.length; i++) {
     const c = rawCmd[i];
     if (c >= '0' && c <= '9') s += c;
     else break;
   }
   if (s.length === 0) return null;
   return parseInt(s, 10);
+}
+
+/// The "open this level's Delete Items list" cmd — see
+/// formats.js's designerLevelSuffix() for why this needs to be
+/// distinct per menu level and why 'x' is the delimiter. Appending the
+/// row's own snapshot idx (see _buildListBody) gives the per-item
+/// delete cmd.
+function _openCmd(state) {
+  return 't' + designerLevelSuffix(state);
 }
 
 // ── Handler ─────────────────────────────────────────────────────────
@@ -120,11 +141,12 @@ const DesignerDeleteMenuItems = (() => {
   /// the actual menu item it refers to.
   function _buildListBody(state) {
     const snapshot = state._deleteListSnapshot || [];
+    const openCmd  = _openCmd(state);
     const prompt = 'Click the item to be removed from the menu\n<-2>Use the bottom back arrow to return to the <i><y>Editing Menu</i> screen';
     let out = DESIGNER_PROMPT_FMT + '~' + prompt;
     snapshot.forEach((entry, idx) => {
       const hiddenFlag = entry.deleted ? '-' : '';
-      out += '|t' + idx + hiddenFlag + '<bg r><w>~Delete\n';
+      out += '|' + openCmd + idx + hiddenFlag + '<bg r><w>~Delete\n';
       out += _leadingText(entry.item);
       out += _typeTagSuffix(entry.item);
     });
@@ -201,8 +223,9 @@ const DesignerDeleteMenuItems = (() => {
     return _renderListUpdate(state);
   }
 
-  /// Dispatch handler.  depth points to the matched 't' byte; the
-  /// optional decimal index follows at depth+1.
+  /// Dispatch handler.  depth points to the matched 't' byte; the cmd's
+  /// activeMenuPath prefix and 'x' delimiter follow at depth+1 (see
+  /// _openCmd), then the optional snapshot-slot index.
   ///
   /// @param {string}        rawCmd
   /// @param {DesignerState} state
@@ -211,13 +234,15 @@ const DesignerDeleteMenuItems = (() => {
   function send(rawCmd, state, depth) {
     const idx = _parseDeleteIdx(rawCmd, depth + 1);
     if (idx === null) {
-      // Bare `{t}` — just the list, no mutation.
+      // Bare open (no slot index after the 'x') — just the list, no mutation.
       return { pfod: _renderListScreen(state), skipSave: true };
     }
     return _deleteAndReturnEmpty(state, idx);
   }
 
-  return Object.freeze({ send });
+  // openCmd is exposed so editMenu.js's own Delete Items button can emit
+  // the exact same path-prefixed cmd this file expects to parse back.
+  return Object.freeze({ send, openCmd: _openCmd });
 })();
 
 // Self-register into the top-level designer dispatcher.

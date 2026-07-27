@@ -116,6 +116,11 @@ Object.assign(DrawingViewer.prototype, {
       btnLeftArrow.addEventListener('pointerup', () => {
         if (!backBtnDown) return;
         backBtnDown = false;
+        // Native `disabled` should already block pointer events on its own,
+        // but is checked explicitly here too (matches the existing
+        // chartOnlyMode guard just below) — e.g. dwgControlsPanelUI.js
+        // disables this button while the Dwg Controls Panel is showing.
+        if (btnLeftArrow.disabled) return;
         console.log('[TOOLBAR] Left arrow pointerup className=', document.body.className);
 
         // If in chart-only mode, prevent going back (button disabled)
@@ -243,6 +248,8 @@ Object.assign(DrawingViewer.prototype, {
     const btnReload = document.getElementById('btn-reload');
     if (btnReload) {
       btnReload.addEventListener('click', () => {
+        // See btnLeftArrow's own pointerup guard comment above.
+        if (btnReload.disabled) return;
         console.log('[TOOLBAR] Reload button clicked');
         // Stop any pending auto-refresh fire — the reload response will
         // re-evaluate scheduleNextUpdate.  itemRefreshTimes entries are
@@ -320,6 +327,8 @@ Object.assign(DrawingViewer.prototype, {
     const btnMenu = document.getElementById('btn-menu');
     if (btnMenu) {
       btnMenu.addEventListener('click', (event) => {
+        // See btnLeftArrow's own pointerup guard comment above.
+        if (btnMenu.disabled) return;
         console.log('[TOOLBAR] Menu button clicked');
         this.showToolbarMenu(event);
       });

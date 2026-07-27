@@ -479,6 +479,19 @@ class DrawingDataProcessor {
                 const translatedData = window.translateRawItemsToItemArray(data);
                 itemsToProcess = translatedData.items;
                 console.log(`Successfully translated ${data.raw_items.length} raw items to ${itemsToProcess.length} processed items`);
+                // TEMP DEBUG: dump the fully-parsed dwg JSON for Dwg Controls
+                // Panel previews (DWG_PREVIEW_KEY_PREFIX-namespaced names
+                // only, to avoid spamming every real menu/drawing response)
+                // so it can be diffed against the original DwgLibrary dwg
+                // JSON that dwgWireEncoder.js encoded from.
+                if (window.DWG_PREVIEW_KEY_PREFIX && data.name && data.name.startsWith(window.DWG_PREVIEW_KEY_PREFIX)) {
+                    console.log('[DWG_PREVIEW_DEBUG] parsed dwg for "' + data.name + '":',
+                        JSON.stringify({
+                            pfodDrawing: data.pfodDrawing, name: data.name, version: data.version,
+                            x: data.x, y: data.y, color: data.color, refresh: data.refresh,
+                            items: itemsToProcess
+                        }, null, 2));
+                }
             } catch (error) {
                 console.error('Failed to translate raw_items:', error.message);
                 throw new Error(`Failed to translate raw_items: ${error.message}`);
@@ -499,20 +512,25 @@ class DrawingDataProcessor {
             
 
             itemsToProcess.forEach(item => {
-            // Validate and normalize item color to integer (0-255)
+            // Validate and normalize item color to integer (0-255) or RRGGBB hex string
             if (item.color !== undefined) {
                 let colorValue = item.color;
-                
+
+                if (typeof colorValue === 'string' && /^[0-9A-Fa-f]{6}$/.test(colorValue)) {
+                    // RRGGBB hex color (spec 8.11) - keep as-is
+                    item.color = colorValue.toUpperCase();
+                } else {
 // Handle string numbers (like "9", "82" from ESP32)
                 if (typeof colorValue === 'string' && !isNaN(colorValue)) {
                   console.log(`[COLOR_CONVERSION] Converting string color "${colorValue}" to number ${parseInt(colorValue)}`);
                   colorValue = isNaN(parseInt(colorValue))? 0 : parseInt(colorValue);
-                }                                   
-               
+                }
+
                 if (typeof colorValue === 'number' && ((colorValue >= 0 && colorValue <= 255) || colorValue === -1)) {
                     item.color = Math.floor(colorValue); // Ensure integer (-1 for Black/White mode, 0-255 for regular colors)
                 } else {
                     item.color = 0; // Default to black for invalid colors
+                }
                 }
             }
             

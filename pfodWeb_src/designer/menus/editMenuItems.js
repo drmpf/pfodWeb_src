@@ -28,12 +28,14 @@
  *                   dispatches to editMenuItem.js, rendering the
  *                   editor with the active item.
  *
- * Why queue `{d}` instead of returning the editor screen inline?
- * Returning inline would push `{K<idx>}` onto pfodWeb's nav stack,
- * so back-nav from the editor would re-fire the K cmd and re-set
- * activeItemIdx — idempotent but ugly.  Queueing `{d}` makes the
- * editor's natural cmd land on the nav stack instead, so back-nav
- * from the editor cleanly re-renders THIS list screen via `{J}`.
+ * Note: pfodWeb's nav stack records the literal `{K<idx>}` cmd that
+ * was sent, not this internal `{d}` redirect — it has no visibility
+ * into it.  So back-nav *from* the editor re-renders THIS list screen
+ * via the stack entry pushed when `{J}` was originally sent (unrelated
+ * to this redirect), while a later resend *of* `{K<idx>}` itself (e.g.
+ * after the user has since entered and left a sub-menu editor reached
+ * from this same item) is handled by unwinding state.contextStack in
+ * `_sendK` below, so idx keeps resolving against the right menu.
  *
  * Empty menu: Java shows a distinct "No menu items to edit in"
  * prompt and no rows — pointing the user back at the editMenu's
@@ -130,8 +132,14 @@ const DesignerEditMenuItems = (() => {
     // toMsgAsButtonNoFormat itself doesn't add the type tag, but
     // the user wants every item-list screen in the designer to
     // share the same row shape.
+    // Level-suffixed (designerLevelSuffix, formats.js) so a row's cmd
+    // is distinct per menu nesting level — 'J' (and so these 'K<idx>'
+    // rows) is reachable identically from every level, and without the
+    // suffix the SAME idx reached from two different levels would
+    // collide under pfodWeb's nav-stack circular-reference collapse.
+    const levelSuffix = designerLevelSuffix(state);
     menu.items.forEach((item, idx) => {
-      out += '|' + EMIE_SELECT_CMD + idx;
+      out += '|' + EMIE_SELECT_CMD + levelSuffix + idx;
       out += '~<+0>' + _leadingText(item) + '</+0>';
       out += _typeTagSuffix(item);
     });
@@ -152,25 +160,49 @@ const DesignerEditMenuItems = (() => {
     return { pfod: _renderListScreen(state), skipSave: true };
   }
 
-  /// Handler for cmd byte 'K'.  Parses `{K<idx>}`, validates idx,
-  /// stashes it as state.activeItemIdx so editMenuItem.js's
-  /// getActiveItem() resolves the row, then queues `{d}` to open
-  /// the editor.  Returns PFOD_EMPTY — the queued `{d}` is the
-  /// actual screen the user lands on.  Out-of-range idx falls
-  /// through to PFOD_EMPTY without mutating activeItemIdx (avoids
-  /// stale pointers if a re-fire ever lands on a now-shorter list).
+  /// Handler for cmd byte 'K'.  Parses `{K<levelSuffix><idx>}` (see
+  /// designerLevelSuffix, formats.js, for the leading level-path/'x'
+  /// portion — informational only for pfodWeb's own nav-stack string
+  /// distinctness, state.activeMenuPath is what this handler actually
+  /// uses), validates idx, stashes it as state.activeItemIdx so
+  /// editMenuItem.js's getActiveItem() resolves the row, then queues
+  /// `{d}` to open the editor.  Returns PFOD_EMPTY — the queued `{d}`
+  /// is the actual screen the user lands on.
+  ///
+  /// pfodWeb's nav stack records the literal `{K<levelSuffix><idx>}`
+  /// cmd that was sent (NOT the internal `{d}` redirect below — it has
+  /// no visibility into that), so a later back-navigation resend of
+  /// this exact cmd can arrive after the user has since gone deeper
+  /// into a sub-menu, leaving state.activeMenuPath pointing somewhere
+  /// idx no longer resolves against.  When that happens, unwind
+  /// state.contextStack — restoring activeMenuPath one level at a time
+  /// — until idx resolves against that ancestor menu or the stack is
+  /// exhausted; this is the same restoration editMenuItem.js's own bare
+  /// `{d}` resend case performs, generalised to a `{K<idx>}` resend.
+  /// Still falls through to PFOD_EMPTY (without mutating activeItemIdx)
+  /// if idx never resolves.
   function _sendK(rawCmd, state, depth) {
-    const idx = _parseIdx(rawCmd, depth + 1);
+    const xIdx = rawCmd.indexOf('x', depth + 1);
+    const idx = xIdx === -1 ? null : _parseIdx(rawCmd, xIdx + 1);
     if (idx === null) return PFOD_EMPTY;
-    const menu = state.getActiveMenu();
-    if (idx < 0 || idx >= menu.items.length) return PFOD_EMPTY;
+    let menu = state.getActiveMenu();
+    if (idx < 0 || idx >= menu.items.length) {
+      while ((idx < 0 || idx >= menu.items.length) && state.contextStack.length > 0) {
+        const frame = state.contextStack.pop();
+        state.activeMenuPath = frame.menuPath;
+        menu = state.getActiveMenu();
+        console.error('[Designer] {K' + idx + '}: idx out of range at previous path, restored ' +
+                      'activeMenuPath=' + JSON.stringify(state.activeMenuPath) +
+                      ' from contextStack, stack depth now=' + state.contextStack.length);
+      }
+      if (idx < 0 || idx >= menu.items.length) return PFOD_EMPTY;
+    }
 
     console.error('[Designer] {K' + idx + '}: selecting item in path=' +
                   JSON.stringify(state.activeMenuPath) + ' type=' + menu.items[idx].type);
     state.activeItemIdx = idx;
     state.save();
-    // Dispatch {d} directly — returns the item editor screen so pfodWeb
-    // pushes {d} (not {K<idx>}) onto the nav stack.
+    // Dispatch {d} directly — returns the item editor screen.
     return DesignerDispatch.dispatch('{d}', state, DISPATCH_ROOT_DEPTH);
   }
 

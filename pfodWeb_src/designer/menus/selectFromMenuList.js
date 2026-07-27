@@ -59,7 +59,7 @@ const DesignerSelectFromMenuList = (() => {
     // All three are reset on every fresh {b} render — only {;} partial
     // updates change them during a single visit to this screen.
     out += '|L' + DESIGNER_MENU_FMT + '~Load Design from File';
-    out += '|!I~<y><i>Use the Load button above to load saved <b>.pfodDesigner_json</b> menu files';
+    out += '|!I~<y><i>Use the Load button above to load saved <b>.pfodMenu_json</b> menu files';
     out += '|X-~';
     if (names.length === 0) {
       // Practically unreachable — auto-save inserts the active design

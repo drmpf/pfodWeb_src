@@ -159,13 +159,22 @@ const DesignerPreviewMenu = (() => {
     if (item.type === 'chart') {
       return wireCmd + slotFmt + '~' + inlineFmt + item.text;
     }
-    // Drawing items render as pfod `dwg` type: |+<cmd>~<loadCmd>.
-    // The same cmd byte serves as both the menu-item cmd and the loadCmd.
-    // pfodWeb will automatically issue a menuItemDwg request for loadCmd,
-    // routed to handlePreviewInteract which returns the placeholder drawing.
+    // Drawing items render as pfod `dwg` type: |+<cmd>~<loadCmd>. cmd
+    // (wireCmd) is the menu-item's own wrapper-click identity — routed to
+    // handlePreviewInteract ('c'), which just acks it (PFOD_EMPTY), same
+    // as any other item type with no real click behaviour of its own.
+    // loadCmd is DELIBERATELY a different string: the real linked dwg,
+    // namespaced under DWG_PREVIEW_KEY_PREFIX exactly like the Dwg
+    // Controls Panel's own preview does (dwgWireEncoder.js's
+    // encodeInsertDwg uses this same prefix for insertDwg children, so
+    // sharing it here means a linked dwg's own nested insertDwg content
+    // auto-fetches correctly too, routed to handleDwgPreviewFetch ('_')
+    // with zero extra work). pfodWeb auto-issues a menuItemDwg request
+    // for loadCmd.
     if (item.type === 'drawing') {
       const disabledPrefix = item.formats.disabled ? '!+' : '+';
-      return disabledPrefix + wireCmd + slotFmt + '~' + wireCmd;
+      const loadCmd = window.DWG_PREVIEW_KEY_PREFIX + (item.dwgName || '');
+      return disabledPrefix + wireCmd + slotFmt + '~' + loadCmd;
     }
     const labelPrefix    = (item.type === 'label')   ? '!' : '';
     const disabledSlotFlag = (item.type !== 'label' && item.formats.disabled) ? '!' : '';
@@ -291,7 +300,13 @@ const DesignerPreviewMenu = (() => {
   /// Send the preview screen for the currently-active edit menu context.
   /// "Preview Menu" from inside a sub-menu editor shows that sub-menu;
   /// back-nav re-sends {g} and re-derives the same screen (idempotent).
+  /// Resets the shared dwg-preview device's cmd/idx dictionary
+  /// (_getDwgPreviewDevice) — a fresh viewing session of the preview
+  /// should mint cmd/idx in the current item order, not reuse whatever a
+  /// PREVIOUS visit (possibly before an edit) happened to assign; see
+  /// DwgDesignerVirtualDevice._resetAutoAssignments's own doc for why.
   function send(rawCmd, state, depth) {
+    _getDwgPreviewDevice()._resetAutoAssignments();
     const menu = state.getActiveMenu();
     return { pfod: _renderPreviewMenu(state.rootMenu, menu, state.activeMenuPath.slice()), skipSave: true };
   }
@@ -322,9 +337,11 @@ const DesignerPreviewMenu = (() => {
       // Preview button does in the chart editor.
       if (item.type === 'chart')
         return { pfod: DesignerEditChart.renderPreviewForItem(item), skipSave: true };
-      // Drawing item load (menuItemDwg request): return the placeholder drawing.
-      if (item.type === 'drawing')
-        return { pfod: _renderPlaceholderDrawing(), skipSave: true };
+      // Drawing item wrapper click (and everything else with no click
+      // behaviour of its own, e.g. Button/Label): loadCmd is now a
+      // separate string (see _renderItem's own comment on the drawing
+      // branch), so a bare {c<N>} tap on a drawing item is never a
+      // menuItemDwg fetch — just a harmless ack.
       return PFOD_EMPTY;
     }
     const val = parseInt(valStr, 10);
@@ -337,7 +354,57 @@ const DesignerPreviewMenu = (() => {
 
   function getPlaceholderDrawing() { return _renderPlaceholderDrawing(); }
 
-  return Object.freeze({ send, handlePreviewInteract, getPlaceholderDrawing });
+  // One shared DwgDesignerVirtualDevice instance (dwgDesigner/
+  // dwgDesignerAdapter.js) for the whole Preview Menu context — reused
+  // across however many dwg-content fetches happen during one viewing
+  // session (the linked dwg itself, plus any insertDwg children it
+  // reaches), so cmd/idx values stay unique across all of them, exactly
+  // like the Dwg Controls Panel's own real preview relies on one
+  // persistent instance per viewing cycle for the same reason (see that
+  // class's own _resetAutoAssignments doc). Only its
+  // _resolveAutoCmdAndIdx method is called directly here — its
+  // processCmd()'s own {.}/loadCmd wire-routing and version-caching are
+  // for the Dwg Controls Panel's own swapped-adapter context and don't
+  // apply to this one, which lives in DesignerDispatch instead.
+  let _dwgPreviewDevice = null;
+  function _getDwgPreviewDevice() {
+    if (!_dwgPreviewDevice) _dwgPreviewDevice = new DwgDesignerVirtualDevice();
+    return _dwgPreviewDevice;
+  }
+
+  /// Handle a fetch for a __dcpPreview__<dwgName>-prefixed loadCmd — the
+  /// dwg linked to a Drawing menu item (_renderItem's drawing branch), or
+  /// any insertDwg child reached from within it (DwgWireEncoder.
+  /// encodeInsertDwg emits child loadCmds under this exact same prefix,
+  /// so they route here too with no extra wiring). Always answers with a
+  /// fresh full "start" — no version/caching concept in this context,
+  /// unlike the Dwg Controls Panel's own device instance, which tracks
+  /// versions to answer bare {+} when nothing changed. A dwg that
+  /// doesn't resolve (unloaded since being linked, or a missing insertDwg
+  /// target) gets a genuine empty "start" so the client's own normal
+  /// redraw clears anything stale, matching DwgDesignerVirtualDevice's
+  /// own processCmd doc for the identical case.
+  /// @param {string}        rawCmd
+  /// @param {DesignerState} state
+  /// @param {number}        depth — index of the '_' in rawCmd
+  /// @returns {{pfod: string, skipSave: boolean}}
+  function handleDwgPreviewFetch(rawCmd, state, depth) {
+    const bareCmd = rawCmd.substring(depth, rawCmd.length - 1);
+    if (!bareCmd.startsWith(window.DWG_PREVIEW_KEY_PREFIX)) return PFOD_EMPTY;
+    const dwgName = bareCmd.substring(window.DWG_PREVIEW_KEY_PREFIX.length);
+    const dwg = DwgLibrary.get(dwgName);
+    if (!dwg) {
+      return {
+        pfod: DwgWireEncoder.encodeDwgStart({ x: 1, y: 1, color: -1, refresh: 0, items: [] }, 'v1'),
+        skipSave: true,
+      };
+    }
+    const device = _getDwgPreviewDevice();
+    const resolved = device._resolveAutoCmdAndIdx(dwgName, dwg);
+    return { pfod: DwgWireEncoder.encodeDwgStart(resolved, 'v1'), skipSave: true };
+  }
+
+  return Object.freeze({ send, handlePreviewInteract, getPlaceholderDrawing, handleDwgPreviewFetch });
 })();
 
 // Self-register into the top-level designer dispatcher.
@@ -345,3 +412,7 @@ DesignerDispatch.add('g', DesignerPreviewMenu.send);
 // 'c' handles interactive on/off and PWM clicks from the preview
 // (wire cmds are c0, c1, … matching pfodAutoCmd's runtime assignment).
 DesignerDispatch.add('c', DesignerPreviewMenu.handlePreviewInteract);
+// '_' handles __dcpPreview__<dwgName>-prefixed loadCmd fetches for a
+// Drawing menu item's own linked dwg, and any insertDwg child it reaches
+// (see handleDwgPreviewFetch's own doc).
+DesignerDispatch.add('_', DesignerPreviewMenu.handleDwgPreviewFetch);

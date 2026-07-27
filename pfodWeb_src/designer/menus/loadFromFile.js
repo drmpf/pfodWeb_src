@@ -34,6 +34,21 @@
  * Name-collision handling: imported design with a name already in use
  * gets an auto-suffix (_2, _3, …) so it lands without overwriting.
  *
+ * Accepts BOTH a bare `.pfodMenu_json` file (the older, single-file
+ * save shape) AND the `.zip` bundle saveToFile.js now produces (the
+ * design's own `.pfodMenu_json` plus every linked dwg's own
+ * `.pfodDwg_json`, all under one `<name>_menuJson/` directory — see
+ * saveToFile.js's own header comment). A zip is detected by its file
+ * extension; its dwg entries are loaded into DwgLibrary FIRST (each
+ * kept under its OWN saved name — unlike every other dwg-file-load path
+ * in this app, which dedupes/renames on collision, these names must
+ * stay exactly what the menu's own Drawing items already reference, so
+ * a same-named existing dwg is deliberately overwritten, matching "this
+ * zip is a self-contained snapshot, loading it reproduces that
+ * snapshot") before the menu json itself is parsed, so every Drawing
+ * item's dwgName already resolves by the time the design finishes
+ * loading.
+ *
  * Origin: JS-port-only feature — not in pfodDesignerV2.
  *
  * (c)2026 Forward Computing and Control Pty. Ltd.
@@ -73,7 +88,7 @@ const DesignerLoadFromFile = (() => {
 
   /// Parse + validate + import the file text.  Returns a {pfod, skipSave}
   /// object ready to pass to settle().  MUST always return a value.
-  /// fileName is the OS filename (e.g. "Menu_1.pfodDesigner_json") used in
+  /// fileName is the OS filename (e.g. "Menu_1.pfodMenu_json") used in
   /// early-failure messages before the JSON name can be read.
   function _ingestText(state, text, fileName) {
     let parsed;
@@ -111,12 +126,71 @@ const DesignerLoadFromFile = (() => {
     return { pfod: _successUpdate(finalName), skipSave: false };
   }
 
+  /// Parse, validate + repair, and save one dwg entry from a loaded zip
+  /// bundle — keeping its OWN saved name exactly as-is (no dedup/rename,
+  /// unlike every other dwg-file-load path in this app), overwriting any
+  /// existing DwgLibrary entry of that same name, since the menu's own
+  /// Drawing items reference this exact name and the whole point of the
+  /// zip is to reproduce the snapshot it was saved as.
+  /// @param {{path: string, data: Uint8Array}} entry
+  /// @returns {string|null} the dwg's name on success, null on failure
+  ///          (bad JSON or not a valid dwg — logged, never thrown; one
+  ///          bad dwg entry shouldn't abort the whole design load)
+  function _loadDwgZipEntry(entry) {
+    let parsed;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(entry.data));
+    } catch (err) {
+      console.error('[DesignerLoadFromFile] "' + entry.path + '": invalid JSON — skipped', err);
+      return null;
+    }
+    if (!looksLikeDwgFile(parsed)) {
+      console.error('[DesignerLoadFromFile] "' + entry.path + '": does not look like a valid dwg file — skipped');
+      return null;
+    }
+    const { dwg } = validateAndRepairDwg(parsed, parsed.name);
+    DwgLibrary.save(dwg);
+    return dwg.name;
+  }
+
+  /// Parse a loaded zip bundle: every `.pfodDwg_json` entry is loaded
+  /// into DwgLibrary FIRST (see _loadDwgZipEntry's own doc on why names
+  /// are kept as-is), then the single `.pfodMenu_json` entry is handed
+  /// to _ingestText exactly as if it had been picked directly — same
+  /// success/partial/hard-error handling either way.
+  /// @param {DesignerState} state
+  /// @param {ArrayBuffer} arrayBuffer
+  /// @param {string} fileName
+  /// @returns {{pfod, skipSave}}
+  function _ingestZip(state, arrayBuffer, fileName) {
+    let entries;
+    try {
+      entries = DesignerZipBuilder.readZip(new Uint8Array(arrayBuffer));
+    } catch (err) {
+      console.error('[DesignerLoadFromFile] "' + fileName + '": failed to read zip', err);
+      return { pfod: _errorUpdate(fileName), skipSave: true };
+    }
+
+    const menuEntry = entries.find((e) => /\.pfodMenu_json$/i.test(e.path));
+    if (!menuEntry) {
+      console.error('[DesignerLoadFromFile] "' + fileName + '": zip has no .pfodMenu_json entry');
+      return { pfod: _errorUpdate(fileName), skipSave: true };
+    }
+
+    entries
+      .filter((e) => /\.pfodDwg_json$/i.test(e.path))
+      .forEach((e) => _loadDwgZipEntry(e));
+
+    const menuText = new TextDecoder().decode(menuEntry.data);
+    return _ingestText(state, menuText, fileName);
+  }
+
   /// Create a hidden <input type="file">, click it, and call settle()
   /// exactly once with a {pfod, skipSave} object when done.
   function _openPicker(state, settle) {
     const input  = document.createElement('input');
     input.type   = 'file';
-    input.accept = '.pfodDesigner_json';
+    input.accept = '.pfodMenu_json,.zip';
     input.style.display = 'none';
 
     input.addEventListener('change', (evt) => {
@@ -125,9 +199,14 @@ const DesignerLoadFromFile = (() => {
       if (!file) { settle({ pfod: PFOD_EMPTY, skipSave: true }); return; }
 
       const reader = new FileReader();
-      reader.onload  = () => settle(_ingestText(state, reader.result, file.name));
       reader.onerror = () => settle({ pfod: _errorUpdate(file.name), skipSave: true });
-      reader.readAsText(file);
+      if (/\.zip$/i.test(file.name)) {
+        reader.onload = () => settle(_ingestZip(state, reader.result, file.name));
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.onload = () => settle(_ingestText(state, reader.result, file.name));
+        reader.readAsText(file);
+      }
     });
 
     // Cancel detection: picker close restores window focus.  300 ms delay

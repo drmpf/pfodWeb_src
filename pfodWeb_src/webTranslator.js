@@ -29,6 +29,17 @@
 
 // JS_VERSION is available globally via window.JS_VERSION from pfodWeb.js
 
+// Parse a dwg <colour> wire field (spec 8.11): either a decimal 0-255 palette
+// index or a 6-hex-digit RRGGBB string. A bare index is never 6 chars (max
+// "255"), so a 6-char run is unambiguously hex here.
+// @param {string} s - raw field text (already split out by caller)
+// @returns {number|string|undefined} palette index, uppercase RRGGBB string, or undefined if s is ''
+function parseDwgColour(s) {
+    if (s === '' || s === undefined) return undefined;
+    if (/^[0-9A-Fa-f]{6}$/.test(s)) return s.toUpperCase();
+    return parseInt(s, 10);
+}
+
 function translateRawRectangle(rawRectString,isTouchAction=false) {
     // Parse rectangle type from prefix
     let rectType = '';
@@ -80,7 +91,7 @@ function translateRawRectangle(rawRectString,isTouchAction=false) {
     }
     
     // Parse parts: [colour]~width~height[~colOffset[~rowOffset]]
-    const colour = parts[0] === '' ? undefined : parseInt(parts[0]);
+    const colour = parseDwgColour(parts[0]);
     let xSize = 1;
     let ySize = 1;
     // Handle isTouchAction transformations and invalid inputs
@@ -144,7 +155,7 @@ function translateRawRectangle(rawRectString,isTouchAction=false) {
     };
     
     // Add colour if specified
-    if (colour !== undefined && !isNaN(colour)) {
+    if (colour !== undefined && (typeof colour === 'string' || !isNaN(colour))) {
         rectObject.color = colour;
     } else {
       rectObject.color = -1;
@@ -210,7 +221,7 @@ function translateRawLine(rawLineString,isTouchAction=false) {
     }
     
     // Parse parts: [colour]~colDelta~rowDelta[~colOffset[~rowOffset]]
-    const colour = parts[0] === '' ? undefined : parseInt(parts[0]);
+    const colour = parseDwgColour(parts[0]);
     const xSize = parseFloat(parts[1]); // colDelta
     const ySize = parseFloat(parts[2]); // rowDelta
     
@@ -249,7 +260,7 @@ function translateRawLine(rawLineString,isTouchAction=false) {
     };
     
     // Add colour if specified
-    if (colour !== undefined && !isNaN(colour)) {
+    if (colour !== undefined && (typeof colour === 'string' || !isNaN(colour))) {
         lineObject.color = colour;
      } else {
       lineObject.color = -1;
@@ -299,7 +310,7 @@ function translateRawCircle(rawCircleString,isTouchAction=false) {
     }
     
     // Parse parts: [colour]~dRadius[~colOffset[~rowOffset]]
-    const colour = parts[0] === '' ? undefined : parseInt(parts[0]);
+    const colour = parseDwgColour(parts[0]);
     const radius = parseFloat(parts[1]); // dRadius
     
     let xOffset = 0;
@@ -337,7 +348,7 @@ function translateRawCircle(rawCircleString,isTouchAction=false) {
     };
     
     // Add colour if specified
-    if (colour !== undefined && !isNaN(colour)) {
+    if (colour !== undefined && (typeof colour === 'string' || !isNaN(colour))) {
         circleObject.color = colour;
      } else {
       circleObject.color = -1;
@@ -391,7 +402,7 @@ function translateRawArc(rawArcString,isTouchAction=false) {
     }
     
     // Parse parts: [colour]~dArcAngle~dStartAngle~dRadius[~colOffset[~rowOffset]]
-    const colour = parts[0] === '' ? undefined : parseInt(parts[0]);
+    const colour = parseDwgColour(parts[0]);
     const angle = parseFloat(parts[1]); // dArcAngle
     const start = parseFloat(parts[2]); // dStartAngle
     const radius = parseFloat(parts[3]); // dRadius
@@ -431,7 +442,7 @@ function translateRawArc(rawArcString,isTouchAction=false) {
     };
     
     // Add colour if specified
-    if (colour !== undefined && !isNaN(colour)) {
+    if (colour !== undefined && (typeof colour === 'string' || !isNaN(colour))) {
         arcObject.color = colour;
      } else {
       arcObject.color = -1;
@@ -481,7 +492,7 @@ function translateRawText(rawTextString,isTouchAction=false) {
     }
     
     // Parse parts: [colour]~text[~colOffset[~rowOffset[~alignment]]]
-    const colour = parts[0] === '' ? undefined : parseInt(parts[0]);
+    const colour = parseDwgColour(parts[0]);
     const rawText = parts[1]; // text with HTML tags
     
     let xOffset = 0;
@@ -527,7 +538,7 @@ function translateRawText(rawTextString,isTouchAction=false) {
     };
     
     // Add colour if specified
-    if (colour !== undefined && !isNaN(colour)) {
+    if (colour !== undefined && (typeof colour === 'string' || !isNaN(colour))) {
         textObject.color = colour;
      } else {
       textObject.color = -1;
@@ -595,7 +606,7 @@ function translateRawValue(rawValueString,isTouchAction=false) {
     
     // Parse initial parts: [colour]~text~colOffset~rowOffset
     const initialParts = backTickParts[0].split('~');
-    const colour = initialParts[0] === '' ? undefined : parseInt(initialParts[0]);
+    const colour = parseDwgColour(initialParts[0]);
     const rawText = initialParts[1]; // text with HTML tags
     
     let xOffset = 0; // colOffset - required for values
@@ -672,7 +683,7 @@ function translateRawValue(rawValueString,isTouchAction=false) {
     };
     
     // Add colour if specified
-    if (colour !== undefined && !isNaN(colour)) {
+    if (colour !== undefined && (typeof colour === 'string' || !isNaN(colour))) {
         valueObject.color = colour;
      } else {
       valueObject.color = -1;
@@ -1133,10 +1144,10 @@ function translateRawTouchActionInput(rawTouchActionInputString) {
             backgroundColor: undefined
         };
 
-        const bgColorMatch = text.match(/<bg\s+(\d+)>/);
+        const bgColorMatch = text.match(/<bg\s+([0-9A-Fa-f]+)>/);
         if (bgColorMatch) {
-            result.backgroundColor = parseInt(bgColorMatch[1]);
-            result.text = result.text.replace(/<bg\s+\d+>/g, '').replace(/<\\bg\s+\d+>/g, '');
+            result.backgroundColor = parseDwgColour(bgColorMatch[1]);
+            result.text = result.text.replace(/<bg\s+[0-9A-Fa-f]+>/g, '').replace(/<\\bg\s+[0-9A-Fa-f]+>/g, '');
         }
 
         return result;
@@ -1283,7 +1294,8 @@ function translateDwgResponse(cmd) {
         };
     }
     // else
-    const regex = /^\{\+(?:(\d+)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~(.*))?$/;
+    // colorNo accepts a decimal palette index or a 6-char RRGGBB hex string (spec 8.11)
+    const regex = /^\{\+(?:([0-9A-Fa-f]+)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~(.*))?$/;
     const match = cmdString.match(regex);
 
     if (!match) {
@@ -1304,7 +1316,7 @@ function translateDwgResponse(cmd) {
         version: version || "",
         x: cols ? parseInt(cols, 10) : undefined,
         y: rows ? parseInt(rows, 10) : undefined,
-        color: colorNo ? parseInt(colorNo, 10) : 0,
+        color: colorNo ? parseDwgColour(colorNo) : 0,
         refresh: refreshMs ? parseInt(refreshMs, 10) : 0,
         more: more === 'm',
         raw_items: []
