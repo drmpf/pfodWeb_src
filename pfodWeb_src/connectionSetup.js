@@ -636,11 +636,13 @@ async function initializeApp() {
   // prefillFormFromURL() to populate the form fields from the URL params,
   // then trigger the same code path the user would by clicking Connect.
   //
-  // Native Serial / BLE require a user gesture for the OS device picker;
-  // a programmatic click does NOT satisfy that, so those will fail and
-  // surface the prompt for manual retry.  Proxy Serial / BLE and TCP all
-  // work fine because their pickers are custom modals (no gesture
-  // requirement) and TCP only needs an SSE to the proxy.
+  // Serial / BLE on the native "This browser" transport can never
+  // auto-connect: their port / device selection is a live object obtained
+  // under a user gesture and cannot be restored from the URL, so the
+  // Connect button is still disabled here and the block below falls
+  // through to showing the prompt for a manual pick.  Proxy Serial / BLE
+  // and TCP all work fine because their selections are plain strings the
+  // URL can carry and TCP only needs an SSE to the proxy.
   if (hasAutoConnect && (hasTcpIP || hasSerial || hasBLE)) {
     console.log('[PFODWEB_DEBUG] autoConnect (' +
       (hasTcpIP ? 'tcp' : hasSerial ? 'serial' : 'ble') +
@@ -711,8 +713,15 @@ async function initializeApp() {
     // follow the protocol selection, not precede it. Just updates the
     // label/state directly -- does NOT call updateURLFromForm(), so it
     // can't clobber a ?chart=<command> already in the URL.
+    //
+    // Skipped entirely on the native Web Serial transport: there the browser
+    // hands the page a SerialPort object rather than a port name, so a ?com=
+    // left over from an earlier pfodProxy session names nothing this
+    // connection could open -- restoring it would light up Connect for a
+    // selection that does not exist.
     const comParam = urlParams.get('com');
-    if (comParam && typeof _serialPortState !== 'undefined') {
+    const serialViaProxy = (typeof _serialTransport !== 'function') || _serialTransport() === 'proxy';
+    if (comParam && serialViaProxy && typeof _serialPortState !== 'undefined') {
       _serialPortState.path  = comParam;
       _serialPortState.label = comParam;
       if (typeof _updateSerialPortDisplay === 'function') {
@@ -739,9 +748,11 @@ async function initializeApp() {
     // Fill in the BLE device selection (if the bookmarked URL has one) only
     // after the BLE radio above is already selected -- same ordering
     // reason, and same "doesn't touch the URL" property, as the
-    // Serial/com restoration above.
+    // Serial/com restoration above.  Also skipped on the native Web
+    // Bluetooth transport, for the same non-restorable-handle reason.
     const bleParam = urlParams.get('ble');
-    if (bleParam && typeof _bleDeviceState !== 'undefined') {
+    const bleViaProxy = (typeof _bleTransport !== 'function') || _bleTransport() === 'proxy';
+    if (bleParam && bleViaProxy && typeof _bleDeviceState !== 'undefined') {
       _bleDeviceState.address = bleParam;
       _bleDeviceState.name    = urlParams.get('bleName') || null;
       if (typeof _updateBleDeviceDisplay === 'function') {

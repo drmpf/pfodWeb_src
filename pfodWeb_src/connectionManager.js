@@ -293,15 +293,35 @@ class ConnectionManager {
         break;
 
       case 'serial':
-        // Proxy always used — native Web Serial API path disabled.
-        this.adapter = new SerialProxyConnection(this.config, this);
-        console.log(`[CONNECTION_MANAGER] Initialized SerialProxy adapter via ${this.config.proxyHostPort} for ${this.config.serialPath} @ ${this.config.baudRate} baud`);
+        // Two transports for the same protocol, chosen in the connection
+        // prompt (see pfodCommon.html's "Connect via" radios):
+        //   useProxy === false → native Web Serial API, no pfodProxy needed.
+        //     Only offered when the browser exposes navigator.serial, and
+        //     the SerialPort object itself is pre-selected by the prompt's
+        //     Select button (requestPort() needs a user gesture) and passed
+        //     in as config.nativeSerialPort.
+        //   anything else      → pfodProxy (the default).
+        if (this.config.useProxy === false) {
+          this.adapter = new SerialConnection(this.config, this);
+          console.log(`[CONNECTION_MANAGER] Initialized native Web Serial adapter for ${this.config.serialPath || 'selected port'} @ ${this.config.baudRate} baud`);
+        } else {
+          this.adapter = new SerialProxyConnection(this.config, this);
+          console.log(`[CONNECTION_MANAGER] Initialized SerialProxy adapter via ${this.config.proxyHostPort} for ${this.config.serialPath} @ ${this.config.baudRate} baud`);
+        }
         break;
 
       case 'ble':
-        // Proxy always used — native Web Bluetooth API path disabled.
-        this.adapter = new BLEProxyConnection(this.config, this);
-        console.log(`[CONNECTION_MANAGER] Initialized BLEProxy adapter via ${this.config.proxyHostPort} for ${this.config.bleAddress}`);
+        // Same two-transport split as serial, above: useProxy === false
+        // uses the native Web Bluetooth API with the BluetoothDevice
+        // pre-selected by the prompt (config.nativeBleDevice); otherwise
+        // pfodProxy.
+        if (this.config.useProxy === false) {
+          this.adapter = new BLEConnection(this.config, this);
+          console.log(`[CONNECTION_MANAGER] Initialized native Web Bluetooth adapter for ${this.config.bleName || this.config.bleAddress}`);
+        } else {
+          this.adapter = new BLEProxyConnection(this.config, this);
+          console.log(`[CONNECTION_MANAGER] Initialized BLEProxy adapter via ${this.config.proxyHostPort} for ${this.config.bleAddress}`);
+        }
         break;
 
       case 'tcp':
@@ -491,13 +511,12 @@ class ConnectionManager {
    * reload, or a tab close). NOT the adapter's generic send() — that path
    * waits for a response with a non-keepalive fetch, which Exit's reload
    * (already in flight on the same call stack) reliably cancels before the
-   * device ever receives it. Every adapter that's actually ever
-   * constructed (HTTPConnection, and SerialProxyConnection/
-   * BLEProxyConnection/TCPProxyConnection via their ProxyStreamConnection
-   * base) has this method — Serial/BLE always go via pfodProxy, even on
-   * browsers with native Web Serial/Web Bluetooth (see the native
-   * SerialConnection/BLEConnection classes' own "NOT USED — proxy only"
-   * comments at the bottom of this file).
+   * device ever receives it. Every adapter defines this method:
+   * HTTPConnection; SerialProxyConnection/BLEProxyConnection/
+   * TCPProxyConnection via their ProxyStreamConnection base; and the
+   * native SerialConnection/BLEConnection, which write the bytes straight
+   * at the port/characteristic (best-effort — a native write has no
+   * keepalive equivalent, so on a page unload it may not make it out).
    */
   async sendAbort() {
     if (!this.adapter) return;
@@ -1758,9 +1777,17 @@ class TCPProxyConnection extends ProxyStreamConnection {
 }
 
 /**
- * SerialConnection - Adapter for Serial protocol using Web Serial API
- * NOT USED — proxy always used for all serial connections (SerialProxyConnection).
- * Retained for reference only.
+ * SerialConnection - Adapter for Serial protocol using the Web Serial API.
+ *
+ * Used when the connection prompt's Serial "Connect via" is set to "This
+ * browser" — i.e. the browser exposes navigator.serial and the user opted
+ * out of pfodProxy.  Selected in ConnectionManager.initializeAdapter()
+ * by config.useProxy === false; otherwise SerialProxyConnection is used.
+ *
+ * The SerialPort object is NOT requested here: navigator.serial.requestPort()
+ * needs transient user activation, so the prompt's "Select COM Port" button
+ * calls it directly (inside the click handler) and hands the resulting port
+ * over as config.nativeSerialPort.
  */
 class SerialConnection extends PfodConnectionBase {
   constructor(config, connectionManager) {
@@ -1768,10 +1795,12 @@ class SerialConnection extends PfodConnectionBase {
     this.protocol = 'serial';
     this.config = config;
     this.connectionManager = connectionManager;
-    this.port = null;
-    this.portName = 'Unknown Port';  // Human-readable port name for UI / error messages
-    this.cachePortId = null;         // Stable identifier for localStorage cache keys
-                                     // (set during connect: COM number when available,
+    // Pre-selected by the connection prompt (see class doc).  connect()
+    // opens this port; it never runs the picker itself.
+    this.port = config.nativeSerialPort || null;
+    this.portName = config.serialPath || 'Unknown Port';  // Human-readable port name for UI / error messages
+    this.cachePortId = config.serialPath || null;         // Stable identifier for localStorage cache keys
+                                     // (refined during connect: COM number when available,
                                      // VID/PID hex pair otherwise — Chrome on Windows
                                      // doesn't expose COM numbers but always exposes
                                      // USB VID/PID via port.getInfo()).
@@ -1799,8 +1828,13 @@ class SerialConnection extends PfodConnectionBase {
   }
 
   /**
-   * Connect to a serial port
-   * Always prompts user to select port (does not reuse previously granted ports)
+   * Open the port the connection prompt already picked for us.
+   *
+   * The picker itself runs in the prompt's "Select COM Port" click handler
+   * (navigator.serial.requestPort() requires transient user activation, which
+   * an await-laden connect() can no longer be relied on to have), so by the
+   * time we get here this.port is a live SerialPort and all that remains is
+   * open() + reader/writer setup.
    */
   async connect() {
     try {
@@ -1811,93 +1845,35 @@ class SerialConnection extends PfodConnectionBase {
                         '• Chrome (version 89 or later)\n' +
                         '• Edge (version 89 or later)\n' +
                         '• Opera (version 75 or later)\n\n' +
-                        'Please use a supported browser for Serial connections.';
+                        'Please use a supported browser for Serial connections,\n' +
+                        'or switch "Connect via" back to pfodProxy.';
         throw new Error(errorMsg);
       }
 
-      // Always prompt user to select serial port
-      console.log('[SERIAL_CONNECTION] Prompting user to select serial port...');
+      if (!this.port) {
+        throw new Error('No serial port selected.\n\n' +
+                        'Click "Select COM Port" and choose the port to use.');
+      }
 
       try {
-        // Request port from user
-        this.port = await navigator.serial.requestPort();
-
-        // Capture port name from port info
-        try {
-          const portInfo = this.port.getInfo();
-          let foundComPort = null;
-
-          // Try to find matching port from navigator.serial.getPorts()
-          // This works better on Windows where COM port info isn't exposed directly
-          try {
-            const allPorts = await navigator.serial.getPorts();
-            console.log('[SERIAL_CONNECTION] Total available ports:', allPorts.length);
-
-            // Try to find the just-selected port by matching VID/PID
-            for (let availablePort of allPorts) {
-              const availableInfo = availablePort.getInfo();
-              if (availableInfo.usbVendorId === portInfo.usbVendorId &&
-                  availableInfo.usbProductId === portInfo.usbProductId) {
-                console.log('[SERIAL_CONNECTION] Matched port by VID/PID');
-
-                // Try to extract path/name from available port
-                if (availablePort.path) {
-                  foundComPort = availablePort.path;
-                  console.log('[SERIAL_CONNECTION] Found path:', availablePort.path);
-                  break;
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[SERIAL_CONNECTION] Error getting ports list:', e);
-          }
-
-          // Fallback approaches if above didn't work
-          if (!foundComPort) {
-            // Try port.path
-            if (this.port.path) {
-              foundComPort = this.port.path;
-              console.log('[SERIAL_CONNECTION] Using port.path:', foundComPort);
-            }
-          }
-
-          // Set final port name (human-readable, for UI / error messages)
-          if (foundComPort) {
-            // If it looks like a COM port, use it as is
-            if (foundComPort.match(/COM\d+/)) {
-              this.portName = foundComPort.match(/COM\d+/)[0];
-            } else {
-              this.portName = foundComPort;
-            }
-          } else {
-            // Chrome on Windows doesn't expose COM port number, just show COM?
-            this.portName = 'COM?';
-          }
-
-          // Set cache-stable identifier (for localStorage cache keys).
-          //   Prefer COMn when Chrome exposed it.
-          //   Otherwise fall back to USB VID/PID hex pair from port.getInfo()
-          //   so per-USB-device cache entries don't collide on the literal
-          //   'COM?' fallback when multiple USB serial devices are used.
-          if (this.portName.match(/^COM\d+$/)) {
-            this.cachePortId = this.portName;
-          } else if (portInfo && portInfo.usbVendorId != null && portInfo.usbProductId != null) {
-            const vid = portInfo.usbVendorId.toString(16).toUpperCase().padStart(4, '0');
-            const pid = portInfo.usbProductId.toString(16).toUpperCase().padStart(4, '0');
-            this.cachePortId = `VID${vid}_PID${pid}`;
-          } else {
-            this.cachePortId = this.portName;  // last resort, e.g. 'COM?'
-          }
-
-          console.log('[SERIAL_CONNECTION] Final port name:', this.portName, '/ cache id:', this.cachePortId);
-        } catch (e) {
-          this.portName = 'Serial Port';
-          this.cachePortId = 'Serial Port';
-          console.warn('[SERIAL_CONNECTION] Error extracting port name:', e);
+        // Derive the cache-stable identifier (used for localStorage menu-cache
+        // keys) from the port's USB VID/PID.  Chrome on Windows does not expose
+        // the COM number to the page at all, so the human-readable portName is
+        // whatever label the prompt's picker showed; the VID/PID pair is what
+        // actually keeps per-USB-device cache entries from colliding.
+        const portInfo = this.port.getInfo();
+        if (this.portName.match(/^COM\d+$/)) {
+          this.cachePortId = this.portName;
+        } else if (portInfo && portInfo.usbVendorId != null && portInfo.usbProductId != null) {
+          const vid = portInfo.usbVendorId.toString(16).toUpperCase().padStart(4, '0');
+          const pid = portInfo.usbProductId.toString(16).toUpperCase().padStart(4, '0');
+          this.cachePortId = `VID${vid}_PID${pid}`;
+        } else {
+          this.cachePortId = this.portName;
         }
-        console.log('[SERIAL_CONNECTION] Attempting to open port...');
+        console.log('[SERIAL_CONNECTION] Port name:', this.portName, '/ cache id:', this.cachePortId);
 
-        // Try to open the newly selected port
+        console.log('[SERIAL_CONNECTION] Attempting to open port...');
         await this.port.open({
           baudRate: this.baudRate,
           dataBits: this.dataBits,
@@ -1906,13 +1882,14 @@ class SerialConnection extends PfodConnectionBase {
           flowControl: this.flowControl
         });
         console.log('[SERIAL_CONNECTION] Port opened successfully');
-      } catch (selectError) {
-        console.error('[SERIAL_CONNECTION] Port selection or opening failed:', selectError);
+      } catch (openError) {
+        console.error('[SERIAL_CONNECTION] Port opening failed:', openError);
 
         const errorMsg = 'Serial port could not be opened. Please ensure:\n' +
                         '1. The device is connected\n' +
                         '2. No other application is using the port\n' +
-                        '3. You selected the correct port';
+                        '3. You selected the correct port\n\n' +
+                        openError.message;
         throw new Error(errorMsg);
       }
 
@@ -2182,11 +2159,37 @@ class SerialConnection extends PfodConnectionBase {
   }
 
   /**
-   * Disconnect from the serial port
+   * Fire `{!}` at the device without waiting for a response, so the device's
+   * pfodParser resets its dedup state before the next connect (see
+   * HTTPConnection.sendAbort() for the full rationale).
+   *
+   * Best-effort only: unlike the fetch-based adapters there is no `keepalive`
+   * equivalent for a Web Serial write, so on a page unload the bytes may never
+   * leave the host.  Every failure mode here (writer already released, port
+   * closing, device gone) is expected on that path and is swallowed —
+   * ConnectionManager.sendAbort() calls this fire-and-forget.
+   */
+  async sendAbort() {
+    if (!this.writer) return;
+    const cmdWithPrefix = getCurrentDedupChar() + '{!}';
+    try {
+      const encoder = new TextEncoder();
+      await this.writer.write(encoder.encode(cmdWithPrefix + '\n'));
+      console.log('[SERIAL_CONNECTION] sent {!} on abort');
+    } catch (e) {
+      // best-effort; port/page may be on its way out.
+    }
+  }
+
+  /**
+   * Disconnect from the serial port.
+   * Fires {!} first (so the device resets its dedup state before the next
+   * connect) then tears down reader / writer / port.
    */
   async disconnect() {
     console.log('[SERIAL_CONNECTION] Disconnecting...');
 
+    await this.sendAbort();
     this.connected = false;
 
     try {
@@ -2211,10 +2214,13 @@ class SerialConnection extends PfodConnectionBase {
         this.writer = null;
       }
 
-      // Close port
+      // Close port.  this.port is deliberately KEPT: a closed SerialPort can
+      // be re-opened, and dropping it here would strand both
+      // forceReconnect() (which logs "Port reference lost - cannot
+      // reconnect") and send()'s auto-reconnect, since the picker can no
+      // longer be re-run without a fresh user gesture.
       if (this.port) {
         await this.port.close();
-        this.port = null;
       }
 
       console.log('[SERIAL_CONNECTION] Disconnected successfully');
@@ -2321,9 +2327,17 @@ class SerialConnection extends PfodConnectionBase {
 }
 
 /**
- * BLEConnection - Adapter for BLE protocol using Web Bluetooth API
- * NOT USED — proxy always used for all BLE connections (BLEProxyConnection).
- * Retained for reference only.
+ * BLEConnection - Adapter for BLE protocol using the Web Bluetooth API.
+ *
+ * Used when the connection prompt's BLE "Connect via" is set to "This
+ * browser" — i.e. the browser exposes navigator.bluetooth and the user opted
+ * out of pfodProxy.  Selected in ConnectionManager.initializeAdapter() by
+ * config.useProxy === false; otherwise BLEProxyConnection is used.
+ *
+ * As with SerialConnection, the device picker is NOT run here:
+ * navigator.bluetooth.requestDevice() requires transient user activation, so
+ * the prompt's "Select BLE Device" button calls it and passes the chosen
+ * BluetoothDevice in as config.nativeBleDevice.
  */
 class BLEConnection extends PfodConnectionBase {
   constructor(config, connectionManager) {
@@ -2331,7 +2345,15 @@ class BLEConnection extends PfodConnectionBase {
     this.protocol = 'ble';
     this.config = config;
     this.connectionManager = connectionManager;
-    this.device = null;
+    // Pre-selected by the connection prompt (see class doc).
+    this.device = config.nativeBleDevice || null;
+    // bleAddress feeds ConnectionManager.getConnectionId() (the per-device
+    // localStorage menu-cache key) and bleName the connecting dialog.  Web
+    // Bluetooth never exposes a real MAC, so the prompt passes device.id —
+    // an opaque per-origin identifier, but stable for this browser profile,
+    // which is exactly what the cache key needs.
+    this.bleAddress = config.bleAddress || null;
+    this.bleName    = config.bleName || null;
     this.server = null;
     this.service = null;
     this.characteristicTX = null;
@@ -2355,8 +2377,10 @@ class BLEConnection extends PfodConnectionBase {
   }
 
   /**
-   * Connect to a BLE device
-   * Uses previously granted device if available, otherwise prompts user with filtering
+   * Connect to the BLE device the connection prompt already picked for us.
+   * The picker runs in the prompt's "Select BLE Device" click handler
+   * (requestDevice() requires transient user activation), so this only has to
+   * run the GATT setup — see connectToDevice().
    */
   async connect() {
     // Fresh decoder for each connect so no stale partial-character state carries over
@@ -2369,29 +2393,26 @@ class BLEConnection extends PfodConnectionBase {
                         '• Chrome (version 56 or later)\n' +
                         '• Edge (version 79 or later)\n' +
                         '• Opera (version 43 or later)\n\n' +
-                        'Please use a supported browser for Bluetooth connections.';
+                        'Please use a supported browser for Bluetooth connections,\n' +
+                        'or switch "Connect via" back to pfodProxy.';
         throw new Error(errorMsg);
       }
 
-      // Prompt user to select BLE device
-      console.log('[BLE_CONNECTION] Prompting user to select BLE device...');
+      if (!this.device) {
+        throw new Error('No BLE device selected.\n\n' +
+                        'Click "Select BLE Device" and choose the device to use.');
+      }
 
       try {
-        // Request device from user with UART service filter
-        this.device = await navigator.bluetooth.requestDevice({
-          filters: [{services: [this.UART_SERVICE_UUID]}]
-        });
-        console.log(`[BLE_CONNECTION] User selected device: ${this.device.name || 'Unknown Device'}`);
-
-        // Try to connect to the newly selected device
         await this.connectToDevice(this.device);
-      } catch (selectError) {
-        console.error('[BLE_CONNECTION] Device selection or connection failed:', selectError);
+      } catch (connectError) {
+        console.error('[BLE_CONNECTION] Device connection failed:', connectError);
 
         const errorMsg = 'BLE device could not be connected. Please ensure:\n' +
                         '1. The device is powered on\n' +
                         '2. The device is within range\n' +
-                        '3. The device is advertising the UART service';
+                        '3. The device is advertising the UART service\n\n' +
+                        connectError.message;
         throw new Error(errorMsg);
       }
 
@@ -2415,7 +2436,19 @@ class BLEConnection extends PfodConnectionBase {
     // Show the same connecting modal the proxy adapter uses, with
     // per-phase status text driven by the JS await boundaries here.
     // Hide on completion or any thrown error in this block.
-    this._showConnectingDialog(device.name || 'BLE device');
+    //
+    // Address is passed as '' deliberately: Web Bluetooth never gives us a
+    // MAC, only the opaque per-origin device.id, which means nothing to the
+    // user — so the dialog shows the device name alone.
+    this._showConnectingDialog(this.bleName || device.name || 'BLE device', '');
+    // Cancel button: drop the GATT link.  Whichever step is currently
+    // awaiting (gatt.connect / getPrimaryService / startNotifications)
+    // rejects as a result, which propagates out of connect() as a normal
+    // connection failure and returns the user to the prompt.
+    this._cancelConnect = () => {
+      try { device.gatt.disconnect(); } catch (_) {}
+      this._hideConnectingDialog();
+    };
     try {
       this._updateConnectingDialog('connecting');
       this.server = await device.gatt.connect();
@@ -2605,11 +2638,35 @@ class BLEConnection extends PfodConnectionBase {
   }
 
   /**
-   * Disconnect from the BLE device
+   * Fire `{!}` at the device without waiting for a response so its pfodParser
+   * resets its dedup state before the next connect — same purpose as
+   * HTTPConnection.sendAbort(), and best-effort for the same reason as
+   * SerialConnection.sendAbort() (a GATT write has no `keepalive` equivalent,
+   * so on a page unload it may never go out).
+   */
+  async sendAbort() {
+    if (!this.characteristicTX) return;
+    const cmdWithPrefix = getCurrentDedupChar() + '{!}';
+    try {
+      const encoder = new TextEncoder();
+      await this.characteristicTX.writeValue(encoder.encode(cmdWithPrefix + '\n'));
+      console.log('[BLE_CONNECTION] sent {!} on abort');
+    } catch (e) {
+      // best-effort; link/page may be on its way out.
+    }
+  }
+
+  /**
+   * Disconnect from the BLE device.
+   * Fires {!} first, then drops notifications and the GATT link.  this.device
+   * is deliberately kept — the BluetoothDevice stays valid after a GATT
+   * disconnect, so send()'s auto-reconnect can re-establish the link without
+   * sending the user back through the picker.
    */
   async disconnect() {
     console.log('[BLE_CONNECTION] Disconnecting...');
 
+    await this.sendAbort();
     this.connected = false;
 
     try {
@@ -2626,7 +2683,6 @@ class BLEConnection extends PfodConnectionBase {
       }
 
       // Clear references
-      this.device = null;
       this.server = null;
       this.service = null;
       this.characteristicTX = null;
@@ -2657,8 +2713,8 @@ class BLEConnection extends PfodConnectionBase {
 // Make classes available globally for browser use
 window.ConnectionManager = ConnectionManager;
 window.HTTPConnection = HTTPConnection;
-// window.SerialConnection = SerialConnection; // NOT USED — proxy only
+window.SerialConnection      = SerialConnection;      // native Web Serial (useProxy === false)
 window.SerialProxyConnection = SerialProxyConnection;
 window.TCPProxyConnection    = TCPProxyConnection;
 window.BLEProxyConnection    = BLEProxyConnection;
-// window.BLEConnection = BLEConnection; // NOT USED — proxy only
+window.BLEConnection         = BLEConnection;         // native Web Bluetooth (useProxy === false)

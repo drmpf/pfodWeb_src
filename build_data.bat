@@ -61,6 +61,15 @@ set /a bundle_count=0
 REM ----------------------------------------------------------------------
 REM 5 consolidated bundles, ~50 KB each gzipped, in dependency order.
 REM Names reflect content groupings; numeric prefix preserves load order.
+REM
+REM Each bundle DELETES its .gz before calling 7z.  7z's `a` command
+REM UPDATES an existing archive rather than replacing it, and a gzip can
+REM hold only one file -- so adding to a .gz whose stored internal name
+REM differs from the file being added fails with "The parameter is
+REM incorrect" (exit 2).  With 7z's output suppressed that failure is
+REM invisible and the STALE bundle silently survives, so the data build
+REM ships old JavaScript while pfodWeb.html.gz updates normally.  Deleting
+REM first makes every run a clean write regardless of the old internal name.
 REM ----------------------------------------------------------------------
 
 REM Bundle 001-base — core + jsfreechart base/graphics/data (~44 KB gz)
@@ -102,8 +111,9 @@ REM DOMContentLoaded handler runs.
     type jsfreechart\src\data\XYDatasetUtils.js
     type jsfreechart\src\data\KeyedValues2DDataset.js
 ) > "%TEMP%\pfodweb-001-base"
+if exist "!DATA_DIR!\pfodweb-001-base.js.gz" del /q "!DATA_DIR!\pfodweb-001-base.js.gz" >nul 2>&1
 7z.exe a -tgzip -mx9 "!DATA_DIR!\pfodweb-001-base.js.gz" "%TEMP%\pfodweb-001-base" >nul 2>&1
-if %errorlevel% equ 0 (del "%TEMP%\pfodweb-001-base" & echo   OK pfodweb-001-base.js.gz created & set /a bundle_count+=1)
+if %errorlevel% equ 0 (del "%TEMP%\pfodweb-001-base" & echo   OK pfodweb-001-base.js.gz created & set /a bundle_count+=1) else (echo   ERROR: 7z failed to create pfodweb-001-base.js.gz)
 
 REM Bundle 002-charts — jsfreechart table/renderer/util/axis/labels/legend + plot/chart + chartDisplay (~55 KB gz)
 (
@@ -140,8 +150,9 @@ REM Bundle 002-charts — jsfreechart table/renderer/util/axis/labels/legend + p
     type jsfreechart\src\Charts.js
     type chartDisplay.js
 ) > "%TEMP%\pfodweb-002-charts"
+if exist "!DATA_DIR!\pfodweb-002-charts.js.gz" del /q "!DATA_DIR!\pfodweb-002-charts.js.gz" >nul 2>&1
 7z.exe a -tgzip -mx9 "!DATA_DIR!\pfodweb-002-charts.js.gz" "%TEMP%\pfodweb-002-charts" >nul 2>&1
-if %errorlevel% equ 0 (del "%TEMP%\pfodweb-002-charts" & echo   OK pfodweb-002-charts.js.gz created & set /a bundle_count+=1)
+if %errorlevel% equ 0 (del "%TEMP%\pfodweb-002-charts" & echo   OK pfodweb-002-charts.js.gz created & set /a bundle_count+=1) else (echo   ERROR: 7z failed to create pfodweb-002-charts.js.gz)
 
 REM Bundle 003-render — app messaging + drawing managers + render engine + merger + menu cache (~51 KB gz)
 (
@@ -153,8 +164,9 @@ REM Bundle 003-render — app messaging + drawing managers + render engine + mer
     type drawingMerger.js
     type pfodMenuCache.js
 ) > "%TEMP%\pfodweb-003-render"
+if exist "!DATA_DIR!\pfodweb-003-render.js.gz" del /q "!DATA_DIR!\pfodweb-003-render.js.gz" >nul 2>&1
 7z.exe a -tgzip -mx9 "!DATA_DIR!\pfodweb-003-render.js.gz" "%TEMP%\pfodweb-003-render" >nul 2>&1
-if %errorlevel% equ 0 (del "%TEMP%\pfodweb-003-render" & echo   OK pfodweb-003-render.js.gz created & set /a bundle_count+=1)
+if %errorlevel% equ 0 (del "%TEMP%\pfodweb-003-render" & echo   OK pfodweb-003-render.js.gz created & set /a bundle_count+=1) else (echo   ERROR: 7z failed to create pfodweb-003-render.js.gz)
 
 REM Bundle 004-menu — web translator + drawing data processor + mouse + menu/button renderers + input displays (~58 KB gz)
 (
@@ -168,8 +180,17 @@ REM Bundle 004-menu — web translator + drawing data processor + mouse + menu/b
     type pfodNumericInputDisplay.js
     type pfodSelectionDisplay.js
 ) > "%TEMP%\pfodweb-004-menu"
+REM Embed sound.mp3 into pfodButtonRenderer.js's placeholder BEFORE gzipping,
+REM so the device build ships the real click sound instead of falling back to
+REM the generated tone.  The standalone build does the equivalent inline in
+REM build-bundle.js.  Named for the 004 bundle because that is the one holding
+REM pfodButtonRenderer.js -- if that file moves, move this call with it (the
+REM script prints a loud ERROR if the placeholder is not in the file it is
+REM given).  MUST stay in step with the matching call in build_data.sh.
+node build_data_embed_sound.js "%TEMP%\pfodweb-004-menu"
+if exist "!DATA_DIR!\pfodweb-004-menu.js.gz" del /q "!DATA_DIR!\pfodweb-004-menu.js.gz" >nul 2>&1
 7z.exe a -tgzip -mx9 "!DATA_DIR!\pfodweb-004-menu.js.gz" "%TEMP%\pfodweb-004-menu" >nul 2>&1
-if %errorlevel% equ 0 (del "%TEMP%\pfodweb-004-menu" & echo   OK pfodweb-004-menu.js.gz created & set /a bundle_count+=1)
+if %errorlevel% equ 0 (del "%TEMP%\pfodweb-004-menu" & echo   OK pfodweb-004-menu.js.gz created & set /a bundle_count+=1) else (echo   ERROR: 7z failed to create pfodweb-004-menu.js.gz)
 
 REM Bundle 005-proto — DrawingViewer.prototype extensions (~60 KB gz)
 REM These files do Object.assign(DrawingViewer.prototype, …); the prototype
@@ -187,8 +208,9 @@ REM startBootstrap() declares DrawingViewer before loading any bundle.
     type requestQueue.js
     type connectionSetup.js
 ) > "%TEMP%\pfodweb-005-proto"
+if exist "!DATA_DIR!\pfodweb-005-proto.js.gz" del /q "!DATA_DIR!\pfodweb-005-proto.js.gz" >nul 2>&1
 7z.exe a -tgzip -mx9 "!DATA_DIR!\pfodweb-005-proto.js.gz" "%TEMP%\pfodweb-005-proto" >nul 2>&1
-if %errorlevel% equ 0 (del "%TEMP%\pfodweb-005-proto" & echo   OK pfodweb-005-proto.js.gz created & set /a bundle_count+=1)
+if %errorlevel% equ 0 (del "%TEMP%\pfodweb-005-proto" & echo   OK pfodweb-005-proto.js.gz created & set /a bundle_count+=1) else (echo   ERROR: 7z failed to create pfodweb-005-proto.js.gz)
 
 REM NOTE: pfodWeb.js is NOT in any of the 5 bundles — it is served directly
 REM via <script src="pfodWeb.js">.  It declares the DrawingViewer class and
@@ -214,6 +236,9 @@ set /a html_count=0
 for %%f in (pfodWeb.html) do (
     if exist "!DATA_DIR!\%%f" (
         echo   Compressing %%f...
+        REM Delete first -- see the bundle section's note on 7z `a` updating
+        REM rather than replacing a gzip archive.
+        if exist "!DATA_DIR!\%%f.gz" del /q "!DATA_DIR!\%%f.gz" >nul 2>&1
         7z.exe a -tgzip -mx9 "!DATA_DIR!\%%f.gz" "!DATA_DIR!\%%f" >nul 2>&1
         if !errorlevel! equ 0 (
             del "!DATA_DIR!\%%f" >nul 2>&1
@@ -235,6 +260,9 @@ REM Gzip pfodWeb.js for data directory
 if exist "pfodWeb.js" (
     echo   Compressing pfodWeb.js...
     copy "pfodWeb.js" "!DATA_DIR!\pfodWeb.js" >nul 2>&1
+    REM Delete first -- see the bundle section's note on 7z `a` updating
+    REM rather than replacing a gzip archive.
+    if exist "!DATA_DIR!\pfodWeb.js.gz" del /q "!DATA_DIR!\pfodWeb.js.gz" >nul 2>&1
     7z.exe a -tgzip -mx9 "!DATA_DIR!\pfodWeb.js.gz" "!DATA_DIR!\pfodWeb.js" >nul 2>&1
     if !errorlevel! equ 0 (
         del "!DATA_DIR!\pfodWeb.js" >nul 2>&1

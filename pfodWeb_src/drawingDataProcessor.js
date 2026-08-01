@@ -54,6 +54,33 @@ TouchZoneFilters.decode = function(filterNumber) {
     return result;
 };
 
+/**
+ * Find which drawing in the current tree holds an indexed item.
+ *
+ * An idx is unique across a whole merged drawing tree.  Its transform is
+ * captured once — when the idx is first seen — and never changes afterwards;
+ * only an erase removes the idx and its transform.  A response can arrive
+ * routed to a drawing that does not hold the idx it carries: a touch reply is
+ * routed to the drawing owning the touched zone, but the idx it updates may
+ * live in an enclosing drawing.  Locating the real holder keeps the update on
+ * the single item that idx refers to, so its captured transform stays put.
+ *
+ * @param {Object} drawingManager  live DrawingManager holding the per-drawing collections
+ * @param {number} idx             index to locate (>= 1)
+ * @param {string} exceptDrawing   drawing already known not to hold idx — skipped
+ * @returns {string|null} name of the drawing whose indexedItems hold idx, or null if none do
+ */
+function findIndexOwnerDrawing(drawingManager, idx, exceptDrawing) {
+    for (const name of drawingManager.drawings) {
+        if (name === exceptDrawing) continue;
+        const indexed = drawingManager.indexedItems[name];
+        if (indexed && indexed[idx] !== undefined) {
+            return name;
+        }
+    }
+    return null;
+}
+
 // make all cmd: array
 class DrawingDataProcessor {
     constructor(pfodWebInstance) {
@@ -454,6 +481,25 @@ class DrawingDataProcessor {
             targetUnindexedItems = drawingManager.unindexedItems[drawingName];
         }
 
+        // Resolve the indexed-items collection that already holds an idx, or
+        // null when the idx is genuinely new.  Checks this response's own
+        // collection first, then the rest of the tree — see
+        // findIndexOwnerDrawing for why a response can be routed to a drawing
+        // that doesn't hold the idx it carries.  The merged idx space is a
+        // single flat map, so it needs no tree-wide search.
+        // Other drawings in the tree whose collections this response wrote to,
+        // so their per-drawing caches are saved alongside this drawing's.
+        const redirectedOwnerDwgs = new Set();
+        const ownerIndexedItemsFor = (idx) => {
+            if (targetIndexedItems[idx] !== undefined) return targetIndexedItems;
+            if (isMergedUpdate) return null;
+            const ownerDwg = findIndexOwnerDrawing(drawingManager, idx, drawingName);
+            if (!ownerDwg) return null;
+            console.error(`[INDEX_OWNER] idx=${idx} arrived on drawing "${drawingName}" but is held by "${ownerDwg}" - applying to "${ownerDwg}" so the transform captured when idx ${idx} was first seen is not duplicated or changed`);
+            redirectedOwnerDwgs.add(ownerDwg);
+            return drawingManager.indexedItems[ownerDwg];
+        };
+
         // Set the initial transform
         if (data.pfodDrawing === 'start') {
             // For 'start' commands, reset to initial state
@@ -727,8 +773,7 @@ class DrawingDataProcessor {
                     skipProcessing = true; // Flag to skip adding this item to collections
                 } else {
                     const idx = item.idx;
-                    const indexedItems = drawingManager.getIndexedItems(drawingName);
-                    if (indexedItems[idx]) {
+                    if (ownerIndexedItemsFor(idx)) {
                       console.log(`Processing index item with idx=${item.idx} - already have item with that idx so skip processing this`);
                       skipProcessing = true; // Flag to skip adding this item to collections
                     } else {
@@ -760,12 +805,13 @@ class DrawingDataProcessor {
                 if (item.type === 'erase') {
                     // For erase items, handle both idx and cmd
                     if (item.idx) {
-                        // Erase by index
+                        // Erase by index — the only operation that removes an
+                        // indexed item and its captured transform.
                         const idx = item.idx;
-                        const indexedItems = drawingManager.getIndexedItems(drawingName);
-                        
-                        if (indexedItems[idx]) {
-                            delete drawingManager.indexedItems[drawingName][idx];
+                        const indexedItems = ownerIndexedItemsFor(idx);
+
+                        if (indexedItems) {
+                            delete indexedItems[idx];
                             console.log(`Erased item with index ${idx}`);
                         } else {
                             console.warn(`Erase operation: No item found with idx=${idx} to erase`);
@@ -787,9 +833,9 @@ class DrawingDataProcessor {
                     if (item.idx) {
                         // Hide/unhide by index - affects indexed items only (ignore touchZones)
                         const idx = item.idx;
-                        const indexedItems = drawingManager.getIndexedItems(drawingName);
-                        const targetItem = indexedItems[idx];
-                        
+                        const indexedItems = ownerIndexedItemsFor(idx);
+                        const targetItem = indexedItems ? indexedItems[idx] : undefined;
+
                         if (targetItem) {
                             // Set the visible property based on hide/unhide type
                             targetItem.visible = item.type === 'unhide';
@@ -903,21 +949,27 @@ class DrawingDataProcessor {
                     
               // Normal processing for other items
               } else if (item.idx && item.idx !== 'null') {
-                  // For non-touchZone items, handle as regular indexed items
-                  const idx = item.idx;                        
-                  // Get the current indexed items for this drawing
-                  const isUpdate = targetIndexedItems[idx] !== undefined;
-                  // Add the item to the target indexed items collection
+                  // For non-touchZone items, handle as regular indexed items.
+                  // Write to whichever collection already holds this idx so the
+                  // transform captured when the idx was first seen is reused
+                  // unchanged; a genuinely new idx captures the transform here.
+                  const idx = item.idx;
+                  const ownerIndexedItems = ownerIndexedItemsFor(idx) || targetIndexedItems;
+                  const existingItem = ownerIndexedItems[idx];
+                  const isUpdate = existingItem !== undefined;
                   if (isUpdate) {
-                   item.transform = targetIndexedItems[idx].transform;// || { x: 0, y: 0, scale: 1 };
-                   item.clipRegion = targetIndexedItems[idx].clipRegion;// || { x: 0, y: 0, width: 100, height: 20 };
+                   item.transform = existingItem.transform;
+                   item.clipRegion = existingItem.clipRegion;
                    // Preserve visibility state from existing item
-                   item.visible = targetIndexedItems[idx].visible;
+                   item.visible = existingItem.visible;
+                   // The transform belongs to the drawing that captured it, so
+                   // the item stays attributed to that drawing.
+                   item.parentDrawingName = existingItem.parentDrawingName;
                   }
 
-                  targetIndexedItems[idx] = item;
+                  ownerIndexedItems[idx] = item;
 
-                  console.log(`${isUpdate ? 'Updated' : 'Added'} indexed item: type=${item.type}, drawing=${itemDrawingName}, idx=${idx}, visible=${item.visible !== false}`);
+                  console.log(`${isUpdate ? 'Updated' : 'Added'} indexed item: type=${item.type}, drawing=${item.parentDrawingName}, idx=${idx}, visible=${item.visible !== false}`);
               } else {
                   // Unindexed items
                   // For non-touchZone items, add to the drawing's unindexed items array
@@ -1039,6 +1091,9 @@ class DrawingDataProcessor {
                 ? getConnectionIdentifier(this.pfodWeb.connectionManager) : null;
             if (connectionId) {
                 drawingManager.saveDrawingDataToStorage(drawingName, connectionId);
+                for (const ownerDwg of redirectedOwnerDwgs) {
+                    drawingManager.saveDrawingDataToStorage(ownerDwg, connectionId);
+                }
             }
         } catch (e) {
             console.warn(`[DRAWING_DATA_PROCESSOR] Could not save per-drawing cache for "${drawingName}":`, e.message);

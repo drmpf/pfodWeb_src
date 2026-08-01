@@ -324,13 +324,15 @@ class DrawingMerger {
 
             const numericIdx = parseInt(idx);
             if (outIndexed[numericIdx]) {
+                // An idx is unique across a whole merged tree, so two drawings
+                // claiming the same idx means the invariant is already broken
+                // upstream.  Keep the entry that claimed the idx first — its
+                // transform was captured when the idx was first seen and must
+                // not change — and report the collision rather than silently
+                // reconciling the two items.
                 const currentItem = outIndexed[numericIdx];
-                // Preserve previously-merged transform / clipRegion / visibility
-                // for the same idx coming from a different drawing in the tree.
-                processedItem.transform  = {...currentItem.transform};
-                processedItem.clipRegion = {...currentItem.clipRegion};
-                processedItem.visible    = {...currentItem.visible};
-                console.info(`[MERGE_DWG_UPDATE] Update existing item with index ${numericIdx} to ${JSON.stringify(processedItem)}`);
+                console.error(`[MERGE_DWG] idx=${numericIdx} claimed by both "${currentItem.parentDrawingName}" and "${drawingName}" - merged-tree indices must be unique. Keeping the "${currentItem.parentDrawingName}" item, discarding ${JSON.stringify(processedItem)}`);
+                continue;
             }
             console.info(`[MERGE_DWG] Added indexed Item  ${JSON.stringify(processedItem)}`);
             outIndexed[numericIdx] = processedItem;

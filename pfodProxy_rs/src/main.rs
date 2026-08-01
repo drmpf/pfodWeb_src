@@ -20,7 +20,18 @@ mod logscan;
 mod state;
 mod serial;
 mod tcp;
+// BLE has two independent backends behind one `ble::handle` entry point.
+//   * Windows      → src/ble_win.rs, built on bluest.
+//   * macOS/Linux  → src/ble.rs, built on btleplug, plus the ble_names.rs
+//                    advertisement watcher it depends on for local names.
+// Neither file is compiled on the other's platform, so the two never have
+// to agree on anything beyond `ble::handle(app, params)`.
+#[cfg(not(windows))]
 mod ble;
+#[cfg(windows)]
+#[path = "ble_win.rs"]
+mod ble;
+#[cfg(not(windows))]
 mod ble_names;
 mod validate;
 mod extrafonts;

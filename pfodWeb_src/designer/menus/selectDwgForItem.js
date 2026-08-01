@@ -96,6 +96,28 @@ const DesignerSelectDwgForItem = (() => {
     return DwgLibrary.listNames().filter((name) => !used.has(name));
   }
 
+  /// _usedDwgNames's own deep walk (dwgs reachable via insertDwg from
+  /// any Drawing item, but only for names it could actually open — see
+  /// DwgArduinoExport.collectAllDwgs's own doc: a missing/unloaded
+  /// target is recorded as "missing", not added to the returned set)
+  /// PLUS every Drawing item's own dwgName directly, even when that dwg
+  /// isn't currently loaded. Loading a file from _loadFromFile checks
+  /// against THIS, not _usedDwgNames alone — a menu can reference a dwg
+  /// by name before it's ever been loaded (missingDwgPrompt.js's own
+  /// "Missing Drawings" flow, or a design shared without its dwg files),
+  /// and picking a same-named file here must be treated the same as
+  /// picking an already-loaded one: reject, don't silently create a
+  /// second, disconnected entry via DwgLibrary's own overwrite-on-save.
+  /// @param {DesignerState} state
+  /// @returns {Set<string>}
+  function _usedOrReferencedDwgNames(state) {
+    const names = _usedDwgNames(state);
+    for (const item of state.getAllItems()) {
+      if (item.type === 'drawing' && item.dwgName) names.add(item.dwgName);
+    }
+    return names;
+  }
+
   /// Render the full {,...} screen: Load Dwg from File button, then one
   /// button per available DwgLibrary entry (see _listNames) showing its
   /// name + description.
@@ -105,7 +127,7 @@ const DesignerSelectDwgForItem = (() => {
     out += '<+2><b>Choose a Drawing</b></+2>\n';
     out += '<-1>Pick which dwg this menu item should open, or load one from a file.';
     out += '|dK' + SDI_LOAD_FILE_CMD + DESIGNER_MENU_FMT + '~Load Dwg from File';
-    out += '|!I~<y><i>Use the Load button above to load saved <b>.pfodDwg_json</b> dwg files';
+    out += '|!I~<y><i>Use the Load button above to load saved <b>.pfodDwg_json</b> dwg files</y>\nor use main menu\nCreate/Edit Drawings';
     if (names.length === 0) {
       // Distinguish "genuinely nothing loaded" from "some are loaded but
       // every one is already linked elsewhere in this design" — the
@@ -204,6 +226,13 @@ const DesignerSelectDwgForItem = (() => {
             return;
           }
           const { dwg, errors } = validateAndRepairDwg(parsed, DwgLibrary.nextFreeName(parsed.name));
+          if (_usedOrReferencedDwgNames(state).has(dwg.name)) {
+            pfodAlert('"' + _sanitize(dwg.name) + '" is already used in this menu (either loaded and ' +
+              'linked to another item, or referenced but not yet loaded) and was not loaded. ' +
+              'Choose a different file, or open Create/Edit Drawings and make a copy of the dwg.', () => {});
+            settle({ pfod: _renderScreen(state), skipSave: true });
+            return;
+          }
           if (errors && errors.length > 0) {
             pfodAlert('"' + file.name + '" had problems that were auto-fixed:\n' +
               errors.map((e) => e.message).join('\n'), () => {});

@@ -3,6 +3,18 @@
 //
 // BLE transport handler — all-SSE shape, clean-room implementation.
 //
+// *** macOS / Linux ONLY.  Windows uses ble_win.rs (bluest) instead. ***
+//
+// This file is not compiled on Windows (see the `mod ble` declarations in
+// main.rs), so its `#[cfg(windows)]` branches and everything they say about
+// the Windows BLE stack are now history rather than live code — kept because
+// they record what was measured on real hardware, and because the btleplug
+// backend still needs them if it is ever pointed at Windows again.  They
+// would not build as-is: the direct `windows`-crate dependency they rely on
+// was dropped from Cargo.toml along with ble_names.rs's WinRT watcher, whose
+// job bluest now does.  The findings themselves are carried forward in
+// ble_win.rs's header.
+//
 //   GET /pfodWeb?ble=                          discovery SSE
 //                                              streams NUS-advertising
 //                                              peripherals as they appear
@@ -56,6 +68,31 @@ use crate::state::{AppState, BleSession, BYTES_CHANNEL_CAP};
 const NUS_SERVICE: Uuid = Uuid::from_u128(0x6E400001_B5A3_F393_E0A9_E50E24DCCA9E);
 const NUS_RX_CHAR: Uuid = Uuid::from_u128(0x6E400002_B5A3_F393_E0A9_E50E24DCCA9E);
 const NUS_TX_CHAR: Uuid = Uuid::from_u128(0x6E400003_B5A3_F393_E0A9_E50E24DCCA9E);
+
+// A connect-and-read of GAP characteristic 0x2A00 (Device Name) was tried
+// here and removed — the second time this file has reached that conclusion,
+// so the measurements are recorded rather than the advice.
+//
+// 0x2A00 is the GAP Device Name, NOT the advertised Local Name the picker
+// wants.  The advertisement and scan response are broadcast data; a connected
+// device has stopped advertising and exposes nothing that republishes them,
+// so no connection can return the Local Name.  In ArduinoBLE the two are
+// separate setters — `setLocalName()` fills the advertisement, `setDeviceName()`
+// fills 0x2A00 — and 0x2A00 defaults to "Arduino" when a sketch sets only the
+// former, which is the common case.
+//
+// Measured against a real device: 0x2A00 read back "Arduino" (the default
+// this file already rejects, see is_default_firmware_name) and the probe took
+// 5.5 s, during which the discovery SSE — a single task — logged no scan
+// activity at all and the picker's device list was frozen.
+//
+// Both routes that do work are already in fill_name: the Local Name off the
+// air via ble_names.rs (confirmed reading "pfod_LedOnOff" from a scan
+// response), and the OS device cache.  When neither produces a name the cause
+// is a weak or sparse advertiser losing its SCAN_RSP exchange — the failing
+// device measured -87 dBm against -36 for the one that worked — and that is
+// fixed by moving the device closer or giving it a Local Name in firmware,
+// not by connecting.
 
 #[derive(Clone)]
 struct BleDeviceInfo {
@@ -142,22 +179,6 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
                 return;
             }
         };
-        if let Err(e) = central.start_scan(ScanFilter { services: vec![NUS_SERVICE] }).await {
-            yield Ok(SseEvent::default().event("error").data(format!("start_scan: {e}")));
-            return;
-        }
-
-        let _guard = ScanGuard { central: Some(central.clone()) };
-        log::log("[pfodProxy] BLE discovery scan started");
-
-        let mut events = match central.events().await {
-            Ok(e) => e,
-            Err(e) => {
-                yield Ok(SseEvent::default().event("error").data(format!("events: {e}")));
-                return;
-            }
-        };
-
         // Parallel WinRT advertisement watcher — pulls Local Name
         // (AD type 0x08/0x09) from scan-response data sections that
         // btleplug's `properties.local_name` fails to surface on the
@@ -165,9 +186,31 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
         // why this exists.  The (mac, name) pairs come back over the
         // channel and are merged into the picker via the select! loop.
         // On non-Windows, this is a no-op stub.
+        //
+        // Started BEFORE btleplug's scan because, on Windows, whether that
+        // scan runs at all now depends on whether this succeeded.
         let (scan_name_tx, mut scan_name_rx) =
             tokio::sync::mpsc::unbounded_channel::<crate::ble_names::NameUpdate>();
-        let _name_watcher = match crate::ble_names::NameWatcher::start(scan_name_tx) {
+
+        // Full per-advertisement records.  Windows drives discovery from
+        // these (see the `adv_rx` arm in the select! below); every other
+        // platform drops the sender immediately, so the receiver yields None
+        // forever, that arm never fires, and btleplug's scan stays
+        // authoritative exactly as before.  See ble_names::AdvReport for why
+        // Windows cannot rely on btleplug here.
+        let (adv_tx, mut adv_rx) =
+            tokio::sync::mpsc::unbounded_channel::<crate::ble_names::AdvReport>();
+
+        #[cfg(windows)]
+        let watcher_started = crate::ble_names::NameWatcher::start(scan_name_tx, adv_tx);
+        #[cfg(not(windows))]
+        let watcher_started = {
+            drop(adv_tx);   // nothing feeds it off Windows
+            crate::ble_names::NameWatcher::start(scan_name_tx)
+        };
+
+        let watcher_ok = watcher_started.is_ok();
+        let _name_watcher = match watcher_started {
             Ok(w) => {
                 log::log("[pfodProxy] BLE scan-response name watcher started");
                 Some(w)
@@ -177,6 +220,58 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
                     "[pfodProxy] BLE scan-response name watcher failed to start: {e:?} — names from scan-response data sections will be unavailable"
                 ));
                 None
+            }
+        };
+
+        // Whether btleplug's own scan also runs.
+        //
+        // Windows: NO, as long as the watcher above came up.  Two
+        // advertisement watchers — btleplug's, which is service-UUID
+        // filtered, plus ours — otherwise compete for one radio, and the
+        // driver appears to issue SCAN_REQ during only some of the resulting
+        // slots: measured 3 scan responses in 129 packets in one run and none
+        // at all in the two after it.  Discovery here is now driven entirely
+        // from the watcher's reports (it supplies address, has_nus and RSSI),
+        // so btleplug's scan contributes nothing to the picker and only costs
+        // radio time.  Leaving one watcher on the air is the last lever we
+        // have over SCAN_RSP capture; if it does not help, the adapter simply
+        // will not do it and the device needs its Local Name in the ADV_IND.
+        //
+        // Falls back to starting it when the watcher failed, so Windows
+        // discovery is never left with no source at all.
+        //
+        // Everywhere else: YES, unchanged — btleplug's scan is the sole
+        // discovery source and the watcher only supplements names.
+        //
+        // Connecting is unaffected either way: handle_connection_stream
+        // starts its own scan.
+        #[cfg(windows)]
+        let need_btleplug_scan = !watcher_ok;
+        #[cfg(not(windows))]
+        let need_btleplug_scan = { let _ = watcher_ok; true };
+
+        // ScanGuard stops the scan when this stream is dropped.  Given None
+        // when we never started one, so its Drop does nothing.
+        let _guard = if need_btleplug_scan {
+            if let Err(e) = central.start_scan(ScanFilter { services: vec![NUS_SERVICE] }).await {
+                yield Ok(SseEvent::default().event("error").data(format!("start_scan: {e}")));
+                return;
+            }
+            log::log("[pfodProxy] BLE discovery scan started");
+            ScanGuard { central: Some(central.clone()) }
+        } else {
+            log::log(
+                "[pfodProxy] BLE discovery: advertisement watcher only — btleplug scan not \
+                 started, leaving a single watcher on the radio"
+            );
+            ScanGuard { central: None }
+        };
+
+        let mut events = match central.events().await {
+            Ok(e) => e,
+            Err(e) => {
+                yield Ok(SseEvent::default().event("error").data(format!("events: {e}")));
+                return;
             }
         };
 
@@ -196,11 +291,41 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
         // those to the picker if the address is in this set.
         let mut nus_addrs: HashSet<String> = HashSet::new();
 
+        // Last genuine RSSI seen per address.  The Windows stack only reports
+        // a real signal strength on the packet that also carries the scan
+        // response; every other advertisement for the same device comes back
+        // with the +27 placeholder that normalise_rssi discards.  Observed in
+        // the field: eleven consecutive 27s for one device with a single -31
+        // among them, that -31 landing 5 ms before its Local Name.  Without
+        // this the picker would flash a signal strength and then blank it on
+        // the very next advertisement, so hold the last real reading.  It
+        // goes slightly stale between scan responses, which is harmless for a
+        // "how close is this device" indicator.
+        let mut rssi_cache: HashMap<String, i16> = HashMap::new();
+
+        // Addresses we have already asked the OS about (see fill_name).
+        // That lookup is only worth doing once per address per scan: its
+        // answer comes from a cache that will not change while we scan, and
+        // DeviceUpdated fires for every advertisement, so without this we
+        // would re-query several times a second per nameless device.
+        let mut name_lookup_tried: HashSet<String> = HashSet::new();
+
         // Flush already-known peripherals (snappy first render),
         // then enter the event loop.
-        let mut initial = match central.peripherals().await {
-            Ok(v) => v,
-            Err(_) => Vec::new(),
+        //
+        // Skipped in watcher-only mode: with no btleplug scan running nothing
+        // refreshes that list, so it can only hold devices cached from an
+        // earlier picker session in this process — some of which may be long
+        // gone, and `properties()` would happily report their stale service
+        // list as NUS.  Offering a device that cannot be verified is worse
+        // than the ~1 s it takes the watcher to report the live ones.
+        let mut initial = if need_btleplug_scan {
+            match central.peripherals().await {
+                Ok(v) => v,
+                Err(_) => Vec::new(),
+            }
+        } else {
+            Vec::new()
         }.into_iter();
 
         log::log("[pfodProxy] BLE discovery: entering event loop");
@@ -210,11 +335,8 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
             if let Some(p) = initial.next() {
                 if let Some(mut info) = device_info(&p).await {
                     nus_addrs.insert(info.address.clone());
-                    if let Some(n) = info.name.clone() {
-                        name_cache.insert(info.address.clone(), n);
-                    } else if let Some(cached) = name_cache.get(&info.address) {
-                        info.name = Some(cached.clone());
-                    }
+                    fill_name(&mut info, &mut name_cache, &mut name_lookup_tried).await;
+                    fill_rssi(&mut info, &mut rssi_cache);
                     info.in_use = addr_in_use(&app, &info.address).await;
                     yield Ok::<_, Infallible>(SseEvent::default().data(info.to_json()));
                 }
@@ -230,11 +352,8 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
                             if let Ok(p) = central.peripheral(&id).await {
                                 if let Some(mut info) = device_info(&p).await {
                                     nus_addrs.insert(info.address.clone());
-                                    if let Some(n) = info.name.clone() {
-                                        name_cache.insert(info.address.clone(), n);
-                                    } else if let Some(cached) = name_cache.get(&info.address) {
-                                        info.name = Some(cached.clone());
-                                    }
+                                    fill_name(&mut info, &mut name_cache, &mut name_lookup_tried).await;
+                                    fill_rssi(&mut info, &mut rssi_cache);
                                     info.in_use = addr_in_use(&app, &info.address).await;
                                     yield Ok::<_, Infallible>(SseEvent::default().data(info.to_json()));
                                 }
@@ -243,35 +362,90 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
                         Some(_) => {}
                     }
                 }
+                Some(rep) = adv_rx.recv() => {
+                    // WINDOWS ONLY — off Windows the sender was dropped at
+                    // startup, so this arm never fires and btleplug's scan
+                    // stays the sole discovery source, unchanged.
+                    //
+                    // Here it is the other way round: btleplug's watcher is
+                    // service-UUID filtered and therefore blind to scan
+                    // responses, so it reports neither Local Names nor most
+                    // genuine RSSI readings (measured: 1 real reading in 66
+                    // events, against 9 from this watcher over the same
+                    // scan).  Discovery is driven from these reports instead.
+                    //
+                    // Names are deliberately NOT handled here: the same
+                    // watcher already sent them on scan_name_rx, whose arm
+                    // below owns caching and emitting them.
+                    let rssi = normalise_rssi(rep.rssi);
+                    let mut changed = false;
+                    if let Some(v) = rssi {
+                        if rssi_cache.insert(rep.address.clone(), v) != Some(v) {
+                            changed = true;
+                        }
+                    }
+                    // insert() returning true means this is the first time
+                    // any source has classified the address as a pfod device
+                    // — i.e. we discovered it, ahead of btleplug.
+                    if rep.has_nus && nus_addrs.insert(rep.address.clone()) {
+                        changed = true;
+                    }
+                    // Gated on `changed` so the picker gets an event when
+                    // something it displays actually differs, not once per
+                    // advertisement — most packets carry the +27 placeholder
+                    // that normalise_rssi drops, so this stays quiet.
+                    if rep.has_nus && changed {
+                        let mut info = BleDeviceInfo {
+                            address: rep.address.clone(),
+                            name:    None,
+                            rssi:    rssi_cache.get(&rep.address).copied(),
+                            in_use:  addr_in_use(&app, &rep.address).await,
+                        };
+                        fill_name(&mut info, &mut name_cache, &mut name_lookup_tried).await;
+                        yield Ok::<_, Infallible>(SseEvent::default().data(info.to_json()));
+                    }
+                }
                 Some((addr, name)) = scan_name_rx.recv() => {
                     // The watcher's `addr` is upper-case (format_mac
                     // uses :02X) and matches btleplug's
                     // `address().to_string()` format — no
                     // case-normalisation needed.  Always update the
                     // cache (cheap; useful if the device later
-                    // identifies as NUS via btleplug), but only push
-                    // an SSE event to the picker when btleplug has
+                    // identifies as NUS via btleplug), but only log and
+                    // push an SSE event to the picker when btleplug has
                     // already classified this address as NUS.
                     // Otherwise we'd be surfacing nearby BLE devices
                     // (TVs, weather stations, fitness trackers...)
                     // that the picker is supposed to filter out.
+                    //
+                    // The log was previously outside this gate and so
+                    // named every device in range — "[LG] webOS TV
+                    // QNED75SRA (nus=false)" and the like.  Caching an
+                    // as-yet-unclassified device's name silently is the
+                    // deliberate trade: it fills the picker row the
+                    // instant that address does turn out to be NUS.
                     let already = name_cache.get(&addr).map(|s| s == &name).unwrap_or(false);
                     if !already {
                         let is_nus = nus_addrs.contains(&addr);
-                        log::log(&format!(
-                            "[pfodProxy] BLE scan-response name for {addr}: {name:?} (nus={is_nus})"
-                        ));
                         name_cache.insert(addr.clone(), name.clone());
                         if is_nus {
+                            log::log(&format!(
+                                "[pfodProxy] BLE scan-response name for {addr}: {name:?}"
+                            ));
                             // Push an immediate update event for the
                             // picker so the row updates without
                             // waiting for the next DeviceUpdated.
-                            // RSSI unknown here; next ad packet refreshes it.
+                            // This event carries no RSSI of its own, so
+                            // reuse the last genuine reading rather than
+                            // sending null — otherwise the arrival of the
+                            // name would visibly blank the signal strength
+                            // the row was already showing.
                             let in_use = addr_in_use(&app, &addr).await;
+                            let rssi = rssi_cache.get(&addr).copied();
                             let info = BleDeviceInfo {
                                 address: addr,
                                 name:    Some(name),
-                                rssi:    None,
+                                rssi,
                                 in_use,
                             };
                             yield Ok::<_, Infallible>(SseEvent::default().data(info.to_json()));
@@ -282,6 +456,108 @@ async fn handle_discovery_stream(app: Arc<AppState>) -> axum::response::Response
         }
     };
     Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+}
+
+/// Settle the name for one scan hit, in priority order.
+///
+/// Extracted because the scan loop reaches this point from two places (the
+/// initial flush of already-known peripherals and each DeviceDiscovered /
+/// DeviceUpdated event) and both need identical treatment.
+///
+/// 1. A Local Name on this advertisement wins and is cached for later
+///    advertisements that arrive without one.
+/// 2. Otherwise reuse a name already cached for this address — either from
+///    an earlier advertisement or from the scan-response watcher.
+/// 3. Otherwise ask the OS for a name it holds for this address.  A weak or
+///    sparse advertiser can fail to complete the SCAN_REQ / SCAN_RSP exchange
+///    that carries AD 0x08/0x09, so its name never reaches us over the air no
+///    matter how long the scan runs, and the picker was left showing
+///    "(no name scanned)" for a device that does have one.  On Windows this
+///    reads the system's device cache without connecting; elsewhere it is a
+///    stub returning None (see ble_names.rs).
+///
+/// There is deliberately no fourth step reading GATT 0x2A00 — see the note
+/// where that constant used to live, above.
+///
+/// Step 3 runs at most once per address per scan — `tried` guards it — since
+/// DeviceUpdated fires for every advertisement and the answer cannot change
+/// mid-scan.
+async fn fill_name(
+    info:  &mut BleDeviceInfo,
+    cache: &mut HashMap<String, String>,
+    tried: &mut HashSet<String>,
+) {
+    if let Some(n) = info.name.clone() {
+        cache.insert(info.address.clone(), n);
+        return;
+    }
+    if let Some(cached) = cache.get(&info.address) {
+        info.name = Some(cached.clone());
+        return;
+    }
+    if !tried.insert(info.address.clone()) {
+        return;   // already asked the OS about this address
+    }
+    match crate::ble_names::lookup_cached_name(&info.address).await {
+        Some(n) if !is_default_firmware_name(&n) => {
+            log::log(&format!(
+                "[pfodProxy] BLE name for {} from OS device cache: {n:?} \
+                 (no Local Name in any advertisement)",
+                info.address
+            ));
+            cache.insert(info.address.clone(), n.clone());
+            info.name = Some(n);
+            return;
+        }
+        Some(n) => {
+            log::log(&format!(
+                "[pfodProxy] BLE name for {} from OS device cache ignored: {n:?} is a \
+                 firmware default, not a device name",
+                info.address
+            ));
+        }
+        None => {}
+    }
+
+}
+
+/// True for names that are a firmware default rather than anything anyone
+/// chose for this device.
+///
+/// The OS device cache can hand back the GATT 0x2A00 device-name, which on an
+/// unconfigured board is just the library default — "Arduino" for ArduinoBLE.
+/// In a picker that is worse than no name at all: it is identical across every
+/// such board so it cannot tell two of them apart, and it disguises the fact
+/// that the device never advertised a name.  This file's own history records
+/// the same conclusion — the GATT 0x2A00 read was removed precisely because it
+/// "returned the firmware default name ("Arduino") rather than the
+/// user-visible Local Name".
+///
+/// Deliberately applied ONLY to names from the OS cache, never to a Local Name
+/// parsed from an advertisement: what a device actually puts on the air is a
+/// deliberate choice by whoever flashed it, and matching what Chrome and
+/// nRF Connect display matters more than second-guessing it.
+///
+/// Kept to defaults actually observed in the field.  Adding speculative
+/// entries would risk suppressing a name someone genuinely chose.
+fn is_default_firmware_name(name: &str) -> bool {
+    const DEFAULTS: [&str; 1] = ["arduino"];
+    let n = name.trim().to_ascii_lowercase();
+    DEFAULTS.contains(&n.as_str())
+}
+
+
+/// Carry the last genuine RSSI forward for one address.
+///
+/// Pairs with `normalise_rssi`, which has already turned the Windows +27
+/// placeholder into None by the time we get here: a real reading updates the
+/// cache, and a missing one is filled from it.  See the `rssi_cache`
+/// declaration in the scan loop for why a real reading is so rare.
+fn fill_rssi(info: &mut BleDeviceInfo, cache: &mut HashMap<String, i16>) {
+    match info.rssi {
+        Some(v) => { cache.insert(info.address.clone(), v); }
+        None    => { info.rssi = cache.get(&info.address).copied(); }
+    }
 }
 
 async fn device_info(p: &btleplug::platform::Peripheral) -> Option<BleDeviceInfo> {
@@ -298,10 +574,19 @@ async fn device_info(p: &btleplug::platform::Peripheral) -> Option<BleDeviceInfo
         }
     };
     let is_nus = props.services.contains(&NUS_SERVICE);
-    log::log(&format!(
-        "[pfodProxy] BLE scan {addr}: local_name={:?} rssi={:?} services={} nus={}",
+    let rssi = normalise_rssi(props.rssi);
+    // Debug-level: this fires for every advertisement of every device in
+    // range, so at normal level it named the neighbourhood's TVs, weather
+    // stations and fitness trackers — the same noise the scan-response name
+    // log was gated to stop.  Kept rather than gated on `is_nus` because its
+    // value is precisely in showing the devices that were rejected and why,
+    // which is what the "no name scanned" investigations recorded above rely
+    // on; that is a debugging need, not a normal-running one.  Matches the
+    // per-advertisement dump in ble_win.rs, which is also debug-only.
+    log::debug(&format!(
+        "BLE scan {addr}: local_name={:?} rssi={:?} services={} nus={}",
         props.local_name,
-        props.rssi,
+        rssi,
         props.services.len(),
         is_nus,
     ));
@@ -320,11 +605,40 @@ async fn device_info(p: &btleplug::platform::Peripheral) -> Option<BleDeviceInfo
     Some(BleDeviceInfo {
         address: addr,
         name:    local_name,
-        rssi:    props.rssi,
+        rssi,
         // Set by the caller (which has `app` in scope) right before
         // each yield — see the two `device_info` call sites above.
         in_use:  false,
     })
+}
+
+/// Discard an RSSI reading that cannot be a real measurement.
+///
+/// BLE RSSI is a signed dBm figure: roughly -20 to -40 for a device sitting
+/// on the desk, down to about -100 at the edge of usable range.  It is never
+/// positive — +27 dBm would be half a watt of transmit power, which no BLE
+/// radio emits.
+///
+/// The Windows stack has been observed reporting a fixed +27 for a device
+/// whose real signal strength is -41, and again for one at -86 (both
+/// confirmed from the same devices on macOS).  So this is NOT a sign-dropped
+/// magnitude that could be recovered by negating it — the same 27 comes back
+/// regardless of the actual signal.  It is a placeholder, not a measurement.
+///
+/// Report it as unknown.  `BleDeviceInfo::to_json` emits `"rssi":null` for
+/// None and the picker then omits the dBm suffix entirely, which is honest;
+/// negating would have shown a confident "-27 dBm" that is pure invention and
+/// would have made two devices 45 dB apart look identical.
+///
+/// Deliberately silent.  This fires for very nearly every advertisement of
+/// every nearby device — 116 of 117 packets in one measured run — so logging
+/// it drowned the debug output while telling us nothing new: the raw value is
+/// already visible in ble_names.rs's per-advertisement dump.
+fn normalise_rssi(rssi: Option<i16>) -> Option<i16> {
+    match rssi {
+        Some(v) if v > 0 => None,
+        other => other,
+    }
 }
 
 // read_gatt_name was here — removed because GATT 0x2A00 returned the

@@ -83,14 +83,19 @@ const DesignerSelectFromMenuList = (() => {
     return out;
   }
 
-  /// Switch active design to names[idx] and open the editMenu screen.
-  /// Only loads by index when no design is currently active (state.name
-  /// is empty).  Once a design is loaded its identity is state.name —
-  /// independent of list position or order — and back-nav cmds like
-  /// {b0} re-enter the same editMenu without reloading from the list.
-  /// The only ways to change the active design are: (a) the user picks
-  /// from the list after send() clears state.name on the bare {b} path,
-  /// or (b) load-from-file sets state.name to the loaded design.
+  /// Switch active design to names[idx] and open the editMenu screen —
+  /// or, if the freshly-loaded design references any dwg not currently
+  /// in DwgLibrary (directly or via insertDwg), the "Missing Drawings"
+  /// prompt (missingDwgPrompt.js) instead, so the user can load them
+  /// before editing. Only loads by index when no design is currently
+  /// active (state.name is empty).  Once a design is loaded its identity
+  /// is state.name — independent of list position or order — and
+  /// back-nav cmds like {b0} re-enter the same editMenu without
+  /// reloading from the list (so the missing-dwg prompt only fires once,
+  /// right after the real load). The only ways to change the active
+  /// design are: (a) the user picks from the list after send() clears
+  /// state.name on the bare {b} path, or (b) load-from-file sets
+  /// state.name to the loaded design.
   function _switchAndReturnMain(state, idx) {
     if (!state.name) {
       const names = DesignerState.listNames();
@@ -99,7 +104,7 @@ const DesignerSelectFromMenuList = (() => {
       }
       state.loadNamed(names[idx]);
     }
-    return DesignerEditMenu.send(state);
+    return DesignerMissingDwgPrompt.maybeShow(state) || DesignerEditMenu.send(state);
   }
 
   /// Dispatch handler.  depth points to the matched 'b' byte; sub-

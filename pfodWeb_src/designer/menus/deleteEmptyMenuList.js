@@ -73,11 +73,13 @@ function _downloadBeforeDelete(state, name) {
       try { stored = JSON.parse(raw); } catch (_) { stored = null; }
       if (stored && stored.rootMenu) {
         const exportObj = {
-          format:  EXPORT_FORMAT_TAG,
-          schema:  DESIGNER_STATE_SCHEMA_VERSION,
-          name:    name,
-          savedAt: new Date().toISOString(),
-          data:    { rootMenu: _exportableMenu(stored.rootMenu) },
+          format:     EXPORT_FORMAT_TAG,
+          schema:     DESIGNER_STATE_SCHEMA_VERSION,
+          name:       name,
+          savedAt:    new Date().toISOString(),
+          js_ver:     window.JS_VERSION,
+          rootMenu:   _exportableMenu(stored.rootMenu),
+          connection: stored.connection,
         };
         blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
       }
@@ -87,7 +89,12 @@ function _downloadBeforeDelete(state, name) {
   const url = URL.createObjectURL(blob);
   const a   = document.createElement('a');
   a.href     = url;
-  a.download = name + '.pfodMenu_json';
+  // Filesystem-safe form of the design name for the download's own
+  // filename only -- exportObj.name above stays the real design name.
+  // Matches generateCode.js's own _cppId.
+  let fileName = (name || '').replace(/[^A-Za-z0-9]/g, '_');
+  if (fileName && /^[0-9]/.test(fileName)) fileName = '_' + fileName;
+  a.download = (fileName || 'Menu') + '.pfodMenu_json';
   document.body.appendChild(a);
   a.click();
   a.remove();

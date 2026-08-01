@@ -76,16 +76,17 @@ function _stripRegenerableWireFields(items) {
 /// BOTH DwgLibrary.save() (localStorage) and any file-export path
 /// (Unload Dwg's download, a future Export Dwg), so every place a dwg
 /// gets serialized produces the exact same shape:
-///   { format, schema, savedAt, name, js_ver, version, x, y, color,
-///     refresh, items }
-/// format/schema/savedAt/js_ver/version are ALWAYS regenerated fresh here
-/// — they describe THIS save, not whatever the dwg happened to carry in
-/// from a previous load (per direction: "version... should be the
-/// version that saved it not just the loaded data"). items is flattened
-/// back to the plain sibling form (dwgValidate.js's flattenTouchActions)
-/// since this is the on-disk/wire shape, not the internal nested one,
-/// then has its regenerable cmd/idx/textIdx values stripped wherever a
-/// cmdName/idxName exists to regenerate them from later.
+///   { format, schema, savedAt, name, js_ver, x, y, color, refresh, items }
+/// format/schema/savedAt/js_ver are ALWAYS regenerated fresh here — they
+/// describe THIS save, not whatever the dwg happened to carry in from a
+/// previous load. (A separate `version` field once existed for the same
+/// "describes this save" reason, but savedAt's own ISO timestamp already
+/// serves that purpose — nothing ever read version back — so it was
+/// dropped.) items is flattened back to the plain sibling form
+/// (dwgValidate.js's flattenTouchActions) since this is the on-disk/wire
+/// shape, not the internal nested one, then has its regenerable cmd/idx/
+/// textIdx values stripped wherever a cmdName/idxName exists to
+/// regenerate them from later.
 /// @param {object} dwg
 /// @returns {object}
 function buildSaveableDwg(dwg) {
@@ -96,7 +97,6 @@ function buildSaveableDwg(dwg) {
     name: dwg.name,
     description: (typeof dwg.description === 'string') ? dwg.description : '',
     js_ver: window.JS_VERSION,
-    version: 'V' + Date.now(),
     x: dwg.x,
     y: dwg.y,
     color: dwg.color,

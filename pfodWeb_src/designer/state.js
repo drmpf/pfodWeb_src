@@ -49,7 +49,7 @@
 // Bump SCHEMA_VERSION whenever the persisted shape changes incompatibly
 // — older saved states will then be rejected at load instead of being
 // poured into a structure they no longer fit.
-const DESIGNER_STATE_SCHEMA_VERSION = 10;
+const DESIGNER_STATE_SCHEMA_VERSION = 11;
 
 // Java pfodDesignerV2's DesignerStatics.NEW_MENU_NAME = "Menu" — the
 // "_<n>" suffix is appended by _nextDefaultName().
@@ -1377,14 +1377,13 @@ class DesignerState {
   /// @returns {string} JSON string
   exportToJSON() {
     const out = {
-      format:   EXPORT_FORMAT_TAG,
-      schema:   DESIGNER_STATE_SCHEMA_VERSION,
-      name:     this.name,
-      savedAt:  new Date().toISOString(),
-      data: {
-        rootMenu:   _exportableMenu(this.rootMenu),
-        connection: this.connection,
-      },
+      format:     EXPORT_FORMAT_TAG,
+      schema:     DESIGNER_STATE_SCHEMA_VERSION,
+      name:       this.name,
+      savedAt:    new Date().toISOString(),
+      js_ver:     window.JS_VERSION,
+      rootMenu:   _exportableMenu(this.rootMenu),
+      connection: this.connection,
     };
     return JSON.stringify(out, null, 2);
   }
@@ -1392,13 +1391,12 @@ class DesignerState {
   /// Counterpart to exportToBlob: load a parsed JSON object back into
   /// this state, then persist.  Two failure modes:
   ///
-  ///   HARD — wrapper-level (wrong format tag, missing `data` object,
-  ///   missing resolved name).  Throws immediately; state is NOT
-  ///   applied.  Caller (loadFromFile.js) should show a "Cannot
-  ///   import file: …" alert.
+  ///   HARD — wrapper-level (wrong format tag, missing resolved name).
+  ///   Throws immediately; state is NOT applied.  Caller
+  ///   (loadFromFile.js) should show a "Cannot import file: …" alert.
   ///
   ///   PARTIAL — schema mismatch and / or per-field corruption inside
-  ///   data.rootMenu.  State IS applied (every valid field used, every
+  ///   rootMenu.  State IS applied (every valid field used, every
   ///   invalid field defaulted).  Throws a single Error with
   ///   `err.partial === true` and the joined list of per-field
   ///   warnings as its message — caller should show a "Design loaded,
@@ -1411,9 +1409,6 @@ class DesignerState {
     if (!parsed || parsed.format !== EXPORT_FORMAT_TAG) {
       throw new Error('[DesignerState] not a ' + EXPORT_FORMAT_TAG +
                       ' file (missing or wrong "format" tag)');
-    }
-    if (!parsed.data || typeof parsed.data !== 'object') {
-      throw new Error('[DesignerState] import missing "data" object');
     }
     const resolvedName = overrideName ? overrideName : parsed.name;
     if (typeof resolvedName !== 'string' || resolvedName.length === 0) {
@@ -1430,17 +1425,16 @@ class DesignerState {
                     DESIGNER_STATE_SCHEMA_VERSION +
                     ' — loaded with defaults for unrecognised fields');
     }
-    const d = parsed.data;
     this.name           = resolvedName;
-    this.rootMenu       = _parseMenuTolerant(d.rootMenu, 'rootMenu', warnings);
+    this.rootMenu       = _parseMenuTolerant(parsed.rootMenu, 'rootMenu', warnings);
     this._clearInvalidPins();
     this.activeMenuPath = [];
     this.activeItemIdx  = null;
     this.contextStack   = [];
     this._pendingDrawingItem = null;
     this._addMenuItemHistory = {};
-    if (typeof d.connection === 'string' && this.board.connections[d.connection]) {
-      this.connection = d.connection;
+    if (typeof parsed.connection === 'string' && this.board.connections[parsed.connection]) {
+      this.connection = parsed.connection;
     }
     this.save();
 

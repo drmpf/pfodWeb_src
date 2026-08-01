@@ -60,7 +60,30 @@ pub struct AppState {
     /// resource (the Bluetooth radio), not a per-device session, so it
     /// lives here rather than inside any one `BleSession` — every BLE
     /// target shares the same adapter/scan cache.
+    ///
+    /// Concrete type follows the platform's BLE backend: bluest on
+    /// Windows (src/ble_win.rs), btleplug elsewhere (src/ble.rs).
+    #[cfg(not(windows))]
     pub ble_central: Mutex<Option<btleplug::platform::Adapter>>,
+    #[cfg(windows)]
+    pub ble_central: Mutex<Option<bluest::Adapter>>,
+
+    /// Windows only — address → most recently scanned `bluest::Device`.
+    ///
+    /// btleplug keeps its own peripheral cache behind `Adapter::peripherals()`,
+    /// which is what `ble.rs`'s `find_peripheral` reads; bluest has no
+    /// equivalent, and a `bluest::DeviceId` cannot be rebuilt from a string
+    /// (its inner field is private), so the only way to reach a device again
+    /// after a scan is to have kept the `Device` handle.  Holding it lets an
+    /// open skip the 5-second rescan — which matters for a sparsely
+    /// advertising device that may not fall inside that window.
+    ///
+    /// Keys are upper-case MAC, matching what discovery hands the picker.
+    /// Entries are only ever replaced, never removed: a stale handle costs
+    /// one failed connect, after which `open_ble` rescans (see its
+    /// `was_cached` path).
+    #[cfg(windows)]
+    pub ble_devices: Mutex<HashMap<String, bluest::Device>>,
 
     /// Timestamp of the most recent incoming request of any kind, touched
     /// by a global middleware in main.rs.  spawn_idle_logger() (main.rs)
@@ -98,6 +121,8 @@ impl AppState {
             tcp:              Mutex::new(HashMap::new()),
             ble:              Mutex::new(HashMap::new()),
             ble_central:      Mutex::new(None),
+            #[cfg(windows)]
+            ble_devices:      Mutex::new(HashMap::new()),
             last_request:     Mutex::new(Instant::now()),
             has_seen_request: std::sync::atomic::AtomicBool::new(false),
             password,
@@ -238,16 +263,34 @@ pub struct TcpState {
     pub initial_rx: Option<broadcast::Receiver<Vec<u8>>>,
 }
 
-/// BLE session state.  `peripheral` is the platform-specific concrete
-/// type from `btleplug::platform::Peripheral`; it's
-/// `Clone + Send + Sync` internally so the notification task gets a
-/// cheap clone.  NUS TX-characteristic notifications go through
-/// `bytes_tx` the same way serial/TCP read chunks do — uniform
-/// downstream consumption.
+/// BLE session state.  The handle to the open device is the
+/// platform-specific concrete type from whichever backend built this
+/// session — `btleplug::platform::Peripheral` on macOS/Linux, a
+/// `bluest::Device` on Windows; both are `Clone + Send + Sync` internally
+/// so the notification task gets a cheap clone.  NUS TX-characteristic
+/// notifications go through `bytes_tx` the same way serial/TCP read chunks
+/// do — uniform downstream consumption.
 #[derive(Default)]
 pub struct BleState {
     pub addr:       Option<String>,
+    #[cfg(not(windows))]
     pub peripheral: Option<btleplug::platform::Peripheral>,
+    /// Windows — the connected device.  Holding it is not merely a
+    /// convenience: WinRT closes the GATT link once the `BluetoothLEDevice`
+    /// and every object descended from it have been dropped, so this handle
+    /// (together with `rx_char`, which keeps the service and its session
+    /// alive) is what keeps the connection up.  `bluest::Adapter::
+    /// disconnect_device` is documented as a no-op on Windows for exactly
+    /// this reason.
+    #[cfg(windows)]
+    pub device:     Option<bluest::Device>,
+    /// Windows — the NUS RX characteristic, cached at open so a cmd write
+    /// doesn't have to re-walk services and characteristics.  btleplug
+    /// exposes an already-discovered characteristic list off the peripheral
+    /// (`p.characteristics()`), so ble.rs has nothing to store; bluest's
+    /// equivalent is async and per-service, hence keeping it here.
+    #[cfg(windows)]
+    pub rx_char:    Option<bluest::Characteristic>,
     pub bytes_tx:   Option<broadcast::Sender<Vec<u8>>>,
     pub connected:  bool,
     pub cancel_tx:  Option<tokio::sync::oneshot::Sender<()>>,

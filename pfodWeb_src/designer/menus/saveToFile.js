@@ -72,6 +72,16 @@ const DesignerSaveToFile = (() => {
   /// setTimeout so the browser has finished the download initiation
   /// before the URL is released — revoking synchronously after .click()
   /// races with some browsers and produces an empty file.
+  /// Filesystem-safe form of the design name for the zip's own top
+  /// directory / file names below — state.name is free text and stays
+  /// as-is everywhere else (e.g. inside the JSON `name` field itself).
+  /// Matches generateCode.js's own _cppId.
+  function _fileNameId(s) {
+    let id = (s || '').replace(/[^A-Za-z0-9]/g, '_');
+    if (id && /^[0-9]/.test(id)) id = '_' + id;
+    return id || 'Menu';
+  }
+
   function _triggerDownload(state) {
     const collected = new Set();
     const missing = [];
@@ -82,10 +92,11 @@ const DesignerSaveToFile = (() => {
         'and will be missing from the saved file:\n' + missing.join(', '));
     }
 
-    const topDir = state.name + '_menuJson/';
+    const fileName = _fileNameId(state.name);
+    const topDir = fileName + '_menuJson/';
     const enc = new TextEncoder();
     const entries = [
-      { path: topDir + state.name + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
+      { path: topDir + fileName + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
     ];
     Array.from(collected).forEach((name) => {
       const dwg = DwgLibrary.get(name);
@@ -96,7 +107,7 @@ const DesignerSaveToFile = (() => {
     });
 
     const zipBytes = DesignerZipBuilder.buildZip(entries);
-    DesignerZipBuilder.triggerDownload(state.name + '_menuJson.zip', zipBytes);
+    DesignerZipBuilder.triggerDownload(fileName + '_menuJson.zip', zipBytes);
   }
 
   /// Dispatch handler.  Save only ever fires from the editMenu screen

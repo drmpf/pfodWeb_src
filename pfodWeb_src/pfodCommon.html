@@ -1,4 +1,183 @@
 ﻿<body class="message-mode">
+    <!-- ===================================================================
+         No-JavaScript fallback.
+
+         The browser renders what is inside noscript only when scripting is
+         disabled.  With JavaScript ON the whole block (the style rules
+         included) is inert text that is never parsed as markup, so it costs
+         nothing at runtime and cannot interact with the app.
+
+         Why it is needed: with scripting off, the app markup below still
+         paints -- the 480x320 blue #canvas-message inside the white/black
+         bezel plus the 40px black #button-bar -- while #connection-prompt
+         stays hidden, because only JS ever reveals it.  The result looks
+         like a broken page with no explanation, so hide the app entirely
+         and show a plain message instead.
+
+         Why it lives here, at the top of pfodCommon.html:
+           - this file is spliced into the pfodWeb.html template by BOTH
+             builds (build-bundle.js for the standalone file,
+             build_data_inline_html.js for the device .gz), so one copy
+             covers both with no build-script change; and
+           - sitting ahead of #layout-container means the override rules
+             below are known before the app markup is laid out, so the blue
+             box never flashes up first.
+
+         Note this only covers scripting being turned OFF.  If JavaScript is
+         on but the app fails to start (a bad .gz bundle, a script error),
+         the browser skips this block entirely and the blue screen is back --
+         that case would need a JS-cleared placeholder, which is deliberately
+         not done here (see the "Loading message removed to eliminate flash"
+         note further down this file).
+
+         WHEN EDITING THIS BLOCK: never write "<" immediately followed by the
+         word "script" -- not in the markup, not in these comments.
+         build-bundle.js inserts the entire multi-MB inlined JS bundle at the
+         FIRST occurrence of that character sequence in the document (see
+         inlineScripts(), the result.indexOf(...) call), so it would land
+         inside here and never run, leaving pfodWeb permanently blank even
+         with JavaScript on.  The noscript tags themselves are safe: the
+         character before "script" is "o", not "<".
+
+         Equally, never spell out a build-time placeholder name in here --
+         neither the {{...}} pair nor the two double-underscore ones (proxy
+         instructions, sound mp3).  Both builds substitute only the FIRST
+         occurrence of each in the whole document, and this block sits ahead
+         of every real use site, so merely naming one is enough to consume
+         its substitution: the placeholder would be filled in here, inside a
+         comment, and the real call site left holding an unreplaced token.
+         (For the sound placeholder the first-occurrence behaviour is
+         deliberate -- pfodButtonRenderer.js assigns it on one line and
+         compares against the literal on the next to detect whether the
+         build filled it in -- so the builds must not be "fixed" to replace
+         every occurrence.)
+         =================================================================== -->
+    <noscript>
+        <style>
+            /* #layout-container is the fixed full-viewport flex box holding
+               the canvas bezel, the blue #canvas-message, #button-bar, the
+               resize divider and the side panel.  Hiding that one ancestor
+               removes all of them at once; hiding #canvas-message alone
+               would still leave the bezel and the black button bar on
+               screen.  Specificity here is (1 id) -- the same as the
+               #layout-container rule in pfodCommon.css -- and this rule is
+               later in document order, so it already wins.  !important is
+               belt-and-braces against any #layout-container rule added later
+               in the stylesheet. */
+            #layout-container { display: none !important; }
+
+            /* pfodCommon.css sets body{overflow:hidden} so the app itself
+               never scrolls.  <html> has no overflow rule (so it stays
+               visible), which means body's hidden value propagates to the
+               viewport and would clip this message on a phone.  Put
+               scrolling back, for the no-JS case only.  Both elements are
+               listed so the override still holds if <html> is ever given its
+               own overflow rule. */
+            html, body {
+                overflow: auto !important;
+                background-color: #f4f4f4 !important;
+            }
+
+            /* Card matches pfodAlert() in connectionManager.js -- green
+               title bar, white rounded panel, same shadow and metrics -- so
+               a user with JS off still sees something recognisably pfodWeb.
+               Normal flow (not position:fixed) so a long message scrolls
+               naturally on a small screen. */
+            .nojs-card {
+                font-family: 'Roboto', Arial, sans-serif;
+                background-color: white;
+                border-radius: 10px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                max-width: 560px;
+                width: 90%;
+                margin: 24px auto 40px auto;
+                overflow: hidden;
+            }
+            .nojs-title {
+                background-color: #4CAF50;
+                color: white;
+                padding: 15px 20px;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            .nojs-body {
+                padding: 20px;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #333;
+            }
+            /* Explicit margins/sizes: pfodCommon.css has no bare h1/h2/p/ol
+               rules, so these would otherwise fall back to the browser's own
+               defaults, which differ between engines. */
+            .nojs-body h1 { font-size: 20px; margin: 0 0 12px 0; color: #333; }
+            .nojs-body h2 { font-size: 15px; margin: 18px 0 6px 0; color: #333; }
+            .nojs-body p  { margin: 0 0 12px 0; }
+            .nojs-body ol { margin: 0 0 12px 0; padding-left: 22px; }
+            .nojs-body li { margin: 0 0 4px 0; }
+            .nojs-body code {
+                font-family: Consolas, 'Courier New', monospace;
+                background-color: #f0f0f0;
+                padding: 0 3px;
+                border-radius: 3px;
+            }
+            .nojs-note { color: #666; font-size: 13px; }
+            /* Same footer convention as the connection prompt's header block.
+               overflow-wrap keeps the long URL inside the card on a narrow
+               phone instead of forcing a horizontal scrollbar. */
+            .nojs-footer {
+                padding: 0 20px 16px 20px;
+                color: #666;
+                font-size: 12px;
+                overflow-wrap: anywhere;
+            }
+        </style>
+
+        <div class="nojs-card">
+            <div class="nojs-title">pfodWeb</div>
+            <div class="nojs-body">
+                <h1>JavaScript is turned off</h1>
+                <p>pfodWeb runs entirely in your browser.  JavaScript is what
+                   talks to your pfod device and draws the menus, dials and
+                   charts, so with it turned off there is nothing to show and
+                   this page stays blank.</p>
+
+                <h2>Turning it back on in Chrome</h2>
+                <ol>
+                    <li>Open the Chrome menu (the three dots at the top right)
+                        and choose <b>Settings</b>.</li>
+                    <li>Go to <b>Privacy and security</b> &rarr;
+                        <b>Site settings</b> &rarr; <b>JavaScript</b>.</li>
+                    <li>Choose <b>Sites can use JavaScript</b>.</li>
+                    <li>Come back to this page and reload it
+                        (<b>Ctrl</b>+<b>R</b>, or <b>Cmd</b>+<b>R</b> on a Mac).</li>
+                </ol>
+
+                <p class="nojs-note">If the address bar starts with
+                   <code>file:///</code> you opened pfodWeb.html straight from
+                   disk.  Chrome's per-site exception list does not accept
+                   <code>file:///</code> addresses, so the setting above is the
+                   one that applies.  If pfodWeb was instead loaded over
+                   <code>http://</code> from your device or from pfodProxy, you
+                   can leave JavaScript off by default and allow it for that one
+                   address: click the icon at the left of the address bar, then
+                   <b>Site settings</b> &rarr; <b>JavaScript</b> &rarr;
+                   <b>Allow</b>.</p>
+
+                <p class="nojs-note">Other browsers &mdash; Firefox: open
+                   <code>about:config</code> and set
+                   <code>javascript.enabled</code> to <b>true</b>.
+                   Safari: <b>Settings</b> &rarr; <b>Security</b> &rarr; tick
+                   <b>Enable JavaScript</b>.</p>
+
+                <p class="nojs-note">Nothing you do in pfodWeb is sent to us
+                   &mdash; the page talks only to your own device.</p>
+            </div>
+            <div class="nojs-footer">
+                (c)2025 <a href="https://www.forward.com.au/pfod/pfodWeb" target="_blank">https://www.forward.com.au/pfod/pfodWeb</a>
+            </div>
+        </div>
+    </noscript>
+
     <div id="layout-container">
         <div id="dcp-left-panel"></div>
         <div id="canvas-pane">
@@ -167,10 +346,33 @@
 
                 <!-- Serial Settings -->
                 <div id="serial-settings" class="protocol-section">
+                    <!-- "Connect via" — shown only when this browser exposes the
+                         Web Serial API (see _updateTransportRowVisibility()); on
+                         Firefox / Safari / most mobile browsers the whole row
+                         stays hidden and pfodProxy is the only path.
+                         pfodProxy remains the DEFAULT even where the native API
+                         exists: it enumerates ports the native picker filters out
+                         on some OSes, and its port selection survives a page
+                         reload, which a native SerialPort object cannot (see the
+                         help text below). -->
+                    <div id="serial-transport-row" style="display:none; margin:5px 0;">
+                        <label style="margin-right:6px;"><strong>Connect via:</strong></label>
+                        <label style="margin-right:10px; white-space:nowrap;"><input type="radio" name="serial-transport" value="proxy" checked> pfodProxy</label>
+                        <label style="white-space:nowrap;"><input type="radio" name="serial-transport" value="browser"> This browser (Web Serial)</label>
+                    </div>
                     <!-- COM port selection row: selected port label on left, picker button beside it -->
                     <div style="display:flex; align-items:center; gap:8px; margin:5px 0;">
                         <span id="serial-port-label" style="font-size:16px; color:#888; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 0; min-width:0;">No port selected</span>
                         <button id="select-com-port-btn" type="button" onclick="pickSerialPort()" style="white-space:nowrap; flex:0 0 auto;">Select COM Port</button>
+                    </div>
+                    <!-- Only shown while "This browser" is selected.  Steers the
+                         user back to pfodProxy: the browser hands the page a
+                         SerialPort object, not a port name, and that object
+                         cannot be stored in the URL or localStorage, so the
+                         selection is lost on every reload. -->
+                    <div id="serial-browser-hint" class="help-text" style="display:none;">
+                        <span style="color:red; font-style:italic;">Not Recommended.</span>
+                        pfodProxy provides a richer experience and remembers your selection across Exits/reloads.
                     </div>
                     <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:4px;">
                         <label for="prompt-baud" style="white-space:nowrap;">Baud Rate:</label>
@@ -188,10 +390,27 @@
 
                 <!-- BLE Settings -->
                 <div id="ble-settings" class="protocol-section">
+                    <!-- "Connect via" — same rules as the Serial row above:
+                         shown only when navigator.bluetooth exists, pfodProxy
+                         stays the default. -->
+                    <div id="ble-transport-row" style="display:none; margin:5px 0;">
+                        <label style="margin-right:6px;"><strong>Connect via:</strong></label>
+                        <label style="margin-right:10px; white-space:nowrap;"><input type="radio" name="ble-transport" value="proxy" checked> pfodProxy</label>
+                        <label style="white-space:nowrap;"><input type="radio" name="ble-transport" value="browser"> This browser (Web Bluetooth)</label>
+                    </div>
                     <!-- BLE device selection row: selected device label on left, picker button beside it -->
                     <div style="display:flex; align-items:center; gap:8px; margin:5px 0 10px 0;">
                         <span id="ble-device-label" style="font-size:16px; color:#888; font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 0; min-width:0;">No device selected</span>
                         <button id="select-ble-device-btn" type="button" onclick="pickBleDevice()" style="white-space:nowrap; flex:0 0 auto;">Select BLE Device</button>
+                    </div>
+                    <!-- Only shown while "This browser" is selected — same
+                         non-persistable-handle reason as the serial hint, plus
+                         a note that the native picker is filtered to the pfod
+                         Nordic UART service (see _pickNativeBleDevice()). -->
+                    <div id="ble-browser-hint" class="help-text" style="display:none;">
+                        Only devices with a Nordic UART service are listed.<br>
+                        <span style="color:red; font-style:italic;">Not Recommended.</span>
+                        pfodProxy provides a richer experience and remembers your selection across Exits/reloads.
                     </div>
                 </div>
 
@@ -497,6 +716,12 @@
                 });
             }
 
+            // Reveal the Serial / BLE "Connect via" rows for whichever native
+            // APIs this browser has.  Runs after the PFODWEB_DATA_BUILD block
+            // above deliberately: in the data build Serial and BLE are hidden
+            // outright, so the rows inside them are moot either way.
+            _updateTransportRowVisibility();
+
             // Check for chart parameter and automatically tick the checkbox if present
             if (hasChart) {
                 const chartCheckbox = document.getElementById('chart-only-checkbox');
@@ -520,10 +745,87 @@
 
         // True when the browser exposes the Web Serial API; false when it
         // doesn't (Firefox, Safari, mobile browsers, file:// on some
-        // configurations).  Determines whether the "Connect" button uses
-        // the native picker or the pfodProxy fallback path.
+        // configurations).  Both APIs are secure-context-only, so these are
+        // also false when the page is served over plain http:// from a
+        // device.  When true, the matching "Connect via" radio row is
+        // revealed so the user can bypass pfodProxy entirely; when false the
+        // row stays hidden and pfodProxy is the only path.
         const webSerialSupported    = ('serial'    in navigator);
         const webBluetoothSupported = ('bluetooth' in navigator);
+
+        // Nordic UART Service — the pfod BLE profile.  Used as the
+        // requestDevice() filter for the native Web Bluetooth picker so it
+        // lists pfod devices only, matching what pfodProxy's own BLE scan
+        // shows.  Web Bluetooth requires lower-case UUIDs.
+        const NUS_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+
+        /// Which transport the Serial protocol should use: 'browser' (native
+        /// Web Serial, no pfodProxy) or 'proxy'.  Always 'proxy' when the
+        /// browser has no Web Serial API — the radios are hidden in that case
+        /// and must never be able to select an unusable transport, e.g. from
+        /// a ?serialVia=browser URL carried over from another browser.
+        function _serialTransport() {
+            if (!webSerialSupported) return 'proxy';
+            const el = document.querySelector('input[name="serial-transport"]:checked');
+            return (el && el.value === 'browser') ? 'browser' : 'proxy';
+        }
+
+        /// Same for BLE: 'browser' (native Web Bluetooth) or 'proxy'.
+        function _bleTransport() {
+            if (!webBluetoothSupported) return 'proxy';
+            const el = document.querySelector('input[name="ble-transport"]:checked');
+            return (el && el.value === 'browser') ? 'browser' : 'proxy';
+        }
+
+        /// True when the given protocol needs pfodProxy running.  TCP/IP
+        /// always does (browsers can't open raw TCP sockets); Serial and BLE
+        /// only when their "Connect via" is left on pfodProxy; HTTP and
+        /// Designer never do.  This is the single predicate every
+        /// proxy-dependent piece of prompt UI keys off — the proxy box's
+        /// visibility, the Connect button's enable/label, and the pre-connect
+        /// ping — so that choosing a native transport takes pfodProxy out of
+        /// the picture completely.
+        function _protocolUsesProxy(protocol) {
+            if (protocol === 'tcp')    return true;
+            if (protocol === 'serial') return _serialTransport() === 'proxy';
+            if (protocol === 'ble')    return _bleTransport()    === 'proxy';
+            return false;
+        }
+
+        /// True when a serial port has been chosen for the ACTIVE transport.
+        /// The two transports store their selection differently and are not
+        /// interchangeable: proxy mode holds a device path string that can be
+        /// bookmarked/restored, browser mode holds a live SerialPort object
+        /// that cannot.
+        function _serialPortSelected() {
+            return (_serialTransport() === 'browser')
+                ? !!_serialPortState.nativePort
+                : !!_serialPortState.path;
+        }
+
+        /// Same for BLE: an address string (proxy) vs a BluetoothDevice
+        /// object (browser).
+        function _bleDeviceSelected() {
+            return (_bleTransport() === 'browser')
+                ? !!_bleDeviceState.nativeDevice
+                : !!_bleDeviceState.address;
+        }
+
+        /// Reveal the "Connect via" radio rows for whichever native APIs this
+        /// browser actually has, and show the matching "must re-select after
+        /// reload" hint whenever a native transport is the active choice.
+        /// Called once at DOMContentLoaded (from hideUnavailableProtocols)
+        /// and again from updatePromptUI on every protocol / transport change.
+        function _updateTransportRowVisibility() {
+            const serialRow = document.getElementById('serial-transport-row');
+            if (serialRow) serialRow.style.display = webSerialSupported ? '' : 'none';
+            const bleRow = document.getElementById('ble-transport-row');
+            if (bleRow) bleRow.style.display = webBluetoothSupported ? '' : 'none';
+            const serialHint = document.getElementById('serial-browser-hint');
+            if (serialHint) serialHint.style.display = (_serialTransport() === 'browser') ? '' : 'none';
+            const bleHint = document.getElementById('ble-browser-hint');
+            if (bleHint) bleHint.style.display = (_bleTransport() === 'browser') ? '' : 'none';
+        }
 
         // Per-protocol default for the response-timeout dropdown.  HTTP /
         // TCP need ~10 s of headroom for slow servers and TCP-over-NAT
@@ -596,16 +898,27 @@
         // ── Serial / BLE pre-selection state ────────────────────────────────────
         // These hold the port / device chosen via the Select button so Connect
         // can use them directly without re-launching the picker each time.
-        // Both are populated from URL params and localStorage in prefillFormFromURL()
-        // so they survive page reload and the Exit → Reconnect cycle.
-        const _serialPortState = { path: null, label: null };
-        const _bleDeviceState  = { address: null, name: null };
+        //
+        // Which field carries the selection depends on the active "Connect
+        // via" transport (see _serialPortSelected() / _bleDeviceSelected()):
+        //   proxy   → path / address, plain strings naming the device to
+        //             pfodProxy.  Populated from URL params and localStorage in
+        //             prefillFormFromURL() so they survive page reload and the
+        //             Exit → Reconnect cycle.
+        //   browser → nativePort / nativeDevice, the live SerialPort /
+        //             BluetoothDevice handed over by the browser's own picker.
+        //             These are objects, not values: they cannot be written to
+        //             the URL or localStorage, so they are always null after a
+        //             reload and the user must re-select (the prompt says so).
+        // label / name are the display text and are set in both modes.
+        const _serialPortState = { path: null, label: null, nativePort: null };
+        const _bleDeviceState  = { address: null, name: null, nativeDevice: null };
 
         // Update the COM-port label span to reflect the current _serialPortState.
         function _updateSerialPortDisplay() {
             const el = document.getElementById('serial-port-label');
             if (!el) return;
-            if (_serialPortState.path) {
+            if (_serialPortSelected()) {
                 el.textContent      = _serialPortState.label || _serialPortState.path;
                 el.style.color      = '#222';
                 el.style.fontStyle  = 'normal';
@@ -622,10 +935,14 @@
         function _updateBleDeviceDisplay() {
             const el = document.getElementById('ble-device-label');
             if (!el) return;
-            if (_bleDeviceState.address) {
-                el.textContent      = _bleDeviceState.name
+            if (_bleDeviceSelected()) {
+                // Address is only shown in proxy mode, where it is a real MAC.
+                // Native Web Bluetooth never exposes one — device.id is an
+                // opaque per-origin handle that means nothing to the user — so
+                // browser mode shows the device name alone.
+                el.textContent      = (_bleDeviceState.name && _bleDeviceState.address)
                     ? _bleDeviceState.name + '  (' + _bleDeviceState.address + ')'
-                    : _bleDeviceState.address;
+                    : (_bleDeviceState.name || _bleDeviceState.address);
                 el.style.color      = '#222';
                 el.style.fontStyle  = 'normal';
                 el.style.fontWeight = 'bold';
@@ -639,7 +956,17 @@
 
         // Open the serial-port picker, store the user's choice, and update the
         // display label + URL.  Does NOT connect — the user still clicks Connect.
+        //
+        // Which picker opens follows the "Connect via" choice: the browser's
+        // own port chooser (navigator.serial.requestPort) or pfodProxy's
+        // SSE-driven modal.  requestPort() needs transient user activation,
+        // which is why the picking happens HERE, inside the button's click
+        // handler, rather than inside SerialConnection.connect().
         async function pickSerialPort() {
+            if (_serialTransport() === 'browser') {
+                await _pickNativeSerialPort();
+                return;
+            }
             const proxyPort = (document.getElementById('prompt-proxy-port').value || '').trim() || '4989';
             const proxyHostPort = '127.0.0.1:' + proxyPort;
             const picked = await showProxySerialPicker(proxyHostPort);
@@ -651,15 +978,84 @@
             updateURLFromForm();
         }
 
+        // Native Web Serial port chooser.  Stores the live SerialPort object
+        // (it is the only handle the API gives us — there is no port name to
+        // save) and leaves .path null so nothing bookmarkable is written to
+        // the URL for a selection that cannot survive a reload.
+        async function _pickNativeSerialPort() {
+            let port;
+            try {
+                port = await navigator.serial.requestPort();
+            } catch (e) {
+                // The user dismissed the browser's chooser without picking —
+                // the only outcome here besides a port.  Leave the current
+                // selection (if any) untouched.
+                console.log('[SERIAL_PICKER] native chooser dismissed:', e.message);
+                return;
+            }
+            _serialPortState.nativePort = port;
+            _serialPortState.path       = null;
+            _serialPortState.label      = _nativeSerialLabel(port);
+            _updateSerialPortDisplay();
+            validateConnectButton();
+            updateURLFromForm();
+        }
+
+        // Display label for a natively-picked SerialPort.  Web Serial exposes
+        // only the USB VID/PID (Chrome on Windows never reveals the COM
+        // number to a page), so reuse the same VID:PID lookup table the
+        // pfodProxy picker uses and fall back to the raw hex pair.
+        function _nativeSerialLabel(port) {
+            const info = port.getInfo();
+            if (info.usbVendorId == null || info.usbProductId == null) {
+                return 'Serial port';
+            }
+            const v = info.usbVendorId.toString(16).toUpperCase().padStart(4, '0');
+            const p = info.usbProductId.toString(16).toUpperCase().padStart(4, '0');
+            const friendly = _lookupUsbDeviceName(info.usbVendorId, info.usbProductId);
+            return friendly ? (friendly + '  (USB ' + v + ':' + p + ')')
+                            : ('USB ' + v + ':' + p);
+        }
+
         // Open the BLE-device picker, store the user's choice, and update the
         // display label + URL.  Does NOT connect — the user still clicks Connect.
+        // Same native-vs-proxy split (and same user-activation reason) as
+        // pickSerialPort() above.
         async function pickBleDevice() {
+            if (_bleTransport() === 'browser') {
+                await _pickNativeBleDevice();
+                return;
+            }
             const proxyPort = (document.getElementById('prompt-proxy-port').value || '').trim() || '4989';
             const proxyHostPort = '127.0.0.1:' + proxyPort;
             const picked = await showProxyBLEPicker(proxyHostPort);
             if (!picked) return;
             _bleDeviceState.address = picked.address;
             _bleDeviceState.name    = picked.name || null;
+            _updateBleDeviceDisplay();
+            validateConnectButton();
+            updateURLFromForm();
+        }
+
+        // Native Web Bluetooth device chooser.  Filtered to the Nordic UART
+        // service so it lists pfod devices only, matching pfodProxy's scan.
+        // Stores the live BluetoothDevice; .address stays null because
+        // device.id is an opaque per-origin handle, not a MAC, and is
+        // meaningless in a bookmarked URL (connectWithPrompt still passes it
+        // through as the menu-cache key, where opaque-but-stable is fine).
+        async function _pickNativeBleDevice() {
+            let device;
+            try {
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [NUS_SERVICE_UUID] }]
+                });
+            } catch (e) {
+                console.log('[BLE_PICKER] native chooser dismissed:', e.message);
+                return;
+            }
+            _bleDeviceState.nativeDevice = device;
+            _bleDeviceState.address      = null;
+            _bleDeviceState.name         = device.name || 'BLE device';
             _updateBleDeviceDisplay();
             validateConnectButton();
             updateURLFromForm();
@@ -687,9 +1083,20 @@
                 stored.protocols.serial = Object.assign({}, prevSerial, {
                     baud:      document.getElementById('prompt-baud').value,
                     timeout,
-                    comPort:  _serialPortState.path  || undefined,
-                    comLabel: _serialPortState.label || undefined,
+                    // "Connect via" choice — remembered so the next fresh open
+                    // starts on the transport the user last used.
+                    via:      _serialTransport(),
                 });
+                // The port name only exists on the pfodProxy transport — a
+                // native SerialPort object has no name to store in its place.
+                // So in browser mode these two keys are left OUT of the
+                // assignment entirely rather than written as undefined, which
+                // would delete a port a previous proxy session had saved and
+                // that a switch back to pfodProxy should still find.
+                if (_serialTransport() === 'proxy') {
+                    stored.protocols.serial.comPort  = _serialPortState.path  || undefined;
+                    stored.protocols.serial.comLabel = (_serialPortState.path && _serialPortState.label) || undefined;
+                }
                 console.debug('[STORAGE serial] _serialPortState=', JSON.stringify(_serialPortState),
                     '| prev comPort=', prevSerial.comPort, 'prevLabel=', prevSerial.comLabel,
                     '| writing comPort=', stored.protocols.serial.comPort,
@@ -698,9 +1105,15 @@
             } else if (protocol === 'ble') {
                 stored.protocols.ble = Object.assign({}, stored.protocols.ble, {
                     timeout,
-                    bleAddress: _bleDeviceState.address || undefined,
-                    bleName:    _bleDeviceState.name    || undefined,
+                    via: _bleTransport(),
                 });
+                // Same reason as the serial block above: only the pfodProxy
+                // transport has a storable address, so browser mode leaves
+                // the previous proxy selection alone instead of erasing it.
+                if (_bleTransport() === 'proxy') {
+                    stored.protocols.ble.bleAddress = _bleDeviceState.address || undefined;
+                    stored.protocols.ble.bleName    = (_bleDeviceState.address && _bleDeviceState.name) || undefined;
+                }
             } else if (protocol === 'tcp') {
                 stored.protocols.tcp = Object.assign({}, stored.protocols.tcp, {
                     tcpIP:     document.getElementById('prompt-tcp-ip').value.trim(),
@@ -763,16 +1176,21 @@
             const timeoutSelect = document.getElementById('prompt-timeout');
             timeoutSelect.value = _defaultTimeoutFor(protocol);
 
-            // pfodProxy is always used for Serial / BLE / TCP — independent
-            // of whether this browser has Web Serial / Web Bluetooth.
-            // Relabel Connect so it's obvious the proxy is in the path; the
-            // shared proxy box's own visibility (see its markup comment,
-            // above) depends on availability too, so it's handled by
-            // _updateProxyViaVisibility() rather than directly here.
+            // Reveal / hide the "Connect via" rows and their native-transport
+            // hints — the row only exists for protocols whose native browser
+            // API this browser actually has.
+            _updateTransportRowVisibility();
+
+            // TCP/IP always goes via pfodProxy; Serial and BLE only when
+            // their "Connect via" is left on pfodProxy.  Relabel Connect so
+            // it's obvious whether the proxy is in the path; the shared proxy
+            // box's own visibility (see its markup comment, above) depends on
+            // availability too, so it's handled by _updateProxyViaVisibility()
+            // rather than directly here.
             _updateProxyViaVisibility();
             const connectButton = document.getElementById('connect-button');
             if (connectButton) {
-                const proxyUsed = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
+                const proxyUsed = _protocolUsesProxy(protocol);
                 connectButton.textContent = (protocol === 'designer') ? 'Open Designer'
                                           : proxyUsed                 ? 'Connect via pfodProxy'
                                           :                             'Connect';
@@ -786,13 +1204,15 @@
         }
 
         // Validate connect button state.
-        // Wire-protocol connections (serial / BLE / TCP) always go via
-        // pfodProxy, so the button is disabled if the proxy is not running
-        // regardless of any other field state.
+        // Connections that go via pfodProxy are disabled if the proxy is not
+        // running, regardless of any other field state.  Serial / BLE on the
+        // native "This browser" transport do NOT go via the proxy, so they
+        // stay connectable with pfodProxy stopped — that is the whole point
+        // of offering the native transport.
         function validateConnectButton() {
             const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
             const connectButton = document.getElementById('connect-button');
-            const isWireProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
+            const usesProxy = _protocolUsesProxy(protocol);
 
             // Also disabled on a major.minor version mismatch between this
             // pfodWeb.html and the connected pfodProxy (see
@@ -800,7 +1220,7 @@
             // incompatible pfodProxy can silently corrupt the wire
             // protocol rather than cleanly failing, so this is blocked
             // outright rather than just warned about.
-            if (isWireProtocol && (!_proxyAvailable || _proxyVersionMismatch)) {
+            if (usesProxy && (!_proxyAvailable || _proxyVersionMismatch)) {
                 connectButton.disabled = true;
                 return;
             }
@@ -809,11 +1229,13 @@
                 const ip = document.getElementById('prompt-ip').value.trim();
                 connectButton.disabled = !ip || ip === '';
             } else if (protocol === 'serial') {
-                // Requires a pre-selected COM port (use the Select COM Port button)
-                connectButton.disabled = !_serialPortState.path;
+                // Requires a pre-selected COM port (use the Select COM Port
+                // button) — a proxy device path or a native SerialPort object
+                // depending on the active transport.
+                connectButton.disabled = !_serialPortSelected();
             } else if (protocol === 'ble') {
                 // Requires a pre-selected BLE device (use the Select BLE Device button)
-                connectButton.disabled = !_bleDeviceState.address;
+                connectButton.disabled = !_bleDeviceSelected();
             } else if (protocol === 'tcp') {
                 const tcpIp = document.getElementById('prompt-tcp-ip').value.trim();
                 connectButton.disabled = !tcpIp || tcpIp === '';
@@ -917,6 +1339,29 @@
                 }
             }
 
+            // Serial / BLE "Connect via" — URL param wins, then the stored
+            // per-protocol value, else the pfodProxy default already checked
+            // in the markup.  Gated on the browser actually having the API:
+            // a ?serialVia=browser URL shared from a Chrome machine must not
+            // select an unusable transport on Firefox (the radio row is
+            // hidden there, and _serialTransport() would force 'proxy'
+            // anyway, but leaving a hidden radio checked would then disagree
+            // with what the rest of the form shows).
+            // Restored BEFORE the com / ble selections below, which branch on
+            // the resulting transport.
+            const serialVia = urlParams.get('serialVia')
+                || (stored.protocols && stored.protocols.serial && stored.protocols.serial.via);
+            if (webSerialSupported && serialVia === 'browser') {
+                const r = document.querySelector('input[name="serial-transport"][value="browser"]');
+                if (r) r.checked = true;
+            }
+            const bleVia = urlParams.get('bleVia')
+                || (stored.protocols && stored.protocols.ble && stored.protocols.ble.via);
+            if (webBluetoothSupported && bleVia === 'browser') {
+                const r = document.querySelector('input[name="ble-transport"][value="browser"]');
+                if (r) r.checked = true;
+            }
+
             // Per-protocol field fallbacks from localStorage — applied
             // ONLY where the URL didn't already set a value.  Each
             // protocol's stored block is independent so picking HTTP
@@ -981,7 +1426,13 @@
             console.debug('[PREFILL] URL=', window.location.search,
                 '| comParam=', comParam,
                 '| storedSerial=', JSON.stringify(storedSerial));
-            if (comParam) {
+            // Only the pfodProxy transport has a restorable selection.  On the
+            // native transport the selection was a SerialPort object that died
+            // with the previous page, so everything stays null and the label
+            // correctly reads "No port selected" until the user re-picks.
+            if (_serialTransport() === 'browser') {
+                // no-op: nothing about a native port selection is persistable
+            } else if (comParam) {
                 // URL specifies the path; use stored label if the path matches
                 _serialPortState.path  = comParam;
                 _serialPortState.label = (storedSerial && storedSerial.comPort === comParam)
@@ -999,7 +1450,11 @@
             }
             console.debug('[PREFILL] restored _serialPortState=', JSON.stringify(_serialPortState));
 
-            if (bleParam) {
+            // Same restorability split as the serial block above — a native
+            // BluetoothDevice handle cannot outlive the page.
+            if (_bleTransport() === 'browser') {
+                // no-op: nothing about a native device selection is persistable
+            } else if (bleParam) {
                 _bleDeviceState.address = bleParam;
                 _bleDeviceState.name    = bleNameParam
                     || (storedBle && storedBle.bleAddress === bleParam ? (storedBle.bleName || null) : null);
@@ -1313,26 +1768,38 @@
         // enable/disable stays correct when the protocol changes while the
         // proxy is already down.
         function _setWireProtocolFieldsDisabled(disabled) {
-            ['select-com-port-btn', 'prompt-baud', 'select-ble-device-btn', 'prompt-tcp-ip', 'prompt-keepalive'].forEach(function(id) {
+            // Serial and BLE only follow proxy availability while THEY are
+            // actually going via the proxy.  With "Connect via: This browser"
+            // selected their fields must stay live even with pfodProxy
+            // stopped — the native transport never touches it.
+            const serialDisabled = disabled && (_serialTransport() === 'proxy');
+            const bleDisabled    = disabled && (_bleTransport()    === 'proxy');
+            ['select-com-port-btn', 'prompt-baud'].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el) el.disabled = serialDisabled;
+            });
+            const bleBtn = document.getElementById('select-ble-device-btn');
+            if (bleBtn) bleBtn.disabled = bleDisabled;
+            // TCP/IP has no native alternative — always proxy-gated.
+            ['prompt-tcp-ip', 'prompt-keepalive'].forEach(function(id) {
                 const el = document.getElementById(id);
                 if (el) el.disabled = disabled;
             });
             // Timeout is shared across HTTP and wire protocols (hidden only for
-            // Designer).  Only disable it when a wire protocol that needs the
-            // proxy is active — HTTP timeout stays interactive even when proxy
-            // is stopped.
+            // Designer).  Only disable it when a protocol that needs the
+            // proxy is active — HTTP (and a native-transport Serial / BLE)
+            // timeout stays interactive even when proxy is stopped.
             const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
-            const isWireProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
             const timeoutEl = document.getElementById('prompt-timeout');
-            if (timeoutEl) timeoutEl.disabled = disabled && isWireProtocol;
+            if (timeoutEl) timeoutEl.disabled = disabled && _protocolUsesProxy(protocol);
             // Port/device label spans cannot carry the HTML disabled attribute.
             // Apply grey text directly.  When re-enabling, restore the color
             // that _updateSerialPortDisplay / _updateBleDeviceDisplay would set:
             // bold #222 for a selected item, italic #888 for none.
             const serialLabel = document.getElementById('serial-port-label');
-            if (serialLabel) serialLabel.style.color = (disabled || !_serialPortState.path) ? '#888' : '#222';
+            if (serialLabel) serialLabel.style.color = (serialDisabled || !_serialPortSelected()) ? '#888' : '#222';
             const bleLabel = document.getElementById('ble-device-label');
-            if (bleLabel) bleLabel.style.color = (disabled || !_bleDeviceState.address) ? '#888' : '#222';
+            if (bleLabel) bleLabel.style.color = (bleDisabled || !_bleDeviceSelected()) ? '#888' : '#222';
         }
 
         // Applies an availability result to the UI: disables/enables the
@@ -1357,17 +1824,17 @@
             validateConnectButton();
         }
 
-        // Shows the shared proxy box only when a wire protocol (Serial / BLE /
-        // TCP) is selected — HTTP and Designer never need the proxy and should
-        // not see the port field or the "Start pfodProxy" hint even when the
-        // proxy is not running.  Within the box, picks which child block is
-        // visible: normal label when running, red "not running" label + start
-        // hint when stopped.
+        // Shows the shared proxy box only when the selected protocol actually
+        // needs pfodProxy — HTTP, Designer, and Serial / BLE on the native
+        // "This browser" transport never do, and should not see the port
+        // field or the "Start pfodProxy" hint even when the proxy is not
+        // running.  Within the box, picks which child block is visible:
+        // normal label when running, red "not running" label + start hint
+        // when stopped.
         function _updateProxyViaVisibility() {
             const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
-            const isWireProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
             const section = document.getElementById('proxy-via-section');
-            if (section) section.style.display = isWireProtocol ? 'block' : 'none';
+            if (section) section.style.display = _protocolUsesProxy(protocol) ? 'block' : 'none';
 
             // Toggle label: "pfodProxy port:" when running, red
             // "pfodProxy not running" when not — port input stays visible
@@ -1467,10 +1934,28 @@
                 if (ip) params.set('targetIP', ip);
             } else if (protocol === 'serial') {
                 params.set('serial', document.getElementById('prompt-baud').value || '115200');
-                if (_serialPortState.path) params.set('com', _serialPortState.path);
+                // ?serialVia=browser records the native-Web-Serial choice so a
+                // bookmark / Exit→Reconnect comes back on the same transport.
+                // No ?com= goes with it: the browser hands the page a
+                // SerialPort object, not a name, and nothing about it can be
+                // put in a URL.  Omitted entirely for the pfodProxy default so
+                // existing URLs keep their current shape.
+                if (_serialTransport() === 'browser') {
+                    params.set('serialVia', 'browser');
+                } else if (_serialPortState.path) {
+                    params.set('com', _serialPortState.path);
+                }
             } else if (protocol === 'ble') {
+                // Bare ?ble= (empty) is what marks BLE as the selected
+                // protocol on reload; the address fills it in when there is
+                // one.  Native mode has no address to write — see the serial
+                // comment above — so it carries ?bleVia=browser instead.
                 params.set('ble', _bleDeviceState.address || '');
-                if (_bleDeviceState.name) params.set('bleName', _bleDeviceState.name);
+                if (_bleTransport() === 'browser') {
+                    params.set('bleVia', 'browser');
+                } else if (_bleDeviceState.name) {
+                    params.set('bleName', _bleDeviceState.name);
+                }
             } else if (protocol === 'tcp') {
                 const tcpIp = document.getElementById('prompt-tcp-ip').value.trim();
                 if (tcpIp) params.set('tcpIP', tcpIp);
@@ -1489,13 +1974,14 @@
                 // the human-readable displayName for the panel label.
                 params.set('designer', (typeof getCurrentTargetId === 'function') ? getCurrentTargetId() : '');
             }
-            // Persist the unified ?proxy=host:port for Serial / BLE / TCP so it
-            // survives reload / bookmark / Exit→Reconnect and stays visible in
-            // the address bar.  Written even when it equals the localhost:4989
-            // default so the param is always present.  On a native-Web-Serial
-            // / -Web-Bluetooth browser the value is ignored on read for those
-            // protocols, so persisting it is harmless.
-            if (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp') {
+            // Persist the unified ?proxy=host:port whenever the proxy is
+            // actually in the path, so it survives reload / bookmark /
+            // Exit→Reconnect and stays visible in the address bar.  Written
+            // even when it equals the localhost:4989 default so the param is
+            // always present.  Omitted for a native-transport Serial / BLE —
+            // nothing in that path talks to pfodProxy, so advertising a proxy
+            // port in the URL would be misleading.
+            if (_protocolUsesProxy(protocol)) {
                 const pEl = document.getElementById('prompt-proxy-port');
                 const pVal = pEl ? pEl.value.trim() : '';
                 if (pVal) params.set('proxy', pVal);
@@ -1549,6 +2035,37 @@
                 if (radio.value === 'serial' || radio.value === 'ble' || radio.value === 'tcp') {
                     checkProxyAvailability();
                 }
+            });
+        });
+
+        // Set up the Serial / BLE "Connect via" listeners.  Switching
+        // transport DISCARDS the current port / device selection: the two
+        // transports store incompatible things (a pfodProxy device path
+        // string vs a live SerialPort / BluetoothDevice object) and neither
+        // can be translated into the other, so the user has to re-pick with
+        // the picker that now applies.  Re-pings pfodProxy when switching
+        // back to it, same reason as the protocol radios above.
+        document.querySelectorAll('input[name="serial-transport"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                _serialPortState.path       = null;
+                _serialPortState.label      = null;
+                _serialPortState.nativePort = null;
+                _updateSerialPortDisplay();
+                updatePromptUI();
+                updateURLFromForm();
+                if (_serialTransport() === 'proxy') checkProxyAvailability();
+            });
+        });
+
+        document.querySelectorAll('input[name="ble-transport"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                _bleDeviceState.address      = null;
+                _bleDeviceState.name         = null;
+                _bleDeviceState.nativeDevice = null;
+                _updateBleDeviceDisplay();
+                updatePromptUI();
+                updateURLFromForm();
+                if (_bleTransport() === 'proxy') checkProxyAvailability();
             });
         });
 
@@ -1644,6 +2161,66 @@
                  + 'then refresh this page.';
         }
 
+        // VID/PID lookup table for common boards / USB-serial bridges.
+        // Keys are upper-hex "VID:PID".  Add entries here as new
+        // boards turn up; no Rust rebuild required.
+        // At outer scope (not inside showProxySerialPicker) because the
+        // native Web Serial picker labels its ports from the same table —
+        // Web Serial's port.getInfo() gives nothing but the VID/PID pair.
+        const _USB_DEVICES = {
+            // Arduino LLC (0x2341)
+            '2341:0001': 'Arduino Uno',
+            '2341:0043': 'Arduino Uno',
+            '2341:0010': 'Arduino Mega 2560',
+            '2341:0042': 'Arduino Mega 2560 R3',
+            '2341:003E': 'Arduino Due (programming)',
+            '2341:003F': 'Arduino Due (native)',
+            '2341:0036': 'Arduino Leonardo',
+            '2341:0037': 'Arduino Micro',
+            '2341:804D': 'Arduino Zero',
+            '2341:0058': 'Arduino Nano Every',
+            '2341:805A': 'Arduino Nano 33 BLE',
+            '2341:8057': 'Arduino Nano 33 BLE Sense',
+            '2341:024D': 'Arduino Nano 33 IoT',
+            // Arduino SRL (0x2A03) — older "Arduino.org" boards
+            '2A03:0043': 'Arduino Uno (SRL)',
+            // Espressif native USB (0x303A) — this is Espressif's own
+            // vendor id, so it's a reliable "genuine ESP32-family
+            // native USB" signal, but individual PIDs are NOT 1:1
+            // with one specific chip model: 0x1001 (built-in
+            // USB_SERIAL_JTAG peripheral) is shared by ESP32-C3 AND
+            // ESP32-S3, and 0x0002 (native USB CDC) isn't reliably
+            // tied to just one chip either — so these stay generic
+            // "ESP32 native USB" labels rather than guessing S2 vs
+            // S3 vs C3.
+            '303A:1001': 'ESP32 USB-JTAG/Serial (native USB)',
+            '303A:0002': 'ESP32 native USB (CDC)',
+            // Silicon Labs CP210x — this is Silicon Labs' default PID
+            // for the whole CP210x USB-to-UART bridge family (CP2102/
+            // 2103/2104/2105...), used across many unrelated boards
+            // (ESP32 dev kits, ESP8266 boards like the Adafruit
+            // Feather HUZZAH, etc.) — the VID:PID pair alone cannot
+            // identify which microcontroller is attached, so this
+            // stays a generic chip-name label, not a board guess.
+            '10C4:EA60': 'USB-Serial (CP210x)',
+            // QinHeng CH340 / CH341 — common in clone boards
+            '1A86:7523': 'USB-Serial (CH340)',
+            '1A86:5523': 'USB-Serial (CH341)',
+            // FTDI
+            '0403:6001': 'FTDI FT232',
+            '0403:6014': 'FTDI FT232H',
+            '0403:6015': 'FTDI FT-X',
+        };
+
+        /// Look up a friendly device name from VID + PID.  Returns
+        /// the name string or null when the VID:PID pair isn't in
+        /// the table above.
+        function _lookupUsbDeviceName(vid, pid) {
+            const v = vid.toString(16).toUpperCase().padStart(4, '0');
+            const p = pid.toString(16).toUpperCase().padStart(4, '0');
+            return _USB_DEVICES[v + ':' + p] || null;
+        }
+
         function showProxySerialPicker(proxyHostPort) {
             return new Promise((resolve) => {
                 const overlay = document.createElement('div');
@@ -1736,63 +2313,6 @@
                     esOpened = true;
                     if (failTimer) { clearTimeout(failTimer); failTimer = null; }
                 };
-
-                // VID/PID lookup table for common boards / USB-serial bridges.
-                // Keys are upper-hex "VID:PID".  Add entries here as new
-                // boards turn up; no Rust rebuild required.
-                const _USB_DEVICES = {
-                    // Arduino LLC (0x2341)
-                    '2341:0001': 'Arduino Uno',
-                    '2341:0043': 'Arduino Uno',
-                    '2341:0010': 'Arduino Mega 2560',
-                    '2341:0042': 'Arduino Mega 2560 R3',
-                    '2341:003E': 'Arduino Due (programming)',
-                    '2341:003F': 'Arduino Due (native)',
-                    '2341:0036': 'Arduino Leonardo',
-                    '2341:0037': 'Arduino Micro',
-                    '2341:804D': 'Arduino Zero',
-                    '2341:0058': 'Arduino Nano Every',
-                    '2341:805A': 'Arduino Nano 33 BLE',
-                    '2341:8057': 'Arduino Nano 33 BLE Sense',
-                    '2341:024D': 'Arduino Nano 33 IoT',
-                    // Arduino SRL (0x2A03) — older "Arduino.org" boards
-                    '2A03:0043': 'Arduino Uno (SRL)',
-                    // Espressif native USB (0x303A) — this is Espressif's own
-                    // vendor id, so it's a reliable "genuine ESP32-family
-                    // native USB" signal, but individual PIDs are NOT 1:1
-                    // with one specific chip model: 0x1001 (built-in
-                    // USB_SERIAL_JTAG peripheral) is shared by ESP32-C3 AND
-                    // ESP32-S3, and 0x0002 (native USB CDC) isn't reliably
-                    // tied to just one chip either — so these stay generic
-                    // "ESP32 native USB" labels rather than guessing S2 vs
-                    // S3 vs C3.
-                    '303A:1001': 'ESP32 USB-JTAG/Serial (native USB)',
-                    '303A:0002': 'ESP32 native USB (CDC)',
-                    // Silicon Labs CP210x — this is Silicon Labs' default PID
-                    // for the whole CP210x USB-to-UART bridge family (CP2102/
-                    // 2103/2104/2105...), used across many unrelated boards
-                    // (ESP32 dev kits, ESP8266 boards like the Adafruit
-                    // Feather HUZZAH, etc.) — the VID:PID pair alone cannot
-                    // identify which microcontroller is attached, so this
-                    // stays a generic chip-name label, not a board guess.
-                    '10C4:EA60': 'USB-Serial (CP210x)',
-                    // QinHeng CH340 / CH341 — common in clone boards
-                    '1A86:7523': 'USB-Serial (CH340)',
-                    '1A86:5523': 'USB-Serial (CH341)',
-                    // FTDI
-                    '0403:6001': 'FTDI FT232',
-                    '0403:6014': 'FTDI FT232H',
-                    '0403:6015': 'FTDI FT-X',
-                };
-
-                /// Look up a friendly device name from VID + PID.  Returns
-                /// the name string or null when the VID:PID pair isn't in
-                /// the table above.
-                function _lookupUsbDeviceName(vid, pid) {
-                    const v = vid.toString(16).toUpperCase().padStart(4, '0');
-                    const p = pid.toString(16).toUpperCase().padStart(4, '0');
-                    return _USB_DEVICES[v + ':' + p] || null;
-                }
 
                 function renderRow(info) {
                     if (rows.has(info.path)) return;  // dedupe
@@ -1994,7 +2514,19 @@
                     status.textContent = 'Scanning…';
                 };
 
-                function renderRow(info) {
+                // How long to hold a first sighting that carries no Local
+                // Name, hoping one turns up, before showing it anyway.  The
+                // proxy emits the initial advertisement immediately and a
+                // second update once the WinRT watcher parses AD 0x09 / 0x08
+                // (see ble_names.rs), which normally lands well inside this
+                // window.
+                const NAMELESS_GRACE_MS = 1200;
+                // address -> { info, timer } for sightings currently being
+                // held.  Cleared when a name arrives, when the hold expires,
+                // and on close() so no timer outlives the picker.
+                const nameless = new Map();
+
+                function renderRow(info, graceExpired) {
                     const existing = rows.get(info.address);
                     // Preserve a previously-seen name across RSSI-only
                     // updates from the proxy — once we've shown the row with
@@ -2003,20 +2535,47 @@
                     if (existing && !info.name && existing.info.name) {
                         info.name = existing.info.name;
                     }
-                    // Don't render a device until its Local Name has been
-                    // parsed from the scan response.  The proxy emits an
-                    // initial advertisement (no name) followed by a second
-                    // update once the WinRT watcher parses AD 0x09 / 0x08;
-                    // creating the row only on that second update avoids the
-                    // brief "MAC-as-label" display that looked unknown /
-                    // unsupported to the user.
-                    if (!existing && !info.name) return;
+                    // Prefer to wait for the Local Name before creating the
+                    // row, so the label doesn't flash the MAC address and then
+                    // change.  But only WAIT — never drop.  Plenty of pfod
+                    // devices advertise the Nordic UART service with no Local
+                    // Name at all (proxy log: "local_name=None … nus=true"),
+                    // and returning outright here meant they never appeared in
+                    // the picker at all, even though the proxy had found them
+                    // and Chrome's own scan listed them straight away.
+                    if (!existing && !info.name && !graceExpired) {
+                        const held = nameless.get(info.address);
+                        if (held) {
+                            held.info = info;   // keep the freshest rssi / inUse
+                        } else {
+                            const addr  = info.address;
+                            const entry = { info: info, timer: null };
+                            entry.timer = setTimeout(function() {
+                                nameless.delete(addr);
+                                renderRow(entry.info, true);
+                            }, NAMELESS_GRACE_MS);
+                            nameless.set(addr, entry);
+                        }
+                        return;
+                    }
+                    // Either a name arrived or the hold expired — this
+                    // sighting is being rendered now, so cancel any hold.
+                    const held = nameless.get(info.address);
+                    if (held) {
+                        clearTimeout(held.timer);
+                        nameless.delete(info.address);
+                    }
                     // Row stays clickable even when already connected — the
                     // server's "Connection Refused" check is still the real
                     // safety net if the user clicks it anyway and another
                     // window is genuinely still live.
+                    //
+                    // Nameless devices are labelled rather than shown as a
+                    // bare MAC — the address is already on the small second
+                    // line of the row, so repeating it as the title told the
+                    // user nothing.
                     const labelText =
-                        (info.name || info.address)
+                        (info.name || '(no name scanned)')
                         + (info.rssi !== null && info.rssi !== undefined
                             ? '  (' + info.rssi + ' dBm)'
                             : '')
@@ -2051,6 +2610,11 @@
                     });
                     listBox.appendChild(row);
                     rows.set(info.address, { row: row, info: info });
+                    // Also updated here, not just in es.onmessage — a row
+                    // created when a nameless hold expires has no incoming
+                    // message behind it, so the count would otherwise sit at
+                    // "(0 found)" with the device visible right below it.
+                    status.textContent = 'Scanning…  (' + rows.size + ' found)';
                 }
 
                 es.onmessage = function(e) {
@@ -2058,7 +2622,6 @@
                         const info = JSON.parse(e.data);
                         if (info && info.address) {
                             renderRow(info);
-                            status.textContent = 'Scanning…  (' + rows.size + ' found)';
                         }
                     } catch (err) {
                         console.warn('[BLE_PICKER] bad event data:', e.data, err);
@@ -2076,6 +2639,11 @@
                 // Resolve with {address, name} when a device is chosen, null when cancelled.
                 function close(result) {
                     if (failTimer) { clearTimeout(failTimer); failTimer = null; }
+                    // Drop any nameless-hold timers still pending, so none
+                    // fires after the overlay is gone and appends a row to a
+                    // detached list.
+                    nameless.forEach(function(held) { clearTimeout(held.timer); });
+                    nameless.clear();
                     try { es.close(); } catch (_) {}
                     document.removeEventListener('keydown', onKey);
                     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
@@ -2115,14 +2683,15 @@
             // attempted, rather than on every keystroke.
             updateURLFromForm();
 
-            // Serial / BLE / TCP-IP all need pfodProxy — re-ping right
-            // before connecting in case it was stopped since the last
+            // Anything routed through pfodProxy — TCP/IP always, Serial and
+            // BLE unless "Connect via: This browser" is selected — re-pings
+            // right before connecting in case it was stopped since the last
             // check (page load or protocol switch). On failure, show the
             // same actionable message the picker buttons show, and once
             // it's dismissed, gray out the radios and switch the shared
             // proxy box to "Start pfodProxy" rather than leaving the form
             // looking like Connect should still work.
-            if (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp') {
+            if (_protocolUsesProxy(protocol)) {
                 const portEl = document.getElementById('prompt-proxy-port');
                 const port = (portEl && portEl.value.trim()) || '4989';
                 if (!(await _pingProxy(port))) {
@@ -2170,30 +2739,56 @@
                 const baudRate = document.getElementById('prompt-baud').value;
                 connectionSettings.baudRate = parseInt(baudRate, 10);
 
-                // pfodProxy is ALWAYS used for Serial — even when this
-                // browser has navigator.serial.  Native pickers (Firefox,
-                // some Chrome configs) silently filter CDC devices on
-                // macOS; the proxy enumerates them reliably.
-                const proxyPort = (document.getElementById('prompt-proxy-port').value || '').trim() || '4989';
-                const proxyHostPort = '127.0.0.1:' + proxyPort;
-                connectionSettings.useProxy      = true;
-                connectionSettings.proxyHostPort = proxyHostPort;
-                console.log('[CONNECT_PROMPT] serial via pfodProxy at', proxyHostPort, 'port', _serialPortState.path);
-                // Connect directly to the pre-selected port (chosen via Select COM Port button)
-                connectionSettings.serialPath = _serialPortState.path;
+                if (_serialTransport() === 'browser') {
+                    // Native Web Serial — no pfodProxy in the path at all.
+                    // useProxy:false is what makes ConnectionManager build a
+                    // SerialConnection instead of a SerialProxyConnection.
+                    // The SerialPort object itself has to be handed over: it
+                    // was obtained under the Select button's user activation
+                    // and cannot be re-requested from inside connect().
+                    connectionSettings.useProxy         = false;
+                    connectionSettings.nativeSerialPort = _serialPortState.nativePort;
+                    // Display name only (error messages, the "No Connection"
+                    // dialog).  The cache key is derived from the port's
+                    // USB VID/PID inside SerialConnection.connect().
+                    connectionSettings.serialPath       = _serialPortState.label;
+                    console.log('[CONNECT_PROMPT] serial via Web Serial API:', _serialPortState.label);
+                } else {
+                    // pfodProxy — the default.  Its picker enumerates ports
+                    // the native chooser filters out on some OSes, and its
+                    // selection survives a page reload.
+                    const proxyPort = (document.getElementById('prompt-proxy-port').value || '').trim() || '4989';
+                    const proxyHostPort = '127.0.0.1:' + proxyPort;
+                    connectionSettings.useProxy      = true;
+                    connectionSettings.proxyHostPort = proxyHostPort;
+                    console.log('[CONNECT_PROMPT] serial via pfodProxy at', proxyHostPort, 'port', _serialPortState.path);
+                    // Connect directly to the pre-selected port (chosen via Select COM Port button)
+                    connectionSettings.serialPath = _serialPortState.path;
+                }
             } else if (protocol === 'ble') {
-                // pfodProxy is ALWAYS used for BLE — even when this
-                // browser has navigator.bluetooth.  Same reason as
-                // Serial: native pickers vary across browsers / OSes
-                // and miss devices the proxy finds reliably.
-                const proxyPort = (document.getElementById('prompt-proxy-port').value || '').trim() || '4989';
-                const proxyHostPort = '127.0.0.1:' + proxyPort;
-                connectionSettings.useProxy      = true;
-                connectionSettings.proxyHostPort = proxyHostPort;
-                console.log('[CONNECT_PROMPT] BLE via pfodProxy at', proxyHostPort, 'address', _bleDeviceState.address);
-                // Connect directly to the pre-selected device (chosen via Select BLE Device button)
-                connectionSettings.bleAddress = _bleDeviceState.address;
-                connectionSettings.bleName    = _bleDeviceState.name || null;
+                if (_bleTransport() === 'browser') {
+                    // Native Web Bluetooth — same split as serial above.
+                    connectionSettings.useProxy        = false;
+                    connectionSettings.nativeBleDevice = _bleDeviceState.nativeDevice;
+                    // device.id is opaque, but stable for this browser
+                    // profile, which is all getConnectionId() needs from it
+                    // to keep per-device menu caches apart.
+                    connectionSettings.bleAddress      = _bleDeviceState.nativeDevice.id;
+                    connectionSettings.bleName         = _bleDeviceState.name || null;
+                    console.log('[CONNECT_PROMPT] BLE via Web Bluetooth API:', _bleDeviceState.name);
+                } else {
+                    // pfodProxy — the default.  Its scan reports devices some
+                    // native pickers miss (see the BLE-name discovery notes in
+                    // pfodProxy) and its selection survives a page reload.
+                    const proxyPort = (document.getElementById('prompt-proxy-port').value || '').trim() || '4989';
+                    const proxyHostPort = '127.0.0.1:' + proxyPort;
+                    connectionSettings.useProxy      = true;
+                    connectionSettings.proxyHostPort = proxyHostPort;
+                    console.log('[CONNECT_PROMPT] BLE via pfodProxy at', proxyHostPort, 'address', _bleDeviceState.address);
+                    // Connect directly to the pre-selected device (chosen via Select BLE Device button)
+                    connectionSettings.bleAddress = _bleDeviceState.address;
+                    connectionSettings.bleName    = _bleDeviceState.name || null;
+                }
             } else if (protocol === 'tcp') {
                 // TCP/IP Socket — always via pfodProxy (browsers can't open
                 // raw TCP). Port is fixed at 4989 — pfodProxy always
@@ -2241,7 +2836,7 @@
                 // real connect() -- it keeps running in the background and
                 // still succeeds normally if this was just a slow device,
                 // not a pw mismatch.
-                const isProxyProtocol = (protocol === 'serial' || protocol === 'ble' || protocol === 'tcp');
+                const isProxyProtocol = _protocolUsesProxy(protocol);
                 let pwHintTimer = null;
                 // Only arm this timer when pfodWeb itself has a ?pw= — that is the only
                 // scenario where a silent hang can occur (both sides have *a* password

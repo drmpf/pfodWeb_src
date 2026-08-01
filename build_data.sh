@@ -51,8 +51,17 @@ bundle_and_gzip() {
     shift
     local files=("$@")
 
-    local temp_file
-    temp_file=$(mktemp)
+    # Concatenate into a temp DIRECTORY, under the bundle's own name, so gzip
+    # records "<bundle_name>" as the archive's stored filename.  A bare
+    # mktemp file would make that a random "tmp.XXXXXXXX", which is opaque in
+    # `gzip -l`/`7z l` output and also used to break build_data.bat: a gzip
+    # holds exactly one file and 7z's `a` UPDATES rather than replaces, so
+    # adding "<bundle_name>" to an archive storing a random name failed and
+    # (with 7z's output suppressed) silently left the stale bundle in place.
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    local temp_file="$temp_dir/$bundle_name"
+    : > "$temp_file"   # create it, so an all-missing file list still gzips
 
     for file in "${files[@]}"; do
         if [ -f "$file" ]; then
@@ -62,8 +71,20 @@ bundle_and_gzip() {
         fi
     done
 
+    # Embed sound.mp3 into pfodButtonRenderer.js's placeholder BEFORE gzipping,
+    # so the device build ships the real click sound instead of falling back to
+    # the generated tone.  The standalone build does the equivalent inline in
+    # build-bundle.js.  Named for the 004 bundle because that is the one
+    # holding pfodButtonRenderer.js -- if that file moves, move this test with
+    # it (the script prints a loud ERROR if the placeholder is not in the file
+    # it is given).  MUST stay in step with the matching call in build_data.bat.
+    if [ "$bundle_name" = "pfodweb-004-menu" ]; then
+        node build_data_embed_sound.js "$temp_file"
+    fi
+
     gzip -9 "$temp_file"
-    mv "${temp_file}.gz" "$DATA_DIR/${bundle_name}.js.gz"
+    mv -f "${temp_file}.gz" "$DATA_DIR/${bundle_name}.js.gz"
+    rm -rf "$temp_dir"
     echo "  OK ${bundle_name}.js.gz created"
 }
 

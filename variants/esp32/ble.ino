@@ -1,11 +1,3 @@
-/*
- * (c)2014-2026 Forward Computing and Control Pty. Ltd.
- * NSW Australia, www.forward.com.au
- * This code is not warranted to be fit for any purpose. You may only use it at your own risk.
- * This generated code may be freely used for both private and commercial use
- * provided this copyright is maintained.
- */
-
 /**
   This sketch compiles for ESP32, ESP32C3.  Should also work for other ESP32 variants but has not been tested on all of them
   The project has been tested using Arduino IDE V2.3.6, ESP32 board support V3.3.2
@@ -18,9 +10,10 @@
   Install the latest pfodParser librarie from the library manager
   Load this sketch
   NOTE: Choose memory setting with at least 2M APP  E.g NO OTA (2M APP/2M SPIFFS)
-  From the pfodParse library, in sub-directory pfodWeb, open pfodWeb.html
-  and selected BLE connection, click Select BLE to choose this device and Connect via pfodProxy
-  
+  From the pfodParse library, in sub-directory pfodWeb, open pfodWeb.html in any web browser
+  and select BLE connection,  follow the pfodProxy instructions to start the pfodProxy
+  click Select BLE to choose this device and Connect via pfodProxy
+
   For connecting via Android pfodApp, setup a connection in pfodApp. See https://www.forward.com.au/pfod/Android_pfodApp/pfodAppForAndroidGettingStarted.pdf
 
 */
@@ -37,14 +30,16 @@
 
 SemaphoreHandle_t receive_read_lock = NULL;
 
-// download the libraries from http://www.forward.com.au/pfod/pfodParserLibraries/index.html
-// pfodParser.zip V5.1.0+ contains pfodParser, pfodSecurity, pfodDelay, pfodBLEBufferedSerial, pfodSMS and pfodRadio
+// install pfodParser from the Arduino Library Manager
+//    OR download the libraries from http://www.forward.com.au/pfod/pfodParserLibraries/index.html
+// pfodParser.zip V5.1.0+ contains pfodParser, pfodSecurity, pfodDelay, pfodBLEBufferedSerial
 #include <pfodParser.h>
 
 #include <pfodBLEBufferedSerial.h>  // used to prevent flooding bluetooth sends
 #include <pfodDebugPtr.h>
 #include "pfodMainMenu.h"
 
+const char version[] = "V1";
 // =========== pfodBLESerial definitions
 const char* localName = "pfod_BLE";  // <<<<<<  change this string to customize the adverised name of your board
 class pfodBLESerial : public Stream, public BLEServerCallbacks, public BLECharacteristicCallbacks {
@@ -92,11 +87,11 @@ BLEServer* serverPtr = NULL;
 BLECharacteristic* characteristicTXPtr;
 // =========== end pfodBLESerial definitions
 
-const char version[] = "V1";
-pfodParser parser; // create a parser to handle the pfod messages
+pfodParser parser;                  // create a parser with menu version string to handle the pfod messages
 pfodBLESerial bleSerial;                  // create a BLE serial connection
 pfodBLEBufferedSerial bleBufferedSerial;  // create a BLE serial connection
 
+handle_mainMenuFnPtr handle_mainMenu; // pointer to fn the handles the main menu
 static Stream* debugPtr = NULL;
 
 // Called by pfodMainMenu.cpp when it sees the {!} close-connection command.
@@ -104,6 +99,7 @@ static Stream* debugPtr = NULL;
 // there's nothing extra to do here .
 void closeConnection(Stream *io) {
   (void)(io);
+  // add any special code here to force connection to be dropped
 }
 
 // the setup routine runs once on reset:
@@ -144,17 +140,14 @@ void setup() {
   parser.setVersion(version);
   parser.connect(bleBufferedSerial.connect(&bleSerial));  // connect the parser to the i/o stream via buffer
 
-  init_pfodMainMenu(closeConnection);
+  handle_mainMenu = init_pfodMainMenu(closeConnection); // intialize main menu, returns pointer to mainMenu handler
   // <<<<<<<<< Your extra setup code goes here
 }
 
-void handle_parser() {
-  handle_pfodMainMenu(parser);
-}
 
 // the loop routine runs over and over again forever:
 void loop() {
-  handle_parser();
+  handle_mainMenu(parser);
   //  <<<<<<<<<<<  Your other loop() code goes here
 }
 

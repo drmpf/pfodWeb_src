@@ -330,6 +330,16 @@ const config = {
         'designer/menus/newMenu.js',
         'designer/menus/selectFromMenuList.js',
         'designer/menus/deleteEmptyMenuList.js',
+        // missingDwgPrompt.js owns the 'm' cmd byte — the "Missing
+        // Drawings" screen shown right after loading a design (from the
+        // list above, or via loadFromFile.js below) that references a
+        // dwg not currently in DwgLibrary. Calls DwgArduinoExport.
+        // collectAllDwgs (loaded earlier) and DesignerEditMenu.send
+        // (loaded earlier); selectFromMenuList.js above and
+        // loadFromFile.js below both call DesignerMissingDwgPrompt.
+        // maybeShow — function-body references only, so the load order
+        // relative to those two doesn't matter at runtime.
+        'designer/menus/missingDwgPrompt.js',
         // saveToFile.js + loadFromFile.js — JS-port-only buttons
         // (Save on editMenu, Load on main menu) backed by the
         // already-existing state.exportToBlob / state.importFromObject

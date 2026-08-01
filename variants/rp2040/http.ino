@@ -1,11 +1,3 @@
-/*
- * (c)2014-2026 Forward Computing and Control Pty. Ltd.
- * NSW Australia, www.forward.com.au
- * This code is not warranted to be fit for any purpose. You may only use it at your own risk.
- * This generated code may be freely used for both private and commercial use
- * provided this copyright is maintained.
- */
-
 /**
  This sketch compiles for ESP8266, Pi PicoW, Pi Pico2W and ESP32, ESP32C3.  Should also work for other ESP32 variants but has not been tested on all of them
  The project has been tested using Arduino IDE V2.3.6, Pi Pico board support V5.1.0,  ESP32 board support V3.3.1, ESP8266 board support V3.1.2
@@ -22,8 +14,8 @@
   a) Set the ssid and password (see WiFi Settings in the code below) to match your local network's router, ssid and password
   b) Set a static IP to an unused IP on your network OR leave as blank and check the Serial monitor for the assigned IP
   c) Upload the sketch, Open the IDE Serial Monitor to see what IP has been assigned
-  d) From the pfodParse library, in sub-directory pfodWeb, open pfodWeb.html 
-     and selected HTTP connection, fill in the IP for this board, click Connect to display GUI
+  d) From the pfodParse library, in sub-directory pfodWeb, open pfodWeb.html in any web browser 
+     and selecte HTTP connection, fill in the IP for this board, click Connect to display GUI
 
 
   // To serve pfodWeb from the micro's file system

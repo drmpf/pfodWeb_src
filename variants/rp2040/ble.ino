@@ -1,11 +1,3 @@
-/*
- * (c)2014-2026 Forward Computing and Control Pty. Ltd.
- * NSW Australia, www.forward.com.au
- * This code is not warranted to be fit for any purpose. You may only use it at your own risk.
- * This generated code may be freely used for both private and commercial use
- * provided this copyright is maintained.
- */
-
 /**
    TODO — placeholder BLE template for RP2040/RP2350 (Pico W / Pico 2 W).
 

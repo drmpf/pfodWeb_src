@@ -238,13 +238,18 @@ const DesignerLoadFromFile = (() => {
 
   // Register 'X' inside the IIFE to close over _lastLoadedName.
   // When the user presses the X button (made clickable by the {;} success
-  // update), load the named design and return the editMenu screen.
+  // update), load the named design and return the editMenu screen — or,
+  // if it references any dwg not currently in DwgLibrary (a bare
+  // .pfodMenu_json pick has no bundled dwgs at all; a .zip's own bundled
+  // dwgs can still be incomplete), the "Missing Drawings" prompt
+  // (missingDwgPrompt.js) instead. Same rationale as
+  // selectFromMenuList.js's own _switchAndReturnMain.
   DesignerDispatch.add('X', (rawCmd, state, depth) => {
     if (!_lastLoadedName) return PFOD_EMPTY;
     const names = DesignerState.listNames();
     if (!names.includes(_lastLoadedName)) return PFOD_EMPTY;
     state.loadNamed(_lastLoadedName);
-    return DesignerEditMenu.send(state);
+    return DesignerMissingDwgPrompt.maybeShow(state) || DesignerEditMenu.send(state);
   });
 
   return Object.freeze({ send });

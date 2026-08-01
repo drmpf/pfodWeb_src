@@ -276,6 +276,27 @@ const DesignerPreviewMenu = (() => {
            '}';
   }
 
+  /// Strip pfod delimiter characters so a dwg's own name can never
+  /// corrupt the wire message it's embedded in — matches
+  /// selectDwgForItem.js's own _sanitize.
+  function _sanitizeDwgName(s) {
+    return String(s || '').replace(/[|~`{}]/g, '_');
+  }
+
+  /// Placeholder drawing returned when a Drawing menu item's linked dwg
+  /// is no longer loaded in DwgLibrary (e.g. unloaded from the Dwg
+  /// Controls Panel after being linked here). Same 50×25 white-
+  /// background/centred-text shape as _renderPlaceholderDrawing, naming
+  /// the missing dwg so the message is actionable rather than a blank
+  /// canvas.
+  function _renderNotLoadedDrawing(dwgName) {
+    return '{+15`50`25' +
+           '|z~25~12.5' +
+           '|t~~<-3>dwg\n\n<+6><r>' + _sanitizeDwgName(dwgName) + '</+6>\n\nnot loaded' +
+           '|z' +
+           '}';
+  }
+
   /// Render the menu at menuPath using globally-sequential c<N> cmd
   /// indices (DFS pre-order across the entire rootMenu tree).
   /// Each item advances the index by 1 + its full subtree size so that
@@ -381,9 +402,9 @@ const DesignerPreviewMenu = (() => {
   /// unlike the Dwg Controls Panel's own device instance, which tracks
   /// versions to answer bare {+} when nothing changed. A dwg that
   /// doesn't resolve (unloaded since being linked, or a missing insertDwg
-  /// target) gets a genuine empty "start" so the client's own normal
-  /// redraw clears anything stale, matching DwgDesignerVirtualDevice's
-  /// own processCmd doc for the identical case.
+  /// target) gets the same "not loaded" placeholder _renderPlaceholderDrawing's
+  /// sibling _renderNotLoadedDrawing produces — naming the dwg so a stale
+  /// link is obvious rather than rendering as a blank canvas.
   /// @param {string}        rawCmd
   /// @param {DesignerState} state
   /// @param {number}        depth — index of the '_' in rawCmd
@@ -394,10 +415,7 @@ const DesignerPreviewMenu = (() => {
     const dwgName = bareCmd.substring(window.DWG_PREVIEW_KEY_PREFIX.length);
     const dwg = DwgLibrary.get(dwgName);
     if (!dwg) {
-      return {
-        pfod: DwgWireEncoder.encodeDwgStart({ x: 1, y: 1, color: -1, refresh: 0, items: [] }, 'v1'),
-        skipSave: true,
-      };
+      return { pfod: _renderNotLoadedDrawing(dwgName), skipSave: true };
     }
     const device = _getDwgPreviewDevice();
     const resolved = device._resolveAutoCmdAndIdx(dwgName, dwg);

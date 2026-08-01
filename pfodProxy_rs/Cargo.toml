@@ -28,9 +28,8 @@ tower-http   = { version = "0.5", features = ["cors"] }
 # satisfied via the auto-generated THIRD_PARTY_LICENSES.md (cargo about).
 serialport   = "4.5"
 tokio-serial = "5.4"
-# Cross-platform BLE — bleak replacement.  Statically links the WinRT
-# (Windows), CoreBluetooth (macOS), BlueZ/dbus (Linux) bindings.
-btleplug     = "0.11"
+# BLE is per-platform — see the two target blocks below.  Windows uses
+# bluest, macOS/Linux keep btleplug.
 # UUID parsing for the Nordic UART Service GATT characteristics.
 uuid         = "1"
 # Async traits + futures combinators used by btleplug callbacks.
@@ -56,21 +55,41 @@ hex          = "0.4"
 # in serde + clock support which is all we need.
 chrono       = "0.4"
 
-# Windows-only: direct WinRT BLE advertisement watcher.  btleplug exposes
-# only `properties.local_name` which on some Windows drivers fails to
-# surface the Complete Local Name (AD type 0x09) carried in scan-response
-# packets — even though the bytes are in `DataSections`.  We subscribe to
-# `BluetoothLEAdvertisementWatcher` ourselves and parse those data
-# sections to recover names that btleplug misses (matches what Chrome
-# shows in its picker).  Already in the dep tree transitively via
-# btleplug 0.11; this just enables the features we need.
+# macOS / Linux BLE — btleplug (CoreBluetooth and BlueZ/dbus backends).
+# Windows deliberately does NOT build btleplug: see the bluest block
+# below and the header of src/ble_win.rs.
+[target.'cfg(not(windows))'.dependencies]
+btleplug     = "0.11"
+
+# Windows-only BLE — bluest (WinRT backend).
+#
+# Replaces btleplug plus the hand-rolled `BluetoothLEAdvertisementWatcher`
+# that used to live in ble_names.rs.  Both of those existed to work around
+# the same defect: btleplug's Windows watcher attaches an
+# `AdvertisementFilter` on service UUIDs, and a SCAN_RSP packet carries no
+# UUID list, so Windows discards every scan response before btleplug sees
+# it — taking the Complete Local Name (AD 0x09) and most genuine RSSI
+# readings with it.
+#
+# bluest's `Adapter::scan(&[])` — an EMPTY service list — builds a single
+# *unfiltered* watcher, which is exactly the shape that does receive scan
+# responses, so one library now covers discovery, names, RSSI, connect,
+# notify and write.  See `handle_discovery_stream` in src/ble_win.rs for
+# why the filter must stay empty there.
+#
+# bluest pins `windows` 0.48 internally; nothing here depends on the
+# `windows` crate directly any more, so that is the only copy in a Windows
+# build.
+#
+# Vendored rather than pulled from crates.io: bluest 0.6.9's Windows scan
+# discards every advertisement Windows types NonConnectableUndirected, and
+# this Bluetooth stack applies that type to ordinary connectable pfod
+# devices — 62 of 62 ADV_IND packets in one measured scan — so upstream
+# finds no devices at all here.  vendor/bluest is an unmodified copy with
+# that one check removed; the reasoning, the measurements and the
+# re-apply-on-upgrade steps are in vendor/bluest/VENDOR-PATCH.md.
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = [
-    "Devices_Bluetooth_Advertisement",
-    "Storage_Streams",
-    "Foundation",
-    "Foundation_Collections",
-] }
+bluest       = { path = "vendor/bluest" }
 
 # macOS-only: parallel CoreBluetooth advertisement watcher.  On macOS,
 # btleplug reads the local name from CBAdvertisementDataLocalNameKey which

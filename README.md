@@ -35,6 +35,7 @@ It can also be served from the microprocessor itself for complete off-line stand
 | `extraFonts/` | Optional supplementary font subsets (Cyrillic, Greek, etc.) loadable without rebuilding pfodWeb. |
 | `variants/` | Board definitions (`arduino/`, `esp32/`, etc) for designer, bundled in pfodWeb.html by the build. |
 | `docs/` | User guides and licensing documentation — see [docs/index.html](docs/index.html). |
+| `examples/` | Arduino example sketches (Serial / BLE / TCP/IP / HTTP) that pfodWeb connects to — see [examples/README.md](examples/README.md). |
 | `pfodWeb/` | The built pfodWeb.html and extraFonts. This is the same for all browsers and operating systems |
 | `windows/`, `linux/`, `macOS/` | Platform-specific pfodProxy, produced by the build scripts below. |
 
@@ -64,6 +65,7 @@ pfodWeb user documentation is in [`docs/`](docs/index.html):
 - [pfodWeb Chart Mode Guide](docs/pfodWeb-chart-mode-guide.html) — chart display, raw message viewer, field customization.
 - [pfodWeb extraFonts Guide](docs/pfodWeb-extraFonts-guide.html) — adding font subsets without rebuilding.
 - [Comparison](docs/Comparision.html) — pfodWeb vs. other Arduino remote-control approaches.
+- [Arduino Example Sketches](examples/README.md) — the eight example sketches, which micros each compiles for, and how to connect to them.
 - [License](docs/pfodWeb_pfodProxy_License.html) / [Rust Third-Party Licenses](docs/RustThirdPartyLicenses.html)
 
 For pfodWeb Designer see the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)

@@ -1,10 +1,9 @@
-/*
- * (c)2014-2026 Forward Computing and Control Pty. Ltd.
- * NSW Australia, www.forward.com.au
- * This code is not warranted to be fit for any purpose. You may only use it at your own risk.
- * This generated code may be freely used for both private and commercial use
- * provided this copyright is maintained.
- */
+/**
+  From the pfodParse library, in sub-directory pfodWeb, open pfodWeb.html in any web brower
+  and select Serial connection,  follow the pfodProxy instructions to start the pfodProxy
+  Click Select COM Port to choose the serial port for this board and
+  Connect via pfodProxy
+**/
 
 // install pfodParser from the Arduino Library Manager
 //    OR download the libraries from http://www.forward.com.au/pfod/pfodParserLibraries/index.html

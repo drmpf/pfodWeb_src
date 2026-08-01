@@ -92,13 +92,19 @@ const DesignerEditMenuItem = (() => {
   /// sub-screen can pass that target here too.  `headingTitle` lets each
   /// screen name itself ("Editing Menu Item" vs "Change Display Format")
   /// while keeping the layout / preview logic in a single place.
-  /// Returns the partial body string starting with the leading `|`
-  /// — caller concatenates onto the screen-format prefix.
-  function renderItemHeaderAndPreview(state, item, headingTitle) {
-    if (!item) return '';
+  /// Effective item format: every field comes from item.formats, EXCEPT
+  /// bgColour/fontColour, which fall back to the parent menu's
+  /// promptFormat when the item leaves them null (= "inherit from
+  /// prompt"). Shared by renderItemHeaderAndPreview and
+  /// _drawingPreviewFragment so the drawing preview's own previewSlot is
+  /// derived identically whether it's rendered inline or moved elsewhere.
+  /// @param {DesignerState} state
+  /// @param {object} item
+  /// @returns {object}
+  function _effectiveItemFormat(state, item) {
     const fmt  = item.formats;
     const menu = state.getActiveMenu();
-    const effFmt = {
+    return {
       fontSize:   fmt.fontSize,
       bold:       fmt.bold,
       italic:     fmt.italic,
@@ -108,12 +114,51 @@ const DesignerEditMenuItem = (() => {
       fontColour: fmt.fontColour !== null ? fmt.fontColour : menu.promptFormat.fontColour,
       bgColour:   fmt.bgColour   !== null ? fmt.bgColour   : menu.promptFormat.bgColour,
     };
+  }
+
+  /// Dwg preview fragment (+BB dwg button / Z3 spacer) for a Drawing
+  /// item. Pulled out of renderItemHeaderAndPreview so _renderBody can
+  /// place it AFTER the "Linked drawing" label / "Change Drawing" button
+  /// (dwg preview at the bottom of the screen) instead of before them.
+  /// No leading spacer — the "Change Drawing" button immediately above
+  /// already provides separation. Once a dwg is linked, fetches it for
+  /// real via the SAME __dcpPreview__<dwgName> loadCmd / '_' routing
+  /// previewMenu.js's own Drawing-item preview uses (DesignerPreviewMenu.
+  /// handleDwgPreviewFetch) — reusing that path means any insertDwg
+  /// children nested inside the linked dwg resolve through that same
+  /// shared preview device, keeping idx numbering consistent. No dwg
+  /// linked yet → fixed 'dP' loadCmd (placeholder drawing, case 'P' in
+  /// send() below). Tap-cmd BB = unregistered → PFOD_EMPTY → stays put.
+  /// @param {DesignerState} state
+  /// @param {object} item
+  /// @returns {string}
+  function _drawingPreviewFragment(state, item) {
+    const previewSlot = designerItemPrefix(_effectiveItemFormat(state, item));
+    const dwgLoadCmd = item.dwgName ? (window.DWG_PREVIEW_KEY_PREFIX + item.dwgName) : 'dP';
+    return '|+BB' + previewSlot + '~' + dwgLoadCmd + '|!Z3<-6>~ ';
+  }
+
+  /// Returns the partial body string starting with the leading `|`
+  /// — caller concatenates onto the screen-format prefix.
+  function renderItemHeaderAndPreview(state, item, headingTitle) {
+    if (!item) return '';
+    const effFmt = _effectiveItemFormat(state, item);
     const previewSlot   = designerItemPrefix(effFmt);
     const previewInline = designerInlineFormat(effFmt);
 
     let out = '';
     // 1. Heading — design context.
     out += '|!H1<bg bl><w>~<b>' + headingTitle + ' from\n<l>' + state.name;
+
+    // Drawing items: label only here — _renderBody appends the "Change
+    // Drawing" button then _drawingPreviewFragment itself, so the dwg
+    // preview ends up at the bottom of the screen instead of the top.
+    if (item.type === 'drawing') {
+      out += item.dwgName
+        ? '|!H2<bg bl><w>~<-2>Linked drawing: <b>' + item.dwgName + '</b>'
+        : '|!H2<bg bl><w>~<-2><y>No drawing selected yet.';
+      return out;
+    }
 
     // 2. Item preview — render with current format so the user sees
     // the button / label exactly as it will appear.  Buttons stay
@@ -179,12 +224,6 @@ const DesignerEditMenuItem = (() => {
       out += '|!Z2<-6>~ ';
       out += '|R' + previewDisabledFlag + previewSlot + '~' + previewInline + (item.text || '');
       out += '|!Z3<-6>~ ';
-    } else if (item.type === 'drawing') {
-      // Drawing preview: pfod dwg button auto-fetches {dP} which returns the
-      // placeholder drawing. Tap-cmd BB = unregistered → PFOD_EMPTY → stays put.
-      out += '|!Z2<-6>~ ';
-      out += '|+BB' + previewSlot + '~dP';
-      out += '|!Z3<-6>~ ';
     } else {
       const previewLabelPrefix  = (item.type === 'label') ? '!' : '';
       const previewDisabledFlag = (item.type !== 'label' && item.formats.disabled) ? '!' : '';
@@ -195,14 +234,10 @@ const DesignerEditMenuItem = (() => {
     // 3. "Options for changing" heading.  For chart items the yellow hint is
     // embedded in the same row (inline below the heading text) so that only
     // one label item separates the preview from the format options.
-    // Drawing items get a placeholder message instead — no edit options yet.
+    // (Drawing items already returned above — no options heading for them.)
     if (item.type === 'chart') {
       out += '|!H2<bg bl><w>~<-2><y><i>Click the button above to edit the plot settings</y>\n' +
              '<b><i>Options for changing the above\nmenu item follow';
-    } else if (item.type === 'drawing') {
-      out += item.dwgName
-        ? '|!H2<bg bl><w>~<-2>Linked drawing: <b>' + item.dwgName + '</b>'
-        : '|!H2<bg bl><w>~<-2><y>No drawing selected yet.';
     } else {
       out += '|!H2<bg bl><w>~<-2><b><i>Options for changing the above\nmenu item follow';
     }
@@ -230,6 +265,9 @@ const DesignerEditMenuItem = (() => {
     if (item.type === 'drawing') {
       const fmt1 = '<-1>' + DESIGNER_MENU_FMT;
       out += '|d' + EMI_LINK_DWG_CMD + fmt1 + '~' + (item.dwgName ? 'Change Drawing' : 'Create/Load Drawing');
+      // Dwg preview last — below the label/button, per the desired
+      // "dwg on the bottom" layout.
+      out += _drawingPreviewFragment(state, item);
       return out;
     }
 
@@ -734,6 +772,9 @@ const DesignerEditMenuItem = (() => {
       case EMI_HELP_CMD:
         return DesignerEditMenuItemHelp.send(rawCmd, state, depth);
       case 'P':
+        // Only reached when no dwg is linked yet (renderItemHeaderAndPreview
+        // uses the fixed 'dP' loadCmd solely in that case — a linked dwg
+        // fetches via '_' / DesignerPreviewMenu.handleDwgPreviewFetch instead).
         return { pfod: DesignerPreviewMenu.getPlaceholderDrawing(), skipSave: true };
       case EMI_LINK_DWG_CMD:
         return DesignerSelectDwgForItem.send(rawCmd, state, depth);
