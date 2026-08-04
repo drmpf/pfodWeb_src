@@ -318,7 +318,7 @@ const DesignerGenerateCcode = (() => {
 
   function _chartSendDataFn(item) {
     const prefix    = _chartPrefix(item.autoCmd);
-    const intervalLabel = CHART_DATA_INTERVAL_LABELS[item.dataIntervalIdx] || CHART_DATA_INTERVAL_LABELS[DEFAULT_CHART_DATA_INTERVAL_IDX];
+    const intervalLabel = CHART_DATA_INTERVAL_LABELS[chartDataIntervalIdx(item)];
     const lines = [];
     lines.push('// Drive ' + prefix + '_sendDataFlag = 1 from your own timer at the configured rate (' + intervalLabel + ').');
     lines.push('static void ' + prefix + '_sendData(void) {');
@@ -655,7 +655,7 @@ const DesignerGenerateCcode = (() => {
       }
       for (const item of charts) {
         const prefix = _chartPrefix(item.autoCmd);
-        const intervalLabel = CHART_DATA_INTERVAL_LABELS[item.dataIntervalIdx] || CHART_DATA_INTERVAL_LABELS[DEFAULT_CHART_DATA_INTERVAL_IDX];
+        const intervalLabel = CHART_DATA_INTERVAL_LABELS[chartDataIntervalIdx(item)];
         out += '  // set ' + prefix + '_sendDataFlag = 1 once every ' + intervalLabel + " (chart '" + _cStr(item.chartLabel || '') + "')\n";
         out += '  // ' + prefix + '_sendDataFlag = 1;\n';
       }

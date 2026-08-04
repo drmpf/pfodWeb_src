@@ -14,7 +14,9 @@
  * Pin uniqueness scope: the entire design tree (rootMenu + all nested
  * sub-menus).  The active item's own current pin is kept available so
  * the user can re-confirm an existing choice without it vanishing from
- * the list.
+ * the list.  Analog inputs are the exception to uniqueness — an ADC read
+ * is non-exclusive, so a pin already read by a Data/ADC Display (or a
+ * chart plot) stays selectable for another analog reader.
  *
  * Origin: pfodDesignerV2/DesignerMsgProcessor.java selectBoardPin
  *         (editButton / editOnOff pin-picker branch).
@@ -43,15 +45,39 @@ const DesignerEditMenuItemPin = (() => {
   /// Collect all pin names already assigned across the entire design tree
   /// (rootMenu + all nested sub-menus), excluding the active item so its
   /// own current pin stays re-selectable.
+  ///
+  /// Chart plot pins count as allocations too — a plot drives an
+  /// analogRead() on that pin, so it must not also be claimed as a
+  /// digital/PWM output.
+  ///
+  /// When the picker is looking for an ANALOG_INPUT pin (a Data/ADC
+  /// Display), pins already allocated as ANALOG_INPUT elsewhere — whether
+  /// by another Data/ADC Display or by a chart plot — are NOT counted as
+  /// used: an ADC read is non-exclusive, so several readers may share the
+  /// one input (see editChart.js's _usedPinNamesForPlot for the chart-plot
+  /// side of the same rule).  For every other capability (digital output,
+  /// PWM, digital input) an existing ADC allocation still blocks the pin,
+  /// since driving a pin that is also being read is a real conflict.
   /// @param {DesignerState} state
+  /// @param {string}        requiredCap — capability the picker is filtering on
   /// @returns {Set<string>}
-  function _usedPinNames(state) {
+  function _usedPinNames(state, requiredCap) {
     const used        = new Set();
     const activeItem  = state.getActiveItem();
+    const shareAnalog = (requiredCap === PinType.ANALOG_INPUT);
+    /// Add pin unless it's an analog input the caller is allowed to share.
+    const addPin = (pin) => {
+      if (!pin) return;
+      if (shareAnalog && pin.type === PinType.ANALOG_INPUT) return;
+      used.add(pin.name);
+    };
     function walkMenu(menu) {
       for (const it of menu.items) {
         if (it === activeItem) continue;
-        if (it.pin) used.add(it.pin.name);
+        addPin(it.pin);
+        if (it.type === ITEM_TYPE_CHART && Array.isArray(it.plots)) {
+          for (const p of it.plots) addPin(p.pin);
+        }
         if (it.type === 'submenu' && it.subMenu) walkMenu(it.subMenu);
       }
     }
@@ -78,7 +104,7 @@ const DesignerEditMenuItemPin = (() => {
     if (!item) return [];
     const requiredCap = ITEM_TYPE_TO_PIN_CAP[item.type];
     if (!requiredCap) return [];
-    const used = _usedPinNames(state);
+    const used = _usedPinNames(state, requiredCap);
     const list = [{ label: 'Not connected', notes: null, name: null, type: null }];
     for (const bp of state.board.pins) {
       if (!_pinSupports(bp, requiredCap, state.connection)) continue;

@@ -525,8 +525,14 @@ class DwgDesignerVirtualDevice {
           // later is picked up on the very next request, no separate
           // invalidation path needed.
           delete this.versions[bareCmd];
+          // color 0 (BLACK), not -1 (BLACK_WHITE): _colour() encodes -1 as
+          // an EMPTY wire field, which produced a start header of the form
+          // "{+`1`1`0~vN" — no colour digits at all.  The drawing is 1x1
+          // and empty so the colour is never actually seen; what matters is
+          // that the field is present, since an absent one is what made
+          // this response unparseable.
           const missingWire = DwgWireEncoder.encodeDwgStart(
-            { x: 1, y: 1, color: -1, refresh: 0, items: [] },
+            { x: 1, y: 1, color: 0, refresh: 0, items: [] },
             'v' + (this._nextVersionCounter++)
           );
           console.log('[DWG_PREVIEW_DEBUG] "' + dwgName + '" not found in DwgLibrary — resolving empty start for "' + bareCmd + '":', missingWire);

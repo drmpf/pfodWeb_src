@@ -156,7 +156,7 @@ const DesignerEditChart = (() => {
   /// previous preview data before this CSV is collected by the polling update.
   /// Time = dataInterval_ms * row[0]; values are scaled via _mapPlotValue.
   function _buildPlotCSVData(item) {
-    const interval_ms = CHART_DATA_INTERVALS[item.dataIntervalIdx] || CHART_DATA_INTERVALS[0];
+    const interval_ms = CHART_DATA_INTERVALS[chartDataIntervalIdx(item)];
     let csv = '';
     for (let i = 0; i < 58; i++) {
       const row = _PLOT_RAW_DATA[i];
@@ -281,30 +281,25 @@ const DesignerEditChart = (() => {
   // ── Plot pin picker ──────────────────────────────────────────────────
 
   /// Collect all pin names already in use across the entire design tree
-  /// (item pins from all menus) plus sibling plot pins.  The current
-  /// plot's own pin is removed so the user can re-confirm it.
+  /// (item pins from all menus) that would conflict with using that pin as
+  /// a plot's analog input.
+  ///
+  /// Pins allocated as ANALOG_INPUT (a Data/ADC Display item, or another
+  /// plot) are NOT treated as used — an ADC read is non-exclusive, so the
+  /// same pin can feed a Data/ADC Display and one or more chart plots at
+  /// the same time.  Each consumer gets its own `const int ..._pin`
+  /// (named from the owning item's autoCmd) in the generated code, so
+  /// sharing a pin never produces a duplicate declaration.  Output/other
+  /// allocations (digital output, PWM, digital input) still block the pin.
   function _usedPinNamesForPlot(state) {
     const used = new Set();
-    const item = _chartItem(state);
-    const n = (state.currentPlotNo >= 0 && state.currentPlotNo <= 2) ? state.currentPlotNo : 0;
     function walkMenu(menu) {
       for (const it of menu.items) {
-        if (it.pin) used.add(it.pin.name);
+        if (it.pin && it.pin.type !== PinType.ANALOG_INPUT) used.add(it.pin.name);
         if (it.type === 'submenu' && it.subMenu) walkMenu(it.subMenu);
       }
     }
     walkMenu(state.rootMenu);
-    if (item) {
-      for (let pi = 0; pi < 3; pi++) {
-        if (pi === n) continue;
-        if (item.plots[pi] && item.plots[pi].pin && item.plots[pi].pin.name) {
-          used.add(item.plots[pi].pin.name);
-        }
-      }
-    }
-    if (item && item.plots[n] && item.plots[n].pin && item.plots[n].pin.name) {
-      used.delete(item.plots[n].pin.name);
-    }
     return used;
   }
 

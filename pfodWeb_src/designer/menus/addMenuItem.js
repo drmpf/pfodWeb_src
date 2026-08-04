@@ -218,7 +218,13 @@ const DesignerAddMenuItem = (() => {
       const boardAdc = (state.board && state.board.adc) ? state.board.adc : {};
       newItem = _freshDataDisplayItem(_makeAutoCmd('datadisplay', DEFAULT_DATADISPLAY_LEADING_TEXT, state.getAllItems()), boardAdc.max, boardAdc.defaultRefVolts);
     } else if (idx === IDX_CHART) {
-      newItem = _freshChartItem(_makeAutoCmd('chart', DEFAULT_CHART_LABEL, state.getAllItems()));
+      // Same board ADC block the Data/ADC Display above seeds itself from —
+      // a plot wired to an analog pin reads the same raw counts off the same
+      // hardware, so it gets the same full-scale range and the same volts
+      // display scaling.
+      const chartAdc = (state.board && state.board.adc) ? state.board.adc : {};
+      newItem = _freshChartItem(_makeAutoCmd('chart', DEFAULT_CHART_LABEL, state.getAllItems()),
+                                chartAdc.max, chartAdc.defaultRefVolts);
     } else if (idx === IDX_SUBMENU) {
       newItem = _freshSubMenuItem(_makeAutoCmd('submenu', DEFAULT_SUBMENU_TEXT, state.getAllItems()));
     } else {

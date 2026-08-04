@@ -162,6 +162,28 @@ const CHART_XAXIS_LABELS = Object.freeze([
 const CHART_DATA_INTERVALS       = Object.freeze([1000, 10000, 30000, 60000, 300000, 900000]);
 const CHART_DATA_INTERVAL_LABELS = Object.freeze(['1 sec', '10 secs', '30 secs', '1 min', '5 mins', '15 mins']);
 
+/// Index into CHART_DATA_INTERVALS / CHART_DATA_INTERVAL_LABELS for a
+/// chart item, validated.  Every chart item carries a valid
+/// dataIntervalIdx: _freshChartItem seeds one, the item editor only ever
+/// writes an in-range slider index, and _parseItemTolerant reports (and
+/// re-seeds) anything else on load.  So a bad value reaching here means
+/// a chart item was built or mutated outside all three — this throws
+/// rather than substituting CHART_DATA_INTERVALS[0], which would bake a
+/// silently wrong sample rate into generated code (or into the chart
+/// preview's own CSV timestamps) with nothing to show the user it
+/// happened.
+/// @param {object} item — a chart menu item
+/// @returns {number} a valid index into both interval arrays
+function chartDataIntervalIdx(item) {
+  const idx = item.dataIntervalIdx;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= CHART_DATA_INTERVALS.length) {
+    throw new Error('[DesignerState] chart "' + (item.chartLabel || item.autoCmd || '?') +
+      '": dataIntervalIdx is not a valid 0-' + (CHART_DATA_INTERVALS.length - 1) +
+      ' index: ' + JSON.stringify(idx));
+  }
+  return idx;
+}
+
 const DEFAULT_CHART_LABEL            = 'Chart';
 const DEFAULT_CHART_XAXIS_IDX        = 1;
 const DEFAULT_CHART_DATA_INTERVAL_IDX = 0;
@@ -176,16 +198,41 @@ const DEFAULT_PLOT_DISPLAY_MAX   = '1023';
 const DEFAULT_PLOT_DISPLAY_MIN   = '0';
 
 /// Fresh plot object for one of a chart's 3 plots.
-/// @param {number} n  1-based plot number used in the default label
-function _freshPlot(n) {
+///
+/// Seeded from the active board's ADC block (board.adc), passed down from
+/// _freshChartItem — the exact same two values, handled the exact same
+/// way, as _freshDataDisplayItem's own adcMax/adcRefVolts, since a plot
+/// wired to an analog pin and a Data/ADC Display on that pin are reading
+/// the same hardware:
+///
+///   adcMax      — full-scale count (1023 on a 10-bit AVR/ESP8266, 4095
+///                 on a 12-bit ESP32/RP2040) becomes the Data Variable
+///                 Range max.  A plot reads RAW counts, so this has to
+///                 span the chip's real full scale or the trace sits at a
+///                 fraction of the axis.
+///   adcRefVolts — reference voltage becomes the display max, with units
+///                 'V', so a fresh plot reads in volts rather than raw
+///                 counts (mapping is done in the generated code).
+///
+/// Both fall back to the 10-bit/no-units constants when the board has no
+/// value: an empty adc block (the "Minimal C Code" and "Unlisted Board"
+/// targets — nothing to derive from), and the tolerant-parser seed path,
+/// where every field is about to be overwritten from the file anyway.
+/// @param {number} n              1-based plot number used in the default label
+/// @param {number} [adcMax]       board.adc.max
+/// @param {string} [adcRefVolts]  board.adc.defaultRefVolts
+function _freshPlot(n, adcMax, adcRefVolts) {
+  const rawMax  = (adcMax      != null) ? adcMax              : DEFAULT_PLOT_DATA_RANGE_MAX;
+  const dispMax = (adcRefVolts != null) ? String(adcRefVolts) : DEFAULT_PLOT_DISPLAY_MAX;
+  const units   = (adcRefVolts != null) ? 'V'                 : DEFAULT_PLOT_UNITS;
   return {
     plotLabel:    DEFAULT_PLOT_LABEL + ' ' + n,
-    units:        DEFAULT_PLOT_UNITS,
-    dataRangeMax: DEFAULT_PLOT_DATA_RANGE_MAX,
+    units:        units,
+    dataRangeMax: rawMax,
     dataRangeMin: DEFAULT_PLOT_DATA_RANGE_MIN,
     autoScale:    DEFAULT_PLOT_AUTO_SCALE,
     showPlot:     DEFAULT_PLOT_SHOW,
-    displayMax:   DEFAULT_PLOT_DISPLAY_MAX,
+    displayMax:   dispMax,
     displayMin:   DEFAULT_PLOT_DISPLAY_MIN,
   };
 }
@@ -194,7 +241,12 @@ function _freshPlot(n) {
 /// `text` is the button label shown in the menu; `chartLabel` is the title
 /// shown inside the chart view.
 /// @param {string} autoCmd  C++ variable-name string
-function _freshChartItem(autoCmd) {
+/// @param {number} [adcMax]      board.adc.max — the active board's ADC
+///        full-scale count, seeded into all 3 plots' Data Variable Range
+///        (see _freshPlot).  Omitted on the tolerant-parser seed path.
+/// @param {string} [adcRefVolts] board.adc.defaultRefVolts — seeded into
+///        all 3 plots' display max, with units 'V'.
+function _freshChartItem(autoCmd, adcMax, adcRefVolts) {
   return {
     type:            ITEM_TYPE_CHART,
     autoCmd:         autoCmd,
@@ -202,9 +254,13 @@ function _freshChartItem(autoCmd) {
     formats:         _freshPromptFormat(),
     chartLabel:      DEFAULT_CHART_LABEL,
     xAxisIdx:        DEFAULT_CHART_XAXIS_IDX,
-    separatePlots:   false,
+    separatePlots:   true,
     dataIntervalIdx: DEFAULT_CHART_DATA_INTERVAL_IDX,
-    plots:           [_freshPlot(1), _freshPlot(2), _freshPlot(3)],
+    plots: [
+      _freshPlot(1, adcMax, adcRefVolts),
+      _freshPlot(2, adcMax, adcRefVolts),
+      _freshPlot(3, adcMax, adcRefVolts),
+    ],
   };
 }
 
@@ -766,15 +822,33 @@ function _parseItemTolerant(input, path, warnings) {
       warnings.push(path + '.xAxisIdx: out of range — defaulted to ' + DEFAULT_CHART_XAXIS_IDX);
     }
 
+    // separatePlots and dataIntervalIdx are ALWAYS written by
+    // exportToJSON — separatePlots even when false, dataIntervalIdx even
+    // when it is the fresh-item value — so neither is optional on the way
+    // back in.  Absence is reported the same as a bad value rather than
+    // silently accepting the fresh-item seed: a chart's plot layout and
+    // sample rate both change what the generated sketch does, so a file
+    // that doesn't state them is a file that was hand-edited or written
+    // by something else, and the user needs to know before the recovered
+    // design is used.  (The seed is still what `out` carries — the load
+    // is PARTIAL, not aborted — but it is now named in the warning.)
     used.add('separatePlots');
-    if (typeof input.separatePlots === 'boolean') out.separatePlots = input.separatePlots;
-    else if ('separatePlots' in input)            warnings.push(path + '.separatePlots: not a boolean — defaulted');
+    if (typeof input.separatePlots === 'boolean') {
+      out.separatePlots = input.separatePlots;
+    } else {
+      warnings.push(path + '.separatePlots: ' +
+        ('separatePlots' in input ? 'not a boolean' : 'missing') +
+        ' — this field is always written, so it must be present; using ' + out.separatePlots);
+    }
 
     used.add('dataIntervalIdx');
     if (typeof input.dataIntervalIdx === 'number' && input.dataIntervalIdx >= 0 && input.dataIntervalIdx < CHART_DATA_INTERVALS.length) {
       out.dataIntervalIdx = input.dataIntervalIdx;
-    } else if ('dataIntervalIdx' in input) {
-      warnings.push(path + '.dataIntervalIdx: out of range — defaulted to ' + DEFAULT_CHART_DATA_INTERVAL_IDX);
+    } else {
+      warnings.push(path + '.dataIntervalIdx: ' +
+        ('dataIntervalIdx' in input ? 'out of range' : 'missing') +
+        ' — this field is always written, so it must be present; using ' +
+        CHART_DATA_INTERVAL_LABELS[out.dataIntervalIdx]);
     }
 
     used.add('plots');

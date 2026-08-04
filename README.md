@@ -11,19 +11,25 @@
 
 </p>
 
-pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) client for controlling and monitoring Arduino, ESP32, 
+pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) designer, code generator and client for controlling and monitoring Arduino, ESP32, 
 and other embedded devices from a browser — no app install, no internet, server access required. pfodWeb renders device-defined drawings, menus, 
-and charts, and talks to devices directly via HTTP and via Serial, BLE and TCP/IP using the **pfodProxy** bridge.
+and charts, and talks to devices directly via HTTP and via Serial, BLE and TCP/IP using the **pfodProxy** bridge if the browser
+does not support the connection natively.
 
-The minimal Arduino [pfodParser library](https://github.com/drmpf/pfodParser) provides the device side support to display GUI's on pfodWeb and also the Android 
-[pfodApp](https://www.pfod.com.au/)
+The Arduino [pfodParser library](https://github.com/drmpf/pfodParser) provides the device side support to display GUI's on pfodWeb.
+
+
+pfodWeb is distributed, with the Arduino pfodParser library, as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in an off-line browser. 
+It can also be served from the microprocessor itself for complete off-line stand alone deployment.
+
+There is also an Android client, [pfodApp](https://www.pfod.com.au/index.html)
+
+## Designer Tutorials
 
 pfodWeb includes a built-in Designer that lets you create menus and sub-meus of buttons, sliders, charts and interactive dwgs. pfodWeb charts include data logging and formatting options.   
-See the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
+See the [Data Display](https://www.forward.com.au/pfod/ArduinoProgramming/DataDisplay/index.html) tutorial on creating menus and charts and other tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
  and [pfodWeb Designer](https://www.forward.com.au/pfod/pfodWeb/Designer/index.html) for dwg design
 
-pfodWeb is distributed as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly in an off-line browser. 
-It can also be served from the microprocessor itself for complete off-line stand alone deployment.
 
 ## Repository Layout
 
@@ -41,15 +47,16 @@ It can also be served from the microprocessor itself for complete off-line stand
 
 ## Building
 
-Each platform has a top-level build script that compiles `pfodProxy` (Rust).   
-There is also a build for `pfodWeb.html` that is common to all platforms:
+There one build for `pfodWeb.html` that is common to all platforms:
+
+Each platform also has a top-level build script that compiles `pfodProxy` (Rust).   
 
 | Platform | Script | Output |
 |---|---|---|
+| all | `build-pfodWeb.bat / .sh` | `pfodWeb/` |
 | Windows | `windows-build.bat` | `windows/` |
 | Linux | `build-linux.bat` | `linux/` |
 | macOS | `build-macOSApp.sh` | `macOS/` |
-| all | `build-pfodWeb.bat / .sh` | `pfodWeb/` |
 
 Building pfodProxy requires the [Rust toolchain](https://rustup.rs/) (`cargo`).  
 The macOS build is packaged as an installable app. See the detailed [macOS install instructions](https://www.forward.com.au/pfod/pfodWeb/pfodProxy/macOS/allow-pfodProxy-macOS.html).
@@ -68,7 +75,7 @@ pfodWeb user documentation is in [`docs/`](docs/index.html):
 - [Arduino Example Sketches](examples/README.md) — the eight example sketches, which micros each compiles for, and how to connect to them.
 - [License](docs/pfodWeb_pfodProxy_License.html) / [Rust Third-Party Licenses](docs/RustThirdPartyLicenses.html)
 
-For pfodWeb Designer see the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
+For pfodWeb Designer see the [Data Display](https://www.forward.com.au/pfod/ArduinoProgramming/DataDisplay/index.html) tutorial and the tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
 and [pfodWeb Designer](https://www.forward.com.au/pfod/pfodWeb/Designer/index.html) for dwg design
 
 ## License

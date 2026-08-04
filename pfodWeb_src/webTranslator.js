@@ -1294,8 +1294,13 @@ function translateDwgResponse(cmd) {
         };
     }
     // else
-    // colorNo accepts a decimal palette index or a 6-char RRGGBB hex string (spec 8.11)
-    const regex = /^\{\+(?:([0-9A-Fa-f]+)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~(.*))?$/;
+    // colorNo accepts a decimal palette index or a 6-char RRGGBB hex string (spec 8.11),
+    // or is empty — "{+`<cols>`<rows>..." — meaning no colour was specified,
+    // the same "unspecified" form parseDwgColour already reads for item
+    // colours and dwgWireEncoder.js's _colour() emits for BLACK_WHITE.
+    // Falls through to the same `colorNo ? ... : 0` default an entirely
+    // absent header group gets, below.
+    const regex = /^\{\+(?:([0-9A-Fa-f]*)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~(.*))?$/;
     const match = cmdString.match(regex);
 
     if (!match) {

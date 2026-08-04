@@ -331,12 +331,25 @@ const DesignerGenerateCode = (() => {
     return out;
   }
 
+  /// A plot wired to an input pin reads it here, via the same
+  /// <prefix>_plot_<n>_pin constant the pin-settings block already
+  /// declares for it (see the chart loop in the pin-constants section) —
+  /// without this the constant was emitted but never used, and every plot
+  /// got the "replace this Min value" placeholder even when the user had
+  /// connected it to an ADC pin.  Plots with no pin keep the placeholder:
+  /// their data comes from the user's own loop variables.
   function _chartReadPlotDataHookBody(item, className, hookName) {
     const prefix = _chartPrefix(item.autoCmd);
     let out = 'void ' + className + '::' + hookName + '() {\n';
     out += '  // assign values to plot variables from your loop variables or read ADC inputs\n';
     for (let n = 1; n <= 3; n++) {
-      out += '  ' + prefix + '_plot_' + n + '_var = ' + prefix + '_plot_' + n + '_varMin; //<<< replace this Min value with your actual data\n';
+      const p       = item.plots[n - 1];
+      const plotVar = prefix + '_plot_' + n + '_var';
+      if (p.pin && p.pin.name) {
+        out += '  ' + plotVar + ' = ' + _pinReadFn(p.pin.type) + '(' + prefix + '_plot_' + n + '_pin);  // read ADC input\n';
+      } else {
+        out += '  ' + plotVar + ' = ' + prefix + '_plot_' + n + '_varMin; //<<< replace this Min value with your actual data\n';
+      }
     }
     out += '}\n\n';
     return out;
@@ -559,6 +572,29 @@ const DesignerGenerateCode = (() => {
     if (pinType === 'pwm_output') return 'analogWrite';
     if (pinType === 'dac_output')  return 'dacWrite';
     return 'digitalWrite';
+  }
+
+  /// Read-side counterpart to _pinWriteFn.  Unlike writes — where a pin
+  /// that natively supports DAC output needs dacWrite() rather than
+  /// analogWrite() — reads have no such split: analogRead()/digitalRead()
+  /// are the Arduino core API on every board family this generator emits
+  /// for (AVR, ESP32, ESP8266/ESP8285, RP2040/RP2350), so the function is
+  /// chosen by what the pin is being used AS, not by the chip.  The one
+  /// target with no Arduino pin API at all, "Minimal C Code", is emitted
+  /// by generateCcode.js, which never generates pin reads or writes.
+  /// analog_input_serial (ESP32 ADC2, usable only on a Serial connection)
+  /// is still an ordinary analogRead() — the restriction is on WHEN the
+  /// pin can be offered, handled in the pin pickers, not on how it reads.
+  ///
+  /// NOTE the ADC's own full-scale count is a chip property analogRead()
+  /// does not normalise (AVR/RP2040 0-1023, ESP32 0-4095 by default) —
+  /// that is carried by each plot's own Data Variable Range, set in the
+  /// plot editor, not by this function.
+  /// @param {string} pinType — a PinType value from the item/plot's pin
+  /// @returns {string} Arduino read-function name
+  function _pinReadFn(pinType) {
+    if (pinType === 'analog_input' || pinType === 'analog_input_serial') return 'analogRead';
+    return 'digitalRead';
   }
 
   // ── Format comment ───────────────────────────────────────────────
@@ -884,8 +920,9 @@ const DesignerGenerateCode = (() => {
         out += 'static float ' + prefix + '_plot_' + n + '_scaling;\n';
         out += 'static float ' + prefix + '_plot_' + n + '_varDisplayMin = ' + _floatLit(p.displayMin) + ';\n';
       }
-      const intervalMs    = CHART_DATA_INTERVALS[item.dataIntervalIdx] || CHART_DATA_INTERVALS[0];
-      const intervalLabel = CHART_DATA_INTERVAL_LABELS[item.dataIntervalIdx] || CHART_DATA_INTERVAL_LABELS[0];
+      const intervalIdx   = chartDataIntervalIdx(item);
+      const intervalMs    = CHART_DATA_INTERVALS[intervalIdx];
+      const intervalLabel = CHART_DATA_INTERVAL_LABELS[intervalIdx];
       out += 'static pfodDelay ' + prefix + '_plotDataTimer; // plot data timer\n';
       out += 'static unsigned long ' + prefix + '_PLOT_DATA_INTERVAL = ' + intervalMs + ';// ms == ' + intervalLabel + ', edit this to change the plot data interval\n';
     }
@@ -1530,8 +1567,9 @@ const DesignerGenerateCode = (() => {
         cpp += 'static float ' + prefix + '_plot_' + n + '_scaling;\n';
         cpp += 'static float ' + prefix + '_plot_' + n + '_varDisplayMin = ' + _floatLit(p.displayMin) + ';\n';
       }
-      const intervalMs    = CHART_DATA_INTERVALS[cItem.dataIntervalIdx] || CHART_DATA_INTERVALS[0];
-      const intervalLabel = CHART_DATA_INTERVAL_LABELS[cItem.dataIntervalIdx] || CHART_DATA_INTERVAL_LABELS[0];
+      const intervalIdx   = chartDataIntervalIdx(cItem);
+      const intervalMs    = CHART_DATA_INTERVALS[intervalIdx];
+      const intervalLabel = CHART_DATA_INTERVAL_LABELS[intervalIdx];
       cpp += 'static pfodDelay ' + prefix + '_plotDataTimer; // plot data timer\n';
       cpp += 'static unsigned long ' + prefix + '_PLOT_DATA_INTERVAL = ' + intervalMs + ';// ms == ' + intervalLabel + ', edit this to change the plot data interval\n';
     }
