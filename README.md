@@ -25,7 +25,7 @@ pfodWeb is distributed, with the Arduino pfodParser library, as a single, self-c
  in an off-line browser. 
 It can also be served from the microprocessor itself for complete off-line stand alone deployment.
 
-There is also an Android client, [pfodApp](https://www.pfod.com.au/index.html)
+There is also an Android client, [pfodApp](https://www.forward.com.au/pfod/index.html)
 
 ## Designer Tutorials
 
