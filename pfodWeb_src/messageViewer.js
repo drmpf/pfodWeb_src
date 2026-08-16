@@ -15,6 +15,12 @@
 //             window.messageCollector, window.rawMessageViewer, window.chartConfigViewer);
 //             toolbarAndMenu.js showToolbarMenu (opens rawMessageViewer / chartConfigViewer)
 
+// How long a partial (not yet newline terminated) run of OUTSIDE text is held
+// before it is shown anyway.  Serial/BLE hand the stream over in arbitrary
+// sized chunks, so the characters of one printed line typically arrive over
+// several reads a few ms apart; this delay lets them be joined back together.
+const RAW_TEXT_FLUSH_MS = 100;
+
 /**
  * MessageCollector - Centralized collector for raw messages from all connections
  * Stores messages with metadata (timestamp, direction, connection type, size)
@@ -25,7 +31,85 @@ class MessageCollector {
     this.maxMessages = maxMessages;
     this.subscribers = []; // Callback functions to notify of new messages
     this.isPaused = false;
+    // Buffer for OUTSIDE (non-pfod) received text - see addRawText()
+    this.pendingRawText = '';     // characters received but not shown yet
+    this.pendingRawProtocol = null; // protocol the pending characters came from
+    this.pendingRawTimer = null;  // setTimeout id for the partial-line flush
     // console.log('[MESSAGE_COLLECTOR Created with max messages:', maxMessages);
+  }
+
+  /**
+   * Add received text that arrived OUTSIDE any pfod {..} command - streaming
+   * CSV data, and on a Serial connection any debug print statements.
+   *
+   * The characters are buffered rather than shown per read, so a line that
+   * arrives split over several reads is shown as ONE entry.  The buffer is
+   * turned into an entry when either
+   *   - a '\n' is seen: everything up to and including the LAST '\n' is shown
+   *     immediately, so complete lines are never held back and the entry keeps
+   *     its terminating newline even when the next character is the '{' of a
+   *     command (which is shown as its own entry), or
+   *   - RAW_TEXT_FLUSH_MS elapses with no further characters: the partial line
+   *     is shown so nothing is ever held back indefinitely.
+   * Any other addMessage() (sent cmd, complete {..} cmd, timeout) flushes the
+   * buffer first, so entries always stay in stream order.
+   *
+   * Only the Raw Message viewer is buffered - the CSV and raw data collectors
+   * are fed every character immediately by the caller.
+   *
+   * @param {string} message - the OUTSIDE characters just received
+   * @param {string} protocol - 'http', 'serial', 'tcp' or 'ble'
+   */
+  addRawText(message, protocol) {
+    if (this.isPaused || !message) {
+      return;
+    }
+
+    this.pendingRawText += message;
+    this.pendingRawProtocol = protocol;
+
+    // Show all complete lines now, keeping their newlines.
+    const lastNewline = this.pendingRawText.lastIndexOf('\n');
+    if (lastNewline !== -1) {
+      const completeLines = this.pendingRawText.substring(0, lastNewline + 1);
+      this.pendingRawText = this.pendingRawText.substring(lastNewline + 1);
+      this.addEntry('received', completeLines, protocol, null);
+    }
+
+    // Whatever is left is a partial line - wait a little for the rest of it.
+    this.clearRawTextTimer();
+    if (this.pendingRawText.length > 0) {
+      this.pendingRawTimer = setTimeout(() => {
+        this.pendingRawTimer = null;
+        this.flushRawText();
+      }, RAW_TEXT_FLUSH_MS);
+    }
+  }
+
+  /**
+   * Show any buffered OUTSIDE text now, as a single entry.
+   * Called by the flush timer and by addMessage() (so a sent command, a
+   * complete {..} command or a timeout never jumps ahead of text that was
+   * received before it).  Does nothing if the buffer is empty.
+   */
+  flushRawText() {
+    this.clearRawTextTimer();
+    if (this.pendingRawText.length === 0) {
+      return;
+    }
+    const text = this.pendingRawText;
+    this.pendingRawText = '';
+    this.addEntry('received', text, this.pendingRawProtocol, null);
+  }
+
+  /**
+   * Cancel the pending partial-line flush timer, if one is running.
+   */
+  clearRawTextTimer() {
+    if (this.pendingRawTimer !== null) {
+      clearTimeout(this.pendingRawTimer);
+      this.pendingRawTimer = null;
+    }
   }
 
   /**
@@ -39,7 +123,20 @@ class MessageCollector {
     if (this.isPaused) {
       return;
     }
+    // Buffered OUTSIDE text was received before this message - show it first.
+    this.flushRawText();
+    this.addEntry(direction, message, protocol, cmd);
+  }
 
+  /**
+   * Create the entry, store it (trimming to maxMessages) and notify
+   * subscribers.  Internal - callers go through addMessage() / addRawText().
+   * @param {string} direction - 'sent', 'received', 'timeout' or 'excess >1024'
+   * @param {string} message - The raw message text
+   * @param {string} protocol - 'http', 'serial', 'tcp' or 'ble'
+   * @param {string} cmd - Optional command that was sent (for reference)
+   */
+  addEntry(direction, message, protocol, cmd) {
     const entry = {
       timestamp: new Date().toISOString(),
       direction: direction,
@@ -113,6 +210,8 @@ class MessageCollector {
    * Clear all messages
    */
   clear() {
+    this.clearRawTextTimer();
+    this.pendingRawText = '';
     this.messages = [];
     // console.log('[MESSAGE_COLLECTOR Messages cleared');
   }
@@ -629,7 +728,15 @@ class RawMessageViewer {
 
     const textEl = document.createElement('span');
     textEl.className = 'raw-message-item-text';
-    textEl.textContent = entry.message;
+    // The list is white-space:pre-wrap so newlines in the text are shown as
+    // line breaks.  A newline at the very END of the text is trimmed by the
+    // browser (a segment break at the end of a block is removed), so a
+    // zero-width space is appended after it to force the empty last line to be
+    // shown - the entry then visibly ends with its newline.  Display only:
+    // entry.message and the JSON/CSV exports are untouched.
+    const ZERO_WIDTH_SPACE = String.fromCharCode(0x200B);
+    const endsWithNewline = entry.message && entry.message.charAt(entry.message.length - 1) === '\n';
+    textEl.textContent = endsWithNewline ? (entry.message + ZERO_WIDTH_SPACE) : entry.message;
 
     messageEl.appendChild(timeEl);
     messageEl.appendChild(directionEl);

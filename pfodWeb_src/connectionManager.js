@@ -684,7 +684,9 @@ class PfodConnectionBase {
     if (toCsv && ConnectionManager.csvCollector)     ConnectionManager.csvCollector.processCharacters(str);
     if (toRaw && ConnectionManager.rawDataCollector) ConnectionManager.rawDataCollector.processCharacters(str);
     if (toViewer && ConnectionManager.messageCollector) {
-      ConnectionManager.messageCollector.addMessage('received', str, this.protocol);
+      // addRawText (not addMessage) so characters of one printed line that
+      // arrive over several reads are shown as a single viewer entry.
+      ConnectionManager.messageCollector.addRawText(str, this.protocol);
     }
   }
 
