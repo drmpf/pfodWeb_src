@@ -160,8 +160,13 @@ Object.assign(DrawingViewer.prototype, {
         }
       }
 
-      // Queue per-drawing re-requests if due (itemRefreshTimes[dwgName] updated when each response is processed)
+      // Queue per-drawing re-requests if due (itemRefreshTimes[dwgName] updated when each response is processed).
+      // Only TOP-LEVEL dwg menu items are eligible — an inserted dwg's own
+      // refresh rate is ignored, and it is instead re-verified by its parent's
+      // response scan.  Must match scheduleNextUpdate's own filter, or the
+      // timer would arm for a drawing this loop then declines to fetch.
       for (const dwgName of this.redraw.redrawDrawingManager.drawings) {
+        if (!this.isRefreshableDrawing(dwgName)) continue;
         const rate = this.redraw.redrawDrawingManager.drawingsData[dwgName]?.data?.refresh;
         if (rate > 0) {
           const nextDue = (this.itemRefreshTimes.get(dwgName) ?? 0) + rate;

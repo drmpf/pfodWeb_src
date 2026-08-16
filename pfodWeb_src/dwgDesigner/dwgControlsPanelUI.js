@@ -265,6 +265,14 @@ const DesignerDwgPanel = (() => {
       ' _dwgDesignerAdapter=' + (_dwgDesignerAdapter ? 'set' : 'null') +
       ' connectionManager.protocol=' + JSON.stringify(window.drawingViewer.connectionManager.protocol));
 
+    // Wipe the client's own state for the preview namespace before the device
+    // resets its cmd/idx assignment on the next line.  setPreviewDwg() remints
+    // every idx from 1 for this cycle, so anything the client still holds under
+    // a __dcpPreview__ name — in the live DrawingManager or in the three
+    // localStorage caches — describes a DIFFERENT idx space and must not be
+    // hydrated back into this one.  See clearPreviewDrawings' own doc
+    // (drawingProcessing.js) for what goes wrong when it is.
+    window.drawingViewer.clearPreviewDrawings(window.DWG_PREVIEW_KEY_PREFIX);
     _dwgDesignerAdapter.device.setPreviewDwg(dwgName, PREVIEW_TOUCH_IDENTIFIER);
     window.drawingViewer.addToRequestQueue('{.}', null, null, 'mainMenu');
   }
@@ -643,9 +651,16 @@ const DesignerDwgPanel = (() => {
 
   function _itemTypeLabel(item) {
     switch (item.type) {
-      case 'label':     return 'Text — "' + (item.text || '') + '"';
+      case 'label':     return 'Label — "' + (item.text || '') + '"';
       case 'value':     return 'Value — "' + (item.text || '') + '"';
-      case 'insertDwg': return 'InsertDwg — ' + (item.drawingName || '');
+      case 'insertDwg': return 'insertDwg — ' + (item.drawingName || '');
+      // Shown verbatim, NOT capitalized — these are the camelCase wire/type
+      // names the Item Type dropdown (ITEM_TYPE_OPTIONS) already lists as-is,
+      // so capitalizing them here would make the list and the dropdown
+      // disagree about what the same item is called.
+      case 'touchZone':
+      case 'pushZero':
+      case 'popZero':   return item.type;
       default:
         // Capitalize the bare type name (rectangle -> Rectangle).
         return item.type.charAt(0).toUpperCase() + item.type.slice(1);
@@ -654,7 +669,7 @@ const DesignerDwgPanel = (() => {
 
   /// Non-bold suffix for an item row's type line, rendered right after
   /// _itemTypeLabel()'s bold type name: a touchZone's bare cmdName (no
-  /// "cmd:" prefix — "TouchZone A", not "TouchZone cmd:A"), then the
+  /// "cmd:" prefix — "touchZone A", not "touchZone cmd:A"), then the
   /// idxName (again bare, no "idx:" label — "Line idx_1"), whichever
   /// apply, space-separated. Applies uniformly whether the item is
   /// declaring its own index (a Line/Rectangle/etc marked indexed) or
@@ -767,8 +782,19 @@ const DesignerDwgPanel = (() => {
   /// @param {string} idPrefix
   /// @param {object} touchZoneState — { touchActionInput, touchActions }
   /// @param {object} dwg — for _describeItem's own background-colour param
+  /// @param {boolean} [disableAdds] — grey out BOTH add affordances (the
+  ///        touchActionInput "+ Add" button and the trailing "+ Add another
+  ///        touchAction" row).  Set by the ADD Item screen: a touchAction /
+  ///        touchActionInput attaches to a touchZone that does not exist in
+  ///        the dwg yet, so neither can be created until the zone itself has
+  ///        been added.  The EDIT Item screen leaves both enabled — there the
+  ///        touchZone is already a real item.  Existing rows keep their own
+  ///        edit/remove buttons either way, so a resumed draft can still be
+  ///        cleaned up.
   /// @returns {string}
-  function _buildTouchZoneItemsListHtml(idPrefix, touchZoneState, dwg) {
+  function _buildTouchZoneItemsListHtml(idPrefix, touchZoneState, dwg, disableAdds) {
+    // Same wording on both, so the greyed control explains itself on hover.
+    const addsDisabledTitle = 'Add the touchZone first, then Edit it to add this';
     const inputRow = touchZoneState.touchActionInput
       ? '<div class="dcp-edit-item-row">' +
           '<div class="dcp-edit-item-info">' +
@@ -783,7 +809,9 @@ const DesignerDwgPanel = (() => {
       : '<div class="dcp-edit-item-row">' +
           '<div class="dcp-edit-item-info"><div class="dcp-empty">No touchActionInput</div></div>' +
           '<div class="dcp-edit-item-actions">' +
-            '<button type="button" class="dcp-btn dcp-btn-ghost" id="' + idPrefix + '-touchactioninput-add" style="padding:4px 10px; font-size:11px">+ Add</button>' +
+            '<button type="button" class="dcp-btn dcp-btn-ghost" id="' + idPrefix + '-touchactioninput-add"' +
+              (disableAdds ? ' disabled title="' + addsDisabledTitle + '"' : '') +
+              ' style="padding:4px 10px; font-size:11px">+ Add</button>' +
           '</div>' +
         '</div>';
 
@@ -809,8 +837,14 @@ const DesignerDwgPanel = (() => {
       '</div>';
     }).join('');
 
+    // This one is a row, not a <button>, so `disabled` does nothing for it —
+    // it gets .dcp-btn:disabled's own look (opacity 0.4, not-allowed) inline,
+    // plus a data-disabled the click wiring checks, since a plain div would
+    // otherwise still fire its listener.
     return inputRow + actionRows +
-      '<div class="dcp-edit-item-row" id="' + idPrefix + '-touchaction-add" style="cursor:pointer">' +
+      '<div class="dcp-edit-item-row" id="' + idPrefix + '-touchaction-add"' +
+        (disableAdds ? ' data-disabled="true" title="' + addsDisabledTitle + '"' : '') +
+        ' style="cursor:' + (disableAdds ? 'not-allowed; opacity:0.4' : 'pointer') + '">' +
         '<div class="dcp-edit-item-info"><div class="dcp-edit-item-type" style="font-weight:400">+ Add another touchAction</div></div>' +
       '</div>';
   }
@@ -944,7 +978,10 @@ const DesignerDwgPanel = (() => {
         '<div class="dcp-drawing-info">' +
           '<div class="dcp-drawing-info-head">' +
             '<h3>' + _esc(dwg.name) + '</h3>' +
-            '<button type="button" class="dcp-btn dcp-btn-ghost" id="dcp-edit-toggle-props">Edit Drawing Properties</button>' +
+            // Disabled while the properties editor is open, so the only
+            // ways out of it are its own Cancel / Save Changes buttons.
+            '<button type="button" class="dcp-btn dcp-btn-ghost" id="dcp-edit-toggle-props"' +
+              (propsOpen ? ' disabled' : '') + '>Edit Drawing Properties</button>' +
           '</div>' +
           '<div class="dcp-drawing-meta-line">' +
             '<b>' + byteSize + ' bytes, ' + dwg.x + '&times;' + dwg.y + '</b>' +
@@ -1267,13 +1304,8 @@ const DesignerDwgPanel = (() => {
       // openPropsEditor's listeners piling up from a previous open/close
       // cycle on stale nodes.
       root.querySelector('#dcp-edit-toggle-props').addEventListener('click', () => {
-        if (propsOpen) {
-          DwgLibrary.remove(EDIT_DWG_DRAFT_NAME);
-          propsOpen = false;
-        } else {
-          colorState.color = dwg.color;
-          propsOpen = true;
-        }
+        colorState.color = dwg.color;
+        propsOpen = true;
         renderScreen();
       });
 
@@ -1708,8 +1740,44 @@ const DesignerDwgPanel = (() => {
     return 'cmd_c' + n;
   }
 
+  /// Read one dwg-ITEM geometry value back as a REAL number.  pfod item
+  /// geometry is float/double the whole way down — pfodParser's own
+  /// rectangle/line/touchZone .size(float,float)/.offset(float,float),
+  /// circle/arc .radius(float), arc .start(float)/.angle(float),
+  /// insertDwg .offset(float,float), label .displayMin/.displayMax(float),
+  /// pfodDwgs::pushZero(double,double,double) — dwgValidate.js only asks
+  /// these fields for a finite number, and dwgWireEncoder.js /
+  /// dwgArduinoExport.js concatenate the raw value, so 12.5 is a legal Y
+  /// Position and must survive.  Replaces the parseInt(x.value, 10) that
+  /// used to truncate it.
+  ///
+  /// Deliberately NOT the `parseFloat(x) || fallback` idiom: `||` also
+  /// swallows a legitimately-entered 0, which is a real value here — a
+  /// line's ySize IS its Y delta, so ySize 0 is an exactly-horizontal
+  /// line and `|| 1` makes that undrawable.  Only a NON-FINITE parse
+  /// (empty field, garbage, a missing prefill property) takes the
+  /// fallback; a NaN escaping to dwgArduinoExport would emit
+  /// ".size(NaN,...)", which does not compile.
+  ///
+  /// Takes an input's .value string OR a raw stored number — parseFloat
+  /// stringifies its argument first, so parseFloat(0) is 0 and
+  /// parseFloat(12.5) is 12.5, while undefined/null/'COL' give NaN.
+  ///
+  /// Integer-by-contract fields keep their own parseInt and their own
+  /// default step=1 markup: label/value minValue/maxValue/intValue
+  /// (int32_t on the wire), decimals/fontSize (int), touchZone filter,
+  /// colour, and the Create/Edit Dwg canvas x/y/refresh (the wire start
+  /// header captures (\d+) and pfodDwgs::start takes (int cols,int rows)).
+  /// @param {string|number} value — input .value, or a stored field value
+  /// @param {number} fallback — used ONLY when value isn't a finite number
+  /// @returns {number}
+  function _readNum(value, fallback) {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
   /// Every label/value item in `dwg` carrying its own idxName — the
-  /// candidate list for a touchActionInput's "Indexed label to update"
+  /// candidate list for a touchActionInput's "Indexed label or value"
   /// dropdown (touch-action-inputs.js's own getDisplayTextForItem() only
   /// ever handles these two types).
   /// @param {object} dwg
@@ -1847,6 +1915,15 @@ const DesignerDwgPanel = (() => {
     // a normal live preview too.
     const hasCommonBlock = hasForm && !isPushZero && !isPopZero && !isIndex && !isHide && !isUnhide && !isInsertDwg && !isTouchZone;
 
+    // Both add affordances in the embedded touchActionInput/touchActions
+    // list are greyed out on THIS screen — a touchActionInput/touchAction
+    // attaches to a touchZone that isn't in the dwg yet.  One flag drives
+    // both the greying (_buildTouchZoneItemsListHtml's disableAdds) and the
+    // instruction line above the action row, so the two can't drift apart.
+    // Declared out here rather than inside the touchZone fieldsHtml branch
+    // because the action row is built further down, outside that branch.
+    const touchZoneAddsDisabled = isTouchZone;
+
     // Offset defaults to the canvas centre (half the dwg's size) for
     // every type EXCEPT Insert Drawing: xOffset/yOffset there aren't "where
     // to draw at" like every other type, they SHIFT the inserted drawing's
@@ -1858,9 +1935,12 @@ const DesignerDwgPanel = (() => {
     // Sized/placed so a freshly-added item is comfortably visible on the
     // canvas rather than a tiny (10x10) shape sitting at the corner (0,0).
     const state = {
-      xOffset: isInsertDwg ? 0 : Math.floor(dwg.x / 2), yOffset: isInsertDwg ? 0 : Math.floor(dwg.y / 2),
-      xSize: Math.floor(dwg.x / 4), ySize: Math.floor(dwg.y / 4),
-      radius: Math.floor(Math.min(dwg.x, dwg.y) * 0.25), start: 0, angle: 90,
+      // Not floored — item geometry is float, so on a 50x50 dwg the
+      // quarter-size default is a true 12.5, not 12, and an odd canvas
+      // centres on x.5 instead of snapping half a unit off centre.
+      xOffset: isInsertDwg ? 0 : dwg.x / 2, yOffset: isInsertDwg ? 0 : dwg.y / 2,
+      xSize: dwg.x / 4, ySize: dwg.y / 4,
+      radius: Math.min(dwg.x, dwg.y) * 0.25, start: 0, angle: 90,
       text: isLabel ? 'TEXT' : (isValue ? 'Value: ' : ''), fontSize: 0, align: 'left', bold: false, italic: false, underline: false,
       // value/decimals/units: optional label-only suffix (see
       // dwgWireEncoder.js's _appendFormattedValue) — Value/Units left
@@ -1952,9 +2032,9 @@ const DesignerDwgPanel = (() => {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>Radius</label>' +
@@ -1965,18 +2045,18 @@ const DesignerDwgPanel = (() => {
         (isArc ?
           '<div class="dcp-field-row dcp-num-row">' +
             '<div class="dcp-field"><label>Start Angle (&deg;)</label>' +
-              '<input type="number" id="dcp-additem-start" value="' + state.start + '" placeholder="0-360, +ve anti-clockwise"></div>' +
+              '<input type="number" id="dcp-additem-start" value="' + state.start + '" step="any" placeholder="0-360, +ve anti-clockwise"></div>' +
             '<div class="dcp-field"><label>Sweep Angle (&deg;)</label>' +
-              '<input type="number" id="dcp-additem-angle" value="' + state.angle + '" placeholder="+ve anti-clockwise, -ve clockwise"></div>' +
+              '<input type="number" id="dcp-additem-angle" value="' + state.angle + '" step="any" placeholder="+ve anti-clockwise, -ve clockwise"></div>' +
           '</div>'
         : '');
     } else if (isLabel) {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field">' +
           '<label>Text</label>' +
@@ -2009,9 +2089,9 @@ const DesignerDwgPanel = (() => {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field">' +
           '<label>Prefix Text</label>' +
@@ -2142,9 +2222,9 @@ const DesignerDwgPanel = (() => {
           '<div class="dcp-helper" style="margin-bottom:8px">Set the (0,0) position in the inserted drawing. Positive X/Y moves the inserted dwg up and to the left. Usually left at (0,0) and pushZero used instead.</div>' +
           '<div class="dcp-field-row dcp-num-row">' +
             '<div class="dcp-field"><label>X zero</label>' +
-              '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '"></div>' +
+              '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
             '<div class="dcp-field"><label>Y zero</label>' +
-              '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '"></div>' +
+              '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
           '</div>' +
         '</div>';
     } else if (isTouchZone) {
@@ -2163,13 +2243,13 @@ const DesignerDwgPanel = (() => {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>X Position</label>' +
-            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>Y Position</label>' +
-            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>Width</label>' +
-            '<input type="number" id="dcp-additem-xsize" value="' + state.xSize + '"></div>' +
+            '<input type="number" id="dcp-additem-xsize" value="' + state.xSize + '" step="any"></div>' +
           '<div class="dcp-field"><label>Height</label>' +
-            '<input type="number" id="dcp-additem-ysize" value="' + state.ySize + '"></div>' +
+            '<input type="number" id="dcp-additem-ysize" value="' + state.ySize + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field-row" style="align-items:flex-end">' +
           '<div class="dcp-field" style="flex:1"><label>Command Name <span style="text-transform:none; font-weight:400">(required — can be edited)</span></label>' +
@@ -2182,20 +2262,20 @@ const DesignerDwgPanel = (() => {
         '</div>' +
         '<div class="dcp-helper" id="dcp-additem-touchzone-cmdname-warning" style="display:none; color:#8f2a1f">Command name already used, will be dedupped on Add Item</div>' +
         '<div class="dcp-helper" style="margin:4px 0 16px">No Color or Assign Index — a touchZone is addressed by its Command Name, not an index.</div>' +
-        '<div id="dcp-additem-touchzone-items">' + _buildTouchZoneItemsListHtml('dcp-additem', touchZoneState, dwg) + '</div>';
+        '<div id="dcp-additem-touchzone-items">' + _buildTouchZoneItemsListHtml('dcp-additem', touchZoneState, dwg, touchZoneAddsDisabled) + '</div>';
     } else {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-additem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + wLabel + '</label>' +
-            '<input type="number" id="dcp-additem-xsize" value="' + state.xSize + '"></div>' +
+            '<input type="number" id="dcp-additem-xsize" value="' + state.xSize + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + hLabel + '</label>' +
-            '<input type="number" id="dcp-additem-ysize" value="' + state.ySize + '"></div>' +
+            '<input type="number" id="dcp-additem-ysize" value="' + state.ySize + '" step="any"></div>' +
         '</div>' +
         (isRectangle ?
           '<div class="dcp-field-row">' +
@@ -2280,12 +2360,20 @@ const DesignerDwgPanel = (() => {
                   (insertDwgState.drawingName ? '' : ' disabled') + '>Add Item</button>' +
               '</div>' +
             '</div>'
-          : '<div class="dcp-action-row" style="justify-content:flex-end; margin-top:16px">' +
+          // touchZone only: the instruction explaining why both add
+          // affordances in the list above are greyed out. Sits immediately
+          // above the Cancel/Add Item row so it reads as the next step.
+          // Bold 13px and near-black, vs .dcp-helper's own 11px regular
+          // #5b6675 — an instruction to act on, not background detail.
+          : (touchZoneAddsDisabled
+              ? '<div class="dcp-helper" style="margin:16px 0 4px; font-weight:700; font-size:13px; color:#1b2430">Add touchZone first and then edit it to add touchActionInput or touchActions</div>'
+              : '') +
+            '<div class="dcp-action-row" style="justify-content:flex-end; margin-top:' + (touchZoneAddsDisabled ? '4px' : '16px') + '">' +
               '<button type="button" class="dcp-btn dcp-btn-ghost" id="dcp-additem-cancel-2">Cancel</button>' +
               '<button type="button" class="dcp-btn dcp-btn-primary" id="dcp-additem-submit">Add Item</button>' +
             '</div>')
       :
-        '<div class="dcp-helper" style="margin:8px 0 16px">Adding "' + _esc(selectedType) + '" items is not implemented yet — only Line, Rectangle, Circle, Arc, Label, Value, Touch Zone, Insert Drawing, pushZero, popZero, Index Placeholder, Hide Item, and Unhide Item are supported so far.</div>' +
+        '<div class="dcp-helper" style="margin:8px 0 16px">Adding "' + _esc(selectedType) + '" items is not implemented yet — only Line, Rectangle, Circle, Arc, Label, Value, touchZone, insertDwg, pushZero, popZero, Index Placeholder, Hide Item, and Unhide Item are supported so far.</div>' +
         '<div class="dcp-action-row" style="justify-content:flex-end; margin-top:16px">' +
           '<button type="button" class="dcp-btn dcp-btn-ghost" id="dcp-additem-cancel-2">Cancel</button>' +
           '<button type="button" class="dcp-btn dcp-btn-primary" id="dcp-additem-submit" disabled>Add Item</button>' +
@@ -2388,8 +2476,8 @@ const DesignerDwgPanel = (() => {
           type: 'insertDwg',
           drawingName: insertDwgState.drawingName,
           cmdName: 'dwg_' + insertDwgState.drawingName,
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
         };
       } else if (isTouchZone) {
         // No color/idxName — addressed by cmdName instead, same as
@@ -2404,10 +2492,10 @@ const DesignerDwgPanel = (() => {
         {
           const zoneItem = {
             type: 'touchZone',
-            xOffset: parseInt(xOffsetInput.value, 10) || 0,
-            yOffset: parseInt(yOffsetInput.value, 10) || 0,
-            xSize: parseInt(xSizeInput.value, 10) || 1,
-            ySize: parseInt(ySizeInput.value, 10) || 1,
+            xOffset: _readNum(xOffsetInput.value, 0),
+            yOffset: _readNum(yOffsetInput.value, 0),
+            xSize: _readNum(xSizeInput.value, 1),
+            ySize: _readNum(ySizeInput.value, 1),
             filter: parseInt(touchZoneFilterSelect.value, 10) || 0,
             centered: centeredCheckbox.checked,
             cmdName: dedupe ? _dedupeName(touchZoneState.cmdName.trim() || 'cmd_c1', usedCmdNames) : (touchZoneState.cmdName.trim() || 'cmd_c1'),
@@ -2424,10 +2512,10 @@ const DesignerDwgPanel = (() => {
       } else if (isRectangle) {
         item = {
           type: 'rectangle',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
-          xSize: parseInt(xSizeInput.value, 10) || 1,
-          ySize: parseInt(ySizeInput.value, 10) || 1,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
+          xSize: _readNum(xSizeInput.value, 1),
+          ySize: _readNum(ySizeInput.value, 1),
           filled: filledCheckbox.checked,
           centered: centeredCheckbox.checked,
           rounded: roundedCheckbox.checked,
@@ -2436,8 +2524,8 @@ const DesignerDwgPanel = (() => {
       } else if (isCircle) {
         item = {
           type: 'circle',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           radius: parseFloat(radiusInput.value) || 1,
           filled: filledCheckbox.checked,
           color: (state.colorMode === 'blackwhite') ? -1 : state.color,
@@ -2445,8 +2533,8 @@ const DesignerDwgPanel = (() => {
       } else if (isArc) {
         item = {
           type: 'arc',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           radius: parseFloat(radiusInput.value) || 1,
           start: parseFloat(startInput.value) || 0,
           angle: parseFloat(angleInput.value) || 0,
@@ -2456,8 +2544,8 @@ const DesignerDwgPanel = (() => {
       } else if (isLabel) {
         item = {
           type: 'label',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           text: textInput.value,
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
@@ -2478,8 +2566,8 @@ const DesignerDwgPanel = (() => {
       } else if (isValue) {
         item = {
           type: 'value',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           text: textInput.value,
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
@@ -2498,10 +2586,10 @@ const DesignerDwgPanel = (() => {
       } else {
         item = {
           type: 'line',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
-          xSize: parseInt(xSizeInput.value, 10) || 1,
-          ySize: parseInt(ySizeInput.value, 10) || 1,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
+          xSize: _readNum(xSizeInput.value, 1),
+          ySize: _readNum(ySizeInput.value, 1),
           color: (state.colorMode === 'blackwhite') ? -1 : state.color,
         };
       }
@@ -2859,10 +2947,10 @@ const DesignerDwgPanel = (() => {
       /// after a local (no-sub-editor-needed) change like Remove.
       function snapshotTouchZoneResumeState() {
         return {
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
-          xSize: parseInt(xSizeInput.value, 10) || 1,
-          ySize: parseInt(ySizeInput.value, 10) || 1,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
+          xSize: _readNum(xSizeInput.value, 1),
+          ySize: _readNum(ySizeInput.value, 1),
           filter: parseInt(touchZoneFilterSelect.value, 10) || 0,
           centered: centeredCheckbox.checked,
           cmdName: touchZoneCmdNameInput.value,
@@ -2885,8 +2973,12 @@ const DesignerDwgPanel = (() => {
           _renderAddItemScreen(root, dwgName, 'touchZone', resume);
         });
       }
+      // Greyed out on this screen (_buildTouchZoneItemsListHtml's disableAdds)
+      // — a row is not a <button>, so without this guard the click would still
+      // fire.  The touchActionInput "+ Add" button above needs no equivalent:
+      // a disabled <button> emits no click event.
       const touchActionAddRow = root.querySelector('#dcp-additem-touchaction-add');
-      if (touchActionAddRow) {
+      if (touchActionAddRow && touchActionAddRow.getAttribute('data-disabled') !== 'true') {
         touchActionAddRow.addEventListener('click', () => {
           _renderTouchActionEditorScreen(root, dwgName, null, snapshotTouchZoneResumeState(), null);
         });
@@ -2955,8 +3047,8 @@ const DesignerDwgPanel = (() => {
     { value: 'arc', label: 'Arc' },
     { value: 'label', label: 'Label' },
     { value: 'value', label: 'Value' },
-    { value: 'touchZone', label: 'Touch Zone' },
-    { value: 'insertDwg', label: 'Insert Drawing' },
+    { value: 'touchZone', label: 'touchZone' },
+    { value: 'insertDwg', label: 'insertDwg' },
     { value: 'pushZero', label: 'pushZero' },
     { value: 'popZero', label: 'popZero' },
     { value: 'index', label: 'Index Placeholder' },
@@ -3015,52 +3107,85 @@ const DesignerDwgPanel = (() => {
     // Zone have neither — see _renderAddItemScreen's own hasCommonBlock
     // doc for Touch Zone's own reasoning).
     const hasCommonBlock = hasForm && !isPushZero && !isPopZero && !isIndex && !isHide && !isUnhide && !isInsertDwg && !isTouchZone;
-    // Only prefill REAL current values when editing this item as its
-    // own original type — switching the dropdown to a different type
-    // has nothing sensible to prefill from (no cross-type field mapping
-    // is attempted), so that case starts from Add Item's own defaults.
+    // Carry over every setting the item being edited ACTUALLY HAS, whether or
+    // not the dropdown is still on its original type.  Switching Label ->
+    // Value (say) keeps the position, size, colour, text, font size,
+    // alignment, decimals, units and Assign Index; only fields the original
+    // never had fall back to Add Item's own defaults.
+    //
+    // Matching on the field NAME is what makes this safe: dwgValidate.js's
+    // DWG_ITEM_FIELD_SCHEMA uses one name per concept across every type, so
+    // xOffset/xSize/text/fontSize/align/decimals/units/color mean the same
+    // thing whichever type declares them, and a name the new type doesn't use
+    // is simply never read.  Nothing is coerced between differently-named
+    // fields (an item's xOffset does NOT become pushZero's x, for instance) —
+    // those are different concepts that happen to be positions.
+    /// @param {string} field — schema field name on originalItem
+    /// @param {*} fallback — used only when the original has no such field
+    const carry = (field, fallback) => {
+      const v = originalItem[field];
+      return (v === undefined || v === null) ? fallback : v;
+    };
+    /// carry() for the boolean flags, which are stored as true or 'true'.
+    /// @param {string} field
+    /// @returns {boolean}
+    const carriedFlag = (field) => {
+      const v = carry(field, false);
+      return v === true || v === 'true';
+    };
+    // STRUCTURAL fields still require the same type, unlike the settings
+    // above: a hide target, an insertDwg's drawingName, and a touchZone's
+    // cmdName/touchActions/touchActionInput identify or attach to something,
+    // rather than describing how the item looks, so there is nothing sensible
+    // to carry across a type change (a rectangle has no touchActions to keep).
     const prefillFromOriginal = hasForm && originalItem.type === selectedType;
+    // Colour is carried the same way, except that -1 (BLACK_WHITE) has to
+    // reopen as the blackwhite mode rather than as palette entry -1.
+    const carriedColor = carry('color', undefined);
+    const hasCarriedColor = carriedColor !== undefined && carriedColor !== -1;
 
-    // Non-prefilled defaults match _renderAddItemScreen's own state:
-    // offset defaults to the canvas centre for every type except Insert
-    // Drawing (0,0 — see _renderAddItemScreen's own state doc);
-    // Line/Rectangle's size defaults to a quarter of the canvas;
-    // Circle/Arc's radius defaults to 25% of the smaller canvas
-    // dimension.
+    // Defaults (used only where the original has no such field) match
+    // _renderAddItemScreen's own state: offset defaults to the canvas centre
+    // for every type except Insert Drawing (0,0 — see that state's own doc);
+    // Line/Rectangle's size defaults to a quarter of the canvas; Circle/Arc's
+    // radius to 25% of the smaller canvas dimension.  Not floored — see
+    // _renderAddItemScreen's own state doc for why (item geometry is float).
     const state = {
-      xOffset: prefillFromOriginal ? originalItem.xOffset : (isInsertDwg ? 0 : Math.floor(dwg.x / 2)),
-      yOffset: prefillFromOriginal ? originalItem.yOffset : (isInsertDwg ? 0 : Math.floor(dwg.y / 2)),
-      xSize: prefillFromOriginal ? originalItem.xSize : Math.floor(dwg.x / 4),
-      ySize: prefillFromOriginal ? originalItem.ySize : Math.floor(dwg.y / 4),
-      radius: (prefillFromOriginal && (isCircle || isArc)) ? originalItem.radius : Math.floor(Math.min(dwg.x, dwg.y) * 0.25),
-      start: (prefillFromOriginal && isArc) ? originalItem.start : 0,
-      angle: (prefillFromOriginal && isArc) ? originalItem.angle : 90,
-      text: (prefillFromOriginal && (isLabel || isValue) && typeof originalItem.text === 'string') ? originalItem.text
-        : (isLabel ? 'TEXT' : (isValue ? 'Value: ' : '')),
-      fontSize: (prefillFromOriginal && (isLabel || isValue)) ? originalItem.fontSize : 0,
-      align: (prefillFromOriginal && (isLabel || isValue)) ? originalItem.align : 'left',
-      // value/decimals/units: optional, only ever prefilled when the
-      // original label actually had them set (Object.assign-preserved,
-      // unschema'd fields — see dwgWireEncoder.js's _appendFormattedValue
-      // and this file's own buildDraftItem doc for why they're optional).
-      value: (prefillFromOriginal && isLabel && originalItem.value !== undefined) ? String(originalItem.value) : '',
-      decimals: (prefillFromOriginal && isLabel && originalItem.decimals !== undefined) ? String(originalItem.decimals) : '2',
-      units: (prefillFromOriginal && isLabel && originalItem.units !== undefined) ? originalItem.units : '',
-      // Value item type's own real, required fields — see
-      // _renderAddItemScreen's own state doc for the defaults.
-      intValue: (prefillFromOriginal && isValue) ? originalItem.intValue : 50,
-      min: (prefillFromOriginal && isValue) ? originalItem.min : 0,
-      max: (prefillFromOriginal && isValue) ? originalItem.max : 100,
-      displayMin: (prefillFromOriginal && isValue) ? originalItem.displayMin : 0,
-      displayMax: (prefillFromOriginal && isValue) ? originalItem.displayMax : 1,
-      valueDecimals: (prefillFromOriginal && isValue) ? originalItem.decimals : 2,
-      valueUnits: (prefillFromOriginal && isValue && typeof originalItem.units === 'string') ? originalItem.units : '',
-      pushX: (prefillFromOriginal && isPushZero) ? originalItem.x : 0,
-      pushY: (prefillFromOriginal && isPushZero) ? originalItem.y : 0,
-      pushScale: (prefillFromOriginal && isPushZero) ? originalItem.scale : 1,
-      filter: (prefillFromOriginal && isTouchZone) ? originalItem.filter : 0,
-      colorMode: (prefillFromOriginal && originalItem.color !== -1) ? 'color' : 'blackwhite',
-      color: (prefillFromOriginal && originalItem.color !== -1) ? originalItem.color : 15,
+      xOffset: carry('xOffset', isInsertDwg ? 0 : dwg.x / 2),
+      yOffset: carry('yOffset', isInsertDwg ? 0 : dwg.y / 2),
+      xSize: carry('xSize', dwg.x / 4),
+      ySize: carry('ySize', dwg.y / 4),
+      radius: carry('radius', Math.min(dwg.x, dwg.y) * 0.25),
+      start: carry('start', 0),
+      angle: carry('angle', 90),
+      text: carry('text', isLabel ? 'TEXT' : (isValue ? 'Value: ' : '')),
+      fontSize: carry('fontSize', 0),
+      align: carry('align', 'left'),
+      // Label's optional value/decimals/units suffix (Object.assign-preserved,
+      // unschema'd — see dwgWireEncoder.js's _appendFormattedValue) is held as
+      // STRINGS by this form, unlike the Value type's own numeric fields
+      // below, so carry then stringify.  decimals/units are the same field on
+      // both types, which is exactly why switching between them keeps them.
+      value: (originalItem.value === undefined || originalItem.value === null) ? '' : String(originalItem.value),
+      decimals: (originalItem.decimals === undefined || originalItem.decimals === null) ? '2' : String(originalItem.decimals),
+      units: carry('units', ''),
+      // Value item type's own real, required fields.
+      intValue: carry('intValue', 50),
+      min: carry('min', 0),
+      max: carry('max', 100),
+      displayMin: carry('displayMin', 0),
+      displayMax: carry('displayMax', 1),
+      valueDecimals: carry('decimals', 2),
+      valueUnits: carry('units', ''),
+      // pushZero's own X/Y Translation + Scale Factor are x/y/scale, distinct
+      // field names from every other type's xOffset/yOffset, so these only
+      // ever carry from another pushZero.
+      pushX: carry('x', 0),
+      pushY: carry('y', 0),
+      pushScale: carry('scale', 1),
+      filter: carry('filter', 0),
+      colorMode: hasCarriedColor ? 'color' : 'blackwhite',
+      color: hasCarriedColor ? carriedColor : 15,
     };
     // Resuming from the touchAction/touchActionInput sub-editor — see
     // _renderAddItemScreen's own resumeState doc; overrides both the
@@ -3072,11 +3197,19 @@ const DesignerDwgPanel = (() => {
       state.ySize = resumeState.ySize;
       state.filter = resumeState.filter;
     }
-    // Index Placeholder forces Assign Index on regardless of prefill —
-    // see _renderAddItemScreen's own idxState doc.
+    // Assign Index carries over across a type change too, so switching type
+    // keeps the item's own index name (and everything already pointing at it
+    // by that name keeps working).  The one exception is a REFERENCE_ONLY
+    // original: hide/unhide/erase name ANOTHER item's index rather than
+    // declaring their own, so carrying that name would turn a reference into
+    // a second declaration of a name that already belongs to something else.
+    // Index Placeholder still forces Assign Index on regardless — see
+    // _renderAddItemScreen's own idxState doc.
+    const originalDeclaresIdx = !!originalItem.idxName
+      && REFERENCE_ONLY_TYPES.indexOf(originalItem.type) === -1;
     const idxState = {
-      use: isIndex || !!(prefillFromOriginal && originalItem.idxName),
-      name: (prefillFromOriginal && originalItem.idxName) ? originalItem.idxName : _nextFreeIdxName(dwg),
+      use: isIndex || originalDeclaresIdx,
+      name: originalDeclaresIdx ? originalItem.idxName : _nextFreeIdxName(dwg),
     };
     // One flat namespace across every declaring item — see
     // _collectUsedIdxNames's own doc.
@@ -3149,13 +3282,16 @@ const DesignerDwgPanel = (() => {
     const wLabel = isRectangle ? 'Width' : 'X Delta';
     const hLabel = isRectangle ? 'Height' : 'Y Delta';
     const filledLabel = isArc ? 'Filled (creates pie slice)' : 'Filled';
-    const filledChecked = prefillFromOriginal && (isRectangle || isCircle || isArc) && (originalItem.filled === true || originalItem.filled === 'true');
+    // Carried across a type change like the rest of the settings — the
+    // is<Type> guards say which flags the NEWLY-selected form shows, not
+    // whether the original may be read from.
+    const filledChecked = (isRectangle || isCircle || isArc) && carriedFlag('filled');
     const centeredChecked = (isTouchZone && resumeState) ? !!resumeState.centered
-      : prefillFromOriginal && (isRectangle || isTouchZone) && (originalItem.centered === true || originalItem.centered === 'true');
-    const roundedChecked = prefillFromOriginal && isRectangle && (originalItem.rounded === true || originalItem.rounded === 'true');
-    const boldChecked = prefillFromOriginal && (isLabel || isValue) && (originalItem.bold === true || originalItem.bold === 'true');
-    const italicChecked = prefillFromOriginal && (isLabel || isValue) && (originalItem.italic === true || originalItem.italic === 'true');
-    const underlineChecked = prefillFromOriginal && (isLabel || isValue) && (originalItem.underline === true || originalItem.underline === 'true');
+      : (isRectangle || isTouchZone) && carriedFlag('centered');
+    const roundedChecked = isRectangle && carriedFlag('rounded');
+    const boldChecked = (isLabel || isValue) && carriedFlag('bold');
+    const italicChecked = (isLabel || isValue) && carriedFlag('italic');
+    const underlineChecked = (isLabel || isValue) && carriedFlag('underline');
     const alignOptionsHtml = DWG_ALIGN_VALUES.map((v) =>
       '<option value="' + v + '"' + (v === state.align ? ' selected' : '') + '>' + v[0].toUpperCase() + v.slice(1) + '</option>'
     ).join('');
@@ -3168,9 +3304,9 @@ const DesignerDwgPanel = (() => {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>Radius</label>' +
@@ -3181,18 +3317,18 @@ const DesignerDwgPanel = (() => {
         (isArc ?
           '<div class="dcp-field-row dcp-num-row">' +
             '<div class="dcp-field"><label>Start Angle (&deg;)</label>' +
-              '<input type="number" id="dcp-edititem-start" value="' + state.start + '" placeholder="0-360, +ve anti-clockwise"></div>' +
+              '<input type="number" id="dcp-edititem-start" value="' + state.start + '" step="any" placeholder="0-360, +ve anti-clockwise"></div>' +
             '<div class="dcp-field"><label>Sweep Angle (&deg;)</label>' +
-              '<input type="number" id="dcp-edititem-angle" value="' + state.angle + '" placeholder="+ve anti-clockwise, -ve clockwise"></div>' +
+              '<input type="number" id="dcp-edititem-angle" value="' + state.angle + '" step="any" placeholder="+ve anti-clockwise, -ve clockwise"></div>' +
           '</div>'
         : '');
     } else if (isLabel) {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field">' +
           '<label>Text</label>' +
@@ -3225,9 +3361,9 @@ const DesignerDwgPanel = (() => {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field">' +
           '<label>Prefix Text</label>' +
@@ -3364,9 +3500,9 @@ const DesignerDwgPanel = (() => {
           '<div class="dcp-helper" style="margin-bottom:8px">Set the (0,0) position in the inserted drawing. Positive X/Y moves the inserted dwg up and to the left. Usually left at (0,0) and pushZero used instead.</div>' +
           '<div class="dcp-field-row dcp-num-row">' +
             '<div class="dcp-field"><label>X zero</label>' +
-              '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '"></div>' +
+              '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
             '<div class="dcp-field"><label>Y zero</label>' +
-              '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '"></div>' +
+              '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
           '</div>' +
         '</div>';
     } else if (isTouchZone) {
@@ -3376,13 +3512,13 @@ const DesignerDwgPanel = (() => {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>X Position</label>' +
-            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>Y Position</label>' +
-            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>Width</label>' +
-            '<input type="number" id="dcp-edititem-xsize" value="' + state.xSize + '"></div>' +
+            '<input type="number" id="dcp-edititem-xsize" value="' + state.xSize + '" step="any"></div>' +
           '<div class="dcp-field"><label>Height</label>' +
-            '<input type="number" id="dcp-edititem-ysize" value="' + state.ySize + '"></div>' +
+            '<input type="number" id="dcp-edititem-ysize" value="' + state.ySize + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field-row" style="align-items:flex-end">' +
           '<div class="dcp-field" style="flex:1"><label>Command Name <span style="text-transform:none; font-weight:400">(required — can be edited)</span></label>' +
@@ -3400,15 +3536,15 @@ const DesignerDwgPanel = (() => {
       fieldsHtml =
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + xLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-xoffset" value="' + state.xOffset + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + yLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '"></div>' +
+            '<input type="number" id="dcp-edititem-yoffset" value="' + state.yOffset + '" step="any"></div>' +
         '</div>' +
         '<div class="dcp-field-row dcp-num-row">' +
           '<div class="dcp-field"><label>' + wLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-xsize" value="' + state.xSize + '"></div>' +
+            '<input type="number" id="dcp-edititem-xsize" value="' + state.xSize + '" step="any"></div>' +
           '<div class="dcp-field"><label>' + hLabel + '</label>' +
-            '<input type="number" id="dcp-edititem-ysize" value="' + state.ySize + '"></div>' +
+            '<input type="number" id="dcp-edititem-ysize" value="' + state.ySize + '" step="any"></div>' +
         '</div>' +
         (isRectangle ?
           '<div class="dcp-field-row">' +
@@ -3501,7 +3637,7 @@ const DesignerDwgPanel = (() => {
               '<button type="button" class="dcp-btn dcp-btn-primary" id="dcp-edititem-submit">Save Changes</button>' +
             '</div>')
       :
-        '<div class="dcp-helper" style="margin:8px 0 16px">Editing "' + _esc(selectedType) + '" items is not implemented yet — only Line, Rectangle, Circle, Arc, Label, Value, Touch Zone, Insert Drawing, pushZero, popZero, Index Placeholder, Hide Item, and Unhide Item are supported so far.</div>' +
+        '<div class="dcp-helper" style="margin:8px 0 16px">Editing "' + _esc(selectedType) + '" items is not implemented yet — only Line, Rectangle, Circle, Arc, Label, Value, touchZone, insertDwg, pushZero, popZero, Index Placeholder, Hide Item, and Unhide Item are supported so far.</div>' +
         '<div class="dcp-action-row" style="justify-content:flex-end; margin-top:16px">' +
           '<button type="button" class="dcp-btn dcp-btn-ghost" id="dcp-edititem-cancel-2">Cancel</button>' +
           '<button type="button" class="dcp-btn dcp-btn-primary" id="dcp-edititem-submit" disabled>Save Changes</button>' +
@@ -3597,8 +3733,8 @@ const DesignerDwgPanel = (() => {
           type: 'insertDwg',
           drawingName: insertDwgState.drawingName,
           cmdName: 'dwg_' + insertDwgState.drawingName,
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
         };
       } else if (isTouchZone) {
         // See _renderAddItemScreen's own buildDraftItem isTouchZone doc —
@@ -3607,10 +3743,10 @@ const DesignerDwgPanel = (() => {
         // when returning from a sub-editor — see touchZoneState's own doc).
         const zoneItem = {
           type: 'touchZone',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
-          xSize: parseInt(xSizeInput.value, 10) || 1,
-          ySize: parseInt(ySizeInput.value, 10) || 1,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
+          xSize: _readNum(xSizeInput.value, 1),
+          ySize: _readNum(ySizeInput.value, 1),
           filter: parseInt(touchZoneFilterSelect.value, 10) || 0,
           centered: centeredCheckbox.checked,
           cmdName: dedupe ? _dedupeName(touchZoneState.cmdName.trim() || 'cmd_c1', usedCmdNames) : (touchZoneState.cmdName.trim() || 'cmd_c1'),
@@ -3625,10 +3761,10 @@ const DesignerDwgPanel = (() => {
       } else if (isRectangle) {
         item = {
           type: 'rectangle',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
-          xSize: parseInt(xSizeInput.value, 10) || 1,
-          ySize: parseInt(ySizeInput.value, 10) || 1,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
+          xSize: _readNum(xSizeInput.value, 1),
+          ySize: _readNum(ySizeInput.value, 1),
           filled: filledCheckbox.checked,
           centered: centeredCheckbox.checked,
           rounded: roundedCheckbox.checked,
@@ -3637,8 +3773,8 @@ const DesignerDwgPanel = (() => {
       } else if (isCircle) {
         item = {
           type: 'circle',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           radius: parseFloat(radiusInput.value) || 1,
           filled: filledCheckbox.checked,
           color: (state.colorMode === 'blackwhite') ? -1 : state.color,
@@ -3646,8 +3782,8 @@ const DesignerDwgPanel = (() => {
       } else if (isArc) {
         item = {
           type: 'arc',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           radius: parseFloat(radiusInput.value) || 1,
           start: parseFloat(startInput.value) || 0,
           angle: parseFloat(angleInput.value) || 0,
@@ -3657,8 +3793,8 @@ const DesignerDwgPanel = (() => {
       } else if (isLabel) {
         item = {
           type: 'label',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           text: textInput.value,
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
@@ -3675,8 +3811,8 @@ const DesignerDwgPanel = (() => {
       } else if (isValue) {
         item = {
           type: 'value',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
           text: textInput.value,
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
@@ -3695,10 +3831,10 @@ const DesignerDwgPanel = (() => {
       } else {
         item = {
           type: 'line',
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
-          xSize: parseInt(xSizeInput.value, 10) || 1,
-          ySize: parseInt(ySizeInput.value, 10) || 1,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
+          xSize: _readNum(xSizeInput.value, 1),
+          ySize: _readNum(ySizeInput.value, 1),
           color: (state.colorMode === 'blackwhite') ? -1 : state.color,
         };
       }
@@ -4021,10 +4157,10 @@ const DesignerDwgPanel = (() => {
       /// See _renderAddItemScreen's own snapshotTouchZoneResumeState doc.
       function snapshotTouchZoneResumeState() {
         return {
-          xOffset: parseInt(xOffsetInput.value, 10) || 0,
-          yOffset: parseInt(yOffsetInput.value, 10) || 0,
-          xSize: parseInt(xSizeInput.value, 10) || 1,
-          ySize: parseInt(ySizeInput.value, 10) || 1,
+          xOffset: _readNum(xOffsetInput.value, 0),
+          yOffset: _readNum(yOffsetInput.value, 0),
+          xSize: _readNum(xSizeInput.value, 1),
+          ySize: _readNum(ySizeInput.value, 1),
           filter: parseInt(touchZoneFilterSelect.value, 10) || 0,
           centered: centeredCheckbox.checked,
           cmdName: touchZoneCmdNameInput.value,
@@ -4115,7 +4251,23 @@ const DesignerDwgPanel = (() => {
       // cross-kind sharing partner being dragged along by the
       // propagation below can't collide with anything, because
       // usedIdxNames already covered its kind too.
-      if (oldIdxName && newIdxName && oldIdxName !== newIdxName) {
+      //
+      // Only a DECLARING item can be renamed this way.  hide/unhide/erase
+      // (REFERENCE_ONLY_TYPES) carry an idxName that NAMES SOMEONE ELSE'S
+      // index, so changing it is retargeting, not renaming: propagating it
+      // would rewrite the real declarer (and every other reference) to the
+      // newly-picked name — e.g. editing a Hide item from "indicator" to
+      // "idx_hidden" silently renamed the Index Placeholder that declared
+      // "indicator".  Changing what an item hides must never touch the
+      // assigned indexes.  Both ends are checked: if the ORIGINAL was
+      // reference-only there is no declaration to rename, and if the UPDATED
+      // item is reference-only the old declaration is being removed
+      // altogether, so surviving references to it are orphans for
+      // validateAndRepairDwg's own orphan-check to clean up — not things to
+      // re-point at this item's new target.
+      const wasDeclaring = REFERENCE_ONLY_TYPES.indexOf(originalItem.type) === -1;
+      const nowDeclaring = REFERENCE_ONLY_TYPES.indexOf(updatedItem.type) === -1;
+      if (wasDeclaring && nowDeclaring && oldIdxName && newIdxName && oldIdxName !== newIdxName) {
         _renameIdxNameReferences(items, itemIndex, oldIdxName, newIdxName);
       }
       const raw = {
@@ -4154,7 +4306,12 @@ const DesignerDwgPanel = (() => {
   ///        (xOffset/yOffset/xSize/ySize/filter/centered/cmdName)
   /// @param {Array<object>} liveTouchActions
   /// @param {object|null} liveTouchActionInput
-  function _updateTouchZoneSubEditorPreview(dwgName, dwg, itemIndex, resumeState, liveTouchActions, liveTouchActionInput) {
+  /// @param {Array<object>} [extraItems] — appended LAST, after the touchZone
+  ///        item. Used by the touchAction editor's press-and-hold Show button
+  ///        to splice in a one-off hide/unhide directive targeting the
+  ///        selected idxName; last-one-wins ordering (the same rule
+  ///        _isCurrentlyHidden applies) is why they go on the end.
+  function _updateTouchZoneSubEditorPreview(dwgName, dwg, itemIndex, resumeState, liveTouchActions, liveTouchActionInput, extraItems) {
     const zoneItem = {
       type: 'touchZone',
       xOffset: resumeState.xOffset, yOffset: resumeState.yOffset,
@@ -4172,6 +4329,7 @@ const DesignerDwgPanel = (() => {
           arr[itemIndex] = zoneItem;
           return flattenTouchActions(arr);
         })();
+    if (extraItems && extraItems.length) items.push.apply(items, extraItems);
     const raw = { name: ADD_ITEM_DRAFT_NAME, x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color, items };
     const { dwg: draftDwg } = validateAndRepairDwg(raw, ADD_ITEM_DRAFT_NAME);
     DwgLibrary.saveHidden(draftDwg);
@@ -4260,7 +4418,7 @@ const DesignerDwgPanel = (() => {
       // omitted entirely.
       root.innerHTML =
         '<div class="dcp-back-row">' +
-          '<button type="button" class="dcp-back-link" id="dcp-tai-cancel">&larr; Cancel, back to Touch Zone</button>' +
+          '<button type="button" class="dcp-back-link" id="dcp-tai-cancel">&larr; Cancel, back to touchZone</button>' +
           '<button type="button" class="dcp-back-link dcp-exit" id="dcp-exit-designer">Exit Designer</button>' +
         '</div>' +
         '<h1 class="dcp-title">touchActionInput Editor</h1>' +
@@ -4284,7 +4442,7 @@ const DesignerDwgPanel = (() => {
 
     root.innerHTML =
       '<div class="dcp-back-row">' +
-        '<button type="button" class="dcp-back-link" id="dcp-tai-cancel">&larr; Cancel, back to Touch Zone</button>' +
+        '<button type="button" class="dcp-back-link" id="dcp-tai-cancel">&larr; Cancel, back to touchZone</button>' +
         '<button type="button" class="dcp-back-link dcp-exit" id="dcp-exit-designer">Exit Designer</button>' +
       '</div>' +
       '<h1 class="dcp-title">touchActionInput Editor</h1>' +
@@ -4294,14 +4452,14 @@ const DesignerDwgPanel = (() => {
         '<div class="dcp-helper">Text shown in the on-device prompt dialog</div>' +
       '</div>' +
       '<div class="dcp-field">' +
-        '<label>Indexed label to update</label>' +
+        '<label>Indexed label or value</label>' +
         '<select id="dcp-tai-textidx">' +
           labelValueCandidates.map((c) =>
             '<option value="' + _esc(c.idxName) + '"' + (c.idxName === selectedIdxName ? ' selected' : '') + '>' +
               _esc(c.idxName) + ' — ' + _esc(_itemTypeLabel(c)) + '</option>'
           ).join('') +
         '</select>' +
-        '<div class="dcp-helper">Which label/value item gets updated with the entered value</div>' +
+        '<div class="dcp-helper">Which label/value supplies the initial text</div>' +
       '</div>' +
       '<div class="dcp-field-row dcp-num-row">' +
         '<div class="dcp-field" style="flex:1">' +
@@ -4554,7 +4712,7 @@ const DesignerDwgPanel = (() => {
       const anyIndexedAtAll = (dwg.items || []).some((item) => item.idxName && REFERENCE_ONLY_TYPES.indexOf(item.type) === -1);
       root.innerHTML =
         '<div class="dcp-back-row">' +
-          '<button type="button" class="dcp-back-link" id="dcp-ta-cancel">&larr; Cancel, back to Touch Zone</button>' +
+          '<button type="button" class="dcp-back-link" id="dcp-ta-cancel">&larr; Cancel, back to touchZone</button>' +
           '<button type="button" class="dcp-back-link dcp-exit" id="dcp-exit-designer">Exit Designer</button>' +
         '</div>' +
         '<h1 class="dcp-title">' + (hasExisting ? 'Edit' : 'Add') + ' touchAction Item</h1>' +
@@ -4585,7 +4743,12 @@ const DesignerDwgPanel = (() => {
     /// @param {string} mode — 'number' | 'COL' | 'ROW'
     /// @param {number} numericValue — shown/edited only in 'number' mode
     /// @returns {string}
-    function offsetModeFieldHtml(fieldId, mode, numericValue) {
+    /// @param {boolean} [integerOnly] — Integer Value only.  This helper is
+    ///        shared by dcp-ta-xoffset/-yoffset (float — .offset(float,float))
+    ///        and dcp-ta-intvalue (int32_t on the wire), so the integer field
+    ///        opts out of step="any" here and out of the fractional read-back
+    ///        in readOffsetModeField.  The two must stay in lockstep.
+    function offsetModeFieldHtml(fieldId, mode, numericValue, integerOnly) {
       const isSpecial = mode === 'COL' || mode === 'ROW';
       return '<div style="display:flex; gap:6px; align-items:center">' +
         '<select id="' + fieldId + '-mode" style="width:50%">' +
@@ -4593,17 +4756,21 @@ const DesignerDwgPanel = (() => {
           '<option value="COL"' + (mode === 'COL' ? ' selected' : '') + '>COL (Touch Column)</option>' +
           '<option value="ROW"' + (mode === 'ROW' ? ' selected' : '') + '>ROW (Touch Row)</option>' +
         '</select>' +
-        '<input type="number" id="' + fieldId + '" value="' + numericValue + '"' + (isSpecial ? ' disabled' : '') + '>' +
+        '<input type="number" id="' + fieldId + '" value="' + numericValue + '"' +
+          (integerOnly ? '' : ' step="any"') + (isSpecial ? ' disabled' : '') + '>' +
       '</div>';
     }
     /// Read one offsetModeFieldHtml field back — the literal string
     /// "COL"/"ROW" in that mode, else the input's own parsed number.
     /// @param {string} fieldId
     /// @returns {number|string}
-    function readOffsetModeField(fieldId) {
+    /// @param {boolean} [integerOnly] — see offsetModeFieldHtml's own note;
+    ///        Integer Value keeps parseInt, the offsets read as floats.
+    function readOffsetModeField(fieldId, integerOnly) {
       const mode = root.querySelector('#' + fieldId + '-mode').value;
       if (mode === 'COL' || mode === 'ROW') return mode;
-      return parseInt(root.querySelector('#' + fieldId).value, 10) || 0;
+      const raw = root.querySelector('#' + fieldId).value;
+      return integerOnly ? (parseInt(raw, 10) || 0) : _readNum(raw, 0);
     }
     /// Toggle the number input's disabled state to match its own mode
     /// select, and live-preview the change — called once per field, after
@@ -4664,9 +4831,13 @@ const DesignerDwgPanel = (() => {
     const state = {
       xOffset: (prefillSource && typeof prefillSource.xOffset === 'number') ? prefillSource.xOffset : (targetItem.xOffset || 0),
       yOffset: (prefillSource && typeof prefillSource.yOffset === 'number') ? prefillSource.yOffset : (targetItem.yOffset || 0),
-      xSize: prefillSource ? (prefillSource.xSize || 1) : (targetItem.xSize || Math.floor(dwg.x / 4)),
-      ySize: prefillSource ? (prefillSource.ySize || 1) : (targetItem.ySize || Math.floor(dwg.y / 4)),
-      radius: prefillSource ? (prefillSource.radius || 1) : (targetItem.radius || Math.floor(Math.min(dwg.x, dwg.y) * 0.25)),
+      // _readNum, not `|| default`, on BOTH arms: `||` replaces a stored 0
+      // with the default, so a saved 0-delta line came back as 1 every time
+      // this editor was reopened.  The seeded defaults are unfloored for the
+      // same reason as _renderAddItemScreen's own state.
+      xSize: prefillSource ? _readNum(prefillSource.xSize, 1) : _readNum(targetItem.xSize, dwg.x / 4),
+      ySize: prefillSource ? _readNum(prefillSource.ySize, 1) : _readNum(targetItem.ySize, dwg.y / 4),
+      radius: prefillSource ? _readNum(prefillSource.radius, 1) : _readNum(targetItem.radius, Math.min(dwg.x, dwg.y) * 0.25),
       start: prefillSource ? (prefillSource.start || 0) : 0,
       angle: prefillSource ? (prefillSource.angle || 0) : 90,
       text: (prefillSource && typeof prefillSource.text === 'string') ? prefillSource.text : (isLabel ? 'TEXT' : (isValue ? 'Value: ' : '')),
@@ -4674,9 +4845,12 @@ const DesignerDwgPanel = (() => {
       align: prefillSource ? (prefillSource.align || 'left') : 'left',
       intValue: (prefillSource && typeof prefillSource.intValue === 'number') ? prefillSource.intValue : 50,
       min: prefillSource ? (prefillSource.min || 0) : 0,
-      max: prefillSource ? (prefillSource.max || 1) : 100,
+      // max/displayMax: _readNum only to stop `||` rewriting a stored 0 to 1.
+      // max itself stays an INTEGER field — its input keeps the default
+      // step=1 and its own parseInt read-back (minValue/maxValue are int32_t).
+      max: prefillSource ? _readNum(prefillSource.max, 1) : 100,
       displayMin: prefillSource ? (prefillSource.displayMin || 0) : 0,
-      displayMax: prefillSource ? (prefillSource.displayMax || 1) : 1,
+      displayMax: prefillSource ? _readNum(prefillSource.displayMax, 1) : 1,
       valueDecimals: prefillSource ? (prefillSource.decimals || 0) : 2,
       valueUnits: (prefillSource && typeof prefillSource.units === 'string') ? prefillSource.units : '',
     };
@@ -4717,8 +4891,8 @@ const DesignerDwgPanel = (() => {
         '</div>' +
         (isArc ?
           '<div class="dcp-field-row dcp-num-row">' +
-            '<div class="dcp-field"><label>Start Angle (&deg;)</label><input type="number" id="dcp-ta-start" value="' + state.start + '"></div>' +
-            '<div class="dcp-field"><label>Sweep Angle (&deg;)</label><input type="number" id="dcp-ta-angle" value="' + state.angle + '"></div>' +
+            '<div class="dcp-field"><label>Start Angle (&deg;)</label><input type="number" id="dcp-ta-start" value="' + state.start + '" step="any"></div>' +
+            '<div class="dcp-field"><label>Sweep Angle (&deg;)</label><input type="number" id="dcp-ta-angle" value="' + state.angle + '" step="any"></div>' +
           '</div>'
         : '');
     } else if (isLabel || isValue) {
@@ -4741,7 +4915,7 @@ const DesignerDwgPanel = (() => {
         (isValue ?
           '<div class="dcp-helper" style="font-weight:600; margin:12px 0 6px">Value Scaling Parameters</div>' +
           '<div class="dcp-field-row dcp-num-row">' +
-            '<div class="dcp-field"><label>Integer Value</label>' + offsetModeFieldHtml('dcp-ta-intvalue', intValueMode, state.intValue) + '</div>' +
+            '<div class="dcp-field"><label>Integer Value</label>' + offsetModeFieldHtml('dcp-ta-intvalue', intValueMode, state.intValue, true) + '</div>' +
             '<div class="dcp-field"><label>Decimals</label><input type="number" id="dcp-ta-valuedecimals" value="' + state.valueDecimals + '" min="-6" max="6"></div>' +
           '</div>' +
           '<div class="dcp-field-row dcp-num-row">' +
@@ -4760,8 +4934,8 @@ const DesignerDwgPanel = (() => {
           '<div class="dcp-field"><label>' + (isRectangle ? 'Y Position' : 'Y Offset') + '</label>' + offsetModeFieldHtml('dcp-ta-yoffset', yOffsetMode, state.yOffset) + '</div>' +
         '</div>' +
         '<div class="dcp-field-row dcp-num-row">' +
-          '<div class="dcp-field"><label>' + (isRectangle ? 'Width' : 'X Delta') + '</label><input type="number" id="dcp-ta-xsize" value="' + state.xSize + '"></div>' +
-          '<div class="dcp-field"><label>' + (isRectangle ? 'Height' : 'Y Delta') + '</label><input type="number" id="dcp-ta-ysize" value="' + state.ySize + '"></div>' +
+          '<div class="dcp-field"><label>' + (isRectangle ? 'Width' : 'X Delta') + '</label><input type="number" id="dcp-ta-xsize" value="' + state.xSize + '" step="any"></div>' +
+          '<div class="dcp-field"><label>' + (isRectangle ? 'Height' : 'Y Delta') + '</label><input type="number" id="dcp-ta-ysize" value="' + state.ySize + '" step="any"></div>' +
         '</div>' +
         (isRectangle ?
           '<div class="dcp-field-row">' +
@@ -4774,12 +4948,19 @@ const DesignerDwgPanel = (() => {
 
     root.innerHTML =
       '<div class="dcp-back-row">' +
-        '<button type="button" class="dcp-back-link" id="dcp-ta-cancel">&larr; Cancel, back to Touch Zone</button>' +
+        '<button type="button" class="dcp-back-link" id="dcp-ta-cancel">&larr; Cancel, back to touchZone</button>' +
         '<button type="button" class="dcp-back-link dcp-exit" id="dcp-exit-designer">Exit Designer</button>' +
       '</div>' +
       '<h1 class="dcp-title">' + (hasExisting ? 'Edit' : 'Add') + ' touchAction Item</h1>' +
+      // Select narrowed to 50% (matching the Item type select below it)
+      // to leave room for the Show button on the same line — same
+      // press-and-hold eye control as the Edit Dwg item list's own rows.
       '<div class="dcp-field"><label>Target indexed item</label>' +
-        '<select id="dcp-ta-target">' + targetOptionsHtml + '</select>' +
+        '<div style="display:flex; gap:8px; align-items:center">' +
+          '<select id="dcp-ta-target" style="width:50%">' + targetOptionsHtml + '</select>' +
+          '<button type="button" class="dcp-mini-btn dcp-mini-btn-show" id="dcp-ta-target-show" ' +
+            'title="Hold to toggle the selected item&#39;s visibility and identify it in the preview">&#128065;</button>' +
+        '</div>' +
         '<div class="dcp-helper">Which existing item gets replaced by this touchAction while the zone is touched</div>' +
       '</div>' +
       '<div class="dcp-field"><label>Item type</label>' +
@@ -4813,6 +4994,40 @@ const DesignerDwgPanel = (() => {
       _renderTouchActionEditorScreen(root, dwgName, itemIndex, resumeState, editActionIndex, e.target.value, targetItem.idxName);
     });
 
+    // Press-and-hold Show — briefly flips the SELECTED target item's
+    // visibility in the preview so it's obvious which item this touchAction
+    // will replace, then restores on release. Same press/release/mouseleave
+    // shape as the Edit Dwg item list's own eye buttons.
+    //
+    // Implemented by appending a one-off hide/unhide directive to the draft
+    // this screen already previews, rather than the forceNextUpdate +
+    // resolveIdx route the item list uses: that draft is rebuilt from
+    // scratch on every keystroke here anyway, so there's no idx to resolve
+    // and release is just the normal live preview again.
+    //
+    // Toggling AWAY FROM the current state matters — the dwg may already
+    // hide this item (targetIsHidden, computed above for the same reason the
+    // Item type dropdown offers Hide vs Unhide), and hiding an already-
+    // hidden item would reveal nothing. Changing the dropdown re-renders the
+    // whole screen, so targetItem is always the current selection.
+    const targetShowBtn = root.querySelector('#dcp-ta-target-show');
+    let targetShowPressed = false;
+    function pressTargetShow() {
+      if (targetShowPressed) return;
+      targetShowPressed = true;
+      renderLivePreview([{ type: targetIsHidden ? 'unhide' : 'hide', idxName: targetItem.idxName }]);
+    }
+    function releaseTargetShow() {
+      if (!targetShowPressed) return;
+      targetShowPressed = false;
+      renderLivePreview(null);
+    }
+    targetShowBtn.addEventListener('mousedown', (e) => { e.stopPropagation(); pressTargetShow(); });
+    targetShowBtn.addEventListener('mouseup', (e) => { e.stopPropagation(); releaseTargetShow(); });
+    // Safety net: dragging off the button while still pressed fires no
+    // mouseup on it, so don't leave the preview stuck toggled.
+    targetShowBtn.addEventListener('mouseleave', releaseTargetShow);
+
     function buildTargetItem() {
       const color = colorState.mode === 'blackwhite' ? -1 : colorState.color;
       let target;
@@ -4821,8 +5036,8 @@ const DesignerDwgPanel = (() => {
           type: 'rectangle',
           xOffset: readOffsetModeField('dcp-ta-xoffset'),
           yOffset: readOffsetModeField('dcp-ta-yoffset'),
-          xSize: parseInt(root.querySelector('#dcp-ta-xsize').value, 10) || 1,
-          ySize: parseInt(root.querySelector('#dcp-ta-ysize').value, 10) || 1,
+          xSize: _readNum(root.querySelector('#dcp-ta-xsize').value, 1),
+          ySize: _readNum(root.querySelector('#dcp-ta-ysize').value, 1),
           filled: root.querySelector('#dcp-ta-filled').checked,
           centered: root.querySelector('#dcp-ta-centered').checked,
           rounded: root.querySelector('#dcp-ta-rounded').checked,
@@ -4872,7 +5087,7 @@ const DesignerDwgPanel = (() => {
           bold: root.querySelector('#dcp-ta-bold').checked,
           italic: root.querySelector('#dcp-ta-italic').checked,
           underline: root.querySelector('#dcp-ta-underline').checked,
-          intValue: readOffsetModeField('dcp-ta-intvalue'),
+          intValue: readOffsetModeField('dcp-ta-intvalue', true),
           min: parseFloat(root.querySelector('#dcp-ta-min').value) || 0,
           max: parseFloat(root.querySelector('#dcp-ta-max').value) || 1,
           displayMin: parseFloat(root.querySelector('#dcp-ta-displaymin').value) || 0,
@@ -4886,8 +5101,8 @@ const DesignerDwgPanel = (() => {
           type: 'line',
           xOffset: readOffsetModeField('dcp-ta-xoffset'),
           yOffset: readOffsetModeField('dcp-ta-yoffset'),
-          xSize: parseInt(root.querySelector('#dcp-ta-xsize').value, 10) || 1,
-          ySize: parseInt(root.querySelector('#dcp-ta-ysize').value, 10) || 1,
+          xSize: _readNum(root.querySelector('#dcp-ta-xsize').value, 1),
+          ySize: _readNum(root.querySelector('#dcp-ta-ysize').value, 1),
           color: color,
         };
       }
@@ -4910,7 +5125,10 @@ const DesignerDwgPanel = (() => {
     /// — see _updateTouchZoneSubEditorPreview's own doc. Reuses
     /// buildTargetItem() (the same builder Save itself uses) so the
     /// preview and the eventual commit can never disagree.
-    function updatePreview() {
+    /// @param {Array<object>} [extraItems] — passed straight through, so the
+    ///        Show button can splice a hide/unhide directive onto the very
+    ///        same live preview rather than building a second one.
+    function renderLivePreview(extraItems) {
       const target = isHideUnhide ? { type: selectedType, idxName: targetItem.idxName } : buildTargetItem();
       const wrapper = { type: 'touchAction', cmdName: resumeState.cmdName, action: [target] };
       const liveTouchActions = resumeState.touchActions.slice();
@@ -4919,8 +5137,9 @@ const DesignerDwgPanel = (() => {
       } else {
         liveTouchActions.push(wrapper);
       }
-      _updateTouchZoneSubEditorPreview(dwgName, dwg, itemIndex, resumeState, liveTouchActions, resumeState.touchActionInput);
+      _updateTouchZoneSubEditorPreview(dwgName, dwg, itemIndex, resumeState, liveTouchActions, resumeState.touchActionInput, extraItems);
     }
+    function updatePreview() { renderLivePreview(null); }
 
     if (isHideUnhide) {
       root.querySelector('#dcp-ta-save').addEventListener('click', () => {

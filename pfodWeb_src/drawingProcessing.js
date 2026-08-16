@@ -287,6 +287,28 @@ Object.assign(DrawingViewer.prototype, {
       console.log(`[INSERT_DWG] Created placeholder entry for "${drawingName}" with parent "${item.parentDrawingName}"`);
     }
 
+    // parentDrawing must be recorded no matter HOW this drawing came to be
+    // registered.  addInsertedDrawing() above is the only place that sets it,
+    // and it is skipped whenever the drawing is already in dm.drawings —
+    // which is exactly what loadDrawingDataFromStorage does when it hydrates
+    // from the per-drawing cache, registering the drawing with
+    // parentDrawing: null (DrawingManager.js's own "Restore drawingsData"
+    // block).  Left null, a cached inserted dwg looks like its own tree root,
+    // and two things downstream go wrong:
+    //   - findIndexOwnerDrawing (drawingDataProcessor.js) confines its search
+    //     to the requesting drawing's tree, so an update routed to this child
+    //     but carrying an idx owned by the PARENT finds no owner, is treated
+    //     as a brand-new idx, and captures a fresh transform instead of the
+    //     one caught when the idx was first seen — the item jumps position.
+    //   - the 'start' cascade-remove and pruneDrawingsNotInMenu both identify
+    //     children/roots through parentDrawing, so a cached child reads as a
+    //     root there too.
+    if (item.parentDrawingName && dm.drawingsData[drawingName]
+        && dm.drawingsData[drawingName].parentDrawing !== item.parentDrawingName) {
+      console.log(`[INSERT_DWG] Setting parent of "${drawingName}" to "${item.parentDrawingName}" (was ${JSON.stringify(dm.drawingsData[drawingName].parentDrawing)})`);
+      dm.drawingsData[drawingName].parentDrawing = item.parentDrawingName;
+    }
+
     // Maintain itemRefreshTimes invariant: every entry in dm.drawings has an
     // entry.  Both branches above (cache-hydration via loadDrawingDataFromStorage
     // and addInsertedDrawing) can register the drawing without touching
@@ -352,6 +374,181 @@ Object.assign(DrawingViewer.prototype, {
       dataAvailable: cacheLoaded,
       newlyAdded: !cacheLoaded
     };
+  },
+
+  // Drop every registered drawing tree the menu now being shown does not
+  // reference.  A menu's dwg items are the only entry points into the live
+  // DrawingManager: each one's loadCmd roots a tree, and every other
+  // registered drawing is an insertDwg descendant of one of those roots
+  // (parentDrawing chain).  Navigating to a different menu therefore orphans
+  // whole trees, and nothing else removed them — DrawingManager.reset() only
+  // runs on the [TOUCH_REPLACEMENT] path (a touch answering with a start for
+  // an unknown drawing), so plain menu navigation left the previous menu's
+  // roots registered forever.  Two concrete consequences:
+  //   - each orphaned root kept its indexedItems, and idx numbering restarts
+  //     at 1 per tree, so a stale root could be reported as the holder of an
+  //     idx belonging to the tree now on screen (drawingDataProcessor.js's
+  //     findIndexOwnerDrawing, which is now tree-scoped for the same reason);
+  //   - the auto-refresh scan walks dm.drawings, so an orphaned root with a
+  //     non-zero refresh kept re-requesting a drawing nothing displays.
+  //
+  // Only ROOTS are passed to removeInsertedDrawing() — it cascades to their
+  // children itself, so each stale tree goes whole.  Drawings that survive
+  // into the new menu are left completely untouched: they keep their
+  // drawingsData so handleMenuResize still finds real canvas dimensions
+  // instead of the placeholder size (see _navigateToMenu's own note).
+  //
+  // Parameters:
+  //   drawingItems - menuData.drawingItems of the menu being shown (may be empty)
+  pruneDrawingsNotInMenu(drawingItems) {
+    const dm = this.redraw.redrawDrawingManager;
+    const liveRoots = new Set((drawingItems || []).map(item => item.loadCmd).filter(Boolean));
+
+    // Snapshot first — removeInsertedDrawing() mutates dm.drawings.
+    const staleRoots = dm.drawings.filter(name =>
+      !dm.drawingsData[name]?.parentDrawing && !liveRoots.has(name));
+
+    // removeInsertedDrawing() cancels queued AND in-flight requests for what
+    // it removes.  Dropping the old menu's queued drawing fetches is exactly
+    // what's wanted here, but the in-flight request is the MENU response
+    // currently being processed — and it can match a stale root: on a touch
+    // that navigated here, _resolveLoadCmdFromRequest resolves the touched cmd
+    // against _currentMenu, which is still the OLD menu (show() runs after
+    // this).  requestQueue.js clears sentRequest itself once the menu response
+    // finishes; until then it must stay set, or the drawing fetches queued
+    // straight after this stop early-skipping in processRequestQueue and pull
+    // a request mid-stream.  Restore it after the sweep.
+    const inFlightRequest = this.sentRequest;
+
+    for (const rootName of staleRoots) {
+      console.log(`[MENU_PRUNE] Dropping drawing tree "${rootName}" - not referenced by the current menu`);
+      // The five merged (per-menuDwg) collections are keyed by ROOT name and
+      // hold the fully-expanded tree, so they belong to the root and are not
+      // reached by removeInsertedDrawing()'s per-drawing cleanup.
+      delete dm.allTouchZonesByCmd[rootName];
+      delete dm.allTouchActionsByCmd[rootName];
+      delete dm.allTouchActionInputsByCmd[rootName];
+      delete dm.allUnindexedItems[rootName];
+      delete dm.allIndexedItemsByNumber[rootName];
+      this.removeInsertedDrawing(rootName);
+    }
+
+    this.sentRequest = inFlightRequest;
+
+    // Restore the itemRefreshTimes invariant in the other direction: an entry
+    // exists for every drawing in dm.drawings, and for nothing else.  Leaving
+    // a removed drawing's stamp behind is exactly what kept the auto-refresh
+    // scan polling it.
+    for (const name of [...this.itemRefreshTimes.keys()]) {
+      if (name !== 'menu' && !dm.drawings.includes(name)) {
+        console.log(`[MENU_PRUNE] Dropping refresh stamp for removed drawing "${name}"`);
+        this.itemRefreshTimes.delete(name);
+      }
+    }
+
+    // Same sweep for the three per-drawing touch maps.  DrawingManager's own
+    // removeInsertedDrawing() drops unindexedItems/indexedItems but not these,
+    // and the cascade means the child names it removed aren't in staleRoots to
+    // delete directly.  Every read of these maps keys off a drawing reached
+    // through the live tree, so a key absent from dm.drawings is unreachable.
+    for (const map of [dm.touchZonesByCmd, dm.touchActionsByCmd, dm.touchActionInputsByCmd]) {
+      for (const name of Object.keys(map)) {
+        if (!dm.drawings.includes(name)) delete map[name];
+      }
+    }
+  },
+
+  // Drop every client-side trace of the dwg designer's preview namespace, so
+  // the preview render cycle about to start begins from nothing.  Called by
+  // dwgControlsPanelUI.js's _renderPreview() immediately before it hands the
+  // new selection to DwgDesignerVirtualDevice.setPreviewDwg().
+  //
+  // setPreviewDwg() calls _resetAutoAssignments() (dwgDesignerAdapter.js):
+  // every cycle it remints each item's cmd/idx from a counter that restarts at
+  // 1 and drops every cached wire version, so the SAME dwg legitimately
+  // carries different idx numbers in different composites — popUpHelp is idx
+  // 1-6 previewed on its own, idx 7-12 nested under SliderWithHelp.  A real
+  // device never does that: pfodAutoIdx fixes a dwg's indices on its first
+  // call and they stay fixed wherever that dwg is used, top-level or inserted.
+  // The client models a real device, so it has to be told explicitly that
+  // everything it holds under these names is void.
+  //
+  // Left in place, the previous cycle's idx map gets hydrated back out of the
+  // per-drawing cache by handleInsertDwg and claims idx numbers that now
+  // belong to a SIBLING.  findIndexOwnerDrawing (drawingDataProcessor.js) is
+  // tree-scoped and both drawings are in the same tree, so the sibling's own
+  // items are redirected to the stale holder and dropped as duplicates — the
+  // sibling silently loses every indexed item it owns (its labels, values and
+  // indexed shapes just don't appear).
+  //
+  // Nothing is lost by clearing: the device drops its versions in the same
+  // breath, so every preview drawing is resent as a full "start" this cycle
+  // and no cached entry could have been reused anyway.
+  //
+  // Parameters:
+  //   prefix - drawing-name prefix marking the preview namespace
+  //            (window.DWG_PREVIEW_KEY_PREFIX, i.e. "__dcpPreview__")
+  clearPreviewDrawings(prefix) {
+    const dm = this.redraw.redrawDrawingManager;
+
+    // Snapshot first — removeInsertedDrawing() mutates dm.drawings and cascades
+    // to children, so names can disappear part way through the loop.
+    const previewNames = dm.drawings.filter(name => name.startsWith(prefix));
+
+    // Same in-flight guard pruneDrawingsNotInMenu documents: removeInsertedDrawing()
+    // clears sentRequest when it matches, but requestQueue.js owns clearing the
+    // request currently being processed.  Restore it after the sweep.
+    const inFlightRequest = this.sentRequest;
+
+    for (const name of previewNames) {
+      // The five merged (per-menuDwg) collections are keyed by ROOT name and hold
+      // the fully-expanded tree, so they are not reached by removeInsertedDrawing()'s
+      // per-drawing cleanup.
+      delete dm.allTouchZonesByCmd[name];
+      delete dm.allTouchActionsByCmd[name];
+      delete dm.allTouchActionInputsByCmd[name];
+      delete dm.allUnindexedItems[name];
+      delete dm.allIndexedItemsByNumber[name];
+      // A child already taken by an earlier name's cascade is gone from dm.drawings.
+      if (dm.drawings.includes(name)) {
+        console.log(`[PREVIEW_CLEAR] Dropping preview drawing "${name}"`);
+        this.removeInsertedDrawing(name);
+      }
+    }
+
+    this.sentRequest = inFlightRequest;
+
+    // The two sweeps pruneDrawingsNotInMenu ends with, for the same reasons it
+    // gives: refresh stamps exist for exactly the drawings in dm.drawings, and
+    // the three per-drawing touch maps are unreachable once the name is gone.
+    for (const name of [...this.itemRefreshTimes.keys()]) {
+      if (name !== 'menu' && !dm.drawings.includes(name)) {
+        this.itemRefreshTimes.delete(name);
+      }
+    }
+    for (const map of [dm.touchZonesByCmd, dm.touchActionsByCmd, dm.touchActionInputsByCmd]) {
+      for (const name of Object.keys(map)) {
+        if (!dm.drawings.includes(name)) delete map[name];
+      }
+    }
+
+    // The three localStorage cache families are the other half of the state, and
+    // the per-drawing one is what actually re-supplied the stale idx map:
+    //   pfodWeb_dwg_<conn>_<dwg>         handleInsertDwg hydrates from this
+    //   pfodWeb_menuDwg_<conn>_<menuDwg> the merged tree
+    //   pfodWeb_cache_<conn>_<cmd>       the raw dwgStart response
+    // Swept by name pattern rather than per connection id: a key carrying the
+    // preview prefix is a preview key whatever connection minted it.
+    const staleKeys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (/^pfodWeb_(dwg|menuDwg|cache)_/.test(key) && key.includes(prefix)) {
+        staleKeys.push(key);
+      }
+    }
+    staleKeys.forEach(key => localStorage.removeItem(key));
+
+    console.log(`[PREVIEW_CLEAR] Cleared ${previewNames.length} preview drawing(s) and ${staleKeys.length} cache entries for prefix "${prefix}"`);
   },
 
   // Remove an inserted drawing and its touch zones from the live DrawingManager,

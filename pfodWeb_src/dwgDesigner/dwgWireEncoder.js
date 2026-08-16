@@ -423,7 +423,15 @@ const DwgWireEncoder = (() => {
       throw new Error('[DwgWireEncoder] dwg.refresh is not a valid non-negative number: ' +
         JSON.stringify(dwg.refresh) + ' — validateAndRepairDwg should already guarantee this');
     }
-    let out = '{+' + _colour(dwg.color) + '`' + dwg.x + '`' + dwg.y + '`' + dwg.refresh + '~' + version;
+    // dwg.refresh is in SECONDS (the Dwg Controls Panel edits and displays it
+    // that way — "Refresh rate (seconds, 0 = no refresh)", max 3600) but this
+    // header field is MILLISECONDS, which is what pfodParser's own
+    // sendRefreshAndVersion() sends and what webTranslator.js reads back as
+    // refreshMs.  Emitting the seconds value raw put `5 on the wire for a dwg
+    // set to 5 s, which the auto-refresh floor then rounded up to 250 ms.
+    // The menu side never had this problem — it stores refresh_ms already.
+    const refreshMs = dwg.refresh * 1000;
+    let out = '{+' + _colour(dwg.color) + '`' + dwg.x + '`' + dwg.y + '`' + refreshMs + '~' + version;
     const deferred = [];
     const placeholderSent = new Set();
     for (const item of flattenTouchActions(dwg.items)) {

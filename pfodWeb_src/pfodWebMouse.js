@@ -1339,10 +1339,28 @@ window.pfodWebMouse = {
       }
     });
 
-    // Add to page and focus
+    // Add to page and focus.
+    //
+    // focus() must be deferred out of the current event dispatch.  For a
+    // TOUCH/DOWN filtered touchZone this dialog is built on the canvas
+    // mousedown call stack (handleMouseDown -> handleTouchZoneActivation ->
+    // executeTouchActionInput -> here), and the browser applies its own focus
+    // change as that mousedown's default action once the handler returns —
+    // taking focus straight back off the input.  select() had still marked the
+    // text, so the field looked fully selected while keystrokes went nowhere,
+    // and the user's first click in it (landing inside that painted selection,
+    // where the collapse is deferred to mouseup for a possible text drag) only
+    // placed a caret — the next key was then inserted instead of replacing the
+    // apparently selected text.  UP / CLICK / PRESS filtered zones open the
+    // dialog after the mousedown default action has already run, so they focus
+    // correctly either way and the deferral is a no-op for them.  Same deferral
+    // the other dialogs in this codebase use (connectionManager.js:135,
+    // messageViewer.js:1020).
     document.body.appendChild(dialog);
-    input.focus();
-    input.select();
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
 
     // Store reference
     this.textInputDialog = dialog;

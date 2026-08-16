@@ -501,15 +501,21 @@ Object.assign(DrawingViewer.prototype, {
       clearTimeout(this.updateTimer);
       this.updateTimer = null;
     }
-    // Don't remove existing drawings here: a {;} menu update can't remove
-    // items (only hide/disable them), and a {,} full menu re-uses any dwg
-    // items that survive into the new menu.  Drawings in dm.drawings keep
+    // Drawings that SURVIVE into the new menu are not removed here: they keep
     // their drawingsData / per-drawing-raw collections so handleMenuResize
     // (called below after show()) finds existing canvas dimensions instead
     // of falling back to the placeholder size — that's what caused the
     // per-refresh size flash.  A drawing's dimensions only change when a
     // fresh {+`w`h start arrives for it; until then the previous size is
-    // displayed.
+    // displayed.  Menu-refresh and {;} updates re-show the same menu, so
+    // every drawing survives and this is a no-op for them.
+    //
+    // Drawings the new menu no longer references are a different matter —
+    // nothing else ever removed them.  See pruneDrawingsNotInMenu() for what
+    // an orphaned tree costs if left registered.  menuData is always the FULL
+    // menu being shown (the cached base menu on the {;} forward-nav/back-nav
+    // paths), so its drawingItems are the complete set of live roots.
+    this.pruneDrawingsNotInMenu(menuData.drawingItems);
 
     // Pre-load per-drawing caches BEFORE show()/handleResize so the very first
     // handleMenuResize call finds drawingsData and sizes canvases with the

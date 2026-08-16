@@ -163,9 +163,47 @@ Object.assign(DrawingViewer.prototype, {
     this.addToRequestQueue(startupCmd, null, null, requestType, true);
   },
 
+  // Whether `dwgName` is allowed to auto-refresh on its own timer.
+  //
+  // Only a dwg menu item of the menu currently on screen is — an INSERTED dwg
+  // (one reached through another drawing's insertDwg primitive) is not, even
+  // when its own start header carried a non-zero refresh rate.  This matches
+  // how pfodWeb already treats the rest of an inserted dwg's start header: its
+  // bounding box is discarded (drawingMerger.js's calculateItemClipRegion
+  // returns the PARENT's clip region — "do not limit insertDwgs") and so is its
+  // background colour (mergeDrawingItems computes backgroundColor purely to log
+  // it).  The refresh rate is now ignored on the same basis, leaving the menu /
+  // sub-menu reRequestMs and the top-level dwg menu items as the only things
+  // that drive an auto-refresh.
+  //
+  // Inserted dwgs still stay current: every parent response re-scans its
+  // insertDwg items and queues a version-stamped verify per child
+  // (drawingProcessing.js's handleInsertDwg), tagged 'refresh-insertDwg' when
+  // the parent's own request was a refresh.  So a child under a refreshing
+  // parent is re-checked at the PARENT's rate; a child under a parent with no
+  // refresh is fetched once and then left alone, which is the intended effect.
+  //
+  // Membership in the current menu is the discriminator rather than
+  // drawingsData[].parentDrawing, because addInsertedDrawing() overwrites a
+  // drawing's whole drawingsData entry — a dwg used BOTH as a menu item and as
+  // an insert elsewhere would be classified by whichever registered last and
+  // could silently lose its menu-item refresh.  Both callers only ever run in
+  // menu-mode, and scheduleNextUpdate already reads _currentMenu for the menu's
+  // own rate, so this is the same access pattern.
+  //
+  // Parameters:
+  //   dwgName - a name from redraw.redrawDrawingManager.drawings
+  // Returns: true if dwgName is a dwg menu item of the menu on screen
+  isRefreshableDrawing(dwgName) {
+    const dwgItems = window.pfodMenuDisplay?._currentMenu?.drawingItems || [];
+    return dwgItems.some((item) => item.loadCmd === dwgName);
+  },
+
   // Schedule the next auto-refresh timer.
-  // Computes the soonest due time across all items with non-zero refresh rates
-  // (menu reRequestMs and per-drawing refresh), using itemRefreshTimes for last-response timestamps.
+  // Computes the soonest due time across the menu's own reRequestMs and the
+  // per-drawing refresh of each TOP-LEVEL dwg menu item (inserted dwgs are
+  // excluded — see isRefreshableDrawing), using itemRefreshTimes for
+  // last-response timestamps.
   scheduleNextUpdate() {
     if (this.updateTimer) {
       clearTimeout(this.updateTimer);
@@ -193,6 +231,8 @@ Object.assign(DrawingViewer.prototype, {
     //            rate specified.  Either way, do not schedule.
     //   > 0    → last-response timestamp; item's rate is > 0; schedule.
     // A missing entry is a registration-path bug — throw so it surfaces.
+    // Inserted dwgs keep their entry stamped like any other drawing; it is
+    // simply never read, since isRefreshableDrawing() skips them below.
 
     // Per-item nextDue.  When NOT overdue, fire at lastResp+rate.
     // When OVERDUE (lastResp+rate already past), fire at now+rate — i.e.
@@ -224,6 +264,9 @@ Object.assign(DrawingViewer.prototype, {
         if (!this.itemRefreshTimes.has(dwgName)) {
           throw new Error(`[REFRESH] itemRefreshTimes has no entry for "${dwgName}" — registration path missed; must be initialised to null when the drawing is added to dm.drawings`);
         }
+        // Inserted dwg — its own refresh rate is ignored (see isRefreshableDrawing).
+        // Checked AFTER the invariant throw so a registration bug still surfaces.
+        if (!this.isRefreshableDrawing(dwgName)) continue;
         const lastResp = this.itemRefreshTimes.get(dwgName);
         if (lastResp > 0) {
           const rate = this.redraw.redrawDrawingManager.drawingsData[dwgName]?.data?.refresh || 0;

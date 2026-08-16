@@ -278,7 +278,7 @@ const DesignerGenerateCode = (() => {
       out += '\n';
     } else if (item.type === 'drawing') {
       out += '    } else if(parser.cmdEquals(' + _dwgCmdVarName(item.autoCmd) + ')) { // user touch not handled by dwg, handle it here\n';
-      out += '      // drawing loadCmd handled internally by dwg_xxx.init()\n';
+      out += '      // drawing loadCmd handled internally by get_dwg_xxx().init()\n';
       out += '      // add touchZone handling here and return response for inputs that return false from processDwgCmds()\n';
       out += '      ' + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
       out += returnTrue;
@@ -407,8 +407,16 @@ const DesignerGenerateCode = (() => {
     return 'Dwg_' + DwgArduinoExport.identifier(item.dwgName);
   }
 
+  // The ACCESSOR call, not the raw global: Dwg_<name>.h declares
+  // get_dwg_<name>() and Dwg_<name>.cpp defines it weak, returning the
+  // generated default instance.  Going through it means a user can subclass
+  // the dwg, define the accessor in their own .cpp, and take over without
+  // editing any generated file (their instance is then the one init()ed and
+  // the one whose loadCmd the menu prints).  Emitted by
+  // DwgArduinoExport.generateDwgHeader/generateDwgCpp, which this file reuses
+  // verbatim, so the two must agree on the name.
   function _dwgVarName(item) {
-    return 'dwg_' + DwgArduinoExport.identifier(item.dwgName);
+    return 'get_dwg_' + DwgArduinoExport.identifier(item.dwgName) + '()';
   }
 
   // True when a Drawing item's own linked dwg actually resolves in

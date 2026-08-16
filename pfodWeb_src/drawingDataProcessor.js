@@ -55,6 +55,26 @@ TouchZoneFilters.decode = function(filterNumber) {
 };
 
 /**
+ * Walk drawingsData[].parentDrawing up to the top-level drawing that roots
+ * `name`'s merged tree.  Inserted drawings carry their inserting drawing as
+ * parentDrawing (DrawingManager.addInsertedDrawing); a drawing reached
+ * straight off a menu item has parentDrawing null and is its own root.
+ *
+ * @param {Object} drawingManager  live DrawingManager
+ * @param {string} name            drawing to resolve
+ * @returns {string} the root drawing name (may be `name` itself)
+ */
+function findTreeRootDrawing(drawingManager, name) {
+    let current = name;
+    let parent = drawingManager.drawingsData[current]?.parentDrawing;
+    while (parent) {
+        current = parent;
+        parent = drawingManager.drawingsData[current]?.parentDrawing;
+    }
+    return current;
+}
+
+/**
  * Find which drawing in the current tree holds an indexed item.
  *
  * An idx is unique across a whole merged drawing tree.  Its transform is
@@ -65,14 +85,25 @@ TouchZoneFilters.decode = function(filterNumber) {
  * live in an enclosing drawing.  Locating the real holder keeps the update on
  * the single item that idx refers to, so its captured transform stays put.
  *
+ * The search is confined to `exceptDrawing`'s OWN tree.  drawingManager.drawings
+ * also holds the roots of trees that are no longer displayed — a drawing reached
+ * from an earlier menu item is only dropped when a touch switches to an unknown
+ * drawing (the [TOUCH_REPLACEMENT] reset), so a plain menu-item change leaves the
+ * previous root and its indexedItems registered.  Those idx spaces are entirely
+ * separate: every tree numbers its own first indexed item 1, so a stale root
+ * would otherwise be reported as the holder of an idx belonging to the drawing
+ * now on screen and the item would be written into a collection nothing renders.
+ *
  * @param {Object} drawingManager  live DrawingManager holding the per-drawing collections
  * @param {number} idx             index to locate (>= 1)
  * @param {string} exceptDrawing   drawing already known not to hold idx — skipped
  * @returns {string|null} name of the drawing whose indexedItems hold idx, or null if none do
  */
 function findIndexOwnerDrawing(drawingManager, idx, exceptDrawing) {
+    const treeRoot = findTreeRootDrawing(drawingManager, exceptDrawing);
     for (const name of drawingManager.drawings) {
         if (name === exceptDrawing) continue;
+        if (findTreeRootDrawing(drawingManager, name) !== treeRoot) continue;
         const indexed = drawingManager.indexedItems[name];
         if (indexed && indexed[idx] !== undefined) {
             return name;

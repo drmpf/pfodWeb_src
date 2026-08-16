@@ -120,6 +120,21 @@ const DwgArduinoExport = (() => {
     return offset || 0;
   }
 
+  /// How generated code names ANOTHER dwg's object — the accessor call, never
+  /// the raw dwg_<name> global.  Dwg_<name>.h declares get_dwg_<name>() and
+  /// Dwg_<name>.cpp defines it weak returning the default instance, so going
+  /// through it lets a user subclass that dwg and take over by defining the
+  /// accessor in their own .cpp, without editing any generated file.  Applies
+  /// to inserted dwgs exactly as it does to a menu's own top-level dwg: an
+  /// insertDwg's init() and loadCmd, and hide/unhide/erase-by-drawing, all
+  /// have to resolve to the SAME object the subclass supplies, or the
+  /// subclass is never registered and never advertised.
+  /// @param {string} drawingName — raw dwg name, _identifier() applied here
+  /// @returns {string}
+  function _dwgAccessor(drawingName) {
+    return 'get_dwg_' + _identifier(drawingName) + '()';
+  }
+
   /// Append `.idx(idxName)` when idxName is set — pfodWebDesigner's own
   /// addIdx() helper, ported verbatim.
   /// @param {string} code
@@ -228,19 +243,19 @@ const DwgArduinoExport = (() => {
       }
 
       case 'hide':
-        if (item.drawingName) return 'dwgsPtr->hide().loadCmd(dwg_' + _identifier(item.drawingName) + ').send();';
+        if (item.drawingName) return 'dwgsPtr->hide().loadCmd(' + _dwgAccessor(item.drawingName) + ').send();';
         if (item.cmdName) return 'dwgsPtr->hide().cmd(' + item.cmdName + ').send();';
         if (item.idxName) return 'dwgsPtr->hide().idx(' + item.idxName + ').send();';
         return '// hide: no cmd or idx specified';
 
       case 'unhide':
-        if (item.drawingName) return 'dwgsPtr->unhide().loadCmd(dwg_' + _identifier(item.drawingName) + ').send();';
+        if (item.drawingName) return 'dwgsPtr->unhide().loadCmd(' + _dwgAccessor(item.drawingName) + ').send();';
         if (item.cmdName) return 'dwgsPtr->unhide().cmd(' + item.cmdName + ').send();';
         if (item.idxName) return 'dwgsPtr->unhide().idx(' + item.idxName + ').send();';
         return '// unhide: no cmd or idx specified';
 
       case 'erase':
-        if (item.drawingName) return 'dwgsPtr->erase().loadCmd(dwg_' + _identifier(item.drawingName) + ').send();';
+        if (item.drawingName) return 'dwgsPtr->erase().loadCmd(' + _dwgAccessor(item.drawingName) + ').send();';
         if (item.cmdName) return 'dwgsPtr->erase().cmd(' + item.cmdName + ').send();';
         if (item.idxName) return 'dwgsPtr->erase().idx(' + item.idxName + ').send();';
         return '// erase: no cmd or idx specified';
@@ -282,7 +297,7 @@ const DwgArduinoExport = (() => {
         return '// index: no idx specified';
 
       case 'insertDwg':
-        return 'dwgsPtr->insertDwg().loadCmd(dwg_' + _identifier(item.drawingName) + ').offset(' + xOffset + ',' + yOffset + ').send();';
+        return 'dwgsPtr->insertDwg().loadCmd(' + _dwgAccessor(item.drawingName) + ').offset(' + xOffset + ',' + yOffset + ').send();';
 
       case 'pushZero':
         return 'dwgsPtr->pushZero(' + (item.x || 0) + ', ' + (item.y || 0) + ', ' + (item.scale !== undefined ? item.scale : 1) + ');';
@@ -303,8 +318,11 @@ const DwgArduinoExport = (() => {
   /// insertDwg's own cmd is resolved differently on the real device).
   /// Flat style (matches Menu_withDwg/Dwg_Cmd.h, the real V4.1.2
   /// generator's own reference output) — a single class per dwg, no
-  /// Base/thin file split. dwgRefresh is a public instance member (set in
+  /// Base/thin file split. dwgRefresh_ms is a public instance member (set in
   /// the constructor), not a file-scope static, matching that reference.
+  /// Its _ms suffix is deliberate: pfodParser::sendRefreshAndVersion() takes
+  /// milliseconds, while the Dwg Controls Panel edits dwg.refresh in seconds,
+  /// and emitting the seconds value unconverted was a real bug.
   /// sendIndexedItems() is virtual (as in that same reference's own
   /// menu-side pfodMainMenu::sendMainMenu/sendMainMenuUpdate) so a user's
   /// own subclass can override just the indexed-item values without
@@ -334,13 +352,16 @@ const DwgArduinoExport = (() => {
       'class Dwg_' + name + ' : public pfodDrawing {\n' +
       '  public:\n' +
       '    Dwg_' + name + '();\n' +
-      '    void init();\n' +
+      // virtual: the menu calls init() through a Dwg_<name>& returned by
+      // get_dwg_<name>(), so a subclass's own init() only runs if this
+      // dispatches.  Non-virtual silently ran the base version instead.
+      '    virtual void init();\n' +
       '    bool sendDwg(); // returns true if dwg sent else false i.e. not this dwg\'s loadCmd\n' +
       '    bool processDwgCmds(); // return true if handled else false\n' +
       '    void sendFullDrawing();\n' +
       '    void sendUpdate();\n';
 
-    code += '    unsigned long dwgRefresh;\n\n' +
+    code += '    unsigned long dwgRefresh_ms;\n\n' +
       '  protected:\n' +
       '    virtual void sendIndexedItems();\n';
 
@@ -353,9 +374,12 @@ const DwgArduinoExport = (() => {
         '(int row, int col, uint8_t touchType, const byte* editedText); // touchZone ' + item.cmdName + ' touched, return true if handled\n';
     });
 
-    code += '  private:\n' +
-      '    bool initialized;\n';
-
+    // The idx/cmd members stay PROTECTED, alongside the virtual methods that
+    // use them: a subclass overriding sendIndexedItems() has to name its own
+    // idx_<n> to send replacement values, and one overriding a touchZone
+    // handler may need its cmd.  Private would make the override impossible
+    // to write.  Only `initialized` (nothing outside this class's own init()
+    // ever touches it) is private.
     const idxList = [];
     (dwg.items || []).forEach((item) => {
       if (!item.idxName || !(item.indexed === true || item.indexed === 'true')) return;
@@ -367,8 +391,21 @@ const DwgArduinoExport = (() => {
       code += '    pfodAutoCmd ' + cmdName + ';\n';
     });
 
+    code += '  private:\n' +
+      '    bool initialized;\n';
+
     code += '\n};\n\n' +
-      'extern Dwg_' + name + ' dwg_' + name + ';\n' +
+      '// The drawing object the menu code uses.  To add your own behaviour,\n' +
+      '// subclass Dwg_' + name + ', define your own instance, and define this\n' +
+      '// function in YOUR .cpp to return it -- the weak default in\n' +
+      '// Dwg_' + name + '.cpp is then replaced at link time and NONE of these\n' +
+      '// generated files need editing:\n' +
+      '//     My' + name + ' my' + name + ';\n' +
+      '//     Dwg_' + name + '& get_dwg_' + name + '() { return my' + name + '; }\n' +
+      '// The unused default instance then never has init() called on it, so it\n' +
+      '// never registers with the parser and never allocates its pfodDwgs.\n' +
+      'Dwg_' + name + '& get_dwg_' + name + '();\n' +
+      'extern Dwg_' + name + ' dwg_' + name + '; // the default instance\n' +
       '#endif\n' +
       '// ================= end of Dwg_' + name + '.h  file\n';
     return code;
@@ -392,7 +429,12 @@ const DwgArduinoExport = (() => {
   function _generateCpp(dwg, missingDwgSet) {
     const name = _identifier(dwg.name);
     const items = dwg.items || [];
-    const refresh = dwg.refresh || 0;
+    // dwg.refresh is in SECONDS (the Dwg Controls Panel edits and displays it
+    // that way — "Refresh rate (seconds, 0 = no refresh)", max 3600), but
+    // pfodParser::sendRefreshAndVersion() takes MILLISECONDS, same as the main
+    // menu's own refresh_ms below.  Convert here; emitting the seconds value
+    // raw asked the device for a 5 ms refresh on a dwg set to 5 s.
+    const refreshMs = (dwg.refresh || 0) * 1000;
     const bgColor = _convertColor(dwg.color !== undefined ? dwg.color : -1);
     missingDwgSet = missingDwgSet || new Set();
 
@@ -405,7 +447,10 @@ const DwgArduinoExport = (() => {
       '#include <pfodDebugPtr.h>\n\n' +
       '//#define DEBUG\n' +
       'static Print* debugPtr = NULL;  // local to this file\n\n' +
-      'Dwg_' + name + ' dwg_' + name + ';\n\n';
+      'Dwg_' + name + ' dwg_' + name + ';\n' +
+      '// weak: defining this function in any other .cpp replaces it, which is\n' +
+      '// how a subclass takes over without editing this file -- see Dwg_' + name + '.h\n' +
+      'Dwg_' + name + '& __attribute__((weak)) get_dwg_' + name + '() { return dwg_' + name + '; }\n\n';
 
     items.forEach((item) => {
       if (item.type !== 'insertDwg' || !item.drawingName) return;
@@ -451,7 +496,7 @@ const DwgArduinoExport = (() => {
 
     code += 'Dwg_' + name + '::Dwg_' + name + '() {\n' +
       '  initialized = false;\n' +
-      '  dwgRefresh = ' + refresh + ';\n' +
+      '  dwgRefresh_ms = ' + refreshMs + ';\n' +
       '}\n\n' +
       'void Dwg_' + name + '::init() {\n' +
       '  if (initialized) {\n' +
@@ -465,10 +510,10 @@ const DwgArduinoExport = (() => {
       '  pfodDrawing::init();\n';
     insertedDwgNames.forEach((drawingName) => {
       if (missingDwgSet.has(drawingName)) {
-        code += '  // MISSING: dwg_' + _identifier(drawingName) + '.init(); -- drawing \'' + drawingName +
+        code += '  // MISSING: ' + _dwgAccessor(drawingName) + '.init(); -- drawing \'' + drawingName +
           '\' is not currently loaded in the Dwg Library, load it and regenerate to include this\n';
       } else {
-        code += '  dwg_' + _identifier(drawingName) + '.init(); // initialize inserted drawing\n';
+        code += '  ' + _dwgAccessor(drawingName) + '.init(); // initialize inserted drawing\n';
       }
     });
     code += '}\n\n' +
@@ -511,7 +556,7 @@ const DwgArduinoExport = (() => {
       'void Dwg_' + name + '::sendFullDrawing() {\n' +
       '    // Start the drawing\n' +
       '    dwgsPtr->start(' + (dwg.x || 50) + ', ' + (dwg.y || 50) + ', ' + bgColor + ');\n' +
-      '    parserPtr->sendRefreshAndVersion(dwgRefresh); // sets version and refresh time for dwg pfodWeb processes this\n';
+      '    parserPtr->sendRefreshAndVersion(dwgRefresh_ms); // sets version and refresh time for dwg pfodWeb processes this\n';
 
     const placeholderIdxSent = [];
     items.forEach((item) => {
@@ -739,7 +784,7 @@ const DwgArduinoExport = (() => {
       _copyrightBlock() +
       ' */\n\n' +
       '/* ===== pfod Command for ' + topDwgName + ' ====\n' +
-      'pfodApp msg {.} --> {,~Prompt Not Set`0~V1|+c0~<' + topDwgIdentifier + '\'s loadCmd>}\n' +
+      'pfodApp msg {.} --> {,~`0~V1|+c0~<' + topDwgIdentifier + '\'s loadCmd>}\n' +
       ' */\n\n' +
       '#include "pfodMainMenu.h"\n' +
       '#include <pfodParser.h>\n' +
@@ -772,7 +817,7 @@ const DwgArduinoExport = (() => {
       '#endif\n' +
       '  initialized = true;\n' +
       '  closeConnectionFnPtr = _closeConnectionFnPtr;\n' +
-      '  dwg_' + topDwgIdentifier + '.init(); // initialize drawing -- \'' + topDwgName + '\'\n' +
+      '  get_dwg_' + topDwgIdentifier + '().init(); // initialize drawing -- \'' + topDwgName + '\'\n' +
       '}\n\n' +
       'void pfodMainMenu::handle(pfodParser &parser) {\n' +
       '  if (!initialized) {\n' +
@@ -802,7 +847,7 @@ const DwgArduinoExport = (() => {
       '      // now handle commands returned from button/sliders\n' +
       '    } else if (parser.cmdEquals(dwgMenuItem_Cmd)) { // user touch not handled by dwg, handle it here\n' +
       '      // in the main Menu of ' + topDwgName + '\n' +
-      '      // drawing loadCmd handled internally by dwg_' + topDwgIdentifier + '.init()\n' +
+      '      // drawing loadCmd handled internally by get_dwg_' + topDwgIdentifier + '().init()\n' +
       '      // add touchZone handling here for input not handled in processDwgCmds()\n' +
       '      sendMainMenuUpdate(parser); // always send back a pfod msg otherwise pfodApp will disconnect.\n\n' +
       '    } else if (\'!\' == cmd) {\n' +
@@ -822,13 +867,13 @@ const DwgArduinoExport = (() => {
       '  //    every time you edit this method\n' +
       '  parser.menu();  // start a Menu screen pfod message.  Send {,\n' +
       '  // send menu background, format, prompt, refresh and version\n' +
-      '  parser.print(F("~Prompt Not Set"));\n' +
+      '  parser.print(F("~")); // no prompt text\n' +
       '  parser.sendRefreshAndVersion(refresh_ms); // send the menu version\n' +
       '  // send menu items\n' +
       '  parser.print(F("|+")); // start Drawing\n' +
       '  parser.print(dwgMenuItem_Cmd); // drawing menu item cmd\n' +
       '  parser.print(F("~"));\n' +
-      '  parser.print(dwg_' + topDwgIdentifier + '); // the drawing\'s loadCmd\n' +
+      '  parser.print(get_dwg_' + topDwgIdentifier + '()); // the drawing\'s loadCmd\n' +
       '  parser.endOfMsg();  // close pfod message. Send }\n' +
       '}\n\n' +
       'void pfodMainMenu::sendMainMenuUpdate(pfodParser& parser) {\n' +
