@@ -35,9 +35,6 @@ pfodWeb includes a built-in Designer that lets you create menus and sub-meus of 
 - [Charting Streaming Raw CSV data](https://www.forward.com.au/pfod/pfodWeb/Charting/index.html) – no menu or pfodParser needed, uses Pi-Pico in examples, but also works with Arduino UNO or higher via Serial
 - [pfodWeb Dwg Designer GUI Tutorials](https://www.forward.com.au/pfod/pfodWeb/Designer/index.html) – designs interactive GUI's, uses Arduino Mega or higher. The simple examples also work with Arduino UNO
 
-See the [Data Display] tutorial on creating menus and charts and other tutorials at [pfodDesigner](https://www.forward.com.au/pfod/pfodDesigner/index.html)
- and [pfodWeb Designer](https://www.forward.com.au/pfod/pfodWeb/Designer/index.html) for dwg design
-
 ## Documentation
 
 pfodWeb user documentation is in [`docs/`](docs/index.html):
