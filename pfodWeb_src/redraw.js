@@ -1658,11 +1658,35 @@ class Redraw {
             this.ctx.moveTo(canvasX, canvasY);
             this.ctx.arc(canvasX, canvasY, canvasRadius, startRadians, endRadians, !anticlockwise);
             this.ctx.closePath();
+            // Stroke width for a FILLED arc, kept as its own setting
+            // because it is what the gauge's ring seam turns on.
+            //
+            // The path is a pie, so a filled arc's stroke traces its own
+            // two straight edges as well as its rim, and that stroke is
+            // what a filled mask arc uses to cover the strokes beneath
+            // it. Widening it to 3 made the mask cover them outright. At
+            // 2 it matches the global width set once per redraw
+            // (redrawCanvasImpl), so a filled arc strokes exactly like
+            // every other item and a drawing that needs a mark to stay
+            // visible paints it ABOVE whatever would cover it (index it
+            // after the mask) rather than relying on width.
+            const originalArcLineWidth = this.ctx.lineWidth;
             if (filled) {
+                this.ctx.lineWidth = 2;
                 console.log(`[DRAWING_ARC] Filling arc pie slice at (${canvasX}, ${canvasY}) with radius ${canvasRadius}`);
                 this.ctx.fill();
             }
+            // Every arc is stroked, filled or not.
+            //
+            // An earlier attempt skipped the stroke on filled arcs
+            // (`if (!filled || angleDegrees === 0)`) to stop a filled arc
+            // painting radial lines along its own straight edges. That
+            // removed the hairline but took the covering power with it,
+            // and a zero-sweep tick — whose stroke IS the mark, running
+            // from the centre out — then had nothing to bury its inner
+            // half. Drawings solve that with paint order instead.
             this.ctx.stroke();
+            this.ctx.lineWidth = originalArcLineWidth;
             console.log('[DRAWING_ARC] Arc drawing completed');
         } catch (error) {
             console.error('[DRAWING_ARC] Error in drawArc:', error);

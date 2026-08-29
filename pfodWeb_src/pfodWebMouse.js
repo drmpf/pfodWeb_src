@@ -138,12 +138,51 @@ window.pfodWebMouse = {
     canvas.addEventListener('touchend',   (e) => self.handleMouseUp.call(proxy, e.changedTouches[0]));
   },
 
+  /// End the display hold a press-on-a-touchZone started, and let the
+  /// screen catch up: drain anything the hold queued, and re-arm the refresh
+  /// timer (processPendingResponses does that itself, on both the empty and
+  /// non-empty paths).  Safe to call when no hold is active — it returns
+  /// immediately, so every gesture-ending path can call it unconditionally.
+  ///
+  /// This is the ONLY thing that clears holdingUpdates.  Leaving the canvas
+  /// or dragging out of the zone deliberately does not: the button is still
+  /// down and the user may drag back in, so the display stays held until the
+  /// pointer is genuinely released.
+  /// @param {object} viewer — the DrawingViewer (or per-canvas proxy)
+  /// @param {string} why — for the log line
+  _endTouchHold: function(viewer, why) {
+    if (!viewer || !viewer.touchState || !viewer.touchState.holdingUpdates) return;
+    console.log(`[TOUCH_HOLD] Released by ${why} — resuming redraws and refresh`);
+    viewer.touchState.holdingUpdates = false;
+    window.pfodWebMouse._holdViewer = null;
+    viewer.processPendingResponses();
+  },
+
   setupEventListeners: function(drawingViewer) {
     // Initialize touchActionBackups on global object only if it doesn't exist to preserve existing backups
     if (window.pfodWebMouse.touchActionBackups === undefined) {
       window.pfodWebMouse.touchActionBackups = null;
     }
-    // Mouse/touch events for drawings are wired per-item via setupMenuCanvasListeners()
+
+    // Canvas-level listeners are wired per-item by setupMenuCanvasListeners().
+    // These document-level ones are the safety net for a gesture that ENDS
+    // somewhere the canvas never hears about: press on a touchZone, drag off
+    // the canvas, release.  Without them the hold started by that press would
+    // never be cleared, and the refresh timer — cancelled at mousedown — would
+    // stay cancelled, since every path that re-arms it runs off the timer
+    // firing, a response arriving, or processPendingResponses.  Registered
+    // once for the app, not once per drawing.
+    if (!window.pfodWebMouse._documentUpWired) {
+      window.pfodWebMouse._documentUpWired = true;
+      const release = (why) => () => {
+        const held = window.pfodWebMouse._holdViewer || drawingViewer;
+        held.touchState.isDown = false;
+        window.pfodWebMouse._endTouchHold(held, why);
+      };
+      document.addEventListener('mouseup', release('document mouseup'));
+      document.addEventListener('touchend', release('document touchend'));
+      document.addEventListener('touchcancel', release('touchcancel'));
+    }
   },
 
   // Mouse and touch event handlers
@@ -171,17 +210,14 @@ window.pfodWebMouse = {
     console.log(`DOWN in touchZone: canvas ${scale.rect.width} x ${scale.rect.height}`);
     console.log(`DOWN in touchZone: enlarge by dwg coords ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
 
-    // Update touch state
+    // Update touch state.  isDown means only "the pointer is down" — it
+    // drives drag tracking (handleMouseMove/Up both early-return without it),
+    // so it is set for every press, including one that lands on nothing.
+    // Whether the press HOLDS the display is decided below, once we know if
+    // it hit a touchZone.
     console.info(`[MOUSE_DOWN] Setting touchState.isDown = true`);
     this.touchState.wasDown = this.touchState.isDown;
     this.touchState.isDown = true;
-
-    // Cancel any existing refresh timer to prevent interruption during user interaction
-    if (this.updateTimer) {
-      clearTimeout(this.updateTimer);
-      this.updateTimer = null;
-      console.info(`[MOUSE_DOWN] Cancelled refresh timer`);
-    }
 
     this.touchState.startX = x;
     this.touchState.startY = y;
@@ -195,6 +231,28 @@ window.pfodWebMouse = {
     // Find the touchZone at this position
     const foundTouchZone = window.pfodWebMouse.findTouchZoneAt.call(this, x, y, colPixelsHalf9mm, rowPixelsHalf9mm);
     this.touchState.targetTouchZone = foundTouchZone;
+
+    // Only a press that actually landed on a live touchZone holds the
+    // display.  findTouchZoneAt excludes TOUCH_DISABLED zones, so pressing
+    // one of those — or empty canvas — returns null here and auto-refresh
+    // carries on: a disabled zone is meant to swallow the touch, not freeze
+    // the drawing.  The hold stays set through a drag out of the zone or off
+    // the canvas and is cleared only when the gesture ends (_endTouchHold).
+    if (foundTouchZone) {
+      this.touchState.holdingUpdates = true;
+      // Remember WHICH viewer is holding.  Canvas events run against a
+      // per-canvas proxy (setupMenuCanvasListeners) carrying that drawing's
+      // own canvas/_menuDrawingName/redraw, so the document-level release
+      // has to drain through the same one rather than the base viewer.
+      window.pfodWebMouse._holdViewer = this;
+      if (this.updateTimer) {
+        clearTimeout(this.updateTimer);
+        this.updateTimer = null;
+        console.info(`[MOUSE_DOWN] Cancelled refresh timer`);
+      }
+    } else {
+      console.info(`[MOUSE_DOWN] No touchZone here — refresh left running`);
+    }
 
     // Only back up state when this touchZone actually has a touchAction/
     // touchActionInput that will fire and need reverting later — a click
@@ -342,15 +400,15 @@ window.pfodWebMouse = {
 
       // Check if we've left the original touchzone that started the drag
       if (this.touchState.targetTouchZone && !currentTouchZone) {
-        console.warn('[MOUSE_DRAG] Left original touchzone area - restoring touchActions and processing pending responses');
+        console.warn('[MOUSE_DRAG] Left original touchzone area - dropping the drag target');
 
-        // Restore from any active touchActions FIRST to get back to basic state
-
-        // THEN process any pending responses
-        if (this.pendingResponseQueue.length > 0) {
-          this.processPendingResponses();
-        }
-
+        // The display stays HELD.  The button is still down and the user may
+        // drag back in, so pending responses are deliberately not drained
+        // here — draining re-arms the refresh timer, and the screen would
+        // start updating under a finger that has not been lifted.  The hold
+        // is released when the gesture really ends, by mouse up or by the
+        // document-level listener if the release lands off the canvas.
+        //
         // Reset mouse state since we've left the drag area
         this.touchState.wasDown = this.touchState.isDown;
         this.touchState.isDown = false;
@@ -405,8 +463,16 @@ window.pfodWebMouse = {
       console.log(`[MOUSE_UP] No touchAction backup exists`);
     }
 
-    // THEN process any pending responses that were queued while mouse was down
-    this.processPendingResponses();
+    // THEN release the hold and process any pending responses queued while
+    // it was active (_endTouchHold drains them and re-arms the refresh timer).
+    // Still call processPendingResponses directly when no hold was active —
+    // a press that hit nothing never held anything, but the queue is drained
+    // the same way either way.
+    if (this.touchState.holdingUpdates) {
+      window.pfodWebMouse._endTouchHold(this, 'mouse up');
+    } else {
+      this.processPendingResponses();
+    }
     this.touchState.targetTouchZone = null;
     this.touchState.hasEnteredZones.clear();
   },
@@ -414,13 +480,13 @@ window.pfodWebMouse = {
   handleMouseLeave: function(e) {
     console.log('[MOUSE_LEAVE] Mouse left canvas area');
     if (this.touchState.isDown) {
-      console.log('[MOUSE_LEAVE] Mouse was down - restoring touchActions and processing pending responses');
+      console.log('[MOUSE_LEAVE] Mouse was down - dropping the drag target, display stays held');
 
-
-      // THEN process any pending responses
-      if (this.pendingResponseQueue.length > 0) {
-        this.processPendingResponses();
-      }
+      // Same as the drag-out path above: the button is still down, so the
+      // display stays held and nothing is drained here.  Release happens on
+      // mouse up, or on the document-level mouseup/touchend if the pointer is
+      // let go outside the canvas — which is exactly the case this branch is
+      // about, and the reason that safety net exists (see setupEventListeners).
 
       // Reset touch state
       this.touchState.wasDown = this.touchState.isDown;

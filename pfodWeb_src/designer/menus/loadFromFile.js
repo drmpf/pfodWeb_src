@@ -144,11 +144,17 @@ const DesignerLoadFromFile = (() => {
       console.error('[DesignerLoadFromFile] "' + entry.path + '": invalid JSON — skipped', err);
       return null;
     }
-    if (!looksLikeDwgFile(parsed)) {
-      console.error('[DesignerLoadFromFile] "' + entry.path + '": does not look like a valid dwg file — skipped');
+    const rejectReason = dwgFileRejectReason(parsed);
+    if (rejectReason) {
+      console.error('[DesignerLoadFromFile] "' + entry.path + '": ' + rejectReason + ' — skipped');
       return null;
     }
-    const { dwg } = validateAndRepairDwg(parsed, parsed.name);
+    // isLoad=true — a zip entry is untrusted external data, so a duplicate
+    // idxName is repaired and reported rather than thrown. The throw would
+    // escape this function's own caller (_ingestZip's forEach), abandoning
+    // every remaining dwg AND the menu json itself — exactly the
+    // whole-design abort this function's contract above rules out.
+    const { dwg } = validateAndRepairDwg(parsed, parsed.name, true);
     DwgLibrary.save(dwg);
     return dwg.name;
   }
@@ -238,18 +244,23 @@ const DesignerLoadFromFile = (() => {
 
   // Register 'X' inside the IIFE to close over _lastLoadedName.
   // When the user presses the X button (made clickable by the {;} success
-  // update), load the named design and return the editMenu screen — or,
-  // if it references any dwg not currently in DwgLibrary (a bare
-  // .pfodMenu_json pick has no bundled dwgs at all; a .zip's own bundled
-  // dwgs can still be incomplete), the "Missing Drawings" prompt
-  // (missingDwgPrompt.js) instead. Same rationale as
-  // selectFromMenuList.js's own _switchAndReturnMain.
+  // update), load the named design and open the editMenu — unless it
+  // references dwgs DwgLibrary does not hold (a bare .pfodMenu_json pick
+  // has no bundled dwgs at all; a .zip's own bundled dwgs can still be
+  // incomplete), in which case stay on THIS screen and reveal the
+  // missing-drawings block on it with a {;}. X lives on the same {b} list
+  // screen that declares those items. Same rationale as
+  // selectFromMenuList.js's own _switchAndReturnMain — see
+  // missingDwgPrompt.js for why a screen of its own broke the back button.
   DesignerDispatch.add('X', (rawCmd, state, depth) => {
     if (!_lastLoadedName) return PFOD_EMPTY;
     const names = DesignerState.listNames();
     if (!names.includes(_lastLoadedName)) return PFOD_EMPTY;
     state.loadNamed(_lastLoadedName);
-    return DesignerMissingDwgPrompt.maybeShow(state) || DesignerEditMenu.send(state);
+    const reveal = DesignerMissingDwgPrompt.revealUpdate(state,
+      DesignerSelectFromMenuList.hideOwnItems(state));
+    if (reveal) return { pfod: reveal, skipSave: false };
+    return DesignerEditMenu.send(state);
   });
 
   return Object.freeze({ send });

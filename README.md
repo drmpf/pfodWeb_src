@@ -1,4 +1,4 @@
-# pfodWeb / pfodProxy source repository
+# pfodWeb / pfodProxy source repository V4.1.7
 
 <p align="center">
 
@@ -24,8 +24,15 @@ The Arduino [pfodParser library](https://github.com/drmpf/pfodParser) provides t
 pfodWeb is distributed, with the Arduino pfodParser library, as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly
  in an off-line browser. 
 It can also be served from the microprocessor itself for complete off-line stand alone deployment.
+  
+There is also an Android client, [pfodApp](https://www.forward.com.au/pfod/index.html)  
 
-There is also an Android client, [pfodApp](https://www.forward.com.au/pfod/index.html)
+**Breaking Change: When updating from pfodWeb V4.1.5 or below to V4.1.6 or above, save/export all dwgs first then update and reload from their files.**
+
+# Using pfodParser/pfodWeb with AI
+The **pfodWeb/docs** sub-directory contains **pfodAI-guide.md** and two .md specifications for the menu and dwg json files, 
+**pfodMenu_json-format.md** and **pfodDwg_json-format.md**.  Point your AI at these three files and the [pfodParser](https://github.com/drmpf/pfodParser) src to give it the context it needs to create pfod menus and dwgs
+and to add the logic to complete the program.
 
 ## Designer Tutorials
 

@@ -90,6 +90,12 @@ const DwgArduinoExport = (() => {
     return (name || '').replace(/[^a-zA-Z0-9_]/g, '');
   }
 
+  // Colours this export run had to degrade to BLACK — see _convertColor.
+  // A Set for the duration of exportDwgAsZip(), null outside one, so the
+  // pure-function call sites don't have to thread a collector through four
+  // levels of nesting for something that only ever has one run in flight.
+  let _degradedColours = null;
+
   /// pfodWebDesigner/src/arduinoExport.js's own convertColor(), ported
   /// verbatim: -1/BLACK_WHITE and the 16 standard palette entries get
   /// their own named constant, 16-255 is emitted as a bare number, and
@@ -101,7 +107,18 @@ const DwgArduinoExport = (() => {
   /// @returns {string}
   function _convertColor(color) {
     if (color === -1) return 'dwgsPtr->BLACK_WHITE';
-    if (typeof color !== 'number' || color < 0 || color > 255) return 'dwgsPtr->BLACK';
+    if (typeof color !== 'number' || color < 0 || color > 255) {
+      // The pfodParser builder methods take a palette INTEGER — there is no
+      // .colour("FF0000") overload, so an RRGGBB colour (valid everywhere
+      // else in this app: the file format, the wire, and the renderer) has
+      // nowhere to go in generated code and becomes BLACK. Silently, until
+      // now: the dwg previewed in the right colour and then came out black on
+      // the device, with nothing anywhere saying why. Recorded so the caller
+      // can tell the user which colours changed and that they need to build
+      // those primitive strings by hand if they want them.
+      if (_degradedColours) _degradedColours.add(String(color));
+      return 'dwgsPtr->BLACK';
+    }
     const c = Math.floor(color);
     if (c <= 15) return STANDARD_COLOR_NAMES[c];
     return String(c);
@@ -133,6 +150,27 @@ const DwgArduinoExport = (() => {
   /// @returns {string}
   function _dwgAccessor(drawingName) {
     return 'get_dwg_' + _identifier(drawingName) + '()';
+  }
+
+  // Types whose idxName is a REFERENCE to some other item's index, never a
+  // declaration of their own — mirrors dwgValidate.js's REFERENCE_ONLY_TYPES,
+  // which is the authority. This file has to know the difference now that a
+  // non-blank idxName is what makes an item indexed: a touchActionInput
+  // legitimately carries the idxName of the label whose text it edits, and
+  // treating that as a declaration would re-send it from sendIndexedItems()
+  // detached from its touchZone, and replace it with an index() placeholder
+  // in sendFullDrawing() so the input itself was never emitted at all.
+  const EXPORT_REFERENCE_ONLY_TYPES = Object.freeze([
+    'hide', 'unhide', 'erase', 'touchAction', 'touchActionInput',
+  ]);
+
+  /// True when this item DECLARES an index — a non-blank idxName on a type
+  /// that owns it rather than pointing at someone else's.
+  /// @param {object} item
+  /// @returns {boolean}
+  function _declaresIdx(item) {
+    return typeof item.idxName === 'string' && item.idxName !== ''
+      && EXPORT_REFERENCE_ONLY_TYPES.indexOf(item.type) === -1;
   }
 
   /// Append `.idx(idxName)` when idxName is set — pfodWebDesigner's own
@@ -180,9 +218,9 @@ const DwgArduinoExport = (() => {
 
       case 'rectangle': {
         let code = 'dwgsPtr->rectangle()';
-        if (item.filled === true || item.filled === 'true') code += '.filled()';
-        if (item.centered === true || item.centered === 'true') code += '.centered()';
-        if (item.rounded === true || item.rounded === 'true') code += '.rounded()';
+        if (item.filled === true) code += '.filled()';
+        if (item.centered === true) code += '.centered()';
+        if (item.rounded === true) code += '.rounded()';
         code = _addIdx(code, item.idxName);
         return code + '.color(' + color + ').size(' + item.xSize + ',' + item.ySize + ')' +
           '.offset(' + xOffset + ',' + yOffset + ').send();';
@@ -190,7 +228,7 @@ const DwgArduinoExport = (() => {
 
       case 'circle': {
         let code = 'dwgsPtr->circle()';
-        if (item.filled === true || item.filled === 'true') code += '.filled()';
+        if (item.filled === true) code += '.filled()';
         code = _addIdx(code, item.idxName);
         return code + '.color(' + color + ').radius(' + item.radius + ')' +
           '.offset(' + xOffset + ',' + yOffset + ').send();';
@@ -198,7 +236,7 @@ const DwgArduinoExport = (() => {
 
       case 'arc': {
         let code = _addIdx('dwgsPtr->arc()', item.idxName);
-        if (item.filled === true || item.filled === 'true') code += '.filled()';
+        if (item.filled === true) code += '.filled()';
         return code + '.color(' + color + ').radius(' + item.radius + ').start(' + item.start + ')' +
           '.angle(' + item.angle + ').offset(' + xOffset + ',' + yOffset + ').send();';
       }
@@ -208,9 +246,9 @@ const DwgArduinoExport = (() => {
         const text = (item.text || '').replace(/\n/g, '\\n');
         code += '.color(' + color + ').text("' + text + '")';
         if (item.fontSize) code += '.fontSize(' + item.fontSize + ')';
-        if (item.bold === true || item.bold === 'true') code += '.bold()';
-        if (item.italic === true || item.italic === 'true') code += '.italic()';
-        if (item.underline === true || item.underline === 'true') code += '.underline()';
+        if (item.bold === true) code += '.bold()';
+        if (item.italic === true) code += '.italic()';
+        if (item.underline === true) code += '.underline()';
         code += '.offset(' + xOffset + ',' + yOffset + ')';
         code += item.align === 'left' ? '.left()' : (item.align === 'right' ? '.right()' : '.center()');
         // value/decimals/units: optional label-only suffix — see
@@ -226,9 +264,9 @@ const DwgArduinoExport = (() => {
         const text = (item.text || '').replace(/\n/g, '\\n');
         code += '.color(' + color + ').text("' + text + '")';
         if (item.fontSize) code += '.fontSize(' + item.fontSize + ')';
-        if (item.bold === true || item.bold === 'true') code += '.bold()';
-        if (item.italic === true || item.italic === 'true') code += '.italic()';
-        if (item.underline === true || item.underline === 'true') code += '.underline()';
+        if (item.bold === true) code += '.bold()';
+        if (item.italic === true) code += '.italic()';
+        if (item.underline === true) code += '.underline()';
         code += '.offset(' + xOffset + ',' + yOffset + ')';
         code += item.align === 'left' ? '.left()' : (item.align === 'right' ? '.right()' : '.center()');
         const intValue = _convertOffset(item.intValue);
@@ -262,7 +300,13 @@ const DwgArduinoExport = (() => {
 
       case 'touchZone': {
         let code = 'dwgsPtr->touchZone().cmd(' + item.cmdName + ')';
-        if (item.centered === true || item.centered === 'true') code += '.centered()';
+        // An idx on a touchZone is its touch PRIORITY among overlapping
+        // zones (pfodTouchZone::idx(pfodAutoIdx&)), not a handle for
+        // redrawing it — so it is emitted here, inline with the zone, and
+        // the zone is never deferred into sendIndexedItems() the way a real
+        // indexed item is.
+        if (_declaresIdx(item)) code += '.idx(' + item.idxName + ')';
+        if (item.centered === true) code += '.centered()';
         code += '.size(' + (item.xSize || 1) + ',' + (item.ySize || 1) + ')' +
           '.offset(' + xOffset + ',' + yOffset + ')';
         if (item.filter) {
@@ -273,13 +317,21 @@ const DwgArduinoExport = (() => {
       }
 
       case 'touchAction': {
+        // action[0] ONLY. A touchAction carries exactly one primitive: that
+        // is what the wire form |X~cmd~<primitive> holds, what
+        // pfodTouchAction::action(pfodDwgsBase&) takes, and what
+        // dwgWireEncoder emits. This used to map over the whole array and
+        // emit a line per element, so a file with two entries generated two
+        // touchActions here but sent only the first from the preview — the
+        // array is a container the runtime spreads into its per-cmd list
+        // (drawingDataProcessor), not a way to put two primitives on one
+        // item. validateAndRepairDwg drops any extras on load, so reaching
+        // here with more than one is not expected.
         if (!Array.isArray(item.action) || item.action.length === 0) {
           return 'dwgsPtr->touchAction().cmd(' + item.cmdName + ').action(dwgsPtr->rectangle().size(1,1)).send();';
         }
-        return item.action.map((actionItem) => {
-          const actionCode = _convertItemToArduino(actionItem, missingDwgSet).replace(/\.send\(\);$/, '');
-          return 'dwgsPtr->touchAction().cmd(' + item.cmdName + ').action(' + actionCode + ').send();';
-        }).join('\n    ');
+        const actionCode = _convertItemToArduino(item.action[0], missingDwgSet).replace(/\.send\(\);$/, '');
+        return 'dwgsPtr->touchAction().cmd(' + item.cmdName + ').action(' + actionCode + ').send();';
       }
 
       case 'touchActionInput': {
@@ -292,7 +344,12 @@ const DwgArduinoExport = (() => {
       }
 
       case 'index':
-        if (item.cmdName) return 'dwgsPtr->index().cmd(' + item.cmdName + ').send();';
+        // idx ONLY. An index placeholder reserves an index and does nothing
+        // else: the wire form is |i`idx with no cmd slot at all, and
+        // pfodIndex has no cmd() — the library header has it commented out —
+        // so the `.cmd()` form this used to emit for an index carrying a
+        // cmdName would not have compiled. validateAndRepairDwg strips a
+        // cmdName off an index on load, so one cannot reach here.
         if (item.idxName) return 'dwgsPtr->index().idx(' + item.idxName + ').send();';
         return '// index: no idx specified';
 
@@ -321,8 +378,8 @@ const DwgArduinoExport = (() => {
   /// Base/thin file split. dwgRefresh_ms is a public instance member (set in
   /// the constructor), not a file-scope static, matching that reference.
   /// Its _ms suffix is deliberate: pfodParser::sendRefreshAndVersion() takes
-  /// milliseconds, while the Dwg Controls Panel edits dwg.refresh in seconds,
-  /// and emitting the seconds value unconverted was a real bug.
+  /// milliseconds, and the stored dwg.dwgRefresh_ms carries the same unit
+  /// under the same name, so the value passes straight through.
   /// sendIndexedItems() is virtual (as in that same reference's own
   /// menu-side pfodMainMenu::sendMainMenu/sendMainMenuUpdate) so a user's
   /// own subclass can override just the indexed-item values without
@@ -382,7 +439,7 @@ const DwgArduinoExport = (() => {
     // ever touches it) is private.
     const idxList = [];
     (dwg.items || []).forEach((item) => {
-      if (!item.idxName || !(item.indexed === true || item.indexed === 'true')) return;
+      if (!_declaresIdx(item)) return;
       if (idxList.includes(item.idxName)) return;
       idxList.push(item.idxName);
       code += '    pfodAutoIdx ' + item.idxName + ';\n';
@@ -429,12 +486,12 @@ const DwgArduinoExport = (() => {
   function _generateCpp(dwg, missingDwgSet) {
     const name = _identifier(dwg.name);
     const items = dwg.items || [];
-    // dwg.refresh is in SECONDS (the Dwg Controls Panel edits and displays it
-    // that way — "Refresh rate (seconds, 0 = no refresh)", max 3600), but
-    // pfodParser::sendRefreshAndVersion() takes MILLISECONDS, same as the main
-    // menu's own refresh_ms below.  Convert here; emitting the seconds value
-    // raw asked the device for a 5 ms refresh on a dwg set to 5 s.
-    const refreshMs = (dwg.refresh || 0) * 1000;
+    // dwg.dwgRefresh_ms is already MILLISECONDS, the unit
+    // pfodParser::sendRefreshAndVersion() takes and the same unit as the main
+    // menu's own refresh_ms below — so it passes straight through under the
+    // same name.  The Dwg Controls Panel's own seconds input is the only
+    // place that converts.
+    const refreshMs = dwg.dwgRefresh_ms || 0;
     const bgColor = _convertColor(dwg.color !== undefined ? dwg.color : -1);
     missingDwgSet = missingDwgSet || new Set();
 
@@ -548,7 +605,11 @@ const DwgArduinoExport = (() => {
 
     items.forEach((item) => {
       if (item.type === 'hide' || item.type === 'unhide' || item.type === 'erase') return; // sent in sendFullDrawing
-      if (!item.idxName || !(item.indexed === true || item.indexed === 'true') || item.type === 'index') return;
+      // touchZone: sent whole in sendFullDrawing — its idx is touch priority,
+      // not redrawable content, and it has to stay adjacent to its own
+      // touchAction/touchActionInput lines.
+      if (item.type === 'touchZone') return;
+      if (!_declaresIdx(item) || item.type === 'index') return;
       const line = _convertItemToArduino(item, missingDwgSet);
       if (line) code += '    ' + line + '\n';
     });
@@ -565,7 +626,7 @@ const DwgArduinoExport = (() => {
         if (line) code += '    ' + line + '\n';
         return;
       }
-      if (item.idxName && (item.indexed === true || item.indexed === 'true')) {
+      if (_declaresIdx(item) && item.type !== 'touchZone') {
         if (placeholderIdxSent.includes(item.idxName)) return;
         placeholderIdxSent.push(item.idxName);
         code += '    dwgsPtr->index().idx(' + item.idxName + ').send(); // place holder for indexed item\n';
@@ -744,8 +805,11 @@ const DwgArduinoExport = (() => {
       'class pfodMainMenu {\n' +
       '  public:\n' +
       '    pfodMainMenu();\n' +
-      '    void init(pfodCloseConnectionPtr _closeConnectionFnPtr = NULL);\n' +
-      '    void handle(pfodParser &parser);\n\n' +
+      // virtual for the same reason Dwg_<name>::init() is: init()/handle()
+      // are reached through the pfodMainMenu& get_pfodMainMenu() returns, so
+      // a subclass's own versions only run if these dispatch.
+      '    virtual void init(pfodCloseConnectionPtr _closeConnectionFnPtr = NULL);\n' +
+      '    virtual void handle(pfodParser &parser);\n\n' +
       '  protected:\n' +
       '    pfodAutoCmd dwgMenuItem_Cmd; // drawing menu item\n\n' +
       '    virtual void sendMainMenu(pfodParser &parser);\n' +
@@ -760,7 +824,19 @@ const DwgArduinoExport = (() => {
       'typedef void (*handle_mainMenuFnPtr)(pfodParser &parser);\n' +
       'handle_mainMenuFnPtr init_pfodMainMenu(pfodCloseConnectionPtr = NULL);\n' +
       'void handle_pfodMainMenu(pfodParser &parser);\n\n' +
-      'extern pfodMainMenu mainMenu;\n' +
+      // Same weak-accessor scheme as Dwg_<name>'s own get_dwg_<name>(): the
+      // bridge functions above call this, never the raw global, so a user's
+      // subclass takes over by defining it in their own .cpp.
+      '// The main menu object the sketch runs.  To add your own behaviour,\n' +
+      '// subclass pfodMainMenu, define your own instance, and define this\n' +
+      '// function in YOUR .cpp to return it -- the weak default in\n' +
+      '// pfodMainMenu.cpp is then replaced at link time and NONE of these\n' +
+      '// generated files need editing:\n' +
+      '//     MyMainMenu myMainMenu;\n' +
+      '//     pfodMainMenu& get_pfodMainMenu() { return myMainMenu; }\n' +
+      '// The unused default instance then never has init() called on it.\n' +
+      'pfodMainMenu& get_pfodMainMenu();\n' +
+      'extern pfodMainMenu mainMenu; // the default instance\n' +
       '#endif\n' +
       '// ================= end of pfodMainMenu.h  file\n';
   }
@@ -791,15 +867,18 @@ const DwgArduinoExport = (() => {
       '#include <pfodDebugPtr.h>\n' +
       '#include "Dwg_' + topDwgIdentifier + '.h"\n\n' +
       '// #define DEBUG\n\n' +
-      'pfodMainMenu mainMenu;\n\n' +
+      'pfodMainMenu mainMenu;\n' +
+      '// weak: defining this function in any other .cpp replaces it, which is\n' +
+      '// how a subclass takes over without editing this file -- see pfodMainMenu.h\n' +
+      'pfodMainMenu& __attribute__((weak)) get_pfodMainMenu() { return mainMenu; }\n\n' +
       'static Print* debugPtr = NULL;  // local to this file\n' +
       'static const unsigned long refresh_ms = 0; // main menu refresh\n\n' +
       'handle_mainMenuFnPtr init_pfodMainMenu(pfodCloseConnectionPtr _closeConnectionFnPtr) {\n' +
-      '  mainMenu.init(_closeConnectionFnPtr);\n' +
+      '  get_pfodMainMenu().init(_closeConnectionFnPtr);\n' +
       '  return handle_pfodMainMenu;\n' +
       '}\n\n' +
       'void handle_pfodMainMenu(pfodParser& parser) {\n' +
-      '  mainMenu.handle(parser);\n' +
+      '  get_pfodMainMenu().handle(parser);\n' +
       '}\n\n' +
       'pfodMainMenu::pfodMainMenu() {\n' +
       '  initialized = false;\n' +
@@ -930,6 +1009,24 @@ const DwgArduinoExport = (() => {
       '}\n';
   }
 
+  /// Display name of the target the Designer is currently running against.
+  /// Same resolution designer/adapter.js uses to build its board —
+  /// getCurrentTargetId() (boardSelector.js) -> BOARD_DATA_BY_ID -> that
+  /// entry's own name — so a wrapper menu records the SAME board a design
+  /// saved from the Menu Designer would, and the two are interchangeable on
+  /// load. The Dwg Designer is only ever reached THROUGH the Menu Designer,
+  /// so a target is always selected by the time Generate Code can run; the
+  /// guards below are for a bundle where boardSelector hasn't loaded yet,
+  /// and fall back to the same avr_unoData default adapter.js does.
+  /// @returns {string|undefined} board display name, e.g. 'Arduino UNO'
+  function _currentBoardName() {
+    const targetId = (typeof getCurrentTargetId === 'function') ? getCurrentTargetId() : null;
+    if (targetId && typeof BOARD_DATA_BY_ID !== 'undefined' && BOARD_DATA_BY_ID[targetId]) {
+      return BOARD_DATA_BY_ID[targetId].name;
+    }
+    return (typeof avr_unoData !== 'undefined') ? avr_unoData.name : undefined;
+  }
+
   /// Re-loadable .pfodMenu_json for the generated single-dwg pfodMainMenu
   /// wrapper (_generateMainMenuHeader/_generateMainMenuCpp above) — a
   /// bare one-item menu whose only item is a Drawing linked to `dwgName`,
@@ -967,14 +1064,22 @@ const DwgArduinoExport = (() => {
       ],
       refresh_ms: 0,
     };
+    // Same field set and key order as DesignerState.exportToJSON(), per this
+    // function's own "stays in sync with the Designer's export format"
+    // contract above — boardName included: the Dwg Designer is reached from
+    // the Menu Designer, so a target board is always selected and there is
+    // always something truthful to record.  Recording it matters because a
+    // schema-12 file WITHOUT it is read as a legacy design assumed to be an
+    // UNO, which would be a silent lie on any other target.
     const out = {
       format:     EXPORT_FORMAT_TAG,
       schema:     DESIGNER_STATE_SCHEMA_VERSION,
       name:       topDwgIdentifier + '_serial',
+      connection: 'serial',
+      boardName:  _currentBoardName(),
       savedAt:    new Date().toISOString(),
       js_ver:     window.JS_VERSION,
       rootMenu:   _exportableMenu(rootMenu),
-      connection: 'serial',
     };
     return JSON.stringify(out, null, 2);
   }
@@ -987,10 +1092,13 @@ const DwgArduinoExport = (() => {
   /// synthetic-click pattern dwgControlsPanelUI.js's own
   /// _downloadDwgAsJson() uses.
   /// @param {string} dwgName
-  /// @returns {{missingDrawings: Array<string>}} — any insertDwg target(s)
-  ///          that aren't currently loaded in this library (export still
-  ///          proceeds for everything that IS available)
+  /// @returns {{missingDrawings: Array<string>, unsupportedColours: Array<string>}}
+  ///          missingDrawings — insertDwg target(s) not currently loaded in
+  ///          this library; unsupportedColours — colours the generated code
+  ///          could not express and emitted as BLACK (see _convertColor).
+  ///          Export still proceeds in both cases.
   function exportDwgAsZip(dwgName) {
+    _degradedColours = new Set();
     const { names, missing } = _collectAllDwgs(dwgName);
     const missingSet = new Set(missing);
     const topDwgIdentifier = _identifier(dwgName);
@@ -1035,7 +1143,9 @@ const DwgArduinoExport = (() => {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    return { missingDrawings: missing };
+    const unsupportedColours = Array.from(_degradedColours);
+    _degradedColours = null;
+    return { missingDrawings: missing, unsupportedColours };
   }
 
   // _collectAllDwgs is also reused by designer/menus/saveToFile.js (Save

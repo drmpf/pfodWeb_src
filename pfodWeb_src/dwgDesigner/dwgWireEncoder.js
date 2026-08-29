@@ -14,12 +14,12 @@
  * state and calls into this module to actually build the response text.
  *
  * Scoping notes (deliberate simplifications, not oversights):
- *   - DwgLibrary stores booleans (filled/centered/rounded/bold/italic/
- *     underline/etc.) as either a real JS boolean OR the strings "true"/
- *     "false" (dwgDesigner/dwgValidate.js's own schema comment — matches
- *     add-item.js's own wire format). Every boolean field read here goes
- *     through _bool() rather than raw truthiness, since the string
- *     "false" is truthy in JS.
+ *   - DwgLibrary booleans (filled/centered/rounded/bold/italic/underline/
+ *     etc.) are real JS booleans — dwgDesigner/dwgValidate.js converts the
+ *     older string form to a real boolean on load rather than passing it
+ *     through. Boolean
+ *     fields are still read via _bool() rather than raw truthiness, so a
+ *     string could never silently work again ("false" is truthy in JS).
  *   - rectangle/line/circle/arc/label/value/touchZone items DO carry
  *     their own optional `idx` when marked `indexed:true` (referenced
  *     later by hide/unhide/erase-by-idx) — every per-type encoder below
@@ -69,11 +69,15 @@ const DwgWireEncoder = (() => {
     return idxPart + '~' + fields.join('~');
   }
 
-  /// DwgLibrary booleans are a real JS boolean OR the strings "true"/
-  /// "false" — see this file's own header comment. Never use raw
-  /// truthiness on one of these fields directly.
+  /// A DwgLibrary boolean is a real JS boolean — validateAndRepairDwg
+  /// converts the older string form on every write path, so this no longer
+  /// has to accept "true"/"false". Kept as a named helper rather than
+  /// inlined: a plain
+  /// truthiness test would be wrong the moment a string ever did get through
+  /// (the string "false" is truthy), and this makes that impossible to
+  /// reintroduce by accident.
   function _bool(v) {
-    return v === true || v === 'true';
+    return v === true;
   }
 
   /// Inline formatting tags a label/value's own bold/italic/underline/
@@ -365,9 +369,16 @@ const DwgWireEncoder = (() => {
   //   - insertDwg: drawingDataProcessor.js itself actively nulls out any
   //     idx it finds on an insertDwg item ("insertDwg should never be
   //     indexed") — so it can never legitimately reach here with one.
+  //   - touchZone: an idx on a zone is its touch PRIORITY among overlapping
+  //     zones, not a handle on redrawable content — a zone paints nothing,
+  //     so there is no "real" form worth deferring. Deferring one actively
+  //     breaks the drawing: its touchAction/touchActionInput children are
+  //     themselves never deferred, so they stay at the zone's original
+  //     position and the zone lands at the end of the message, leaving the
+  //     actions ahead of the zone they belong to.
   const NEVER_DEFERRED_TYPES = Object.freeze([
     'hide', 'unhide', 'erase', 'index', 'touchAction', 'touchActionInput',
-    'pushZero', 'popZero', 'insertDwg',
+    'pushZero', 'popZero', 'insertDwg', 'touchZone',
   ]);
 
   /// Build a full pfod "start" drawing response — {+colour`x`y`refresh~version|item...}.
@@ -419,19 +430,17 @@ const DwgWireEncoder = (() => {
     // Same reasoning for refresh — see this check's own original comment
     // history; kept as a separate guard since it has its own valid range
     // (non-negative, no upper bound enforced by validateAndRepairDwg).
-    if (typeof dwg.refresh !== 'number' || !isFinite(dwg.refresh) || dwg.refresh < 0) {
-      throw new Error('[DwgWireEncoder] dwg.refresh is not a valid non-negative number: ' +
-        JSON.stringify(dwg.refresh) + ' — validateAndRepairDwg should already guarantee this');
+    if (typeof dwg.dwgRefresh_ms !== 'number' || !isFinite(dwg.dwgRefresh_ms) || dwg.dwgRefresh_ms < 0) {
+      throw new Error('[DwgWireEncoder] dwg.dwgRefresh_ms is not a valid non-negative number: ' +
+        JSON.stringify(dwg.dwgRefresh_ms) + ' — validateAndRepairDwg should already guarantee this');
     }
-    // dwg.refresh is in SECONDS (the Dwg Controls Panel edits and displays it
-    // that way — "Refresh rate (seconds, 0 = no refresh)", max 3600) but this
-    // header field is MILLISECONDS, which is what pfodParser's own
-    // sendRefreshAndVersion() sends and what webTranslator.js reads back as
-    // refreshMs.  Emitting the seconds value raw put `5 on the wire for a dwg
-    // set to 5 s, which the auto-refresh floor then rounded up to 250 ms.
-    // The menu side never had this problem — it stores refresh_ms already.
-    const refreshMs = dwg.refresh * 1000;
-    let out = '{+' + _colour(dwg.color) + '`' + dwg.x + '`' + dwg.y + '`' + refreshMs + '~' + version;
+    // dwg.dwgRefresh_ms is already MILLISECONDS — the same unit this header
+    // field uses, which is what pfodParser's own sendRefreshAndVersion()
+    // sends and what webTranslator.js reads back as refreshMs.  No
+    // conversion here: the Dwg Controls Panel's own seconds input is the
+    // only place that converts, on read and write.  The menu side is the
+    // same shape — it stores refresh_ms already.
+    let out = '{+' + _colour(dwg.color) + '`' + dwg.x + '`' + dwg.y + '`' + dwg.dwgRefresh_ms + '~' + version;
     const deferred = [];
     const placeholderSent = new Set();
     for (const item of flattenTouchActions(dwg.items)) {

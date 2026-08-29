@@ -36,12 +36,20 @@
 Object.assign(DrawingViewer.prototype, {
 
   // Returns true when the post-response repaint should be deferred:
-  // while the mouse is down, or while a real (non-refresh) request is
-  // still outstanding (in flight or queued) — e.g. a button cmd whose
-  // response will set the final state.  Routine refresh responses
+  // while a touch is HOLDING the display, or while a real (non-refresh)
+  // request is still outstanding (in flight or queued) — e.g. a button cmd
+  // whose response will set the final state.  Routine refresh responses
   // repaint immediately as they arrive.
+  //
+  // holdingUpdates, not isDown: the point of deferring is to stop the screen
+  // changing under an optimistic touchAction edit, and only a press that
+  // landed ON a touchZone makes one.  isDown is true for any press at all —
+  // including on a TOUCH_DISABLED zone, which is meant to swallow the touch
+  // and nothing else, and on empty canvas — and gating on it froze the
+  // display for as long as the pointer was held anywhere.  See
+  // pfodWebMouse.js's handleMouseDown / _endTouchHold.
   shouldDeferRedraw() {
-    if (this.touchState.isDown) {
+    if (this.touchState.holdingUpdates) {
       return true;
     }
     const isNonRefreshType = r =>
@@ -407,9 +415,12 @@ Object.assign(DrawingViewer.prototype, {
       this.jsonErrorAlertShown = false; // Reset so future JSON errors are reported again
 
       // Handle the response data
-      if (this.touchState.isDown) {
-        // Mouse is down - queue the response to prevent flashing
-        console.info(`[QUEUE] Mouse is down (touchState.isDown=${this.touchState.isDown}) - queuing response for "${request.cmd}" to prevent flashing`);
+      if (this.touchState.holdingUpdates) {
+        // A touch is holding the display - queue the response to prevent
+        // flashing.  Same reasoning as shouldDeferRedraw() above: a press
+        // that hit no touchZone holds nothing and its responses apply
+        // straight away.
+        console.info(`[QUEUE] Touch holding display (holdingUpdates=${this.touchState.holdingUpdates}) - queuing response for "${request.cmd}" to prevent flashing`);
         // Remove the processed request from the queue first
 //         this.sentRequest = null;
 //         this.requestQueue.shift();

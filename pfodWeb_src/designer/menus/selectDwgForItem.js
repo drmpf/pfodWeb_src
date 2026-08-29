@@ -27,8 +27,19 @@
  *               whatever screen genuinely led here.
  *   {dKL}     → open the OS file picker; a successfully loaded dwg
  *               becomes the item's dwgName, then '{<}' as above.
- *               Cancel/error/invalid-file re-render this same screen in
- *               place (with an alert on error) instead of navigating.
+ *               Cancel/error/invalid-file answer PFOD_EMPTY (with an
+ *               alert on error) — nothing was loaded, so nothing on the
+ *               screen changes, and a {} is not a menu response so it
+ *               never reaches menuNavStack.
+ *
+ * Nav-stack contract: the client records every cmd that answers with a
+ * {,} and Back RE-SENDS the top of that stack (responseHandlers.js's
+ * _navigateToMenu / toolbarAndMenu.js's back handler). A file picker
+ * therefore must never answer with a {,}, or backing into this screen
+ * re-runs it and the OS dialog opens by itself. {dK} is the only cmd
+ * here that answers with one, because it is the only one that is a
+ * navigation; {dK<n>} pops with '{<}' and {dKL} either pops or says
+ * nothing changed. Matches loadFromFile.js's own documented contract.
  *
  * No version tag / no trailing `~` — DwgLibrary's contents can change
  * between renders (a file load here, or a dwg created/edited via the Dwg
@@ -209,7 +220,7 @@ const DesignerSelectDwgForItem = (() => {
 
       input.addEventListener('change', () => {
         const file = input.files && input.files[0];
-        if (!file) { settle({ pfod: _renderScreen(state), skipSave: true }); return; }
+        if (!file) { settle({ pfod: PFOD_EMPTY, skipSave: true }); return; }
         const reader = new FileReader();
         reader.onload = () => {
           let parsed;
@@ -217,20 +228,24 @@ const DesignerSelectDwgForItem = (() => {
             parsed = JSON.parse(reader.result);
           } catch (err) {
             pfodAlert('"' + file.name + '" is not valid JSON and was not loaded.', () => {});
-            settle({ pfod: _renderScreen(state), skipSave: true });
+            settle({ pfod: PFOD_EMPTY, skipSave: true });
             return;
           }
-          if (!looksLikeDwgFile(parsed)) {
-            pfodAlert('"' + file.name + '" does not look like a valid dwg file (missing "format": "pfodDwgDesigner") and was not loaded.', () => {});
-            settle({ pfod: _renderScreen(state), skipSave: true });
+          const rejectReason = dwgFileRejectReason(parsed);
+          if (rejectReason) {
+            pfodAlert('"' + file.name + '" ' + rejectReason + ' and was not loaded.', () => {});
+            settle({ pfod: PFOD_EMPTY, skipSave: true });
             return;
           }
-          const { dwg, errors } = validateAndRepairDwg(parsed, DwgLibrary.nextFreeName(parsed.name));
+          // isLoad=true — this is a genuine untrusted-file load, so a duplicate
+          // idxName is repaired and reported (shown below) rather than thrown.
+          // Without it the throw would skip settle() and hang the queue.
+          const { dwg, errors } = validateAndRepairDwg(parsed, DwgLibrary.nextFreeName(parsed.name), true);
           if (_usedOrReferencedDwgNames(state).has(dwg.name)) {
             pfodAlert('"' + _sanitize(dwg.name) + '" is already used in this menu (either loaded and ' +
               'linked to another item, or referenced but not yet loaded) and was not loaded. ' +
               'Choose a different file, or open Create/Edit Drawings and make a copy of the dwg.', () => {});
-            settle({ pfod: _renderScreen(state), skipSave: true });
+            settle({ pfod: PFOD_EMPTY, skipSave: true });
             return;
           }
           if (errors && errors.length > 0) {
@@ -242,7 +257,7 @@ const DesignerSelectDwgForItem = (() => {
         };
         reader.onerror = () => {
           pfodAlert('"' + file.name + '" could not be read.', () => {});
-          settle({ pfod: _renderScreen(state), skipSave: true });
+          settle({ pfod: PFOD_EMPTY, skipSave: true });
         };
         reader.readAsText(file);
       });
@@ -252,7 +267,7 @@ const DesignerSelectDwgForItem = (() => {
       // win the race — matches loadFromFile.js's own identical guard.
       const onFocus = () => {
         window.removeEventListener('focus', onFocus);
-        setTimeout(() => settle({ pfod: _renderScreen(state), skipSave: true }), 300);
+        setTimeout(() => settle({ pfod: PFOD_EMPTY, skipSave: true }), 300);
       };
       window.addEventListener('focus', onFocus);
 

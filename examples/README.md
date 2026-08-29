@@ -228,8 +228,60 @@ otherwise the client will keep displaying the old cached screen.
 
 ### Editing generated code
 
-Regenerating from the Designer overwrites `pfodMainMenu.*` and `Dwg_*.*`, so keep application
-logic in sub-classes and the .ino.
+Regenerating from the Designer overwrites `pfodMainMenu.*`, `SubMenu_*.*` and `Dwg_*.*`, so keep
+application logic in sub-classes and the .ino.
+
+Every generated class is reached through an **accessor function**, never through the global
+instance it defaults to:
+
+| Generated class | Accessor | Default instance |
+|---|---|---|
+| `Dwg_<Name>` | `get_dwg_<Name>()` | `dwg_<Name>` |
+| `pfodMainMenu` | `get_pfodMainMenu()` | `mainMenu` |
+| `SubMenu_<Ident>` | `get_subMenu_<Ident>()` | `subMenu_<Ident>` |
+
+Each accessor is defined `__attribute__((weak))` in the generated .cpp. Defining the same function
+in a file of **your own** replaces it at link time, so the generated code drives your object
+instead — without a single edit to a generated file:
+
+```cpp
+// MyLedOnOff.cpp -- a file the Designer never touches
+#include "Dwg_LedOnOff.h"
+
+class MyLedOnOff : public Dwg_LedOnOff {
+  protected:
+    virtual void sendIndexedItems();   // your version, not the generated one
+};
+
+MyLedOnOff myLedOnOff;
+
+// Replaces the weak default in the generated Dwg_LedOnOff.cpp.
+Dwg_LedOnOff& get_dwg_LedOnOff() { return myLedOnOff; }
+```
+
+Two things make this work, and both are already in the generated code:
+
+* the methods worth overriding are `virtual` — for a drawing `init()`, `sendIndexedItems()` and each
+  `Dwg_<Name>_<cmdName>()` touch handler; for the main menu `init()`, `handle()`,
+  `sendMainMenu()`, `sendMainMenuUpdate()` and the `on<Item>Changed()` hooks; for a sub-menu
+  `init()`, `sendMenu()`, `sendMenuUpdate()` and `handleCmd()`. Calls arrive through a base-class
+  reference, so a non-virtual method would silently keep running the base version;
+* the `pfodAutoIdx` / `pfodAutoCmd` members are `protected`, so an override can name the indexes and
+  commands it needs to send or handle.
+
+The default instance is left un-`init()`ed, so it never registers with the parser and, for a
+drawing, never allocates its `pfodDwgs`.
+
+The exact recipe, with your own class and instance names filled in, is repeated in a comment block
+at the bottom of each generated header.
+
+`SliderInputErrorControl.cpp` in the `SliderWithHelp` sketch is a complete worked example: it
+subclasses `Dwg_SliderInputErr` to add the slider position and an error message, and takes over by
+defining `get_dwg_SliderInputErr()`.
+
+> **Note:** the sketches in this folder were generated before the accessors were added, so their
+> `Dwg_*.h` files still only declare `extern Dwg_<Name> dwg_<Name>;`. Re-generate one from its
+> `json/` folder to get the current shape.
 
 ### Debug output
 

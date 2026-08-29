@@ -88,7 +88,7 @@ class DwgDesignerVirtualDevice {
     // the drawing's own stored content, so it never bumps `versions`.
     this._pendingUpdates = {};
 
-    // loadCmd -> {x,y,color,refresh,items} dwg-shaped object. Set by
+    // loadCmd -> {x,y,color,dwgRefresh_ms,items} dwg-shaped object. Set by
     // forceNextStart() — the Show press-and-hold feature's fallback for an
     // item with no idxName/cmdName to hide/unhide-by-reference (nothing a
     // real device could target with a hide directive at all): a full
@@ -428,7 +428,7 @@ class DwgDesignerVirtualDevice {
   }
 
   /// Force the very next fetch of `loadCmd` to be answered with a fresh
-  /// full "start" re-encoded from `dwg` (a {x,y,color,refresh,items}
+  /// full "start" re-encoded from `dwg` (a {x,y,color,dwgRefresh_ms,items}
   /// object — items may be the nested or flat form, encodeDwgStart/
   /// _resolveAutoCmdAndIdx each flatten it themselves) instead of the
   /// normal bare-{+}-or-real-content "start" logic, and bumps `versions`
@@ -532,7 +532,7 @@ class DwgDesignerVirtualDevice {
           // that the field is present, since an absent one is what made
           // this response unparseable.
           const missingWire = DwgWireEncoder.encodeDwgStart(
-            { x: 1, y: 1, color: 0, refresh: 0, items: [] },
+            { x: 1, y: 1, color: 0, dwgRefresh_ms: 0, items: [] },
             'v' + (this._nextVersionCounter++)
           );
           console.log('[DWG_PREVIEW_DEBUG] "' + dwgName + '" not found in DwgLibrary — resolving empty start for "' + bareCmd + '":', missingWire);

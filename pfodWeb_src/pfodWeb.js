@@ -339,6 +339,13 @@ class DrawingViewer {
       startTime: 0,
       longPressTimer: null,
       targetTouchZone: null,
+      // True from a press that landed ON a touchZone until that gesture
+      // really ends (up, or a release outside the canvas).  This — not
+      // isDown — is what holds off repaints and response processing, so a
+      // press that activated nothing never freezes the display, and a
+      // drag out of the zone or off the canvas keeps holding while the
+      // button is still down.  See shouldDeferRedraw() in requestQueue.js.
+      holdingUpdates: false,
       hasEnteredZones: new Set(),
       hasDragged: false,
       lastSentTouchType: null

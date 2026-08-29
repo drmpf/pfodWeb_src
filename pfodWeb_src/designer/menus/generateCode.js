@@ -190,6 +190,23 @@ const DesignerGenerateCode = (() => {
     return Number.isInteger(f) ? f + '.0' : String(f);
   }
 
+  /// Indent of the "} else if" lines in a dispatch chain, which depends
+  /// only on how deeply the chain is nested in its own function:
+  ///
+  ///   pfodMainMenu::handle()      chain is inside `if (cmd != 0) {`,
+  ///                               so `if ('.' == cmd) {` is at 4 -- the
+  ///                               default.
+  ///   SubMenu_<x>::handleCmd()    `if (false) {` is at the function's own
+  ///                               top level, so the chain is at 2, which
+  ///                               is where handleCmd's own child-sub-menu
+  ///                               delegation branches already sit.
+  ///
+  /// Branch bodies go two columns further in than whatever this returns.
+  /// @param {object} ctx  dispatch context; ctx.indent overrides the default
+  function _branchIndent(ctx) {
+    return (ctx && ctx.indent !== undefined) ? ctx.indent : '    ';
+  }
+
   /// Emit the handle_pfodMainMenu dispatch branch for a chart button —
   /// prints the {= plot message head, a conditional ~C (clear collected
   /// data after reconnect, set by the {@} handler), then the column/plot
@@ -197,18 +214,19 @@ const DesignerGenerateCode = (() => {
   /// @param {object} item     chart item
   /// @param {string} comment  trailing comment for the else-if line
   /// @param {string} context  second comment line (menu location), or ''
-  function _chartDispatchBranch(item, comment, context) {
+  /// @param {string} ind      indent of the "} else if" line (see _branchIndent)
+  function _chartDispatchBranch(item, comment, context, ind) {
     const msg = DesignerEditChart.buildChartMsgForCode(item);
-    let out = '    } else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { ' + comment + '\n';
-    if (context) out += '      ' + context + '\n';
-    out += '      // return plotting msg.\n';
-    out += '      parser.print(F("' + _cppStr(msg.head) + '"));\n';
-    out += '      if (clearPlot) {\n';
-    out += '        clearPlot = false;\n';
-    out += '        parser.print(F("~C"));\n';
-    out += '      }\n';
-    out += '      parser.print(F("' + _cppStr(msg.body) + '"));\n';
-    out += '\n';
+    const b = ind + '  ';  // branch body
+    let out = ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { ' + comment + '\n';
+    if (context) out += b + context + '\n';
+    out += b + '// return plotting msg.\n';
+    out += b + 'parser.print(F("' + _cppStr(msg.head) + '"));\n';
+    out += b + 'if (clearPlot) {\n';
+    out += b + '  clearPlot = false;\n';
+    out += b + '  parser.print(F("~C"));\n';
+    out += b + '}\n';
+    out += b + 'parser.print(F("' + _cppStr(msg.body) + '"));\n';
     return out;
   }
 
@@ -223,66 +241,76 @@ const DesignerGenerateCode = (() => {
   // `long *pfodLongRtn` from its caller).
   //
   // @param {object} item
-  // @param {object} ctx  { longRtnAddr, longRtnDeref, sendUpdateCall,
+  // @param {object} ctx  { indent, longRtnAddr, longRtnDeref, sendUpdateCall,
   //                        returnTrue, hookNames, chartContext }
   // @param {Map} submenuNames  _collectSubMenuNames(state) result
   function _itemDispatchBranch(item, ctx, submenuNames) {
     const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+    // Where the chain sits in its function decides the indent, and the two
+    // callers sit at different depths: handle()'s chain is nested inside
+    // `if (cmd != 0) {`, while handleCmd()'s `if (false) {` is at the
+    // function's own top level. ctx.indent is the column of the
+    // "} else if" line; bodies go two further in.
+    const ind = _branchIndent(ctx);
+    const b = ind + '  ';
     const returnTrue = ctx.returnTrue || '';
+    // How a branch is closed off. A sub-menu's handleCmd() must report that
+    // it consumed the cmd, so its branches end with an indented
+    // "return true;" and butt straight up against the next "} else if".
+    // pfodMainMenu::handle() returns void and has nothing to report, so its
+    // branches end with a blank line instead, which is what separates them.
+    // One or the other -- never both, or the sub-menu gets a stray blank
+    // line before its closing brace.
+    const endBranch = returnTrue ? b + returnTrue : '\n';
     let out = '';
     if (item.type === 'onoff') {
       const intVar = _intVarName(item.autoCmd);
       const hookName = ctx.hookNames.get(item);
-      out += '    } else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user moved slider -- \'' + label + '\'\n';
-      out += '      parser.parseLong(pfodFirstArg,' + ctx.longRtnAddr + '); // parse first arg as a long\n';
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user moved slider -- \'' + label + '\'\n';
+      out += b + 'parser.parseLong(pfodFirstArg,' + ctx.longRtnAddr + '); // parse first arg as a long\n';
       if (item.pin && item.pin.invertOutput) {
-        out += '      ' + intVar + ' = swap01((int)' + ctx.longRtnDeref + '); // set variable\n';
+        out += b + intVar + ' = swap01((int)' + ctx.longRtnDeref + '); // set variable\n';
       } else {
-        out += '      ' + intVar + ' = (int)' + ctx.longRtnDeref + '; // set variable\n';
+        out += b + intVar + ' = (int)' + ctx.longRtnDeref + '; // set variable\n';
       }
-      out += '      ' + hookName + '(' + intVar + '); // virtual hook -- hardware/action handling\n';
-      out += '      ' + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
-      out += returnTrue;
-      out += '\n';
+      out += b + hookName + '(' + intVar + '); // virtual hook -- hardware/action handling\n';
+      out += b + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
+      out += endBranch;
     } else if (item.type === 'pwm') {
       const intVar = _intVarName(item.autoCmd);
       const hookName = ctx.hookNames.get(item);
-      out += '    } else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user moved slider -- \'' + label + '\'\n';
-      out += '      parser.parseLong(pfodFirstArg,' + ctx.longRtnAddr + '); // parse first arg as a long\n';
-      out += '      ' + intVar + ' = (int)' + ctx.longRtnDeref + '; // set variable\n';
-      out += '      ' + hookName + '(' + intVar + '); // virtual hook -- hardware/action handling\n';
-      out += '      ' + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
-      out += returnTrue;
-      out += '\n';
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user moved slider -- \'' + label + '\'\n';
+      out += b + 'parser.parseLong(pfodFirstArg,' + ctx.longRtnAddr + '); // parse first arg as a long\n';
+      out += b + intVar + ' = (int)' + ctx.longRtnDeref + '; // set variable\n';
+      out += b + hookName + '(' + intVar + '); // virtual hook -- hardware/action handling\n';
+      out += b + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
+      out += endBranch;
     } else if (item.type === 'button') {
       const hookName = ctx.hookNames.get(item);
-      out += '    } else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user pressed -- \'' + label + '\'\n';
-      out += '      ' + hookName + '(parser); // virtual hook -- must send a pfod response\n';
-      out += returnTrue;
-      out += '\n';
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user pressed -- \'' + label + '\'\n';
+      out += b + hookName + '(parser); // virtual hook -- must send a pfod response\n';
+      out += endBranch;
     } else if (item.type === 'chart') {
-      out += _chartDispatchBranch(item, '// user pressed -- \'' + label + '\'', ctx.chartContext || '');
-      if (returnTrue) out += '      ' + returnTrue;
+      out += _chartDispatchBranch(item, '// user pressed -- \'' + label + '\'', ctx.chartContext || '', ind);
+      out += endBranch;
     } else if (item.type === 'label' || item.type === 'onoffdisplay' || item.type === 'datadisplay') {
-      out += '//    } else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // pfodApp NEVER sends this cmd -- \'' + label + '\'\n';
+      out += '//' + ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // pfodApp NEVER sends this cmd -- \'' + label + '\'\n';
       out += '\n';
     } else if (item.type === 'submenu' && item.subMenu) {
       const info = submenuNames.get(item);
-      out += '    } else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user pressed sub-menu button -- \'' + label + '\'\n';
-      out += '      if (!parser.isRefresh()) {\n';
-      out += '        ' + info.varName + '.sendMenu(parser); // send the sub-menu\n';
-      out += '      } else {\n';
-      out += '        ' + info.varName + '.sendMenuUpdate(parser); // refresh the sub-menu\n';
-      out += '      }\n';
-      out += returnTrue;
-      out += '\n';
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user pressed sub-menu button -- \'' + label + '\'\n';
+      out += b + 'if (!parser.isRefresh()) {\n';
+      out += b + '  ' + _subMenuAccessor(info) + '.sendMenu(parser); // send the sub-menu\n';
+      out += b + '} else {\n';
+      out += b + '  ' + _subMenuAccessor(info) + '.sendMenuUpdate(parser); // refresh the sub-menu\n';
+      out += b + '}\n';
+      out += endBranch;
     } else if (item.type === 'drawing') {
-      out += '    } else if(parser.cmdEquals(' + _dwgCmdVarName(item.autoCmd) + ')) { // user touch not handled by dwg, handle it here\n';
-      out += '      // drawing loadCmd handled internally by get_dwg_xxx().init()\n';
-      out += '      // add touchZone handling here and return response for inputs that return false from processDwgCmds()\n';
-      out += '      ' + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
-      out += returnTrue;
-      out += '\n';
+      out += ind + '} else if(parser.cmdEquals(' + _dwgCmdVarName(item.autoCmd) + ')) { // user touch not handled by dwg, handle it here\n';
+      out += b + '// drawing loadCmd handled internally by get_dwg_xxx().init()\n';
+      out += b + '// add touchZone handling here and return response for inputs that return false from processDwgCmds()\n';
+      out += b + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
+      out += endBranch;
     }
     return out;
   }
@@ -471,6 +499,31 @@ const DesignerGenerateCode = (() => {
     const out = new Map();
     _assignSubMenuNames(state.rootMenu.items, new Set(), out);
     return out;
+  }
+
+  /// How generated code names the MAIN MENU object — the accessor call,
+  /// never the raw `mainMenu` global.  pfodMainMenu.h declares
+  /// get_pfodMainMenu() and pfodMainMenu.cpp defines it weak returning the
+  /// default instance, so a user can subclass pfodMainMenu, define their
+  /// own instance, and define get_pfodMainMenu() in their own .cpp to
+  /// return it — the weak default is dropped at link time and no generated
+  /// file needs editing.  Mirrors dwgArduinoExport.js's own _dwgAccessor().
+  /// Every generated call has to go through this or the subclass is never
+  /// the object init()/handle() actually run on.
+  /// @returns {string}
+  function _mainMenuAccessor() {
+    return 'get_pfodMainMenu()';
+  }
+
+  /// The same accessor scheme for a sub-menu object: SubMenu_<ident>.h
+  /// declares get_subMenu_<ident>(), its .cpp defines it weak returning the
+  /// default instance.  A parent (the main menu, or an outer sub-menu)
+  /// reaches its children only through this, so a subclassed sub-menu is
+  /// the object that gets init()ed, sent, and handed commands.
+  /// @param {{varName: string}} info — a _collectSubMenuNames() entry
+  /// @returns {string}
+  function _subMenuAccessor(info) {
+    return 'get_' + info.varName + '()';
   }
 
   /// True if `menu` itself, or any descendant sub-menu at any depth,
@@ -737,15 +790,21 @@ const DesignerGenerateCode = (() => {
     out += 'class pfodMainMenu {\n';
     out += '  public:\n';
     out += '    pfodMainMenu();\n';
-    out += '    void init(pfodCloseConnectionPtr _closeConnectionFnPtr = NULL);\n';
+    // virtual: init()/handle() are reached through a pfodMainMenu& returned
+    // by get_pfodMainMenu(), so a subclass's own versions only run if these
+    // dispatch. Non-virtual would silently run the base version instead.
+    // tickCharts()/<chart>_sendData() are called from handle(), i.e. also on
+    // whatever object the accessor supplied, and are virtual for the same
+    // reason -- a subclass overriding one has to be the one that runs.
+    out += '    virtual void init(pfodCloseConnectionPtr _closeConnectionFnPtr = NULL);\n';
     out += '    virtual void sendMainMenu(pfodParser &parser);\n';
     out += '    virtual void sendMainMenuUpdate(pfodParser &parser);\n';
-    out += '    void handle(pfodParser &parser);\n';
+    out += '    virtual void handle(pfodParser &parser);\n';
     if (_subtreeHasChart(menu)) {
-      out += '    void tickCharts(pfodParser &parser); // streams this level\'s own charts + every nested sub-menu\'s\n';
+      out += '    virtual void tickCharts(pfodParser &parser); // streams this level\'s own charts + every nested sub-menu\'s\n';
     }
     for (const item of charts) {
-      out += '    void ' + _chartPrefix(item.autoCmd) + '_sendData(pfodParser &parser);\n';
+      out += '    virtual void ' + _chartPrefix(item.autoCmd) + '_sendData(pfodParser &parser);\n';
     }
     out += '  protected:\n';
     out += _declareHookLines(items, hookNames);
@@ -772,10 +831,22 @@ const DesignerGenerateCode = (() => {
     out += 'handle_mainMenuFnPtr init_pfodMainMenu(pfodCloseConnectionPtr = NULL);\n';
     out += 'void handle_pfodMainMenu(pfodParser & parser);\n';
     out += '\n';
+    // The accessor, not the raw global, is what init_pfodMainMenu() and
+    // handle_pfodMainMenu() call -- so defining it in your own .cpp swaps in
+    // your subclass without editing a single generated file.
+    out += '// The main menu object the sketch runs.  To add your own behaviour,\n';
+    out += '// subclass pfodMainMenu, define your own instance, and define this\n';
+    out += '// function in YOUR .cpp to return it -- the weak default in\n';
+    out += '// pfodMainMenu.cpp is then replaced at link time and NONE of these\n';
+    out += '// generated files need editing:\n';
+    out += '//     MyMainMenu myMainMenu;\n';
+    out += '//     pfodMainMenu& get_pfodMainMenu() { return myMainMenu; }\n';
+    out += '// The unused default instance then never has init() called on it.\n';
+    out += 'pfodMainMenu& get_pfodMainMenu();\n';
     // The instance is a real (non-static) global defined in pfodMainMenu.cpp,
     // declared here so the sketch -- or any other translation unit -- can
     // reach it directly, e.g. to call sendMainMenu/sendMainMenuUpdate.
-    out += 'extern pfodMainMenu mainMenu;\n';
+    out += 'extern pfodMainMenu mainMenu; // the default instance\n';
     out += '#endif\n';
     return out;
   }
@@ -826,6 +897,9 @@ const DesignerGenerateCode = (() => {
     // the sketch can reach it directly.  Defined up here, above everything
     // that might want it, rather than buried after the file's statics.
     out += 'pfodMainMenu mainMenu;\n';
+    out += '// weak: defining this function in any other .cpp replaces it, which is\n';
+    out += '// how a subclass takes over without editing this file -- see pfodMainMenu.h\n';
+    out += 'pfodMainMenu& __attribute__((weak)) get_pfodMainMenu() { return mainMenu; }\n';
     out += '\n';
     // Pin constants for this menu's own pinned items, and for any chart plot
     // wired to an analog input.  Collected first so the '// Pin settings'
@@ -1021,7 +1095,7 @@ const DesignerGenerateCode = (() => {
       }
     }
     for (const child of childSubs) {
-      out += '  ' + submenuNames.get(child).varName + '.init(); // initialize sub-menu\n';
+      out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.init(); // initialize sub-menu\n';
     }
     out += '}\n\n';
 
@@ -1072,7 +1146,7 @@ const DesignerGenerateCode = (() => {
     }
     for (const child of childSubs) {
       const info = submenuNames.get(child);
-      out += '    } else if (' + info.varName + '.handleCmd(parser, cmd, pfodFirstArg, &pfodLongRtn)) {\n';
+      out += '    } else if (' + _subMenuAccessor(info) + '.handleCmd(parser, cmd, pfodFirstArg, &pfodLongRtn)) {\n';
       out += '      // handled by the sub-menu\'s own items\n';
     }
 
@@ -1096,7 +1170,7 @@ const DesignerGenerateCode = (() => {
     // does (see _subtreeHasPulse / _generateSubMenuFiles's own tickPulses).
     for (const child of childSubs) {
       if (!_subtreeHasPulse(child.subMenu)) continue; // that child has no tickPulses() of its own
-      out += '  ' + submenuNames.get(child).varName + '.tickPulses(); // sub-menu pulse timers\n';
+      out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.tickPulses(); // sub-menu pulse timers\n';
     }
     for (const item of items) {
       if (item.type === 'onoffdisplay' && item.pin && item.pin.name) {
@@ -1126,7 +1200,7 @@ const DesignerGenerateCode = (() => {
       }
       for (const child of childSubs) {
         if (!_subtreeHasChart(child.subMenu)) continue; // that child has no tickCharts() of its own
-        out += '  ' + submenuNames.get(child).varName + '.tickCharts(parser);\n';
+        out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.tickCharts(parser);\n';
       }
       out += '}\n\n';
     }
@@ -1371,11 +1445,11 @@ const DesignerGenerateCode = (() => {
     // class split, so the .ino templates (which call these, not the
     // class directly) need no changes.
     out += 'handle_mainMenuFnPtr init_pfodMainMenu(pfodCloseConnectionPtr _closeConnectionFnPtr) {\n';
-    out += '  mainMenu.init(_closeConnectionFnPtr);\n';
+    out += '  ' + _mainMenuAccessor() + '.init(_closeConnectionFnPtr);\n';
     out += '  return handle_pfodMainMenu;\n';
     out += '}\n\n';
     out += 'void handle_pfodMainMenu(pfodParser& parser) {\n';
-    out += '  mainMenu.handle(parser);\n';
+    out += '  ' + _mainMenuAccessor() + '.handle(parser);\n';
     out += '}\n';
     out += '// ============= end generated code =========\n';
     out += '\n';
@@ -1428,26 +1502,30 @@ const DesignerGenerateCode = (() => {
     h += 'class ' + className + ' {\n';
     h += '  public:\n';
     h += '    ' + className + '();\n';
-    h += '    void init();\n';
+    // virtual for the same reason the main menu's are: the parent reaches
+    // this object only through get_<varName>(), so a subclass supplied there
+    // is only actually used if every call dispatches.
+    h += '    virtual void init();\n';
     h += '    virtual void sendMenu(pfodParser &parser);\n';
     h += '    virtual void sendMenuUpdate(pfodParser &parser);\n';
-    h += '    bool handleCmd(pfodParser &parser, uint8_t cmd, uint8_t *pfodFirstArg, long *pfodLongRtn);\n';
+    h += '    virtual bool handleCmd(pfodParser &parser, uint8_t cmd, uint8_t *pfodFirstArg, long *pfodLongRtn);\n';
     if (_subtreeHasChart(subMenu)) {
-      h += '    void tickCharts(pfodParser &parser); // streams this level\'s own charts + every nested sub-menu\'s\n';
+      h += '    virtual void tickCharts(pfodParser &parser); // streams this level\'s own charts + every nested sub-menu\'s\n';
     }
     if (_subtreeHasPulse(subMenu)) {
-      h += '    void tickPulses(); // checks this level\'s own pulse timers + every nested sub-menu\'s\n';
+      h += '    virtual void tickPulses(); // checks this level\'s own pulse timers + every nested sub-menu\'s\n';
     }
     for (const cItem of charts) {
-      h += '    void ' + _chartPrefix(cItem.autoCmd) + '_sendData(pfodParser &parser);\n';
+      h += '    virtual void ' + _chartPrefix(cItem.autoCmd) + '_sendData(pfodParser &parser);\n';
     }
     h += '  protected:\n';
     h += _declareHookLines(items, hookNames);
-    h += '  private:\n';
-    h += '    bool initialized;\n';
     // pfodAutoCmd members — one per item at this sub-menu level. Matches
     // dwgArduinoExport.js's own _generateHeader() / _generateH()'s own
-    // main-menu pfodAutoCmd members above.
+    // main-menu pfodAutoCmd members above.  protected, alongside the hooks,
+    // so a subclass overriding sendMenu()/handleCmd() can name the cmd of
+    // any item it wants to send or handle itself -- private would make the
+    // override impossible to write.
     for (const sItem of items) {
       const sLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
       if (sItem.type === 'drawing') {
@@ -1456,9 +1534,20 @@ const DesignerGenerateCode = (() => {
         h += '    pfodAutoCmd ' + _cmdVarName(sItem.autoCmd) + '; // ' + sItem.type + ' -- \'' + sLabel + '\'\n';
       }
     }
+    h += '  private:\n';
+    h += '    bool initialized;\n';
     h += '};\n';
     h += '\n';
-    h += 'extern ' + className + ' ' + varName + ';\n';
+    h += '// The sub-menu object its parent menu uses.  To add your own behaviour,\n';
+    h += '// subclass ' + className + ', define your own instance, and define this\n';
+    h += '// function in YOUR .cpp to return it -- the weak default in\n';
+    h += '// ' + className + '.cpp is then replaced at link time and NONE of these\n';
+    h += '// generated files need editing:\n';
+    h += '//     My' + className + ' my' + className + ';\n';
+    h += '//     ' + className + '& get_' + varName + '() { return my' + className + '; }\n';
+    h += '// The unused default instance then never has init() called on it.\n';
+    h += className + '& get_' + varName + '();\n';
+    h += 'extern ' + className + ' ' + varName + '; // the default instance\n';
     h += '#endif\n';
 
     // ── .cpp ──
@@ -1583,7 +1672,10 @@ const DesignerGenerateCode = (() => {
     }
     if (charts.length > 0) cpp += '\n';
 
-    cpp += className + ' ' + varName + ';\n\n';
+    cpp += className + ' ' + varName + ';\n';
+    cpp += '// weak: defining this function in any other .cpp replaces it, which is\n';
+    cpp += '// how a subclass takes over without editing this file -- see ' + className + '.h\n';
+    cpp += className + '& __attribute__((weak)) get_' + varName + '() { return ' + varName + '; }\n\n';
 
     // Per-item action hook bodies.  Emitted as the FIRST methods in the
     // file (same as pfodMainMenu.cpp's own hook bodies): these are what the
@@ -1637,7 +1729,7 @@ const DesignerGenerateCode = (() => {
       }
     }
     for (const child of childSubs) {
-      cpp += '  ' + names.get(child).varName + '.init(); // initialize nested sub-menu\n';
+      cpp += '  ' + _subMenuAccessor(names.get(child)) + '.init(); // initialize nested sub-menu\n';
     }
     for (const cItem of charts) {
       const prefix = _chartPrefix(cItem.autoCmd);
@@ -1768,6 +1860,7 @@ const DesignerGenerateCode = (() => {
     cpp += '  if (false) {\n';
     cpp += '    // never taken -- keeps every real branch below in a uniform "} else if" shape\n';
     const ctx = {
+      indent:         '  ', // the chain is at handleCmd()'s own top level
       longRtnAddr:    'pfodLongRtn',
       longRtnDeref:   '(*pfodLongRtn)',
       sendUpdateCall: 'sendMenuUpdate(parser)',
@@ -1780,7 +1873,7 @@ const DesignerGenerateCode = (() => {
     }
     for (const child of childSubs) {
       const cInfo = names.get(child);
-      cpp += '  } else if (' + cInfo.varName + '.handleCmd(parser, cmd, pfodFirstArg, pfodLongRtn)) {\n';
+      cpp += '  } else if (' + _subMenuAccessor(cInfo) + '.handleCmd(parser, cmd, pfodFirstArg, pfodLongRtn)) {\n';
       cpp += '    return true;\n';
     }
     cpp += '  }\n';
@@ -1797,7 +1890,7 @@ const DesignerGenerateCode = (() => {
       }
       for (const child of childSubs) {
         if (!_subtreeHasChart(child.subMenu)) continue; // that child has no tickCharts() of its own
-        cpp += '  ' + names.get(child).varName + '.tickCharts(parser);\n';
+        cpp += '  ' + _subMenuAccessor(names.get(child)) + '.tickCharts(parser);\n';
       }
       cpp += '}\n\n';
     }
@@ -1815,7 +1908,7 @@ const DesignerGenerateCode = (() => {
       }
       for (const child of childSubs) {
         if (!_subtreeHasPulse(child.subMenu)) continue; // that child has no tickPulses() of its own
-        cpp += '  ' + names.get(child).varName + '.tickPulses();\n';
+        cpp += '  ' + _subMenuAccessor(names.get(child)) + '.tickPulses();\n';
       }
       cpp += '}\n\n';
     }

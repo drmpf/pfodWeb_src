@@ -76,7 +76,11 @@ function _stripRegenerableWireFields(items) {
 /// BOTH DwgLibrary.save() (localStorage) and any file-export path
 /// (Unload Dwg's download, a future Export Dwg), so every place a dwg
 /// gets serialized produces the exact same shape:
-///   { format, schema, savedAt, name, js_ver, x, y, color, refresh, items }
+///   { format, schema, savedAt, name, js_ver, x, y, color, dwgRefresh_ms, items }
+/// dwgRefresh_ms is MILLISECONDS — the same unit the wire start header and
+/// the generated sketch's own dwgRefresh_ms member use, so no conversion
+/// happens on any emit path. The Dwg Controls Panel is the only place that
+/// works in seconds (its own input field); it converts on read and write.
 /// format/schema/savedAt/js_ver are ALWAYS regenerated fresh here — they
 /// describe THIS save, not whatever the dwg happened to carry in from a
 /// previous load. (A separate `version` field once existed for the same
@@ -100,7 +104,7 @@ function buildSaveableDwg(dwg) {
     x: dwg.x,
     y: dwg.y,
     color: dwg.color,
-    refresh: dwg.refresh,
+    dwgRefresh_ms: dwg.dwgRefresh_ms,
     items: _stripRegenerableWireFields(flattenTouchActions(dwg.items || [])),
   };
 }
@@ -125,32 +129,80 @@ const DwgLibrary = (() => {
     return listNames().includes(name);
   }
 
-  /// Read + parse one library entry. null on any failure (missing,
-  /// corrupt JSON, localStorage unavailable) — callers treat that the
-  /// same as "not found". Storage always holds the FLAT item form (see
-  /// save()); every read re-nests touchZone/touchAction/touchActionInput
-  /// via dwgValidate.js's nestAndValidateTouchActions() so every consumer
-  /// (the wire encoder, future Add/Edit Item screens) works with the
-  /// nested internal shape uniformly, and any invalid touchAction/
-  /// touchActionInput (orphaned, mismatched cmd, duplicate) gets the same
-  /// flag-and-drop cleanup on every load, not just at file-import time —
-  /// no dedicated UI to show these on a plain get(), so violations are
-  /// logged instead.
+  /// Read + parse one library entry, returning it in the nested internal
+  /// shape (storage always holds the FLAT item form — see save()). null on
+  /// any failure; callers already treat that the same as "not found".
+  ///
+  /// Every read runs the FULL validateAndRepairDwg, and a stored dwg that
+  /// needs ANY repair is logged and DELETED rather than repaired:
+  ///
+  ///   - Browser storage is deliberately not migrated. A dwg saved before the
+  ///     "refresh" -> "dwgRefresh_ms" rename has no usable refresh value, and
+  ///     the wire encoder's own guard threw on it — from _buildListHtml,
+  ///     which sizes every row, so one such entry took out the whole Dwg
+  ///     Controls Panel instead of just its own line.
+  ///   - Not every non-conformance is that loud. A stored dwg still holding
+  ///     the old string booleans ("filled": "true") does not throw: _bool()
+  ///     reads it as false and the shape silently draws unfilled. A stored
+  ///     RRGGBB colour still encodes here but generates BLACK in a sketch.
+  ///     Deleting is the only outcome that is impossible to miss.
+  ///   - Nothing legitimate reaches storage needing repair. Every write path
+  ///     goes through validateAndRepairDwg (file loads) or builds items in
+  ///     the editor and flattens them via buildSaveableDwg, so orphaned
+  ///     touchActions, duplicate idxNames and bad fields are all already
+  ///     prevented. A stored dwg that fails here is corrupt or pre-dates a
+  ///     format change — in both cases repairing it in place would just hide
+  ///     the problem behind a console line nobody reads.
+  ///
+  /// Recovery for the user is the file, not the browser: re-loading the same
+  /// dwg from its own .pfodDwg_json DOES migrate and repair, then saves clean.
+  ///
+  /// @param {string} name
+  /// @returns {object|null} the validated, nested dwg; null if missing,
+  ///          unreadable, or discarded as non-conformant
   function get(name) {
     try {
       const raw = localStorage.getItem(DWG_LIBRARY_STORAGE_PREFIX + name);
       if (!raw) return null;
-      const dwg = JSON.parse(raw);
-      if (Array.isArray(dwg.items)) {
-        const errors = [];
-        dwg.items = nestAndValidateTouchActions(dwg.items, errors);
-        if (errors.length > 0) {
-          console.warn('[DwgLibrary] get("' + name + '"): dropped ' + errors.length +
-            ' invalid touchAction/touchActionInput item(s):', errors);
-        }
+      const stored = JSON.parse(raw);
+
+      let result;
+      try {
+        // isLoad=false: this is not untrusted external data, it is data this
+        // app wrote. A duplicate idxName here throws rather than being
+        // silently merged, and that throw lands in the catch below — which is
+        // what we want, since it means something upstream wrote a dwg it
+        // should not have been able to.
+        result = validateAndRepairDwg(stored, name, false);
+      } catch (err) {
+        _discardUnusable(name, 'could not be validated (' + err.message + ')', stored);
+        return null;
       }
-      return dwg;
+      if (result.errors.length > 0) {
+        _discardUnusable(name, 'does not match the current dwg format', stored, result.errors);
+        return null;
+      }
+      return result.dwg;
     } catch (_) { return null; }
+  }
+
+  /// Log a non-conformant stored dwg loudly, with its content, and remove it.
+  /// Console rather than a dialog: get() is called while rendering (once per
+  /// row of the dwg list), so it has no UI to interrupt, and the stored
+  /// content is dumped so the user can recover anything they need from it.
+  /// @param {string} name
+  /// @param {string} reason — completes "dwg <name> ..."
+  /// @param {object} stored — the raw parsed content being discarded
+  /// @param {Array} [errors] — validateAndRepairDwg's own findings, when it
+  ///        got far enough to produce any
+  function _discardUnusable(name, reason, stored, errors) {
+    console.error('[DwgLibrary] dwg "' + name + '" ' + reason + ', so it has been ' +
+      'DISCARDED from browser storage.\n' +
+      'Dwgs already saved in the browser are not migrated across format changes. ' +
+      'Re-load this dwg from its own .pfodDwg_json file — the file-load path does ' +
+      'migrate and repair — or recreate it.',
+      errors && errors.length ? { reason: errors, discarded: stored } : { discarded: stored });
+    remove(name);
   }
 
   /// Persist a dwg under dwg.name, adding it to the index list. Storage

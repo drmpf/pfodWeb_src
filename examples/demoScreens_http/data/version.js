@@ -3,7 +3,12 @@
 // Depends on: nothing
 // Called by:  pfodWeb.js (reads window.JS_VERSION on load and stores in this.js_ver,
 //             logs version after bundle load)
-  var JS_VERSION = "V4.1.2-- 27th July 2026";
+  var JS_VERSION = "V4.1.7-- 23th August 2026";  
+// V4.1.7 tighten up validation, breaking change remove all browser storage 
+// V4.1.6 improved raw message viewer and docs
+// V4.1.5 changed code generation to support sub-classing
+// V4.1.4 fixed code generation for charts
+// V4.1.3 fixed dwg update bug, revised code generation
 // V4.1.2 added dwg designer 
 // V4.1.1 added supoort for for ESP32 and Pi Pico and ESP8266 and for connections BLE, TCP/IP and HTTP 
 // V4.1.0 revised pfodProxy added password and extraFonts

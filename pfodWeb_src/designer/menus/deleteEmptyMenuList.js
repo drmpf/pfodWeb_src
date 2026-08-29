@@ -72,14 +72,24 @@ function _downloadBeforeDelete(state, name) {
       let stored;
       try { stored = JSON.parse(raw); } catch (_) { stored = null; }
       if (stored && stored.rootMenu) {
+        // Same field set and same key order as DesignerState.exportToJSON()
+        // — this produces a real .pfodMenu_json the user can load back, so it
+        // must not drift from the canonical shape.  boardName comes from the
+        // STORED payload (save() has always written it), not from any current
+        // selection: this is a snapshot of a design being deleted, and the
+        // board it was actually built for is what makes its pins and ADC
+        // ranges meaningful on reload.  A payload old enough to predate the
+        // field leaves it undefined, which JSON.stringify simply omits — the
+        // loader then treats it as a legacy design, which is correct.
         const exportObj = {
           format:     EXPORT_FORMAT_TAG,
           schema:     DESIGNER_STATE_SCHEMA_VERSION,
           name:       name,
+          connection: stored.connection,
+          boardName:  stored.boardName,
           savedAt:    new Date().toISOString(),
           js_ver:     window.JS_VERSION,
           rootMenu:   _exportableMenu(stored.rootMenu),
-          connection: stored.connection,
         };
         blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
       }

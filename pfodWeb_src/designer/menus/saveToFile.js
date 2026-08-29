@@ -18,11 +18,12 @@
  *     insertDwg), each as its own `.pfodDwg_json` (dwgLibrary.js's
  *     buildSaveableDwg()) — so the design is portable on its own without
  *     depending on the browser's local DwgLibrary storage still having
- *     those dwgs loaded.  Everything sits under one top-level
- *     `<name>_menuJson/` directory in the zip (dwgs in a `dwgs/`
- *     subdirectory), matching Generate Code's own "one dir so the zip
- *     extracts to something self-contained" convention
- *     (dwgArduinoExport.js's own `<name>_serial/`).
+ *     those dwgs loaded.  Layout matches Generate Code's exactly: one
+ *     top-level `<name>_menuJson/` directory so the zip extracts to
+ *     something self-contained, with both the menu json and every dwg
+ *     json flat together in a `json/` subdirectory beneath it
+ *     (generateCode.js's own `<name>/json/`, which is what the shipped
+ *     sketches carry -- see examples/README.md's "The `json` folders").
  *
  * The menu json is byte-identical either way, so the two shapes are
  * interchangeable on load — loadFromFile.js accepts both.
@@ -144,15 +145,22 @@ const DesignerSaveToFile = (() => {
       return;
     }
 
-    const topDir = fileName + '_menuJson/';
+    // Same layout Generate Code produces: one top-level directory, and both
+    // kinds of json flat together in a `json/` subdirectory beneath it
+    // (generateCode.js's own `<name>/json/`). That is the shape the shipped
+    // sketches carry and the one examples/README.md documents, so a design
+    // saved here drops straight into a sketch folder. Nothing reads these
+    // paths -- loadFromFile.js finds entries by extension -- so the only
+    // thing at stake is that the two zips look the same.
+    const jsonDir = fileName + '_menuJson/json/';
     const enc = new TextEncoder();
     const entries = [
-      { path: topDir + fileName + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
+      { path: jsonDir + fileName + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
     ];
     Array.from(collected).forEach((name) => {
       const dwg = DwgLibrary.get(name);
       entries.push({
-        path: topDir + 'dwgs/' + name + '.pfodDwg_json',
+        path: jsonDir + name + '.pfodDwg_json',
         data: enc.encode(JSON.stringify(buildSaveableDwg(dwg), null, 2)),
       });
     });

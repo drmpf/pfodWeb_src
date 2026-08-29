@@ -32,8 +32,11 @@
  * loads straight in; a file with problems shows the "Load Dwg —
  * Validation Errors" view (matching alt-a-mockup.html) before anything
  * is saved. Every other action-row button (Create Dwg, Edit, Copy,
- * Export Dwg, Generate Code, Unload Dwg, Load All Dwgs in Dir) is still
- * a later step — see _notImplemented().
+ * Export Dwg, Generate Code, Unload Dwg) is now wired to the same
+ * pipeline, as is Load Several Dwgs — the bulk loader, which takes a
+ * hand-picked set of files, one folder per press. See
+ * _startLoadSeveralDwgs() for why the folder-picking variant that used
+ * to sit beside it was dropped.
  *
  * Lives under dwgDesigner/ — the dedicated home for all dwg-designer
  * code going forward (see dwgControlsPanel.js's header comment).
@@ -65,6 +68,10 @@ const DesignerDwgPanel = (() => {
   // renamed to the user's chosen name (Create) or removed (any other way
   // off the screen). The __dcp__ prefix keeps it out of the way of any
   // real user-chosen name and out of the visible dwg list rendering.
+  // Base name the Create Dwg screen suggests, deduped through
+  // DwgLibrary.nextFreeName so repeated Creates give NewDwg, NewDwg_1, ...
+  const DEFAULT_DWG_NAME = 'NewDwg';
+
   const CREATE_DWG_DRAFT_NAME = '__dcpCreateDraft__';
 
   // Same idea as CREATE_DWG_DRAFT_NAME, for the Edit Dwg screen's
@@ -103,6 +110,77 @@ const DesignerDwgPanel = (() => {
   // one instance is enough for the whole session.
   let _dwgDesignerAdapter = null;
 
+  // Where each scrolling list was last left, keyed by the list's own
+  // data-scroll-key. Every screen here rebuilds root.innerHTML wholesale
+  // on each action and on each preview refresh, which destroys the
+  // scrolled <div> along with its scrollTop — so without this the list
+  // snaps back to the top every time and whatever row was being worked
+  // on scrolls out of sight. Keyed rather than a single value because
+  // the dwg list and each dwg's item list are different lists that
+  // replace each other in the same root.
+  const _listScrollTops = {};
+
+  // Index of the item row the Edit Dwg screen should bring into view on
+  // its next render, set by _moveItem so the item follows the button
+  // press instead of being left off-screen. One-shot: consumed and
+  // cleared by the render that honours it.
+  let _revealItemIndex = null;
+
+  /// Remember the current scroll position of whichever list is on screen.
+  /// MUST be called before root.innerHTML is replaced — after that the
+  /// element is gone and its scrollTop with it.
+  ///
+  /// _applyListScroll's own scroll listener already covers the ordinary
+  /// case, including every screen that isn't one of these two. This stays
+  /// for the one thing a listener can't guarantee: scroll events are
+  /// delivered asynchronously, so a scroll still in flight when the
+  /// rebuild happens would never reach the detached element.
+  ///
+  /// A hidden list is skipped (offsetParent is null under display:none):
+  /// the Edit Dwg screen hides its item list while the properties editor
+  /// is open, and a hidden element reports scrollTop 0 — saving that
+  /// would throw away the real position on the way in and drop the list
+  /// back to the top on the way out.
+  /// @param {HTMLElement} root — #dcp-left-panel
+  function _saveListScroll(root) {
+    const list = root.querySelector('.dcp-list[data-scroll-key]');
+    if (list && list.offsetParent !== null) {
+      _listScrollTops[list.getAttribute('data-scroll-key')] = list.scrollTop;
+    }
+  }
+
+  /// Put the freshly rendered list back where it was, then make sure the
+  /// row that matters is actually visible. Call at the END of a render,
+  /// once the new list is in the DOM.
+  ///
+  /// `scrollIntoView({block:'nearest'})` leaves an already-visible row
+  /// alone, so restoring the remembered position above is not undone on
+  /// every render — it only moves when the row really is off-screen
+  /// (list re-ordered, a row added/removed above it, or a different row
+  /// selected).
+  /// @param {HTMLElement} root — #dcp-left-panel
+  /// @param {HTMLElement|null} [revealEl] — row to bring into view
+  function _applyListScroll(root, revealEl) {
+    const list = root.querySelector('.dcp-list[data-scroll-key]');
+    if (!list) return;
+    const key = list.getAttribute('data-scroll-key');
+    const saved = _listScrollTops[key];
+    if (typeof saved === 'number') list.scrollTop = saved;
+    if (revealEl) revealEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+
+    // Remember the position CONTINUOUSLY, not only in the two renders
+    // that rebuild these screens. Edit Item, Add Item, the touchAction
+    // editors and the error screens all replace root.innerHTML as well,
+    // and none of them owns this list — going into one and coming back
+    // (Cancel or Save Changes alike) read a position from before the
+    // list was last scrolled. Tracking every scroll means it no longer
+    // matters which screen destroys the element. The listener rides on
+    // the element itself, so it dies with it — nothing to remove.
+    list.addEventListener('scroll', () => {
+      _listScrollTops[key] = list.scrollTop;
+    });
+  }
+
   /// Get the persistent left-panel root — a static element in
   /// pfodCommon.html (#dcp-left-panel), analogous to #side-panel. Its
   /// *contents* are rebuilt on every show()/_refresh() call (see
@@ -137,13 +215,15 @@ const DesignerDwgPanel = (() => {
     // Selection-row buttons (Edit/Copy/Export Dwg/Generate Code/Unload Dwg)
     // act on an existing dwg, so they're disabled whenever none are loaded
     // yet — enabled once DesignerState.listDwgNames() reports at least one.
-    // Create Dwg/Load Dwg/Load All Dwgs need no existing dwg, so they're
+    // Create Dwg/Load Dwg/Load Several Dwgs need no existing dwg, so they're
     // always enabled.
     const disabledAttr = hasDwgs ? '' : ' disabled';
 
+    _saveListScroll(root);
     root.innerHTML =
       '<div class="dcp-back-row">' +
         '<button type="button" class="dcp-back-link" id="dcp-back-to-menu">&larr; Back to Menu</button>' +
+        '<button type="button" class="dcp-back-link" id="dcp-export-png">Export PNG</button>' +
         '<button type="button" class="dcp-back-link dcp-exit" id="dcp-exit-designer">Exit Designer</button>' +
       '</div>' +
       '<h1 class="dcp-title">Dwg Controls Panel</h1>' +
@@ -151,16 +231,28 @@ const DesignerDwgPanel = (() => {
         '<button type="button" class="dcp-btn dcp-btn-primary" id="dcp-create-dwg">Create Dwg</button>' +
         '<button type="button" class="dcp-btn" id="dcp-load-dwg">Load Dwg</button>' +
         '<button type="button" class="dcp-btn" id="dcp-export-dwg"' + disabledAttr + '>Export Dwg</button>' +
-        '<button type="button" class="dcp-btn" id="dcp-load-all-dwgs">Load All Dwgs in Dir and sub-Dirs</button>' +
+        // The one bulk loader. A folder-picking variant used to sit beside
+        // this, but `webkitdirectory` opens the OS FOLDER chooser, which
+        // lists only sub-folders — a folder holding nothing but dwgs shows
+        // an empty pane ("No items match your search" on Windows) and reads
+        // as the wrong folder every time. No dialog option avoids that, and
+        // this button covers the same ground: a second folder is a second
+        // press, and the file chooser shows what is being loaded.
+        '<button type="button" class="dcp-btn" id="dcp-load-several-dwgs"' +
+          ' title="Pick one or more .pfodDwg_json files — Ctrl+A selects every dwg in the' +
+          ' folder. Loads one folder per press; press again for another folder.">' +
+          'Load Several Dwgs</button>' +
         '<button type="button" class="dcp-btn" id="dcp-generate-code"' + disabledAttr + '>Generate Code - Serial</button>' +
       '</div>' +
       listHtml;
 
     root.querySelector('#dcp-back-to-menu').addEventListener('click', _backToMenu);
+    root.querySelector('#dcp-export-png').addEventListener('click',
+      () => _exportPreviewPng(_selectedDwgName));
     root.querySelector('#dcp-exit-designer').addEventListener('click', _exitDesigner);
     root.querySelector('#dcp-create-dwg').addEventListener('click', () => _renderCreateDwgScreen(root));
     root.querySelector('#dcp-load-dwg').addEventListener('click', () => _startLoadDwg(root));
-    root.querySelector('#dcp-load-all-dwgs').addEventListener('click', () => _startLoadAllDwgs(root));
+    root.querySelector('#dcp-load-several-dwgs').addEventListener('click', () => _startLoadSeveralDwgs(root));
     root.querySelector('#dcp-export-dwg').addEventListener('click', () => _exportDwg());
     root.querySelector('#dcp-generate-code').addEventListener('click', () => _generateCode(_selectedDwgName));
     root.querySelectorAll('.dcp-item-row').forEach((row) => {
@@ -188,6 +280,12 @@ const DesignerDwgPanel = (() => {
         }
       });
     });
+
+    // Back where it was, with the selected row guaranteed visible — the
+    // list is rebuilt on every selection change, Load, Copy, Unload and
+    // preview refresh, and losing sight of the row being worked on was
+    // the whole problem.
+    _applyListScroll(root, root.querySelector('.dcp-item-row.dcp-item-selected'));
 
     // The main panel's own row-selection preview is the one place that
     // deliberately stays non-debug — see _renderPreview()'s own doc.
@@ -277,6 +375,36 @@ const DesignerDwgPanel = (() => {
     window.drawingViewer.addToRequestQueue('{.}', null, null, 'mainMenu');
   }
 
+  /// Save the drawing currently on screen as a PNG, alongside the JSON
+  /// export. Uses the same link.download idiom as the raw-data/message
+  /// savers (chartAndRawData.js, messageViewer.js).
+  ///
+  /// It captures the PREVIEW CANVAS as drawn, so what you get depends on the
+  /// screen you are on, deliberately: the Dwg Controls Panel paints the
+  /// drawing as a device would send it, while the Edit Dwg screen also shows
+  /// touchZone outlines. Both are worth having — the first is what the user
+  /// sees, the second is what you need to place a zone.
+  ///
+  /// Named after the dwg so the file is findable without a prompt.
+  /// @param {string|null} dwgName — used for the filename
+  function _exportPreviewPng(dwgName) {
+    const canvas = Array.from(document.querySelectorAll('canvas'))
+      .filter((c) => c.width > 0 && c.height > 0 && c.offsetParent !== null)
+      .sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];
+    if (!canvas) {
+      alert('No drawing is being previewed, so there is nothing to export.');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = (dwgName || 'dwg') + '.png';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    console.log('[DWG_PANEL] Exported preview PNG: ' + link.download +
+      ' (' + canvas.width + 'x' + canvas.height + ')');
+  }
+
   /// Icon-button group for a dwg-list row — Edit/Copy/Unload, replacing
   /// the old selection-based action-row buttons of the same name (a
   /// click acts on THIS row's dwg directly, not whatever was previously
@@ -314,6 +442,37 @@ const DesignerDwgPanel = (() => {
     const resolved = tempDevice._resolveAutoCmdAndIdx(name, dwg);
     const wire = DwgWireEncoder.encodeDwgStart(resolved, 'v1');
     return new TextEncoder().encode(wire).length;
+  }
+
+  /// Stored dwgRefresh_ms -> the whole SECONDS this panel edits and displays.
+  /// The panel is the only place in the app that works in seconds — the
+  /// stored field, the wire start header and the generated sketch's own
+  /// dwgRefresh_ms member are all milliseconds — so both directions convert
+  /// here and nowhere else.
+  ///
+  /// A stored value between 1 and 999 ms would round to 0 s, which this
+  /// panel's own "0 = no refresh" label would then misreport as "this dwg
+  /// never refreshes". Such a value can only arrive from a hand-edited or
+  /// externally-produced file (the panel itself only ever writes whole
+  /// seconds), so it is floored to 1 s rather than shown as 0 — the user
+  /// sees the nearest thing the seconds field can actually express, and
+  /// saving from this screen then rewrites it as a real 1000.
+  /// @param {number} ms — dwg.dwgRefresh_ms
+  /// @returns {number} whole seconds for the input field / meta line
+  function _refreshMsToSecs(ms) {
+    if (!ms || ms <= 0) return 0;
+    if (ms < 1000) return 1;
+    return Math.round(ms / 1000);
+  }
+
+  /// Inverse of _refreshMsToSecs — the panel's own seconds input back to the
+  /// stored milliseconds field. See that function's doc for why the panel is
+  /// the only converting layer.
+  /// @param {number} secs — parsed value of a Refresh rate input
+  /// @returns {number} milliseconds for dwg.dwgRefresh_ms
+  function _refreshSecsToMs(secs) {
+    if (!secs || secs <= 0) return 0;
+    return secs * 1000;
   }
 
   /// Build the dwg list markup — matches alt-a-mockup.html's Screen 0b row
@@ -360,7 +519,10 @@ const DesignerDwgPanel = (() => {
         _buildRowActionsHtml(name) +
       '</div>';
     }).join('');
-    return '<div class="dcp-list">' + rows + '</div>';
+    // data-scroll-key names this list for _saveListScroll/_applyListScroll
+    // so its scroll position survives the wholesale innerHTML rebuild the
+    // panel does on every action and preview refresh.
+    return '<div class="dcp-list" data-scroll-key="main">' + rows + '</div>';
   }
 
   /// Resolve a colour value to a CSS hex colour for a swatch, reusing
@@ -423,8 +585,8 @@ const DesignerDwgPanel = (() => {
   /// every other way off this screen (Cancel, Exit Designer, Load Dwg
   /// from file) removes the draft from the library first.
   function _renderCreateDwgScreen(root) {
-    const suggestedName = DwgLibrary.nextFreeName('NewDwg');
-    const state = { name: suggestedName, x: 50, y: 85, refresh: 0, color: 0 };
+    const suggestedName = DwgLibrary.nextFreeName(DEFAULT_DWG_NAME);
+    const state = { name: suggestedName, x: 50, y: 85, dwgRefresh_ms: 0, color: 0 };
 
     root.innerHTML =
       '<div class="dcp-back-row">' +
@@ -488,7 +650,7 @@ const DesignerDwgPanel = (() => {
       const raw = {
         name: CREATE_DWG_DRAFT_NAME,
         x: w, y: h,
-        refresh: parseInt(root.querySelector('#dcp-create-refresh').value, 10) || 0,
+        dwgRefresh_ms: _refreshSecsToMs(parseInt(root.querySelector('#dcp-create-refresh').value, 10) || 0),
         color: state.color,
       };
       const { dwg } = validateAndRepairDwg(raw, CREATE_DWG_DRAFT_NAME);
@@ -595,7 +757,7 @@ const DesignerDwgPanel = (() => {
         description: (root.querySelector('#dcp-create-desc').value || '').trim(),
         x: parseInt(widthInput.value, 10),
         y: parseInt(heightInput.value, 10),
-        refresh: parseInt(root.querySelector('#dcp-create-refresh').value, 10),
+        dwgRefresh_ms: _refreshSecsToMs(parseInt(root.querySelector('#dcp-create-refresh').value, 10)),
         color: state.color,
       };
       // validateAndRepairDwg's own defaulting/clamping (matches Load Dwg's
@@ -970,9 +1132,11 @@ const DesignerDwgPanel = (() => {
             );
           }).join('');
 
+      _saveListScroll(root);
       root.innerHTML =
         '<div class="dcp-back-row">' +
           '<button type="button" class="dcp-back-link" id="dcp-edit-back">&larr; Back to Dwg Controls Panel</button>' +
+          '<button type="button" class="dcp-back-link" id="dcp-export-png">Export PNG</button>' +
           '<button type="button" class="dcp-back-link dcp-exit" id="dcp-exit-designer">Exit Designer</button>' +
         '</div>' +
         '<div class="dcp-drawing-info">' +
@@ -987,7 +1151,7 @@ const DesignerDwgPanel = (() => {
             '<b>' + byteSize + ' bytes, ' + dwg.x + '&times;' + dwg.y + '</b>' +
             '<span class="dcp-sep">&middot;</span><span class="dcp-meta-label">Colour:</span> ' +
             '<span class="dcp-swatch" style="background:' + swatchHex + '"></span>' +
-            '<span class="dcp-sep">&middot;</span><span class="dcp-meta-label">Refresh:</span> ' + dwg.refresh + 's' +
+            '<span class="dcp-sep">&middot;</span><span class="dcp-meta-label">Refresh:</span> ' + _refreshMsToSecs(dwg.dwgRefresh_ms) + 's' +
             '<span class="dcp-sep">&middot;</span><span class="dcp-meta-label">Items:</span> ' + itemCount +
           '</div>' +
           '<div class="dcp-drawing-desc-line">' + _esc(description) + '</div>' +
@@ -1009,7 +1173,7 @@ const DesignerDwgPanel = (() => {
           '</div>' +
           '<div class="dcp-field">' +
             '<label>Refresh rate (seconds, 0 = no refresh)</label>' +
-            '<input type="number" id="dcp-edit-refresh" value="' + dwg.refresh + '" min="0" max="3600" style="width:70px">' +
+            '<input type="number" id="dcp-edit-refresh" value="' + _refreshMsToSecs(dwg.dwgRefresh_ms) + '" min="0" max="3600" style="width:70px">' +
           '</div>' +
           '<div class="dcp-field">' +
             '<label>Background colour</label>' +
@@ -1040,13 +1204,21 @@ const DesignerDwgPanel = (() => {
           '<button type="button" class="dcp-btn" id="dcp-edit-export-dwg">Export</button>' +
           '<button type="button" class="dcp-btn" id="dcp-edit-generate-code">Generate Code</button>' +
         '</div>' +
-        '<div class="dcp-list" style="display:' + (propsOpen ? 'none' : 'flex') + '">' + itemsHtml + '</div>';
+        // Keyed per dwg (see _saveListScroll) so each drawing's item list
+        // keeps its own place, and so this list's position is never
+        // confused with the main panel's dwg list, which shares the class.
+        '<div class="dcp-list" data-scroll-key="edit:' + _esc(originalName) + '"' +
+          ' style="display:' + (propsOpen ? 'none' : 'flex') + '">' + itemsHtml + '</div>';
 
       root.querySelector('#dcp-edit-back').addEventListener('click', () => {
         discardDraftIfOpen();
         _renderPreview(originalName);
         _renderMainView(root);
       });
+      // Named after the dwg being edited, not the panel's selection — on this
+      // screen they can differ while a rename is in the draft.
+      root.querySelector('#dcp-export-png').addEventListener('click',
+        () => _exportPreviewPng(dwg.name || originalName));
       root.querySelector('#dcp-exit-designer').addEventListener('click', () => {
         discardDraftIfOpen();
         _exitDesigner();
@@ -1194,7 +1366,7 @@ const DesignerDwgPanel = (() => {
           const withoutItem = dwg.items.slice();
           withoutItem.splice(idx, 1);
           _dwgDesignerAdapter.device.forceNextStart(loadCmd,
-            { x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color, items: withoutItem });
+            { x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color, items: withoutItem });
           window.drawingViewer.queueDrawingUpdate(loadCmd);
           return;
         }
@@ -1215,7 +1387,7 @@ const DesignerDwgPanel = (() => {
         _showToggleState = null;
         if (kind === 'remove') {
           _dwgDesignerAdapter.device.forceNextStart(loadCmd,
-            { x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color, items: dwg.items });
+            { x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color, items: dwg.items });
           window.drawingViewer.queueDrawingUpdate(loadCmd);
           return;
         }
@@ -1247,7 +1419,7 @@ const DesignerDwgPanel = (() => {
         const raw = {
           name: originalName,
           description: (typeof dwg.description === 'string') ? dwg.description : '',
-          x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color,
+          x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color,
           items: flatItems,
         };
         const { dwg: savedDwg } = validateAndRepairDwg(raw, originalName);
@@ -1289,12 +1461,15 @@ const DesignerDwgPanel = (() => {
         const raw = {
           name: originalName,
           description: (typeof dwg.description === 'string') ? dwg.description : '',
-          x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color,
+          x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color,
           items: flatItems,
         };
         const { dwg: savedDwg } = validateAndRepairDwg(raw, originalName);
         DwgLibrary.save(savedDwg);
         _dwgDesignerAdapter.device.invalidatePreviewVersion(originalName);
+        // Follow the item to its new position, so repeated presses walk
+        // it up or down the list instead of leaving it behind off-screen.
+        _revealItemIndex = otherIdx;
         _renderEditDwgScreen(root, originalName);
       }
 
@@ -1308,6 +1483,15 @@ const DesignerDwgPanel = (() => {
         propsOpen = true;
         renderScreen();
       });
+
+      // Put the item list back where it was, and follow a just-moved item
+      // to its new position. Rows carry no index of their own, so the
+      // moved row is taken positionally — the list is rendered straight
+      // from dwg.items, so row N is item N.
+      const itemRows = root.querySelectorAll('.dcp-edit-item-row');
+      const revealRow = (_revealItemIndex === null) ? null : itemRows[_revealItemIndex];
+      _revealItemIndex = null;
+      _applyListScroll(root, revealRow);
 
       if (propsOpen) {
         openPropsEditor(root);
@@ -1334,7 +1518,7 @@ const DesignerDwgPanel = (() => {
         const raw = {
           name: EDIT_DWG_DRAFT_NAME,
           x: w, y: h,
-          refresh: parseInt(root.querySelector('#dcp-edit-refresh').value, 10) || 0,
+          dwgRefresh_ms: _refreshSecsToMs(parseInt(root.querySelector('#dcp-edit-refresh').value, 10) || 0),
           color: colorState.color,
           items: flatItems,
         };
@@ -1423,7 +1607,7 @@ const DesignerDwgPanel = (() => {
           description: (root.querySelector('#dcp-edit-desc').value || '').trim(),
           x: parseInt(widthInput.value, 10),
           y: parseInt(root.querySelector('#dcp-edit-height').value, 10),
-          refresh: parseInt(root.querySelector('#dcp-edit-refresh').value, 10),
+          dwgRefresh_ms: _refreshSecsToMs(parseInt(root.querySelector('#dcp-edit-refresh').value, 10)),
           color: colorState.color,
           items: flatItems,
         };
@@ -1457,23 +1641,25 @@ const DesignerDwgPanel = (() => {
   /// separate file/IIFE.
   const REFERENCE_ONLY_TYPES = ['hide', 'unhide', 'erase', 'touchAction', 'touchActionInput'];
 
-  /// Every idxName currently DECLARED by a top-level item, as a single
-  /// combined Set — the shared basis for _nextFreeIdxName()'s suggestion
-  /// and the Add/Edit Item screens' own live duplicate check/dedup.
+  /// Which "kind" of idxName namespace an item declares in — the same
+  /// split dwgValidate.js's own _dedupDeclaredIdxNames groups by
+  /// ('index|<name>' vs 'nonindex|<name>'). An Index Placeholder and the
+  /// real item that fills its slot are MEANT to share one idxName.
+  /// @param {object} item
+  /// @returns {string} 'index' | 'nonindex'
+  function _idxKindOf(item) {
+    return (item.type === 'index') ? 'index' : 'nonindex';
+  }
+
+  /// Every idxName currently DECLARED by a top-level item, as a Set —
+  /// the shared basis for _nextFreeIdxName()'s suggestion and (through
+  /// _collidingIdxNames) the Add/Edit Item screens' own live duplicate
+  /// check/dedup.
   ///
-  /// One flat namespace, no index/non-index split: once a dwg has been
-  /// loaded, NO two declaring items — an Index Placeholder included —
-  /// may share an idxName; creating or editing ANY item (Index
-  /// Placeholder or otherwise) always dedupes against every other
-  /// declaring item, full stop. An Index Placeholder legitimately sharing
-  /// a name with a real item is a real, tolerated state (dwgValidate.js's
-  /// own load-time cleanup, _dedupDeclaredIdxNames, produces it by
-  /// converting an earlier duplicate's first occurrence into a
-  /// placeholder rather than deleting it) — but that's a LOAD-time-only
-  /// outcome, never something this screen should let a user deliberately
-  /// create. So this function doesn't need, and no longer has, any
-  /// kind-partitioning of its own — that distinction only ever mattered
-  /// for the load-time repair, not here.
+  /// With `kind` given, only declarations of that kind are counted.
+  /// Without it, every declaring item is — which is what a fresh
+  /// suggestion wants, so it never proposes a name already visible
+  /// anywhere in the drawing.
   ///
   /// hide/unhide/erase's own idxName is a REFERENCE, not a declaration —
   /// same as a touchActionInput/touchAction target — so it's excluded
@@ -1492,13 +1678,56 @@ const DesignerDwgPanel = (() => {
   ///        collecting — the Edit Item screen's own use: an item being
   ///        edited shouldn't collide against its OWN pre-existing
   ///        idxName just because the user left it unchanged.
+  /// @param {string} [kind] — 'index' | 'nonindex'; omit for both
   /// @returns {Set<string>}
-  function _collectUsedIdxNames(dwg, excludeIndex) {
+  function _collectUsedIdxNames(dwg, excludeIndex, kind) {
     const used = new Set();
     (dwg.items || []).forEach((item, i) => {
       if (i === excludeIndex) return;
       if (REFERENCE_ONLY_TYPES.indexOf(item.type) !== -1) return;
+      if (kind && _idxKindOf(item) !== kind) return;
       if (item.idxName) used.add(item.idxName);
+    });
+    return used;
+  }
+
+  /// The idxNames the Add/Edit Item screens must treat as already taken
+  /// for an item of `kind` — the basis for both the live "Index name
+  /// already used" warning and the silent dedup on commit.
+  ///
+  /// Same-kind names always collide. Cross-kind names do NOT: an Index
+  /// Placeholder and the real item that fills its slot are MEANT to carry
+  /// the same idxName — that pairing is how a drawing fixes an item's
+  /// z-order independently of where its content is sent (see
+  /// docs/pfodDwg_json-format.md §7 and the Gauge recipe, whose
+  /// `index idx_arc` + `arc idxName idx_arc` validates with no findings).
+  /// Treating the two as one flat namespace made that documented pattern
+  /// impossible to build or even to leave alone: opening EITHER half
+  /// warned "Index name already used", and saving renamed BOTH halves to
+  /// <name>_1, because the rename then propagated to the partner.
+  ///
+  /// The one case where the other kind still counts is a RENAME of an
+  /// item that already HAS a cross-kind partner: _renameIdxNameReferences
+  /// drags the partner along to the new name, so that name must be free
+  /// in the partner's namespace too — otherwise the partner lands on top
+  /// of an existing item of its own kind, a genuine duplicate that
+  /// validateAndRepairDwg throws on outside a Load. The item's own
+  /// current name is left out of that union: keeping it unchanged
+  /// triggers no propagation, and counting it would re-create the very
+  /// bug this fixes.
+  /// @param {object} dwg
+  /// @param {number} [excludeIndex] — the item being edited, if any
+  /// @param {string} kind — 'index' | 'nonindex'
+  /// @returns {Set<string>}
+  function _collidingIdxNames(dwg, excludeIndex, kind) {
+    const used = _collectUsedIdxNames(dwg, excludeIndex, kind);
+    const editing = (typeof excludeIndex === 'number') ? (dwg.items || [])[excludeIndex] : null;
+    if (!editing || !editing.idxName || REFERENCE_ONLY_TYPES.indexOf(editing.type) !== -1) return used;
+    const otherKind = (kind === 'index') ? 'nonindex' : 'index';
+    const otherNames = _collectUsedIdxNames(dwg, excludeIndex, otherKind);
+    if (!otherNames.has(editing.idxName)) return used;   // no partner — nothing to drag along
+    otherNames.forEach((name) => {
+      if (name !== editing.idxName) used.add(name);
     });
     return used;
   }
@@ -1705,6 +1934,52 @@ const DesignerDwgPanel = (() => {
     { value: 256, label: 'DOWN_DRAG_UP (256) - only UP msg sent on UP' },
     { value: 512, label: 'TOUCH_DISABLED (512)' },
   ]);
+
+  // `filter` is a BIT MASK — the runtime tests it with & — so a zone can
+  // legitimately hold a combination the dropdown has no single option for,
+  // e.g. 24 = CLICK | PRESS. Names for describing such a value, including
+  // ENTRY/EXIT: real runtime values the designer does not offer as choices
+  // but must still be able to label rather than silently discard.
+  const TOUCH_FILTER_FLAG_NAMES = Object.freeze([
+    [1, 'DOWN'], [2, 'DRAG'], [4, 'UP'], [8, 'CLICK'], [16, 'PRESS'],
+    [32, 'ENTRY'], [64, 'EXIT'], [256, 'DOWN_DRAG_UP'], [512, 'TOUCH_DISABLED'],
+  ]);
+
+  /// Spell out the flags in a combined filter value, for a dropdown label.
+  /// Any bits outside the known flags are reported as a "+N" remainder
+  /// rather than dropped, so nothing about the stored value is hidden.
+  /// @param {number} v
+  /// @returns {string} e.g. "CLICK | PRESS"
+  function _describeTouchFilter(v) {
+    const names = TOUCH_FILTER_FLAG_NAMES.filter(([bit]) => (v & bit) === bit).map(([, n]) => n);
+    const knownBits = TOUCH_FILTER_FLAG_NAMES.reduce((m, [bit]) => m | bit, 0);
+    const leftover = v & ~knownBits;
+    if (leftover) names.push('+' + leftover);
+    return names.length ? names.join(' | ') : String(v);
+  }
+
+  /// Build the touch-filter <select>'s options for the value an item
+  /// currently holds.
+  ///
+  /// A plain map over TOUCH_FILTER_OPTIONS marks an option `selected` only on
+  /// exact equality, so a combined value matched nothing, the browser fell
+  /// back to the FIRST option (TOUCH, 0), and simply opening the item and
+  /// pressing Save rewrote the filter to 0 — losing the combination with no
+  /// warning. When the current value is not one of the offered ones this adds
+  /// an option carrying it, so it displays as what it is and round-trips
+  /// untouched; picking a listed value still replaces it outright.
+  /// @param {number} current — the item's stored filter
+  /// @returns {string} option HTML
+  function _touchFilterOptionsHtml(current) {
+    const value = (typeof current === 'number' && isFinite(current)) ? current : 0;
+    const opts = TOUCH_FILTER_OPTIONS.map((o) =>
+      '<option value="' + o.value + '"' + (o.value === value ? ' selected' : '') + '>' + _esc(o.label) + '</option>');
+    if (!TOUCH_FILTER_OPTIONS.some((o) => o.value === value)) {
+      opts.push('<option value="' + value + '" selected>Combined (' + value + ') - ' +
+        _esc(_describeTouchFilter(value)) + '</option>');
+    }
+    return opts.join('');
+  }
 
   /// Every cmdName currently in use by a touchZone or insertDwg item —
   /// the two real types that own a cmdName (dwgValidate.js's own
@@ -1941,7 +2216,7 @@ const DesignerDwgPanel = (() => {
       xOffset: isInsertDwg ? 0 : dwg.x / 2, yOffset: isInsertDwg ? 0 : dwg.y / 2,
       xSize: dwg.x / 4, ySize: dwg.y / 4,
       radius: Math.min(dwg.x, dwg.y) * 0.25, start: 0, angle: 90,
-      text: isLabel ? 'TEXT' : (isValue ? 'Value: ' : ''), fontSize: 0, align: 'left', bold: false, italic: false, underline: false,
+      text: isLabel ? 'TEXT' : (isValue ? 'Value: ' : ''), fontSize: 0, align: 'center', bold: false, italic: false, underline: false,
       // value/decimals/units: optional label-only suffix (see
       // dwgWireEncoder.js's _appendFormattedValue) — Value/Units left
       // blank by default, unlike add-item.html's own "Value: 50" default
@@ -1984,9 +2259,10 @@ const DesignerDwgPanel = (() => {
     // Index Placeholder forces Assign Index on from the start — it IS an
     // index, there's nothing to opt into.
     const idxState = { use: isIndex, name: _nextFreeIdxName(dwg) };
-    // One flat namespace across every declaring item — see
-    // _collectUsedIdxNames's own doc.
-    const usedIdxNames = _collectUsedIdxNames(dwg);
+    // Scoped to this item's own kind, so a new real item may take the
+    // name an Index Placeholder already reserved (and vice versa) — see
+    // _collidingIdxNames's own doc.
+    const usedIdxNames = _collidingIdxNames(dwg, undefined, isIndex ? 'index' : 'nonindex');
     // No target picked yet — Add Item stays disabled until the user
     // selects a row from the Hide/Unhide Type list below. actuallyHiddenTarget
     // stays null throughout — a brand new item hasn't been saved yet, so
@@ -2023,9 +2299,7 @@ const DesignerDwgPanel = (() => {
     const alignOptionsHtml = DWG_ALIGN_VALUES.map((v) =>
       '<option value="' + v + '"' + (v === state.align ? ' selected' : '') + '>' + v[0].toUpperCase() + v.slice(1) + '</option>'
     ).join('');
-    const touchFilterOptionsHtml = TOUCH_FILTER_OPTIONS.map((o) =>
-      '<option value="' + o.value + '"' + (o.value === state.filter ? ' selected' : '') + '>' + _esc(o.label) + '</option>'
-    ).join('');
+    const touchFilterOptionsHtml = _touchFilterOptionsHtml(state.filter);
 
     let fieldsHtml;
     if (isCircle || isArc) {
@@ -2546,7 +2820,7 @@ const DesignerDwgPanel = (() => {
           type: 'label',
           xOffset: _readNum(xOffsetInput.value, 0),
           yOffset: _readNum(yOffsetInput.value, 0),
-          text: textInput.value,
+          text: escapeRestrictedChars(textInput.value),
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
           bold: boldCheckbox.checked,
@@ -2562,13 +2836,13 @@ const DesignerDwgPanel = (() => {
         // _appendFormattedValue).
         if (valueInput.value !== '') item.value = parseFloat(valueInput.value);
         if (decimalsInput.value !== '') item.decimals = parseInt(decimalsInput.value, 10);
-        if (unitsInput.value !== '') item.units = unitsInput.value;
+        if (unitsInput.value !== '') item.units = escapeRestrictedChars(unitsInput.value);
       } else if (isValue) {
         item = {
           type: 'value',
           xOffset: _readNum(xOffsetInput.value, 0),
           yOffset: _readNum(yOffsetInput.value, 0),
-          text: textInput.value,
+          text: escapeRestrictedChars(textInput.value),
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
           bold: boldCheckbox.checked,
@@ -2580,7 +2854,7 @@ const DesignerDwgPanel = (() => {
           displayMin: parseFloat(displayMinInput.value) || 0,
           displayMax: parseFloat(displayMaxInput.value) || 1,
           decimals: parseInt(valueDecimalsInput.value, 10) || 0,
-          units: valueUnitsInput.value,
+          units: escapeRestrictedChars(valueUnitsInput.value),
           color: (state.colorMode === 'blackwhite') ? -1 : state.color,
         };
       } else {
@@ -2594,7 +2868,7 @@ const DesignerDwgPanel = (() => {
         };
       }
       if (idxState.use && idxState.name.trim()) {
-        item.indexed = true;
+        // idxName alone — a non-blank one is what makes an item indexed.
         item.idxName = dedupe ? _dedupeName(idxState.name.trim(), usedIdxNames) : idxState.name.trim();
       }
       return item;
@@ -2621,7 +2895,7 @@ const DesignerDwgPanel = (() => {
     function updatePreview() {
       const raw = {
         name: ADD_ITEM_DRAFT_NAME,
-        x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color,
+        x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color,
         items: flattenTouchActions(dwg.items).concat([buildDraftItem()]),
       };
       const { dwg: draftDwg } = validateAndRepairDwg(raw, ADD_ITEM_DRAFT_NAME);
@@ -3023,7 +3297,7 @@ const DesignerDwgPanel = (() => {
       const raw = {
         name: dwgName,
         description: (typeof dwg.description === 'string') ? dwg.description : '',
-        x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color,
+        x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color,
         items: flattenTouchActions(dwg.items).concat([buildDraftItem(true)]),
       };
       const { dwg: savedDwg } = validateAndRepairDwg(raw, dwgName);
@@ -3126,12 +3400,12 @@ const DesignerDwgPanel = (() => {
       const v = originalItem[field];
       return (v === undefined || v === null) ? fallback : v;
     };
-    /// carry() for the boolean flags, which are stored as true or 'true'.
+    /// carry() for the boolean flags, which are always real booleans.
     /// @param {string} field
     /// @returns {boolean}
     const carriedFlag = (field) => {
       const v = carry(field, false);
-      return v === true || v === 'true';
+      return v === true;
     };
     // STRUCTURAL fields still require the same type, unlike the settings
     // above: a hide target, an insertDwg's drawingName, and a touchZone's
@@ -3158,7 +3432,7 @@ const DesignerDwgPanel = (() => {
       radius: carry('radius', Math.min(dwg.x, dwg.y) * 0.25),
       start: carry('start', 0),
       angle: carry('angle', 90),
-      text: carry('text', isLabel ? 'TEXT' : (isValue ? 'Value: ' : '')),
+      text: unescapeRestrictedChars(carry('text', isLabel ? 'TEXT' : (isValue ? 'Value: ' : ''))),
       fontSize: carry('fontSize', 0),
       align: carry('align', 'left'),
       // Label's optional value/decimals/units suffix (Object.assign-preserved,
@@ -3168,7 +3442,7 @@ const DesignerDwgPanel = (() => {
       // both types, which is exactly why switching between them keeps them.
       value: (originalItem.value === undefined || originalItem.value === null) ? '' : String(originalItem.value),
       decimals: (originalItem.decimals === undefined || originalItem.decimals === null) ? '2' : String(originalItem.decimals),
-      units: carry('units', ''),
+      units: unescapeRestrictedChars(carry('units', '')),
       // Value item type's own real, required fields.
       intValue: carry('intValue', 50),
       min: carry('min', 0),
@@ -3176,7 +3450,7 @@ const DesignerDwgPanel = (() => {
       displayMin: carry('displayMin', 0),
       displayMax: carry('displayMax', 1),
       valueDecimals: carry('decimals', 2),
-      valueUnits: carry('units', ''),
+      valueUnits: unescapeRestrictedChars(carry('units', '')),
       // pushZero's own X/Y Translation + Scale Factor are x/y/scale, distinct
       // field names from every other type's xOffset/yOffset, so these only
       // ever carry from another pushZero.
@@ -3211,9 +3485,11 @@ const DesignerDwgPanel = (() => {
       use: isIndex || originalDeclaresIdx,
       name: originalDeclaresIdx ? originalItem.idxName : _nextFreeIdxName(dwg),
     };
-    // One flat namespace across every declaring item — see
-    // _collectUsedIdxNames's own doc.
-    const usedIdxNames = _collectUsedIdxNames(dwg, itemIndex);
+    // Scoped to this item's own kind, so editing either half of an Index
+    // Placeholder + real item pair leaves the shared name alone — see
+    // _collidingIdxNames's own doc for the rename case, where the other
+    // kind does still count.
+    const usedIdxNames = _collidingIdxNames(dwg, itemIndex, isIndex ? 'index' : 'nonindex');
     // Prefill from the original hide/unhide item's own idxName/cmdName
     // when editing it as itself; a cmdName alone doesn't say which Hide/
     // Unhide Type category it belongs to, so look up whether some OTHER
@@ -3295,9 +3571,7 @@ const DesignerDwgPanel = (() => {
     const alignOptionsHtml = DWG_ALIGN_VALUES.map((v) =>
       '<option value="' + v + '"' + (v === state.align ? ' selected' : '') + '>' + v[0].toUpperCase() + v.slice(1) + '</option>'
     ).join('');
-    const touchFilterOptionsHtml = TOUCH_FILTER_OPTIONS.map((o) =>
-      '<option value="' + o.value + '"' + (o.value === state.filter ? ' selected' : '') + '>' + _esc(o.label) + '</option>'
-    ).join('');
+    const touchFilterOptionsHtml = _touchFilterOptionsHtml(state.filter);
 
     let fieldsHtml;
     if (isCircle || isArc) {
@@ -3753,6 +4027,14 @@ const DesignerDwgPanel = (() => {
         };
         if (touchZoneState.touchActions.length > 0) zoneItem.touchActions = touchZoneState.touchActions.slice();
         if (touchZoneState.touchActionInput) zoneItem.touchActionInput = touchZoneState.touchActionInput;
+        // Carry an existing index through untouched. A zone's idx is its
+        // touch PRIORITY among overlapping zones — a file-level feature with
+        // no control on this screen — but this branch rebuilds the item from
+        // the form alone, so without this an edit would silently strip an
+        // index the file already had.
+        if (prefillFromOriginal && originalItem.idxName) {
+          zoneItem.idxName = originalItem.idxName;
+        }
         return zoneItem;
       } else if (isIndex) {
         // No color — idxName gets attached below by the same shared
@@ -3795,7 +4077,7 @@ const DesignerDwgPanel = (() => {
           type: 'label',
           xOffset: _readNum(xOffsetInput.value, 0),
           yOffset: _readNum(yOffsetInput.value, 0),
-          text: textInput.value,
+          text: escapeRestrictedChars(textInput.value),
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
           bold: boldCheckbox.checked,
@@ -3807,13 +4089,13 @@ const DesignerDwgPanel = (() => {
         // are independent "if not empty" checks, not gated on each other.
         if (valueInput.value !== '') item.value = parseFloat(valueInput.value);
         if (decimalsInput.value !== '') item.decimals = parseInt(decimalsInput.value, 10);
-        if (unitsInput.value !== '') item.units = unitsInput.value;
+        if (unitsInput.value !== '') item.units = escapeRestrictedChars(unitsInput.value);
       } else if (isValue) {
         item = {
           type: 'value',
           xOffset: _readNum(xOffsetInput.value, 0),
           yOffset: _readNum(yOffsetInput.value, 0),
-          text: textInput.value,
+          text: escapeRestrictedChars(textInput.value),
           fontSize: parseInt(fontSizeInput.value, 10) || 0,
           align: alignSelect.value,
           bold: boldCheckbox.checked,
@@ -3825,7 +4107,7 @@ const DesignerDwgPanel = (() => {
           displayMin: parseFloat(displayMinInput.value) || 0,
           displayMax: parseFloat(displayMaxInput.value) || 1,
           decimals: parseInt(valueDecimalsInput.value, 10) || 0,
-          units: valueUnitsInput.value,
+          units: escapeRestrictedChars(valueUnitsInput.value),
           color: (state.colorMode === 'blackwhite') ? -1 : state.color,
         };
       } else {
@@ -3839,7 +4121,7 @@ const DesignerDwgPanel = (() => {
         };
       }
       if (idxState.use && idxState.name.trim()) {
-        item.indexed = true;
+        // idxName alone — a non-blank one is what makes an item indexed.
         item.idxName = dedupe ? _dedupeName(idxState.name.trim(), usedIdxNames) : idxState.name.trim();
       }
       return item;
@@ -3866,7 +4148,7 @@ const DesignerDwgPanel = (() => {
       items[itemIndex] = buildUpdatedItem(false);
       const raw = {
         name: ADD_ITEM_DRAFT_NAME,
-        x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color,
+        x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color,
         items: flattenTouchActions(items),
       };
       const { dwg: draftDwg } = validateAndRepairDwg(raw, ADD_ITEM_DRAFT_NAME);
@@ -4244,13 +4526,14 @@ const DesignerDwgPanel = (() => {
       // clearing Assign Index entirely (newIdxName undefined) leaves any
       // other reference to the old name for that orphan-check to catch
       // and clean up normally, same as any other now-invalid reference.
-      // newIdxName was already deduped against every OTHER declaring
-      // item in this dwg — one flat namespace, no kind split — by
-      // buildUpdatedItem's own _dedupeName call above (usedIdxNames), so
-      // there's no separate "other kind" left to re-check here: a
-      // cross-kind sharing partner being dragged along by the
-      // propagation below can't collide with anything, because
-      // usedIdxNames already covered its kind too.
+      // newIdxName was already deduped by buildUpdatedItem's own
+      // _dedupeName call above (usedIdxNames). That set is scoped to this
+      // item's own kind — an Index Placeholder and the real item filling
+      // its slot are meant to share a name — EXCEPT when this item has a
+      // cross-kind partner, which is exactly the case where the
+      // propagation below drags that partner to the new name: then
+      // _collidingIdxNames folds the partner's whole namespace in too, so
+      // the name it is dragged to is free there as well.
       //
       // Only a DECLARING item can be renamed this way.  hide/unhide/erase
       // (REFERENCE_ONLY_TYPES) carry an idxName that NAMES SOMEONE ELSE'S
@@ -4273,7 +4556,7 @@ const DesignerDwgPanel = (() => {
       const raw = {
         name: dwgName,
         description: (typeof dwg.description === 'string') ? dwg.description : '',
-        x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color,
+        x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color,
         items: flattenTouchActions(items),
       };
       const { dwg: savedDwg } = validateAndRepairDwg(raw, dwgName);
@@ -4330,7 +4613,7 @@ const DesignerDwgPanel = (() => {
           return flattenTouchActions(arr);
         })();
     if (extraItems && extraItems.length) items.push.apply(items, extraItems);
-    const raw = { name: ADD_ITEM_DRAFT_NAME, x: dwg.x, y: dwg.y, refresh: dwg.refresh, color: dwg.color, items };
+    const raw = { name: ADD_ITEM_DRAFT_NAME, x: dwg.x, y: dwg.y, dwgRefresh_ms: dwg.dwgRefresh_ms, color: dwg.color, items };
     const { dwg: draftDwg } = validateAndRepairDwg(raw, ADD_ITEM_DRAFT_NAME);
     DwgLibrary.saveHidden(draftDwg);
     _dwgDesignerAdapter.device.invalidatePreviewVersion(ADD_ITEM_DRAFT_NAME);
@@ -4379,7 +4662,7 @@ const DesignerDwgPanel = (() => {
     );
     if (existing && existing.idxName) claimedByTouchActions.delete(existing.idxName);
     const labelValueCandidates = _labelValueCandidates(dwg, claimedByTouchActions);
-    const promptValue = existing ? (existing.prompt || '') : 'Enter Value';
+    const promptValue = unescapeRestrictedChars(existing ? (existing.prompt || '') : 'Enter Value');
     // A brand new touchActionInput (no existing.idxName) defaults to the
     // FIRST candidate, not "(none)" — matches every other "sensible
     // default, freely changeable" convention in this file (e.g.
@@ -4515,7 +4798,7 @@ const DesignerDwgPanel = (() => {
       const liveInput = {
         type: 'touchActionInput',
         cmdName: resumeState.cmdName,
-        prompt: root.querySelector('#dcp-tai-prompt').value,
+        prompt: escapeRestrictedChars(root.querySelector('#dcp-tai-prompt').value),
         fontSize: parseInt(root.querySelector('#dcp-tai-fontsize').value, 10) || 0,
         color: textColorState.mode === 'blackwhite' ? -1 : textColorState.color,
         backgroundColor: bgColorState.mode === 'blackwhite' ? -1 : bgColorState.color,
@@ -4615,7 +4898,7 @@ const DesignerDwgPanel = (() => {
       const newInput = {
         type: 'touchActionInput',
         cmdName: resumeState.cmdName,
-        prompt: promptText,
+        prompt: escapeRestrictedChars(promptText),
         fontSize: parseInt(root.querySelector('#dcp-tai-fontsize').value, 10) || 0,
         color: textColorState.mode === 'blackwhite' ? -1 : textColorState.color,
         backgroundColor: bgColorState.mode === 'blackwhite' ? -1 : bgColorState.color,
@@ -4856,12 +5139,12 @@ const DesignerDwgPanel = (() => {
     };
     const sourceColor = prefillSource ? prefillSource.color : targetItem.color;
     const colorState = { mode: (sourceColor !== -1 && sourceColor !== undefined) ? 'color' : 'blackwhite', color: (sourceColor !== -1 && sourceColor !== undefined) ? sourceColor : 15 };
-    const filledChecked = !!(prefillSource && (prefillSource.filled === true || prefillSource.filled === 'true'));
-    const centeredChecked = !!(prefillSource && (prefillSource.centered === true || prefillSource.centered === 'true'));
-    const roundedChecked = !!(prefillSource && (prefillSource.rounded === true || prefillSource.rounded === 'true'));
-    const boldChecked = !!(prefillSource && (prefillSource.bold === true || prefillSource.bold === 'true'));
-    const italicChecked = !!(prefillSource && (prefillSource.italic === true || prefillSource.italic === 'true'));
-    const underlineChecked = !!(prefillSource && (prefillSource.underline === true || prefillSource.underline === 'true'));
+    const filledChecked = !!(prefillSource && (prefillSource.filled === true));
+    const centeredChecked = !!(prefillSource && (prefillSource.centered === true));
+    const roundedChecked = !!(prefillSource && (prefillSource.rounded === true));
+    const boldChecked = !!(prefillSource && (prefillSource.bold === true));
+    const italicChecked = !!(prefillSource && (prefillSource.italic === true));
+    const underlineChecked = !!(prefillSource && (prefillSource.underline === true));
 
     const targetOptionsHtml = candidates.map((c) =>
       '<option value="' + _esc(c.idxName) + '"' + (c.idxName === targetItem.idxName ? ' selected' : '') + '>' +
@@ -5350,11 +5633,11 @@ const DesignerDwgPanel = (() => {
     });
   }
 
-  /// Open a file picker to resolve ONE missing insertDwg reference by
-  /// forcing the picked file's own dwg name to `expectedName` (trusting
-  /// "this file is for that slot", not the file's own internal name
-  /// field) — matches pfodWebDesigner's own
-  /// loadDrawingFromFileForMissingRecursive. On success, also scans the
+  /// Open a file picker to resolve ONE missing insertDwg reference. The
+  /// picked file's own dwg `name` must BE `expectedName` — the file name is
+  /// free, the drawing name inside it is the identity and is not rewritten to
+  /// fit the slot; a mismatch is reported and nothing is loaded. On success,
+  /// also scans the
   /// newly-loaded dwg's own items for further missing insertDwg refs and
   /// queues them onto the SAME sequence (skipping anything already
   /// `handled`, the cycle guard for a circular insertDwg reference).
@@ -5406,13 +5689,25 @@ const DesignerDwgPanel = (() => {
           finish(false);
           return;
         }
-        if (!looksLikeDwgFile(raw)) {
-          alert('"' + file.name + '" does not look like a valid dwg file (missing "format": "pfodDwgDesigner") and was not loaded.');
+        const rejectReason = dwgFileRejectReason(raw);
+        if (rejectReason) {
+          alert('"' + file.name + '" ' + rejectReason + ' and was not loaded.');
           finish(false);
           return;
         }
         const { dwg } = validateAndRepairDwg(raw, file.name, true);
-        dwg.name = expectedName; // this file is FOR this exact missing slot
+        // The FILE name may be anything; the drawing's own `name` is its
+        // identity and must be the one that was asked for. See the matching
+        // check in designer/menus/missingDwgPrompt.js for why this is not
+        // overwritten to fit the slot.
+        if (dwg.name !== expectedName) {
+          alert('"' + file.name + '" contains the drawing "' + dwg.name +
+            '", but "' + expectedName + '" was asked for.\n\n' +
+            'The file name can be anything, but the drawing name inside it must match. ' +
+            'Nothing was loaded.');
+          finish(false);
+          return;
+        }
         DwgLibrary.save(dwg);
         _findMissingInsertDwgNames(dwg).forEach((childName) => {
           if (!handled.has(childName)) queue.push({ name: childName, referencedBy: expectedName });
@@ -5422,6 +5717,18 @@ const DesignerDwgPanel = (() => {
       reader.readAsText(file);
     };
     input.click();
+  }
+
+  /// Return to the main panel with a just-loaded dwg selected, so it is
+  /// the one previewed and — via _renderMainView's own reveal — the one
+  /// scrolled into view. Without this the selection stays on whatever was
+  /// selected before (or falls to the first name in the list), and a dwg
+  /// loaded into a long list lands off-screen with no sign it arrived.
+  /// @param {string} name — the newly saved dwg's own (deduped) name
+  /// @param {Element} root
+  function _selectLoadedDwg(name, root) {
+    _selectedDwgName = name;
+    _renderMainView(root);
   }
 
   /// Open the file picker for Load Dwg. Reuses one hidden <input> across
@@ -5459,7 +5766,7 @@ const DesignerDwgPanel = (() => {
   /// A genuine JSON parse failure just alerts — matches
   /// pfodWebDesigner/src/control.js:1150-1153 (unparseable JSON can't be
   /// meaningfully auto-fixed, unlike a structurally-wrong-but-parseable
-  /// dwg). A file that doesn't even look like a dwg (see looksLikeDwgFile
+  /// dwg). A file that doesn't even look like a dwg (see dwgFileRejectReason
   /// — strict: requires "format": "pfodDwgDesigner" — the directory a
   /// user picks may well contain other, unrelated .pfodDwg_json/.json files)
   /// is rejected with a visible alert too — previously this was a silent
@@ -5484,8 +5791,9 @@ const DesignerDwgPanel = (() => {
         return;
       }
 
-      if (!looksLikeDwgFile(raw)) {
-        alert('"' + file.name + '" does not look like a valid dwg file (missing "format": "pfodDwgDesigner") and was not loaded.');
+      const rejectReason = dwgFileRejectReason(raw);
+      if (rejectReason) {
+        alert('"' + file.name + '" ' + rejectReason + ' and was not loaded.');
         console.log('[DwgControlsPanel] "' + file.name + '" does not look like a dwg file — skipped');
         return;
       }
@@ -5500,7 +5808,7 @@ const DesignerDwgPanel = (() => {
       if (errors.length === 0) {
         DwgLibrary.save(dwg);
         _checkForMissingInsertDwgs(root, dwg, () => {
-          if (onLoaded) { onLoaded(dwg.name); } else { _renderMainView(root); }
+          if (onLoaded) { onLoaded(dwg.name); } else { _selectLoadedDwg(dwg.name, root); }
         });
       } else {
         _renderValidationErrors(root, dwg, errors, file.name, onLoaded);
@@ -5509,34 +5817,65 @@ const DesignerDwgPanel = (() => {
     reader.readAsText(file);
   }
 
-  /// Open a directory picker for "Load All Dwgs in Dir and sub-Dirs" —
-  /// `webkitdirectory` gives every file under the chosen folder tree
-  /// (recursively) in one FileList, matching how _startLoadDwg already
-  /// picks a single file with a plain hidden <input>. Reuses one hidden
-  /// input across calls.
-  function _startLoadAllDwgs(root) {
-    let input = document.getElementById('dcp-load-all-dwgs-input');
+  /// Open a MULTI-FILE picker for "Load Several Dwgs" — the only bulk load.
+  ///
+  /// A folder-picking variant lived here too, built on `webkitdirectory`.
+  /// It was dropped: that input opens the OS FOLDER chooser, which lists
+  /// only sub-folders, so a folder holding nothing but .pfodDwg_json files
+  /// shows an empty pane — "No items match your search" on Windows — and
+  /// reads as the wrong folder. That is the browser's own dialog, not
+  /// something this code could filter differently, and no alternative
+  /// avoids it (showDirectoryPicker() behaves the same way). A plain
+  /// `multiple` input opens the normal file chooser, which lists the dwgs
+  /// so the user can see what they are loading; Ctrl+A takes the lot.
+  ///
+  /// The one thing lost with it is reaching sub-folders in a single pick.
+  /// A file chooser cannot multi-select across folders — an OS limitation —
+  /// but pressing this again loads another folder, and DwgLibrary.save()
+  /// accumulates, so several folders is several presses rather than
+  /// impossible. (Re-loading a dwg already in the library renames it via
+  /// nextFreeName rather than replacing it, so overlapping picks leave
+  /// duplicates.)
+  ///
+  /// `accept` is the same '.pfodDwg_json' _startLoadDwg uses, so the chooser
+  /// filters to dwgs on its own; _readAndLoadAllFiles does the reading,
+  /// skipping, repairing, saving and the summary alert.
+  function _startLoadSeveralDwgs(root) {
+    let input = document.getElementById('dcp-load-several-dwgs-input');
     if (!input) {
       input = document.createElement('input');
       input.type = 'file';
-      input.webkitdirectory = true;
+      input.accept = '.pfodDwg_json';
       input.multiple = true;
-      input.id = 'dcp-load-all-dwgs-input';
+      input.id = 'dcp-load-several-dwgs-input';
       input.style.display = 'none';
       document.body.appendChild(input);
     }
+    // Reset so picking the same files twice in a row still fires 'change'.
     input.value = '';
     input.onchange = () => {
       const files = input.files ? Array.from(input.files) : [];
+      // `accept` is a filter on the dialog, not a guarantee — a user can
+      // switch it to "All files" and pick anything — so the name test still
+      // runs here, exactly as it does on the directory route.
       const jsonFiles = files.filter((f) => /\.pfodDwg_json$/i.test(f.name));
-      if (jsonFiles.length > 0) _readAndLoadAllFiles(root, jsonFiles);
+      console.log('[DwgControlsPanel] Load Several Dwgs: picked ' + files.length +
+        ' file(s), ' + jsonFiles.length + ' matching *.pfodDwg_json');
+      if (jsonFiles.length > 0) {
+        _readAndLoadAllFiles(root, jsonFiles);
+        return;
+      }
+      if (files.length === 0) return; // cancelled — say nothing
+      alert('Load Several Dwgs:\n\n' +
+        'None of the ' + files.length + ' file(s) picked end in .pfodDwg_json.\n\n' +
+        'Dwg files must end in .pfodDwg_json — a menu design (.pfodMenu_json) is not a dwg.');
     };
     input.click();
   }
 
   /// Load every dwg-shaped .pfodDwg_json file found under a picked directory
   /// tree. Non-dwg .pfodDwg_json files — whether well-formed-but-wrong-shape
-  /// (looksLikeDwgFile fails) OR not even valid JSON (a directory scan
+  /// (dwgFileRejectReason returns a reason) OR not even valid JSON (a directory scan
   /// will routinely turn up unrelated files — board configs, menu
   /// designs, etc. — that don't parse as JSON at all) — are BOTH
   /// silently skipped, no error logged: a directory is expected to
@@ -5559,11 +5898,11 @@ const DesignerDwgPanel = (() => {
 
     const done = () => {
       if (--remaining > 0) return;
-      // Loading a whole directory tree normally resolves insertDwg
+      // Loading a folder's worth at once normally resolves insertDwg
       // references to sibling files within the SAME batch automatically
       // (every file is saved before this runs) — this only reports
-      // references that are STILL unresolved even after the whole
-      // directory was loaded, same "still missing" idea as the single
+      // references that are STILL unresolved even after the whole batch
+      // was loaded, same "still missing" idea as the single
       // Load Dwg flow's own _checkForMissingInsertDwgs, but scoped to
       // just the dwgs loaded in this batch (not a full-library rescan)
       // and folded into the one summary alert rather than an interactive
@@ -5573,18 +5912,31 @@ const DesignerDwgPanel = (() => {
         const dwg = DwgLibrary.get(name);
         if (dwg) _findMissingInsertDwgNames(dwg).forEach((m) => missingAcrossBatch.add(m));
       });
-      console.log('[DwgControlsPanel] Load All Dwgs: loaded=' + loaded +
+      console.log('[DwgControlsPanel] Load Several Dwgs: loaded=' + loaded +
         ' (repaired=' + repaired + '), skipped=' + skipped + ', failed=' + failed +
         ', stillMissingInsertDwgs=' + missingAcrossBatch.size);
-      alert('Load All Dwgs in Dir and sub-Dirs:\n' +
+      alert('Load Several Dwgs:\n' +
         loaded + ' dwg(s) loaded' + (repaired > 0 ? ' (' + repaired + ' with automatic repairs)' : '') + '\n' +
         skipped + ' non-dwg .pfodDwg_json file(s) skipped\n' +
         failed + ' file(s) failed to read' +
         (missingAcrossBatch.size > 0
-          ? '\n\nWarning: still missing ' + missingAcrossBatch.size + ' referenced drawing(s) (not found under this folder):\n' +
+          // Not "not found under this folder" any more: sub-folders are no
+          // longer scanned, so a referenced dwg one level down is missing
+          // from the BATCH without being missing from the disk. Naming the
+          // batch says what was actually looked at.
+          ? '\n\nWarning: still missing ' + missingAcrossBatch.size +
+            ' referenced drawing(s) (not among the dwgs just loaded):\n' +
             Array.from(missingAcrossBatch).join(', ')
           : ''));
-      _renderMainView(root);
+      // Same idea as the single-file load: select something from the
+      // batch that just arrived rather than leaving the selection on
+      // whatever was there before. The first loaded name is the one the
+      // list shows first, so it is the least surprising landing point.
+      if (loadedNames.length > 0) {
+        _selectLoadedDwg(loadedNames[0], root);
+      } else {
+        _renderMainView(root);
+      }
     };
 
     files.forEach((file) => {
@@ -5604,9 +5956,10 @@ const DesignerDwgPanel = (() => {
           done();
           return;
         }
-        if (!looksLikeDwgFile(raw)) {
+        const rejectReason = dwgFileRejectReason(raw);
+        if (rejectReason) {
           skipped++;
-          console.log('[DwgControlsPanel] "' + file.name + '" does not look like a dwg file — skipped');
+          console.log('[DwgControlsPanel] "' + file.name + '" ' + rejectReason + ' — skipped');
           done();
           return;
         }
@@ -5678,10 +6031,23 @@ const DesignerDwgPanel = (() => {
   /// @param {string} dwgName
   function _generateCode(dwgName) {
     if (!dwgName || !DwgLibrary.get(dwgName)) return;
-    const { missingDrawings } = DwgArduinoExport.exportDwgAsZip(dwgName);
+    const { missingDrawings, unsupportedColours } = DwgArduinoExport.exportDwgAsZip(dwgName);
+    // Both warnings are collected into ONE alert: two in a row would have the
+    // user dismiss the first without reading it.
+    const warnings = [];
     if (missingDrawings.length > 0) {
-      alert('Generate Code completed.\n\nWarning: the following inserted drawing(s) are not loaded and so could not be included:\n' +
-        missingDrawings.join(', ') + '\n\nThe generated files will not include these drawings.');
+      warnings.push('The following inserted drawing(s) are not loaded and so could not be included:\n  ' +
+        missingDrawings.join(', ') + '\nThe generated files will not include these drawings.');
+    }
+    if (unsupportedColours.length > 0) {
+      warnings.push('The following colour(s) cannot be expressed by the pfodParser builder methods, ' +
+        'which take a palette number 0-255, and were generated as BLACK:\n  ' +
+        unsupportedColours.join(', ') +
+        '\nThe drawing still previews in its real colour here — only the generated sketch differs. ' +
+        'Use a palette number instead, or build those primitive strings by hand.');
+    }
+    if (warnings.length > 0) {
+      alert('Generate Code completed.\n\nWarning:\n\n' + warnings.join('\n\n'));
     }
   }
 
@@ -5752,7 +6118,7 @@ const DesignerDwgPanel = (() => {
     root.querySelector('#dcp-err-accept').addEventListener('click', () => {
       DwgLibrary.save(dwg);
       _checkForMissingInsertDwgs(root, dwg, () => {
-        if (onLoaded) { onLoaded(dwg.name); } else { _renderMainView(root); }
+        if (onLoaded) { onLoaded(dwg.name); } else { _selectLoadedDwg(dwg.name, root); }
       });
     });
   }

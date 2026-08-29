@@ -49,7 +49,19 @@
 // Bump SCHEMA_VERSION whenever the persisted shape changes incompatibly
 // — older saved states will then be rejected at load instead of being
 // poured into a structure they no longer fit.
-const DESIGNER_STATE_SCHEMA_VERSION = 11;
+const DESIGNER_STATE_SCHEMA_VERSION = 12;
+
+// Board a pre-schema-12 design is assumed to have been built for.
+// Schema 11 and earlier did not record the target in the exported file
+// (only the localStorage payload carried boardName), so a target change
+// could not be detected on a file load and pin/ADC values were left as
+// saved. Those files still load; they are simply treated as "built for an
+// Arduino UNO", which is both the designer's own default target and by far
+// the most likely origin. If that guess is wrong the only cost is that the
+// ADC re-derivation below either runs when it needn't or is skipped when it
+// should have run — the user is told either way, and can re-save under the
+// real target to make it explicit from then on.
+const LEGACY_ASSUMED_BOARD_NAME = 'Arduino UNO';
 
 // Java pfodDesignerV2's DesignerStatics.NEW_MENU_NAME = "Menu" — the
 // "_<n>" suffix is appended by _nextDefaultName().
@@ -556,6 +568,41 @@ function _parsePromptFormatTolerant(input, path, warnings) {
   return out;
 }
 
+/// Coerce a saved list index (a chart's xAxisIdx / dataIntervalIdx) onto the
+/// NEAREST valid slot rather than discarding it for the type's default.
+///
+/// Both fields index a fixed option list whose length can change between
+/// builds, and both change what the generated sketch actually does — an
+/// x-axis format, and a sample rate.  Snapping an out-of-range value back to
+/// the fresh-item default throws away everything the saved value said: a
+/// dataIntervalIdx of 7 written by a build with more intervals means "the
+/// slowest rate I had", and resetting it to index 0 turns that into the
+/// FASTEST rate — the opposite of the intent, and a change the user may not
+/// notice.  Clamping to the nearest end preserves that intent as closely as
+/// the current list allows.
+///
+/// A fractional index is rounded to the nearest slot first, then clamped.  A
+/// non-number has no "nearest" and still falls back to the supplied default.
+///
+/// @param {*} input — raw value from the file
+/// @param {number} len — length of the option list
+/// @param {number} fallback — used only when input is not a finite number
+/// @returns {{value:number, changed:boolean, reason:string|null}}
+///          changed=false means the input was already a valid slot
+function _coerceListIdx(input, len, fallback) {
+  if (typeof input !== 'number' || !isFinite(input)) {
+    return { value: fallback, changed: true, reason: 'not a number' };
+  }
+  const rounded = Math.round(input);
+  const clamped = Math.min(len - 1, Math.max(0, rounded));
+  if (clamped === input) return { value: clamped, changed: false, reason: null };
+  return {
+    value: clamped,
+    changed: true,
+    reason: (clamped !== rounded) ? 'out of range 0-' + (len - 1) : 'not a whole number',
+  };
+}
+
 /// Parse one item tolerantly.  Currently knows about Button + Label
 /// (other types — PWM, ADC, Chart, Drawing, Sub-menu — pass through
 /// unchanged for forward-compatibility, so a design saved by a future
@@ -571,10 +618,16 @@ function _parseItemTolerant(input, path, warnings) {
     return null;
   }
   // For known types we re-build the item from defaults + valid input
-  // fields, mirroring the prompt-format / menu parsers.  For unknown
-  // types we trust the future schema and return the input as-is —
-  // the warning surfaces to the user so they know this build won't
-  // edit it.
+  // fields, mirroring the prompt-format / menu parsers.  An unknown type is
+  // DROPPED, not carried through: this build cannot render it, edit it, or
+  // generate code for it, so keeping it would leave the design holding an
+  // item the user can neither see nor remove, which then gets written back
+  // out on the next save as though it were still meaningful.  Dropping it
+  // costs the round-trip of a design saved by some future build with more
+  // item types, which is the deliberate trade: the file on disk is still
+  // intact until the user saves over it, and the warning names exactly what
+  // was removed.  Same treatment as every other unusable item (a null entry,
+  // a non-object, a Drawing with no dwgName).
   if (input.type !== ITEM_TYPE_BUTTON       &&
       input.type !== ITEM_TYPE_LABEL        &&
       input.type !== ITEM_TYPE_ONOFF        &&
@@ -584,8 +637,8 @@ function _parseItemTolerant(input, path, warnings) {
       input.type !== ITEM_TYPE_SUBMENU      &&
       input.type !== ITEM_TYPE_CHART        &&
       input.type !== ITEM_TYPE_DRAWING) {
-    warnings.push(path + '.type: "' + input.type + '" not supported in this build — kept as-is');
-    return input;
+    warnings.push(path + '.type: "' + input.type + '" is not a supported item type — item dropped');
+    return null;
   }
   let out;
   if      (input.type === ITEM_TYPE_BUTTON)        out = _freshButtonItem('');
@@ -816,10 +869,13 @@ function _parseItemTolerant(input, path, warnings) {
     else if ('chartLabel' in input)           warnings.push(path + '.chartLabel: not a string — defaulted');
 
     used.add('xAxisIdx');
-    if (typeof input.xAxisIdx === 'number' && input.xAxisIdx >= 0 && input.xAxisIdx < CHART_XAXIS_FORMATS.length) {
-      out.xAxisIdx = input.xAxisIdx;
-    } else if ('xAxisIdx' in input) {
-      warnings.push(path + '.xAxisIdx: out of range — defaulted to ' + DEFAULT_CHART_XAXIS_IDX);
+    if ('xAxisIdx' in input) {
+      const c = _coerceListIdx(input.xAxisIdx, CHART_XAXIS_FORMATS.length, DEFAULT_CHART_XAXIS_IDX);
+      out.xAxisIdx = c.value;
+      if (c.changed) {
+        warnings.push(path + '.xAxisIdx: ' + JSON.stringify(input.xAxisIdx) + ' ' + c.reason +
+          ' — using nearest, ' + c.value + ' (' + CHART_XAXIS_LABELS[c.value] + ')');
+      }
     }
 
     // separatePlots and dataIntervalIdx are ALWAYS written by
@@ -842,11 +898,19 @@ function _parseItemTolerant(input, path, warnings) {
     }
 
     used.add('dataIntervalIdx');
-    if (typeof input.dataIntervalIdx === 'number' && input.dataIntervalIdx >= 0 && input.dataIntervalIdx < CHART_DATA_INTERVALS.length) {
-      out.dataIntervalIdx = input.dataIntervalIdx;
+    if ('dataIntervalIdx' in input) {
+      const c = _coerceListIdx(input.dataIntervalIdx, CHART_DATA_INTERVALS.length,
+                               DEFAULT_CHART_DATA_INTERVAL_IDX);
+      out.dataIntervalIdx = c.value;
+      if (c.changed) {
+        warnings.push(path + '.dataIntervalIdx: ' + JSON.stringify(input.dataIntervalIdx) + ' ' +
+          c.reason + ' — using nearest, ' + CHART_DATA_INTERVAL_LABELS[c.value]);
+      }
     } else {
-      warnings.push(path + '.dataIntervalIdx: ' +
-        ('dataIntervalIdx' in input ? 'out of range' : 'missing') +
+      // Absence is still reported even though the value is recoverable — see
+      // the separatePlots comment above for why a file that does not state
+      // this was not written by this designer.
+      warnings.push(path + '.dataIntervalIdx: missing' +
         ' — this field is always written, so it must be present; using ' +
         CHART_DATA_INTERVAL_LABELS[out.dataIntervalIdx]);
     }
@@ -971,7 +1035,18 @@ const EXPORT_FORMAT_TAG  = 'pfodDesigner';
 /// @param {object} menu
 /// @returns {object} a plain-object copy safe to JSON.stringify
 function _exportableMenu(menu) {
-  return Object.assign({}, menu, {
+  // Key order is the file's reading order, same idea as exportToJSON()'s own
+  // header block: refresh_ms is seeded FIRST, above promptText, so it is the
+  // first line of every menu. items is by far the largest field, so a value
+  // written after it can only be found by scrolling past every item — and
+  // every sub-menu repeats that. Seeding only fixes the position; `menu`
+  // below still supplies the values, and any field added later lands after
+  // items rather than being dropped.
+  return Object.assign({
+    refresh_ms:   menu.refresh_ms,
+    promptText:   menu.promptText,
+    promptFormat: menu.promptFormat,
+  }, menu, {
     items: menu.items.map((item) => {
       if (item.type === 'submenu' && item.subMenu) {
         return Object.assign({}, item, { subMenu: _exportableMenu(item.subMenu) });
@@ -1363,6 +1438,20 @@ class DesignerState {
           && bp.capabilities.supports(PinType.DAC_OUTPUT)) {
         pin.type = PinType.DAC_OUTPUT;
       }
+      // A pin of the same NAME existing on the new board doesn't mean it can
+      // still do the job — e.g. a PWM item on "D3" survives a switch to a
+      // board whose D3 is digital-only, and code generation would then emit
+      // analogWrite() on a pin that can't do it.  Checked AFTER the DAC
+      // upgrade above so a pwm_output that legitimately became dac_output is
+      // judged on its final type.  Capability rule mirrors
+      // editMenuItemPin.js's own _pinSupports (the picker's selection-time
+      // check, which this is the load-time counterpart of): a bare "cap" is
+      // available on every connection, "cap_<connection>" only on that one
+      // (ESP32's ADC2 analog_input_serial).
+      if (!(bp.capabilities.supports(pin.type)
+            || bp.capabilities.supports(pin.type + '_' + this.connection))) {
+        return null;
+      }
       return pin;
     };
     const walk = (menu) => {
@@ -1379,6 +1468,77 @@ class DesignerState {
       }
     };
     walk(this.rootMenu);
+  }
+
+  /// Re-derive the ADC-seeded numeric ranges on every Data Display item and
+  /// every chart plot, when this design was built for a DIFFERENT target.
+  ///
+  /// These values are seeded from the active board's own adc block at
+  /// item-creation time (addMenuItem.js -> _freshDataDisplayItem /
+  /// _freshChartItem) and then simply persist. Nothing re-derived them on
+  /// load, so a design moved from a 10-bit/5 V AVR to a 12-bit/3.3 V ESP32
+  /// kept reading 1023 counts at 5 V full scale — wrong on both axes, in the
+  /// generated sketch as well as in the chart.
+  ///
+  /// Scope is deliberately narrow, because nothing in the file distinguishes
+  /// "still the old board's default" from "the user typed this deliberately":
+  ///   - the RAW range (maxValue / dataRangeMax) is ALWAYS re-derived. It is
+  ///     a hardware fact about the ADC's full-scale count, never a preference.
+  ///   - the DISPLAY maximum (maxScaleStr / displayMax) is re-derived only
+  ///     while the units still read exactly 'V' — i.e. the field is still the
+  ///     reference-voltage reading it was seeded as. A user who changed the
+  ///     units to degC/kPa/... has taken the scaling over and is left alone.
+  ///   - the units themselves (trailingText / units) are never touched.
+  /// Every change is reported, so the load is flagged partial and the user is
+  /// shown exactly what moved and why.
+  ///
+  /// @param {string} sourceBoardName — the target this design was built for:
+  ///        parsed.boardName / payload.boardName, or LEGACY_ASSUMED_BOARD_NAME
+  ///        for a pre-schema-12 file that never recorded one.
+  /// @param {Array<string>} warnings — caller's collector
+  _retargetAdcRanges(sourceBoardName, warnings) {
+    if (!sourceBoardName || sourceBoardName === this.board.name) return;
+    const adc = this.board.adc || {};
+    // Unlisted Board / Minimal C Code carry no adc block, so there is nothing
+    // to derive from and the saved values remain the best information there is.
+    if (adc.max === undefined || adc.max === null) return;
+    const newMax = adc.max;
+    const newRef = (adc.defaultRefVolts !== undefined && adc.defaultRefVolts !== null)
+                 ? String(adc.defaultRefVolts) : null;
+    const note = (path, field, from, to) => warnings.push(
+      path + '.' + field + ': ' + JSON.stringify(from) + ' was set for "' + sourceBoardName +
+      '" — re-derived to ' + JSON.stringify(to) + ' for "' + this.board.name + '"');
+
+    const walk = (menu, path) => {
+      menu.items.forEach((item, i) => {
+        const ip = path + '.items[' + i + ']';
+        if (item.type === ITEM_TYPE_DATADISPLAY) {
+          if (item.maxValue !== newMax) {
+            note(ip, 'maxValue', item.maxValue, newMax);
+            item.maxValue = newMax;
+          }
+          if (newRef !== null && item.trailingText === 'V' && item.maxScaleStr !== newRef) {
+            note(ip, 'maxScaleStr', item.maxScaleStr, newRef);
+            item.maxScaleStr = newRef;
+          }
+        }
+        if (item.type === ITEM_TYPE_CHART && Array.isArray(item.plots)) {
+          item.plots.forEach((pl, pi) => {
+            const pp = ip + '.plots[' + pi + ']';
+            if (pl.dataRangeMax !== newMax) {
+              note(pp, 'dataRangeMax', pl.dataRangeMax, newMax);
+              pl.dataRangeMax = newMax;
+            }
+            if (newRef !== null && pl.units === 'V' && pl.displayMax !== newRef) {
+              note(pp, 'displayMax', pl.displayMax, newRef);
+              pl.displayMax = newRef;
+            }
+          });
+        }
+        if (item.subMenu) walk(item.subMenu, ip + '.subMenu');
+      });
+    };
+    walk(this.rootMenu, 'rootMenu');
   }
 
   /// Internal: load persisted state if a valid-enough payload exists
@@ -1408,6 +1568,15 @@ class DesignerState {
     // board — catches both target switches and board updates that removed
     // a pin.  Done every load so stale pins never reach code generation.
     this._clearInvalidPins();
+    // Same for the ADC-seeded ranges: this payload may have been written
+    // under a different target (close designer -> change target -> reopen,
+    // which rebuilds the state against the NEW board but restores THIS
+    // payload).  boardName has always been written here, so the legacy
+    // assumption only applies to a payload old enough to predate it.
+    this._retargetAdcRanges(
+      (typeof payload.boardName === 'string' && payload.boardName)
+        ? payload.boardName : LEGACY_ASSUMED_BOARD_NAME,
+      warnings);
     // Restore connection + baud ONLY when the save was made under the
     // same target.  Switching targets in the connection prompt should
     // reset both to the new board's defaults — the constructor already
@@ -1450,14 +1619,27 @@ class DesignerState {
   /// Used by generateCode.js to embed the design file inside the ZIP.
   /// @returns {string} JSON string
   exportToJSON() {
+    // Key order is the file's reading order (JSON.stringify preserves
+    // insertion order), so the four fields that identify the design sit
+    // together at the top where they are visible without scrolling past
+    // rootMenu: what it is (format/schema), what it is called (name), and
+    // what it targets (connection/boardName).  savedAt/js_ver are
+    // provenance rather than identity and follow; rootMenu is last because
+    // it is by far the largest.  Nothing reads the file positionally —
+    // importFromObject takes named fields — so this is presentation only.
     const out = {
       format:     EXPORT_FORMAT_TAG,
       schema:     DESIGNER_STATE_SCHEMA_VERSION,
       name:       this.name,
+      connection: this.connection,
+      // The target this design was built for.  Added in schema 12 — the
+      // localStorage payload has always carried it (see save()), but the
+      // exported file did not, so importFromObject had no way to tell that
+      // pin assignments and ADC ranges belonged to a different board.
+      boardName:  this.board.name,
       savedAt:    new Date().toISOString(),
       js_ver:     window.JS_VERSION,
       rootMenu:   _exportableMenu(this.rootMenu),
-      connection: this.connection,
     };
     return JSON.stringify(out, null, 2);
   }
@@ -1494,22 +1676,54 @@ class DesignerState {
     // via _parseMenuTolerant; newer schemas with extra fields will
     // have those silently ignored.
     const warnings = [];
-    if (parsed.schema !== DESIGNER_STATE_SCHEMA_VERSION) {
+    // Schema 11 is a SUPPORTED legacy load, not a mismatch: its only
+    // difference from 12 is the missing boardName, handled immediately
+    // below.  Any other version really is unknown, and still warns.
+    if (parsed.schema !== DESIGNER_STATE_SCHEMA_VERSION && parsed.schema !== 11) {
       warnings.push('schema: file=' + parsed.schema + ', expected=' +
                     DESIGNER_STATE_SCHEMA_VERSION +
                     ' — loaded with defaults for unrecognised fields');
     }
+    // Target this design was built for — absent before schema 12, where it
+    // is assumed to be the designer's own default board.  Only worth telling
+    // the user about when the assumption actually changes something, i.e.
+    // when it differs from the board now selected; a legacy file opened on an
+    // UNO needs no explanation.
+    const sourceBoardName = (typeof parsed.boardName === 'string' && parsed.boardName)
+                          ? parsed.boardName : LEGACY_ASSUMED_BOARD_NAME;
     this.name           = resolvedName;
     this.rootMenu       = _parseMenuTolerant(parsed.rootMenu, 'rootMenu', warnings);
+    // Connection is restored BEFORE the pin pass: repairPin's capability
+    // check is connection-sensitive (ESP32's ADC2 pins are analog inputs only
+    // on Serial), so it has to run against the connection this design
+    // actually uses rather than the constructor's 'serial' default.
+    if (typeof parsed.connection === 'string' && this.board.connections[parsed.connection]) {
+      this.connection = parsed.connection;
+    }
     this._clearInvalidPins();
+    // The assumed-UNO fallback feeds exactly one thing: _retargetAdcRanges.
+    // So it is only worth telling the user about when that pass actually
+    // rewrote something — otherwise the assumption had no consequence and
+    // the note is pure noise on a file that loaded perfectly.  Every current
+    // producer records boardName, so the files this applies to are the
+    // genuinely old ones (schema 11 and earlier), and plenty of those — any
+    // design with no Data Display and no chart — have nothing for the
+    // assumption to affect and should open silently.
+    // The note is spliced in AHEAD of the changes it explains, so it reads as
+    // their heading rather than as an unrelated trailing remark.
+    const beforeAdc = warnings.length;
+    this._retargetAdcRanges(sourceBoardName, warnings);
+    if (!parsed.boardName && warnings.length > beforeAdc) {
+      warnings.splice(beforeAdc, 0,
+        'boardName: this file does not record the board it was built for, so it was ' +
+        'assumed to be an "' + LEGACY_ASSUMED_BOARD_NAME + '" design — the range(s) ' +
+        'below were re-derived on that basis. Re-save to record the real target.');
+    }
     this.activeMenuPath = [];
     this.activeItemIdx  = null;
     this.contextStack   = [];
     this._pendingDrawingItem = null;
     this._addMenuItemHistory = {};
-    if (typeof parsed.connection === 'string' && this.board.connections[parsed.connection]) {
-      this.connection = parsed.connection;
-    }
     this.save();
 
     if (warnings.length > 0) {

@@ -79,15 +79,38 @@ const DesignerSelectFromMenuList = (() => {
         out += '|b' + idx + fmt + '~' + name;
       });
     }
+    // Missing-drawings block, declared hidden. A {;} can only change items
+    // the screen already carries, so these have to exist here even though
+    // nothing is missing yet — no design has been picked. {b<n>} reveals
+    // whichever it needs. See missingDwgPrompt.js.
+    out += DesignerMissingDwgPrompt.renderHiddenItems();
     out += '}';
     return out;
   }
 
-  /// Switch active design to names[idx] and open the editMenu screen —
-  /// or, if the freshly-loaded design references any dwg not currently
-  /// in DwgLibrary (directly or via insertDwg), the "Missing Drawings"
-  /// prompt (missingDwgPrompt.js) instead, so the user can load them
-  /// before editing. Only loads by index when no design is currently
+  /// Every item this screen owns, hidden — Load Design from File, its
+  /// instruction label, the hidden X nav button, the empty-list note, and
+  /// one row per saved design.
+  ///
+  /// Once a design is picked and it needs dwgs, this screen stops being a
+  /// list and becomes the loading screen for that design: picking a second
+  /// design, or loading another file, midway through would be answering a
+  /// question nobody asked. Only the missing-dwg block is left visible.
+  /// A fresh {b} re-renders everything, so nothing is lost — Back from the
+  /// editMenu does exactly that.
+  /// @param {DesignerState} state
+  /// @returns {string} '|…-~' hides, ready to splice into a {;}
+  function hideOwnItems(state) {
+    let out = '|L-~|!I-~|X-~|!Zempty-~';
+    DesignerState.listNames().forEach((name, idx) => { out += '|b' + idx + '-~'; });
+    return out;
+  }
+
+  /// Switch active design to names[idx] and open the editMenu screen — or,
+  /// when the freshly-loaded design references dwgs DwgLibrary does not hold
+  /// (directly or via insertDwg), stay on THIS list screen and reveal the
+  /// missing-drawings block on it instead, so they can be loaded before
+  /// editing. Only loads by index when no design is currently
   /// active (state.name is empty).  Once a design is loaded its identity
   /// is state.name — independent of list position or order — and
   /// back-nav cmds like {b0} re-enter the same editMenu without
@@ -104,7 +127,14 @@ const DesignerSelectFromMenuList = (() => {
       }
       state.loadNamed(names[idx]);
     }
-    return DesignerMissingDwgPrompt.maybeShow(state) || DesignerEditMenu.send(state);
+    // Dwgs missing? Stay on THIS screen and reveal the loading block on it,
+    // as a {;} update. Opening a screen of its own is what put two entries
+    // on the nav stack for one screen and made the first Back press a
+    // no-op — see missingDwgPrompt.js. Once nothing is missing, the block's
+    // own exit button opens the editMenu, one entry above this list.
+    const reveal = DesignerMissingDwgPrompt.revealUpdate(state, hideOwnItems(state));
+    if (reveal) return { pfod: reveal, skipSave: false };
+    return DesignerEditMenu.send(state);
   }
 
   /// Dispatch handler.  depth points to the matched 'b' byte; sub-
@@ -125,7 +155,7 @@ const DesignerSelectFromMenuList = (() => {
     return _switchAndReturnMain(state, idx);
   }
 
-  return Object.freeze({ send });
+  return Object.freeze({ send, hideOwnItems });
 })();
 
 // Self-register into the top-level designer dispatcher.
