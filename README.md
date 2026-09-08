@@ -1,4 +1,4 @@
-# pfodWeb / pfodProxy source repository V4.1.7
+# pfodWeb / pfodProxy source repository V4.1.9
 
 <p align="center">
 
@@ -10,6 +10,8 @@
 ![fieldsSet](docs/crosshairWithPanel_md.jpg)
 
 </p>
+
+pfodWeb.html V4.1.8 is optimized for use by AI to design user interfaces. See AI Coding below.
 
 pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) designer, code generator and client for controlling and monitoring Arduino and other embedded devices from a browser — 
 no app install, no internet, server access required. pfodWeb.html renders device-defined drawings, menus, 
@@ -29,10 +31,27 @@ There is also an Android client, [pfodApp](https://www.forward.com.au/pfod/index
 
 **Breaking Change: When updating from pfodWeb V4.1.5 or below to V4.1.6 or above, save/export all dwgs first then update and reload from their files.**
 
-# Using pfodParser/pfodWeb with AI
-The **pfodWeb/docs** sub-directory contains **pfodAI-guide.md** and two .md specifications for the menu and dwg json files, 
-**pfodMenu_json-format.md** and **pfodDwg_json-format.md**.  Point your AI at these three files and the [pfodParser](https://github.com/drmpf/pfodParser) src to give it the context it needs to create pfod menus and dwgs
-and to add the logic to complete the program.
+## AI coding
+
+***Note:*** This repository is **NOT** need for AI assisted user interface coding.  
+Download the [pfodParser (github)](https://github.com/drmpf/pfodParser) library instead 
+which includes the complete pfodWeb.html and its docs.  In the pfodParser library under ***pfodParser/pfodWeb/docs*** are
+ three .md files for the AI assistant to consume.  
+
+**pfodAI-guide.md** -- an guide for the AI assistant on how to turn a user's design request in to a UI.  
+**pfodMenu_json-format.md** -- an AI guide on how to create valid json definitions for pfod menus.  
+**pfodDwg_json-format.md** -- an AI guide on how to create valid json definitions for pfod drawings.  
+
+Point the AI at those three files and describe the contents of the UI you want to build. Tell the AI to pause after each
+interation so you can make your own edits/modification to the UI using pfodWeb's UI preview and editing capabilities.  
+While the AI can create the general design, the fine adjustment to make it look just right are often easier done by hand
+using the preview/edit features.  For changes that effect multiple items, use the pfodWeb editor to determine the exact
+change required and then ask AI to implement it for the all the effected items. 
+
+If you use Claude-in-Chrome, claude can drive
+the entire interation from creating the json files to loading them into pfodWeb's desinger for you to preview.  Ask claude to generate code at each iteration.
+The code generated contains a snapshot of the json files of the design at that stage.
+
 
 ## Designer Tutorials
 
