@@ -128,7 +128,7 @@ library and pfodProxy are all working.
 Hello_World_serial.ino     setup()/loop(), Serial.begin(115200), parser.connect(&Serial)
 pfodMainMenu.cpp/.h        generated menu handler — sends the menu containing the drawing
 Dwg_HelloWorld.cpp/.h      the drawing itself
-json/                      pfodWeb Designer source files (see "The json folders" below)
+menujson/                  pfodWeb Designer source (see "The menujson folders" below)
 ```
 
 ### 5. `LedOnOff_serial` — LED control over Serial
@@ -202,16 +202,45 @@ To use it:
 
 ## Common details
 
-### The `json` folders
+### The `menujson` folders
 
 `Hello_World_serial` and the four `LedOnOff_*` examples were produced by the **pfodWeb Designer**
-and keep their design source alongside the code:
+and keep their design source alongside the code.
 
-* `*.pfodMenu_json` — the menu design, loadable in the pfodWeb Designer
-* `*.pfodDwg_json` — one file per drawing (`LedOnOff`, `LedOn`, `LedOff`, `HelloWorld`)
+Generate Code writes **one** file into `menujson/` — exactly what *Save Design to File* would
+have downloaded, so the two commands produce the same artifact:
+
+* `<name>.pfodMenu_json` — when the design links no drawings, the design on its own.
+  Load it with **Edit existing Menu → Load Design from File**.
+* `<name>_menuJson.zip` — when it does, a bundle laid out as
+
+  ```
+  <name>.pfodMenu_json
+  dwgs/<dwg>.pfodDwg_json      one per linked drawing
+  ```
+
+  covering every drawing the design reaches, recursively including whatever each reaches via
+  `insertDwg`. Load it with the same **Edit existing Menu → Load Design from File** (one button
+  takes either shape), or with the Dwg
+  Controls Panel's **Load Dwg**, which takes the drawings *and* the design. Both accept
+  the whole generated sketch zip as well — they look inside `menujson/` for the bundle.
+
+  Neither overwrites anything already loaded. A drawing whose name is already in the library is
+  left alone; a design already in the menu list is reported as a duplicate by the Dwg Controls
+  Panel, and loaded beside it as `<name>_2` by Edit existing Menu, which is where you go when
+  you actually want that design open. Both say what they did.
 
 Load these back into the Designer to modify the GUI and re-generate `pfodMainMenu.*` and
-`Dwg_*.*`. The `demoScreens_*` sketches are hand-written and have no json.
+`Dwg_*.*`. The `demoScreens_*` sketches are hand-written and have no design source.
+
+What each sketch here ships:
+
+| Sketch | `menujson/` holds |
+|---|---|
+| `Hello_World_serial` | `Hello_World_menuJson.zip` — the design + `HelloWorld` |
+| `LedOnOff_serial` / `_ble` / `_tcp` / `_http` | `<name>_menuJson.zip` — the design + `LedOnOff`, `LedOn`, `LedOff` |
+| `Menu_1` | `Menu_1.pfodMenu_json` — no drawings, so no zip |
+
 
 ### The `data` folders
 
@@ -278,10 +307,6 @@ at the bottom of each generated header.
 `SliderInputErrorControl.cpp` in the `SliderWithHelp` sketch is a complete worked example: it
 subclasses `Dwg_SliderInputErr` to add the slider position and an error message, and takes over by
 defining `get_dwg_SliderInputErr()`.
-
-> **Note:** the sketches in this folder were generated before the accessors were added, so their
-> `Dwg_*.h` files still only declare `extern Dwg_<Name> dwg_<Name>;`. Re-generate one from its
-> `json/` folder to get the current shape.
 
 ### Debug output
 

@@ -406,23 +406,34 @@ const DesignerGenerateCode = (() => {
     return out;
   }
 
-  // Drawing names use only the _Cmd suffix (stripping type_text_ prefix),
-  // so "drawing_Drawing_Cmd" → "Cmd" and "drawing_Drawing_Cmd_2" → "Cmd_2".
-  // Used only for the menu ITEM's own tap-cmd identity (_dwgCmdVarName,
-  // below) — never for the dwg class/instance name, which is based on
-  // the LINKED DWG's own name instead (see _dwgClassName/_dwgVarName).
-  function _dwgSuffix(autoCmd) {
-    const id  = _cppId(autoCmd);
-    const pos = id.indexOf('_Cmd');
-    return pos >= 0 ? id.substring(pos + 1) : id;
-  }
-
-  // pfodAutoCmd variable name for a drawing item's tap-cmd (the menu
-  // item's own row-touch identity, e.g. Menu_withDwg's own
-  // dwgMenuItem_Cmd) — based on the ITEM's autoCmd, independent of
-  // which dwg happens to be linked to it.
+  // pfodAutoCmd variable name for a drawing item's tap-cmd — the menu
+  // item's own row-touch identity, based on the ITEM's autoCmd and
+  // independent of which dwg happens to be linked to it. Never the dwg
+  // class/instance name, which comes from the LINKED DWG's own name
+  // instead (see _dwgClassName/_dwgVarName).
+  //
+  // The rule itself lives in dwgArduinoExport.js, which declares this same
+  // member for its own single-dwg wrapper menu. It is shared rather than
+  // repeated because the two copies had already drifted: this one derived
+  // a name per item while that one hard-coded "dwgMenuItem_Cmd", so the
+  // same design produced different member names depending on which
+  // Generate button was pressed.
+  //
+  // The rule strips the leading TYPE word only — "drawing_Home_Cmd" →
+  // "dwgMenuItem_Home_Cmd" — so the rest of the autoCmd survives, and
+  // since state.js's _makeAutoCmd already makes that unique within its
+  // menu, so is the member.
+  //
+  // It used to cut from "_Cmd" rather than the first "_", which threw the
+  // item's name away and returned a bare "Cmd" for EVERY drawing. With one
+  // drawing that was invisible; with two it declared the same pfodAutoCmd
+  // member twice and would not compile — and had it compiled, both menu
+  // rows would have shared one wire cmd and been indistinguishable to the
+  // device. The only thing that ever varied was the `_2` collision suffix,
+  // so it disambiguated the case that did not need it (two items with the
+  // SAME text) and collapsed the case that did.
   function _dwgCmdVarName(autoCmd) {
-    return 'dwgMenuItem_' + _dwgSuffix(autoCmd);
+    return DwgArduinoExport.dwgMenuItemCmdVar(autoCmd);
   }
 
   // The generated dwg class/instance name is based on the LINKED DWG's
@@ -1085,6 +1096,24 @@ const DesignerGenerateCode = (() => {
       out += '\n';
       out += '  ' + prefix + '_plotDataTimer.start(' + prefix + '_PLOT_DATA_INTERVAL); // start plot timer\n';
     }
+    // Prime the auto-assigned identifiers -- same reason each drawing's own
+    // init() sends itself (dwgArduinoExport.js): pfodAutoCmd hands out its
+    // value on FIRST USE, so left alone the cmds depend on the order a
+    // client happens to ask for things. Sending the menu once at boot fixes
+    // them, and it goes nowhere -- a default-constructed pfodParser has
+    // io == NULL, so every write() is a silent no-op.
+    //
+    // BEFORE the drawings and sub-menus below, so the numbering follows the
+    // nesting: this menu's own items take the lower cmds, and everything it
+    // reaches takes higher ones.
+    out += '  // Forces this menu\'s pfodAutoCmds to fixed, deterministic values at boot\n' +
+           '  // instead of leaving them lazily assigned by client request order -- sent\n' +
+           '  // to a local discard sink (default-constructed pfodParser leaves io=NULL,\n' +
+           '  // so its write()s silently no-op), never a real client. Runs BEFORE the\n' +
+           '  // drawings and sub-menus below, so this menu takes the lower cmds and\n' +
+           '  // everything it reaches takes higher ones.\n' +
+           '  pfodParser primingSink;\n' +
+           '  sendMainMenu(primingSink);  // before any included dwgs or submenus to match later gets higher idx\n\n';
     for (const item of drawings) {
       const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'drawing');
       if (_dwgIsLinked(item)) {
@@ -1719,18 +1748,6 @@ const DesignerGenerateCode = (() => {
         cpp += '  ' + _pinWriteFn(sItem.pin.type) + '(' + pinConst + ',' + intVar + '); // set output\n';
       }
     }
-    for (const dItem of drawings) {
-      const dLabel = _cppStr((dItem.text || '').replace(/\n/g, ' ').trim() || 'drawing');
-      if (_dwgIsLinked(dItem)) {
-        cpp += '  ' + _dwgVarName(dItem) + '.init(); // initialize drawing -- \'' + dLabel + '\'\n';
-      } else {
-        cpp += '  // MISSING: dwg \'' + dItem.dwgName + '\' is not currently loaded -- load it and regenerate:\n' +
-               '  // ' + _dwgVarName(dItem) + '.init(); // initialize drawing -- \'' + dLabel + '\'\n';
-      }
-    }
-    for (const child of childSubs) {
-      cpp += '  ' + _subMenuAccessor(names.get(child)) + '.init(); // initialize nested sub-menu\n';
-    }
     for (const cItem of charts) {
       const prefix = _chartPrefix(cItem.autoCmd);
       cpp += '\n';
@@ -1742,6 +1759,30 @@ const DesignerGenerateCode = (() => {
                prefix + '_plot_' + n + '_varDisplayMin);\n';
       }
       cpp += '  ' + prefix + '_plotDataTimer.start(' + prefix + '_PLOT_DATA_INTERVAL); // start plot timer\n';
+    }
+    // Prime this level's own pfodAutoCmds, exactly as pfodMainMenu::init()
+    // does for the top level -- see the note there. sendMenu() rather than
+    // sendMainMenu(): a sub-menu sends itself with {, under its own method.
+    // Before its own drawings and nested sub-menus, for the same reason.
+    cpp += '  // Forces this sub-menu\'s pfodAutoCmds to fixed, deterministic values at\n' +
+           '  // boot instead of leaving them lazily assigned by client request order --\n' +
+           '  // sent to a local discard sink (default-constructed pfodParser leaves\n' +
+           '  // io=NULL, so its write()s silently no-op), never a real client. Runs\n' +
+           '  // BEFORE the drawings and nested sub-menus below, so this level takes\n' +
+           '  // the lower cmds and everything it reaches takes higher ones.\n' +
+           '  pfodParser primingSink;\n' +
+           '  sendMenu(primingSink);  // before any included dwgs or submenus to match later gets higher idx\n\n';
+    for (const dItem of drawings) {
+      const dLabel = _cppStr((dItem.text || '').replace(/\n/g, ' ').trim() || 'drawing');
+      if (_dwgIsLinked(dItem)) {
+        cpp += '  ' + _dwgVarName(dItem) + '.init(); // initialize drawing -- \'' + dLabel + '\'\n';
+      } else {
+        cpp += '  // MISSING: dwg \'' + dItem.dwgName + '\' is not currently loaded -- load it and regenerate:\n' +
+               '  // ' + _dwgVarName(dItem) + '.init(); // initialize drawing -- \'' + dLabel + '\'\n';
+      }
+    }
+    for (const child of childSubs) {
+      cpp += '  ' + _subMenuAccessor(names.get(child)) + '.init(); // initialize nested sub-menu\n';
     }
     cpp += '}\n\n';
 
@@ -1950,6 +1991,17 @@ const DesignerGenerateCode = (() => {
   // ZIP writer + browser-download mechanics live in zipBuilder.js,
   // shared with generateCcode.js.
 
+  /// Build the sketch zip and hand it to the browser.
+  ///
+  /// Returns what to say about it rather than saying it: a dwg that is
+  /// referenced but not loaded used to raise a native alert(), which
+  /// browser automation cannot dismiss — it would stop a scripted run dead
+  /// over a warning, after the sketch had already been written. The caller
+  /// puts this on the editMenu status label instead (editMenu.js's
+  /// statusUpdate).
+  ///
+  /// @param {DesignerState} state
+  /// @returns {{text: string, level: string}}
   function _triggerDownload(state) {
     const name = state.name;
     // Filesystem/Arduino-safe form of the design name for every folder,
@@ -1960,31 +2012,36 @@ const DesignerGenerateCode = (() => {
     // e.g. inside the generated files' own comments/JSON `name` field).
     const fileName = _cppId(name) || 'Menu';
     const enc  = new TextEncoder();
-    const { files: dwgFiles, names: dwgNames, missing } = _generateDrawingFiles(state);
-
-    if (missing.length > 0) {
-      alert('Warning: ' + missing.length + ' referenced dwg(s) are not currently loaded ' +
-        'and will be commented out in the generated code:\n' + missing.join(', '));
-    }
+    // names is not read here any more — the design's own json bundle
+    // below carries every linked dwg, built from the same collectAllDwgs
+    // walk this one uses.
+    const { files: dwgFiles, missing } = _generateDrawingFiles(state);
 
     const entries = [
       { path: fileName + '/' + fileName + '.ino',   data: enc.encode(_generateIno(state)) },
       { path: fileName + '/pfodMainMenu.h',     data: enc.encode(_generateH(state)) },
       { path: fileName + '/pfodMainMenu.cpp',   data: enc.encode(_generateCpp(state)) },
-      { path: fileName + '/json/' + fileName + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
     ];
     dwgFiles.forEach((f) => entries.push({ path: fileName + '/' + f.filename, data: enc.encode(f.content) }));
-    // Each generated dwg's own re-loadable design, alongside the menu's
-    // own — dwgLibrary.js's buildSaveableDwg(), the exact same format
-    // dwgControlsPanelUI.js's own Export Dwg / Generate Code produces —
-    // so any of them can be re-opened later via Load Dwg.
-    dwgNames.forEach((dwgName) => {
-      const dwg = DwgLibrary.get(dwgName);
-      entries.push({
-        path: fileName + '/json/' + dwgName + '.pfodDwg_json',
-        data: enc.encode(JSON.stringify(buildSaveableDwg(dwg), null, 2)),
-      });
-    });
+
+    // The design that produced this sketch, so it can be re-opened and
+    // re-generated later — ONE artifact, exactly what Save Design would
+    // have downloaded (saveToFile.js's buildBundle):
+    //
+    //     <name>/menujson/<name>.pfodMenu_json    no linked drawings
+    //     <name>/menujson/<name>_menuJson.zip     one or more
+    //
+    // It used to be laid out flat here — the menu json and each dwg json
+    // side by side in a `json/` directory — which was a third shape on top
+    // of the two Save Design already produced, and the only one no loader
+    // could read back in a single action. Now the sketch carries the same
+    // file the user would have saved.
+    //
+    // The directory is `menujson/`, not `json/`: what is in it is the menu
+    // design, and a sketch has other json-shaped things (board data, the
+    // pfodWeb payload under data/) that this is not.
+    const bundle = DesignerSaveToFile.buildBundle(state, fileName);
+    entries.push({ path: fileName + '/menujson/' + bundle.name, data: bundle.bytes });
 
     // One SubMenu_<ident>.h/.cpp pair per sub-menu, any nesting depth —
     // _generateSubMenuFiles recurses into its own nested sub-menus and
@@ -2001,12 +2058,24 @@ const DesignerGenerateCode = (() => {
 
     const zipBytes = DesignerZipBuilder.buildZip(entries);
     DesignerZipBuilder.triggerDownload(fileName + '.zip', zipBytes);
+
+    if (missing.length > 0) {
+      return {
+        text: 'Generated ' + fileName + '.zip\n' + missing.length +
+              ' referenced dwg(s) are not loaded and are commented out in it:\n' +
+              missing.join(', '),
+        level: 'warn'
+      };
+    }
+    return { text: 'Generated ' + fileName + '.zip', level: 'ok' };
   }
 
   // ── Dispatch handler ─────────────────────────────────────────────
-  // Returns PFOD_EMPTY (no navigation change) after triggering the
-  // browser download.  skipSave prevents the dispatch wrapper from
-  // persisting the state on what is a read-only action.
+  // Answers with a {;} carrying the outcome after triggering the browser
+  // download.  A {;} updates the editMenu screen already showing without
+  // pushing anything onto menuNavStack, so this stays a "fire and stay
+  // here" action.  skipSave prevents the dispatch wrapper from persisting
+  // the state on what is a read-only action.
 
   function send(rawCmd, state, depth) {
     if (!state.name) return { pfod: PFOD_EMPTY, skipSave: true };
@@ -2014,8 +2083,11 @@ const DesignerGenerateCode = (() => {
     // not an Arduino/C++ sketch — branch before touching any of the
     // C++-specific generators below.
     if (state.board.family === 'ccode') return DesignerGenerateCcode.send(rawCmd, state, depth);
-    _triggerDownload(state);
-    return { pfod: PFOD_EMPTY, skipSave: true };
+    const status = _triggerDownload(state);
+    return {
+      pfod: DesignerEditMenu.statusUpdate(status.text, status.level),
+      skipSave: true
+    };
   }
 
   // pinConstName / chartPlotPinName are exposed so editMenuItem.js /

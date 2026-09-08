@@ -41,7 +41,8 @@
  *   {mS}  → Load Several Dwgs — one multi-file pick (one folder; a file
  *           chooser cannot multi-select across folders), matching on each
  *           drawing's own name and saving only what is actually missing.
- *           Answers {;}. See _loadSeveralDwgs.
+ *           Answers {;}, reporting what it did on the summary label.
+ *           See _loadSeveralDwgs.
  *   {mN}  → Load next dwg — a single-file picker aimed at the head of the
  *           remaining list, so one button walks a whole insertDwg chain.
  *           Answers {;}.
@@ -74,8 +75,43 @@ const DesignerMissingDwgPrompt = (() => {
   const MDP_LOAD_NEXT_CMD = 'N';
 
   // "All dwgs loaded / Open Editing Menu" — revealed only once nothing is
-  // missing, and the one cmd here that answers with a menu.
+  // missing.
   const MDP_DONE_CMD = 'D';
+
+  // "Open Menu Anyway" — the same destination as MDP_DONE_CMD, offered
+  // while dwgs are STILL missing.
+  //
+  // Without it this block is a dead end. Every button on it asks for a file
+  // the user may simply not have: a drawing that was never saved, one that
+  // belongs to whoever sent the design, or nothing missing at all except
+  // the user's willingness to go and find it when all they wanted was a
+  // look at the menu. There was no way forward and no way back that did not
+  // abandon the design.
+  //
+  // It is safe to offer because a missing drawing is already survivable
+  // everywhere it lands: a menu Drawing item renders the placeholder that
+  // NAMES the drawing (previewMenu.js's _renderNotLoadedDrawing), and a
+  // missing insertDwg is dropped from its parent's wire response with the
+  // rest of that drawing intact (dwgDesignerAdapter.js's own
+  // _resolveAutoCmdAndIdx). Nothing is deleted and no reference is
+  // rewritten — load the drawing later and it simply appears.
+  const MDP_SKIP_CMD = 'K';
+
+  // A non-clickable label reporting what the LAST load did — how many of
+  // the picked files were used, which were skipped and why.
+  //
+  // This was a pfodAlert. A modal was the wrong shape for it twice over:
+  // the user had to dismiss it before they could look at the list it was
+  // describing, and it took its own text away with it, so "which two did it
+  // skip again?" had no answer. As a label it sits beside the status line
+  // it qualifies and stays there.
+  const MDP_SUMMARY_CMD = 'R';
+
+  // Lines for that label, or null when there is nothing to report yet.
+  // Set by whichever load ran last, cleared when the block is revealed for
+  // a newly-picked design (a summary from the previous design's load would
+  // describe work that has nothing to do with this one).
+  let _lastSummary = null;
 
   /// Strip pfod delimiter characters so a dwg's own name can never
   /// corrupt the wire message it's embedded in — matches
@@ -119,9 +155,28 @@ const DesignerMissingDwgPrompt = (() => {
   /// @returns {string} the hidden `|m…` items to append to the {b} screen
   function renderHiddenItems() {
     return '|!m' + MDP_STATUS_CMD + '-~' +   // names still to load
+           '|!m' + MDP_SUMMARY_CMD + '-~' +     // what the last load did
            '|m' + MDP_LOAD_SEVERAL_CMD + '-~' + // Load Several Dwgs
            '|m' + MDP_LOAD_NEXT_CMD + '-~' +    // Load next dwg
-           '|m' + MDP_DONE_CMD + '-~';          // All dwgs loaded -> editMenu
+           '|m' + MDP_DONE_CMD + '-~' +         // All dwgs loaded -> editMenu
+           '|m' + MDP_SKIP_CMD + '-~';          // Open Menu Anyway -> editMenu
+  }
+
+  /// The `|!mR…` item for the summary label: the lines set by the last
+  /// load, or the item hidden again when there is nothing to report.
+  ///
+  /// Colour says at a glance whether anything needs reading: green when the
+  /// load did exactly what was asked, yellow when something was skipped or
+  /// unreadable — which is the case where WHY matters and the detail below
+  /// is worth the user's attention.
+  /// @returns {string}
+  function _summaryItem() {
+    if (!_lastSummary || _lastSummary.length === 0) {
+      return '|!m' + MDP_SUMMARY_CMD + '-~';
+    }
+    const colour = _lastSummary.length > 1 ? '<y>' : '<g>';
+    return '|!m' + MDP_SUMMARY_CMD + DESIGNER_MENU_FMT + '~' + colour +
+           _lastSummary.join('\n');
   }
 
   /// The {;} update {b0} answers with when the design it just switched to
@@ -145,6 +200,10 @@ const DesignerMissingDwgPrompt = (() => {
   /// @returns {string|null}
   function revealUpdate(state, extraHides) {
     if (_missingNames(state).length === 0) return null;
+    // A newly-picked design starts with a clean slate: the summary still
+    // held here describes a load done for whatever design was open before,
+    // and reading it as this one's would be worse than showing nothing.
+    _lastSummary = null;
     return _updateScreen(state, extraHides);
   }
 
@@ -172,10 +231,16 @@ const DesignerMissingDwgPrompt = (() => {
       // thing that lands on the nav stack — one entry above {b}, which is
       // exactly what Back should pop.
       out += '|!m' + MDP_STATUS_CMD + '-~';
+      out += _summaryItem();
       out += '|m' + MDP_LOAD_SEVERAL_CMD + '-~';
       out += '|m' + MDP_LOAD_NEXT_CMD + '-~';
       out += '|m' + MDP_DONE_CMD + DESIGNER_MENU_FMT +
              '~All dwgs loaded\nOpen Editing Menu';
+      // Skip goes when its reason does. It and MDP_DONE_CMD lead to the
+      // same screen, so leaving both up would put two buttons side by side
+      // that do the same thing — one of them describing a problem that no
+      // longer exists.
+      out += '|m' + MDP_SKIP_CMD + '-~';
     } else {
       // The label carries the list and nothing else. A count would not do:
       // loading one dwg can change WHICH dwgs are missing, not just how
@@ -185,6 +250,9 @@ const DesignerMissingDwgPrompt = (() => {
       // as no progress at all.
       out += '|!m' + MDP_STATUS_CMD + DESIGNER_MENU_FMT +
              '~<y>Still to load: ' + stillMissing.map(_sanitize).join(', ');
+      // Directly under the list it qualifies: that label says what is left,
+      // this one says what the last press did about it.
+      out += _summaryItem();
       out += '|m' + MDP_LOAD_SEVERAL_CMD + DESIGNER_MENU_FMT +
              '~Load Several Dwgs\n<-1>from one folder';
       // Retargeted at the head of the list every press, so one button walks
@@ -192,6 +260,13 @@ const DesignerMissingDwgPrompt = (() => {
       out += '|m' + MDP_LOAD_NEXT_CMD + DESIGNER_MENU_FMT +
              '~Load next dwg\n<r>' + _sanitize(stillMissing[0]) + '</r>';
       out += '|m' + MDP_DONE_CMD + '-~';
+      // Last, under the buttons that ask for the files: the way on for a
+      // user who does not have them. It says what it costs, so it is a
+      // choice rather than the easy button — a drawing that is not there
+      // cannot be drawn, and the menu it belongs to says so where it sits.
+      out += '|m' + MDP_SKIP_CMD + DESIGNER_MENU_FMT +
+             '~Open Menu Anyway\n<-1><y>' + stillMissing.length +
+             ' drawing(s) will show as <b>not loaded</b>';
     }
     out += '}';
     return out;
@@ -204,8 +279,12 @@ const DesignerMissingDwgPrompt = (() => {
   /// name — whatever name is inside the picked file is irrelevant to
   /// which reference it's filling), save it, then re-render this screen
   /// so any newly-surfaced missing insertDwg children (or remaining
-  /// rows) show up. Cancel/error re-renders unchanged (with an alert on
-  /// a genuine error) instead of navigating. skipSave:true throughout —
+  /// rows) show up. A load that works — auto-fixes included — reports on
+  /// the summary label, the same one the bulk load writes to; only a
+  /// genuine failure (unreadable, not JSON, not a dwg, wrong drawing name)
+  /// still raises a pfodAlert, because nothing was loaded and there is no
+  /// result to report. Cancel re-renders unchanged instead of navigating.
+  /// skipSave:true throughout —
   /// this module never mutates `state` itself, only DwgLibrary (which
   /// persists independently to its own localStorage key — see
   /// dwgLibrary.js's own save()), so there's nothing on `state` for
@@ -265,11 +344,16 @@ const DesignerMissingDwgPrompt = (() => {
             settle(stay());
             return;
           }
-          if (errors && errors.length > 0) {
-            pfodAlert('"' + file.name + '" had problems that were auto-fixed:\n' +
-              errors.map((e) => e.message).join('\n'), () => {});
-          }
           DwgLibrary.save(dwg);
+          // Same label the bulk load reports through, so one press and
+          // sixteen read the same way. Auto-fixes are reported, not alerted
+          // — the drawing loaded, and a modal for that made the user
+          // dismiss something before they could see it had worked.
+          _lastSummary = ['Loaded ' + _sanitize(dwg.name) + '.'];
+          if (errors && errors.length > 0) {
+            _lastSummary.push('It had problems that were auto-fixed:\n' +
+              errors.map((e) => _sanitize(e.message)).join('\n'));
+          }
           settle(stay());
         };
         reader.onerror = () => {
@@ -410,12 +494,11 @@ const DesignerMissingDwgPrompt = (() => {
             if (errors && errors.length > 0) repairedNames.push(next);
           }
 
-          const remaining = _missingNames(state);
           const lines = [savedNames.length + ' of ' + picked.length +
             ' picked file(s) matched a missing drawing and were loaded.'];
           if (repairedNames.length > 0) {
             lines.push(repairedNames.length + ' had problems that were auto-fixed: ' +
-              repairedNames.join(', '));
+              repairedNames.map(_sanitize).join(', '));
           }
           // "Didn't match" lumped together two quite different things and
           // told the user neither. Split them: a drawing ALREADY in the
@@ -432,28 +515,24 @@ const DesignerMissingDwgPrompt = (() => {
           });
           if (alreadyLoaded.length > 0) {
             lines.push(alreadyLoaded.length + ' already loaded, so left unchanged: ' +
-              alreadyLoaded.join(', ') + '.\nRe-loading would overwrite the copy ' +
-              'in the Dwg Library, including any edits made this session.');
+              alreadyLoaded.map(_sanitize).join(', ') + '.\nRe-loading would overwrite ' +
+              'the copy in the Dwg Library, including any edits made this session.');
           }
           if (notNeeded.length > 0) {
             lines.push(notNeeded.length + ' not needed by this menu, so not loaded: ' +
-              notNeeded.join(', ') + '.\nA file is matched on the drawing name ' +
-              'INSIDE it, not on its file name.');
+              notNeeded.map(_sanitize).join(', ') + '.\nA file is matched on the drawing ' +
+              'name INSIDE it, not on its file name.');
           }
           if (unreadable > 0) {
             lines.push(unreadable + ' file(s) could not be read as a drawing and were skipped.');
           }
-          // Name them. Loading a parent can make its insertDwg children
-          // missing for the FIRST time (LedOnOff brings in LedOn and
-          // LedOff), so a bare count reads as no progress — and those new
-          // names are exactly the ones with no Load row on the screen.
-          lines.push(remaining.length === 0
-            ? 'Nothing is missing now.'
-            : 'Still missing: ' + remaining.join(', ') +
-              '\n\nLoad them, or press Load Several Dwgs again for another folder.');
-          pfodAlert(lines.join('\n\n'), () => {});
-          // The alert carries what just happened and is dismissed; the
-          // label left on screen carries the list of what is still to load.
+          // What is still missing is deliberately NOT repeated here. The
+          // alert had to say it, having taken the screen away; the label
+          // does not, because the "Still to load:" label is right beside it
+          // — and when nothing is left, the "All dwgs loaded" button that
+          // replaces that label says so itself. This one line reports what
+          // the press did, and the screen around it reports the state.
+          _lastSummary = lines;
           settle(stay());
         });
       });
@@ -497,7 +576,13 @@ const DesignerMissingDwgPrompt = (() => {
     // The one navigation in this flow. Revealed only once nothing is
     // missing, so it lands a single entry above {b} — which is what Back
     // should pop, and it does.
-    if (next === MDP_DONE_CMD) {
+    // Both ways on land on the same screen. They differ only in what is
+    // still missing when they are pressed, which the button that was
+    // showing has already said.
+    if (next === MDP_DONE_CMD || next === MDP_SKIP_CMD) {
+      // The summary belongs to the load that produced it; carrying it onto
+      // the next design's block would describe work done for another one.
+      _lastSummary = null;
       return DesignerEditMenu.send(state);
     }
     return { pfod: _updateScreen(state), skipSave: true };

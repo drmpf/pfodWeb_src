@@ -26,6 +26,12 @@ class PfodMenuDisplay {
         this._scrollArea = null;
         this._promptEl = null;
 
+        // The drawn-by-hand scrollbar, for browsers whose own one is an
+        // overlay that fades out.  Stay null on browsers that draw a real
+        // one — see _updateScrollIndicator.
+        this._scrollTrack = null;
+        this._scrollThumb = null;
+
         // Per drawing-item canvases: drawingName → {canvas, ctx, wrapper}
         this._menuCanvases = {};
 
@@ -72,6 +78,23 @@ class PfodMenuDisplay {
         this._scrollArea.addEventListener('pointerdown', () => { this.menuMouseDown = true; });
         this._scrollArea.addEventListener('pointerup',   () => { this.menuMouseDown = false; });
         this._scrollArea.addEventListener('pointercancel', () => { this.menuMouseDown = false; });
+
+        // The always-visible scrollbar, for browsers whose own one is an
+        // overlay that fades out — see _updateScrollIndicator.  Built here,
+        // with the rest of the persistent menu DOM, rather than per menu:
+        // #menu-container and #menu-scroll-area both outlive any one menu.
+        if (PfodMenuDisplay._usesOverlayScrollbars()) {
+            this._scrollTrack = document.createElement('div');
+            this._scrollTrack.id = 'menu-scroll-track';
+            this._scrollThumb = document.createElement('div');
+            this._scrollThumb.id = 'menu-scroll-thumb';
+            this._menuContainer.appendChild(this._scrollTrack);
+            this._menuContainer.appendChild(this._scrollThumb);
+            // passive: the listener only reads geometry, and telling the
+            // browser so keeps it off the scrolling critical path.
+            this._scrollArea.addEventListener('scroll',
+                () => this._updateScrollIndicator(), { passive: true });
+        }
 
         this._promptEl = document.getElementById('menu-prompt');
         if (!this._promptEl) {
@@ -147,13 +170,17 @@ class PfodMenuDisplay {
                 dwgWrapper.dataset.loadCmd = item.loadCmd;
                 dwgWrapper.style.backgroundColor = (item.formats && item.formats.bgColor) || menuBgColor || '#000000';
 
-                if (item.type === 'dwg' && !(item.formats && item.formats.disabled)) {
-                    dwgWrapper.style.cursor = 'pointer';
-                    dwgWrapper.addEventListener('click', (e) => {
-                        if (e.target !== dwgWrapper) return;
-                        this._handleClick(item.cmd);
-                    });
-                }
+                // The MARGIN around the drawing is not a control.
+                //
+                // It used to carry a click listener that sent the item's cmd
+                // whenever the press landed on the wrapper rather than the
+                // canvas — and that margin is exactly where a finger ends up
+                // when reaching past a full-width drawing for the scroll
+                // strip, so scrolling regularly pressed the menu item by
+                // accident.  The drawing itself is the control: a press on
+                // it sends the item's cmd (pfodWebMouse.handleMouseDown,
+                // when the dwg defines no touchZones) or works its
+                // touchZones.  Nothing outside the canvas does anything.
                 if (item.formats && item.formats.flash) {
                     dwgWrapper.classList.add('pfod-flash');
                 }
@@ -169,8 +196,22 @@ class PfodMenuDisplay {
                 menuCanvas.style.display = 'none';
                 menuCanvas.style.width = '100%';
                 menuCanvas.style.height = 'auto';
-                if (item.type === 'dwg-label') {
+                // An item that takes no user input takes no pointer events
+                // either, and nothing happens when it is pressed: a
+                // dwg-label is a picture, not a control, and a DISABLED dwg
+                // item is one the device has switched off.  Making the
+                // canvas transparent to the pointer is the whole of it —
+                // the touch/mouse handlers are wired to the canvas, so with
+                // this set they are never reached, whatever the drawing
+                // contains.  Without it a disabled item still sent its
+                // touchZones' cmds.
+                if (item.type === 'dwg-label' || (item.formats && item.formats.disabled)) {
                     menuCanvas.style.pointerEvents = 'none';
+                } else {
+                    // The cursor belongs on the thing that is actually
+                    // pressable, which is the drawing — it was on the
+                    // wrapper, whose margin no longer does anything.
+                    menuCanvas.style.cursor = 'pointer';
                 }
                 dwgWrapper.appendChild(menuCanvas);
 
@@ -303,8 +344,165 @@ class PfodMenuDisplay {
      *
      * @param {Redraw} redraw - The Redraw instance from DrawingViewer
      */
+    /**
+     * True when this browser draws OVERLAY scrollbars — ones painted over
+     * the content that take no layout space (every mobile browser, and
+     * macOS by default).
+     *
+     * It matters because a menu drawing canvas swallows touchstart and
+     * touchmove (pfodWebMouse preventDefaults them so a touchZone drag is
+     * not read as a page scroll).  With a classic scrollbar the strip it
+     * occupies is never covered by a canvas, so there is always somewhere
+     * to start a scroll; with an overlay scrollbar there is not, and a menu
+     * whose first drawing fills the screen cannot be scrolled at all.
+     * #menu-scroll-area.overlay-scrollbars pads a strip in by hand for that
+     * case.
+     *
+     * Measured once, off a throwaway element, rather than sniffing the user
+     * agent: Chrome on Android honours the ::-webkit-scrollbar styling and
+     * ends up with a classic scrollbar, Firefox on Android does not.
+     * @returns {boolean}
+     */
+    static _usesOverlayScrollbars() {
+        if (PfodMenuDisplay._overlayScrollbars === undefined) {
+            const probe = document.createElement('div');
+            probe.style.cssText =
+                'position:absolute;top:-9999px;width:100px;height:100px;overflow-y:scroll;';
+            document.body.appendChild(probe);
+            // Zero difference => the scrollbar is drawn over the content.
+            PfodMenuDisplay._overlayScrollbars = (probe.offsetWidth - probe.clientWidth) === 0;
+            probe.remove();
+            console.log('[MENU_SCROLL] overlay scrollbars: ' +
+                PfodMenuDisplay._overlayScrollbars);
+        }
+        return PfodMenuDisplay._overlayScrollbars;
+    }
+
+    /** Width of the strip .needs-scroll-gutter reserves, in CSS px.
+     *  MUST match #menu-scroll-area.overlay-scrollbars.needs-scroll-gutter's
+     *  padding-right — the hysteresis below works out how much taller the
+     *  drawings get when the strip is released, and a wrong number here
+     *  makes that arithmetic wrong. */
+    static get SCROLL_GUTTER_PX() { return 40; }
+
+    /**
+     * Reserve the scroll strip when, and only when, the menu has content
+     * off screen — and never flap between the two states.
+     *
+     * The naive test oscillates: the strip narrows the wrappers, every
+     * drawing is sized from wrapper width, so reserving it makes the
+     * content SHORTER, which can put it back under the viewport height,
+     * which un-reserves it, which makes the content taller again.  A menu
+     * whose content sits near the viewport height would toggle on every
+     * resize.
+     *
+     * So the two directions use different thresholds:
+     *
+     *   off -> on   content overflows now
+     *   on  -> off  content fits now AND still fits once the strip is
+     *               given back — `heightGivenBack` is exactly how much
+     *               taller the drawings become at the wider width, summed
+     *               over the width-constrained ones (a height-constrained
+     *               drawing does not change height with width, so it
+     *               contributes nothing).
+     *
+     * Turning it off therefore cannot make it overflow, and turning it on
+     * only happens when it already does. Neither edge can re-trigger the
+     * other.
+     *
+     * @param {number} heightGivenBack — px the content would grow by if the
+     *        strip were removed, from _sizeMenuDrawings
+     * @returns {boolean} true when the class changed, so the caller knows
+     *          the wrappers are a different width and the drawings need
+     *          sizing again
+     */
+    _applyScrollGutter(heightGivenBack) {
+        const area = this._scrollArea;
+        if (!area) return false;
+        const on = area.classList.contains('needs-scroll-gutter');
+        const overflows = area.scrollHeight > area.clientHeight;
+        const want = on
+            ? !(area.scrollHeight + heightGivenBack <= area.clientHeight)
+            : overflows;
+        if (want === on) return false;
+        area.classList.toggle('needs-scroll-gutter', want);
+        console.log('[MENU_SCROLL] gutter ' + (want ? 'on' : 'off') +
+            ' (scrollHeight=' + area.scrollHeight + ' clientHeight=' + area.clientHeight +
+            ' givenBack=' + Math.round(heightGivenBack) + ')');
+        return true;
+    }
+
+    /**
+     * Put the scroll position and proportion on screen, permanently.
+     *
+     * The strip reserved by .needs-scroll-gutter gave the user somewhere to
+     * start a scroll, but on a phone it read as nothing more than a black
+     * margin: an overlay scrollbar is drawn by the browser only WHILE
+     * scrolling, so until you happened to drag in the right place there was
+     * no sign the menu continued below.  This draws the bar instead, and
+     * leaves it there.
+     *
+     * Sized and placed against the scroll area's own box, from
+     * #menu-container (the scroll area's offsetParent) so it does not
+     * scroll away with the content it is describing.  Thumb length is the
+     * fraction of the menu on screen, floored at 28px so a very long menu
+     * still leaves something visible; its travel is the fraction scrolled.
+     *
+     * Only ever called on browsers that drew no usable bar of their own —
+     * the elements are not even created otherwise.
+     */
+    _updateScrollIndicator() {
+        const area = this._scrollArea;
+        if (!area || !this._scrollTrack) return;
+        const overflow = area.scrollHeight - area.clientHeight;
+        const show = overflow > 0;
+        this._scrollTrack.style.display = show ? 'block' : 'none';
+        this._scrollThumb.style.display = show ? 'block' : 'none';
+        if (!show) return;
+
+        const trackTop = area.offsetTop;
+        const trackHeight = area.clientHeight;
+        const thumbHeight = Math.max(28,
+            Math.round(trackHeight * (area.clientHeight / area.scrollHeight)));
+        const travelled = area.scrollTop / overflow;   // 0 .. 1
+
+        this._scrollTrack.style.top = trackTop + 'px';
+        this._scrollTrack.style.height = trackHeight + 'px';
+        this._scrollThumb.style.top =
+            (trackTop + Math.round((trackHeight - thumbHeight) * travelled)) + 'px';
+        this._scrollThumb.style.height = thumbHeight + 'px';
+    }
+
     handleMenuResize(redraw) {
         if (!redraw) return;
+        // Which KIND of scrollbar this browser has is a property of the
+        // browser, so it is settled once and for all; whether the strip is
+        // currently reserved is a property of the content, and is decided
+        // below once the drawings have been sized.
+        if (this._scrollArea && PfodMenuDisplay._usesOverlayScrollbars()) {
+            this._scrollArea.classList.add('overlay-scrollbars');
+        }
+        const givenBack = this._sizeMenuDrawings(redraw);
+        // One re-run at most: the hysteresis above guarantees the decision
+        // cannot flip back, so this settles rather than looping.
+        if (this._applyScrollGutter(givenBack)) {
+            this._sizeMenuDrawings(redraw);
+        }
+        // Last, once the heights are final — the bar describes them.
+        this._updateScrollIndicator();
+    }
+
+    /**
+     * Size and repaint every menu drawing against the wrappers' current
+     * width.  Split out of handleMenuResize so it can be run again after
+     * the scroll strip is reserved or released, which changes that width.
+     *
+     * @param {object} redraw
+     * @returns {number} how much taller the content would be if the scroll
+     *          strip were released — see _applyScrollGutter
+     */
+    _sizeMenuDrawings(redraw) {
+        let heightGivenBack = 0;
         // Maximum displayed height a drawing may occupy: the scroll area's visible height.
         // With CSS width:100%; height:auto, displayed height = wrapperWidth / aspectRatio.
         // When that exceeds viewportHeight we switch to CSS height:viewportHeight; width:auto
@@ -371,6 +569,11 @@ class PfodMenuDisplay {
                 entry.canvas.style.height = '';
                 canvasWidth = availableWidth;
                 canvasHeight = Math.max(1, Math.floor(canvasWidth / aspectRatio));
+                // Only a WIDTH-constrained drawing grows when the scroll
+                // strip is released — its height follows its width.  A
+                // height-constrained one is already pinned to the viewport
+                // and would not change at all, so it adds nothing here.
+                heightGivenBack += PfodMenuDisplay.SCROLL_GUTTER_PX / aspectRatio;
             }
             console.log(`[MENU_RESIZE] ${drawingName}: logical=${logicalWidth}x${logicalHeight} wrapperW=${wrapperWidth} displayedH=${Math.floor(displayedHeightWidthFirst)} cssH=${heightConstrained ? constrainedCssHeight : 'auto'} canvas=${canvasWidth}x${canvasHeight} wrapperBg=${entry.wrapper.style.backgroundColor} constrained=${heightConstrained}`);
 
@@ -382,6 +585,7 @@ class PfodMenuDisplay {
             entry.canvas.scaleY = canvasHeight / logicalHeight;
             redraw.performRedrawInMode('menu-mode', drawingName);
         }
+        return heightGivenBack;
     }
 
     /**

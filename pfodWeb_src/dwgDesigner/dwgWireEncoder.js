@@ -38,15 +38,66 @@
  * (c)2026 Forward Computing and Control Pty. Ltd.
  */
 
-// Namespace prefix every dwg-preview loadCmd is wrapped in — the shared
-// DrawingManager is keyed globally by drawing name across the whole app,
-// so a previewed (or nested insertDwg child) dwg that happens to share a
-// name with a live menu's own embedded dwg must not overwrite that menu
-// dwg's real data. Shared between dwgControlsPanelUI.js (building the
-// initial previewKey) and DwgDesignerVirtualDevice (resolving an incoming
-// loadCmd request back to a DwgLibrary name, and encodeInsertDwg below,
-// which must apply the same prefix to a nested child's own loadCmd).
-window.DWG_PREVIEW_KEY_PREFIX = '__dcpPreview__';
+// Namespace every dwg-preview loadCmd sits in — the shared DrawingManager
+// is keyed globally by drawing name across the whole app, so a previewed
+// (or nested insertDwg child) dwg that happens to share a name with a live
+// menu's own embedded dwg must not overwrite that menu dwg's real data.
+//
+// '_' is a namespace nothing else can occupy: a real device never issues a
+// cmd starting with it (pfodAutoCmd.cpp: "cannot use _ as the cmd prefix as
+// this interferes with the security handshake"), and the designer's own
+// dispatcher already routes '_' to the preview fetch handler.
+//
+// Used for MATCHING — clearPreviewDrawings and drawingDataProcessor both
+// ask "is this key a preview key?" — while the keys themselves are built by
+// dwgPreviewKey() below.
+window.DWG_PREVIEW_KEY_PREFIX = '_';
+
+// The preview loadCmd for each dwg name, allocated on first use.
+//
+// It used to be the prefix with the dwg's NAME appended, which was readable
+// in a log and far too long on the wire: a drawing that inserts six others
+// paid ~14 bytes of prefix plus the whole child name, six times over.
+// "Home/TomorrowChart" came to 1055 bytes that way and was silently cut at
+// the 1024-byte pfod cap — losing half its last insertDwg, which then threw
+// in webTranslator and took the WHOLE drawing down with it. The same
+// drawing from the real device is 824 bytes.
+//
+// So a preview cmd is now shaped exactly like the device's own: "_1", "_2",
+// … against pfodAutoCmd's "c1", "c2", …. Same length, so what the panel
+// measures for a dwg is what a sketch would actually send, and a dwg that
+// fits on the device fits here.
+//
+// The map lives for the page, not per preview: a dwg keeps its cmd across
+// preview sessions, so a DrawingManager entry and a later request for the
+// same dwg still agree. Renaming a dwg simply allocates a new one; the old
+// entry is unreachable and harmless.
+const _dwgPreviewKeyByName = new Map();
+const _dwgPreviewNameByKey = new Map();
+let _dwgPreviewKeyCounter = 0;
+
+/// The preview loadCmd for `name`, allocating one if this is its first use.
+/// @param {string} name — a DwgLibrary dwg name
+/// @returns {string} e.g. "_7"
+window.dwgPreviewKey = function (name) {
+  const key = String(name);
+  if (!_dwgPreviewKeyByName.has(key)) {
+    const cmd = window.DWG_PREVIEW_KEY_PREFIX + (++_dwgPreviewKeyCounter);
+    _dwgPreviewKeyByName.set(key, cmd);
+    _dwgPreviewNameByKey.set(cmd, key);
+  }
+  return _dwgPreviewKeyByName.get(key);
+};
+
+/// The dwg name a preview loadCmd refers to.
+/// @param {string} cmd — a bare cmd off the wire
+/// @returns {string|null} the dwg name, or null when this cmd is not one of
+///          ours — an unknown "_…" cmd is not an error, it is simply not a
+///          preview fetch, and the caller answers with its own placeholder.
+window.dwgPreviewName = function (cmd) {
+  const key = String(cmd);
+  return _dwgPreviewNameByKey.has(key) ? _dwgPreviewNameByKey.get(key) : null;
+};
 
 const DwgWireEncoder = (() => {
 
@@ -264,10 +315,10 @@ const DwgWireEncoder = (() => {
 
   /// Deliberate empty 3rd field, per webTranslator.js:1067-1078's own
   /// "must have exactly 4 parameters (loadcmd, empty, colOffset,
-  /// rowOffset)" comment. The child's own loadCmd is namespaced with
-  /// DWG_PREVIEW_KEY_PREFIX too — see that constant's own comment.
+  /// rowOffset)" comment. The child gets its own short preview cmd — see
+  /// dwgPreviewKey's own comment for why it is not the child's name.
   function encodeInsertDwg(item) {
-    return '|d~' + window.DWG_PREVIEW_KEY_PREFIX + item.drawingName + '~~' + item.xOffset + '~' + item.yOffset;
+    return '|d~' + window.dwgPreviewKey(item.drawingName) + '~~' + item.xOffset + '~' + item.yOffset;
   }
 
   /// touchActionInput's own wire grammar (|XI~cmd~prompt[`textIdx]) has no
@@ -310,7 +361,7 @@ const DwgWireEncoder = (() => {
     // doc) instead of a resolved idx/cmd.
     if (item.drawingName) {
       const dwgPrefix = item.type === 'hide' ? 'hd' : (item.type === 'unhide' ? 'uhd' : 'ed');
-      return '|' + dwgPrefix + '~' + window.DWG_PREVIEW_KEY_PREFIX + item.drawingName;
+      return '|' + dwgPrefix + '~' + window.dwgPreviewKey(item.drawingName);
     }
     const prefix = item.type === 'hide' ? 'h' : (item.type === 'unhide' ? 'uh' : 'e');
     const target = (item.idx !== undefined && item.idx !== null) ? '`' + item.idx : '~' + item.cmd;

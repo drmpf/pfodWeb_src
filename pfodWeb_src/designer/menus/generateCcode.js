@@ -706,6 +706,9 @@ const DesignerGenerateCcode = (() => {
 
   // ── Dispatch entry point ────────────────────────────────────────────
 
+  /// @param {DesignerState} state
+  /// @returns {string} the name of the zip handed to the browser, for the
+  ///          caller's status label
   function _triggerCcodeDownload(state) {
     const items      = state.getAllItems();
     _checkNoDrawings(items);
@@ -730,21 +733,50 @@ const DesignerGenerateCcode = (() => {
       { path: fileName + '/pfodParserStream.h', data: enc.encode(PFOD_PARSER_STREAM_H_TEXT) },
       { path: fileName + '/pfodParserStream.c', data: enc.encode(_generateParserStreamC()) },
       { path: fileName + '/main.c',             data: enc.encode(_generateMainC(state, charts, pulseItems)) },
-      { path: fileName + '/json/' + fileName + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
     ];
+
+    // The design that produced this sketch, in menujson/ — through the same
+    // builder as every other generator (saveToFile.js's buildBundleFrom),
+    // so there is exactly one place that decides what a design bundle is
+    // named and laid out like.
+    //
+    // In practice this always takes the bare-json branch: _checkNoDrawings
+    // has already thrown if the design links a drawing, since plain C has
+    // no class/vtable mechanism to render one. Going through the builder
+    // anyway costs nothing and means this generator cannot be the one left
+    // behind when the bundle shape next changes — which is exactly what
+    // happened to the Dwg Designer's own generator.
+    const bundle = DesignerSaveToFile.buildBundle(state, fileName);
+    entries.push({ path: fileName + '/menujson/' + bundle.name, data: bundle.bytes });
     const zipBytes = DesignerZipBuilder.buildZip(entries);
     DesignerZipBuilder.triggerDownload(fileName + '.zip', zipBytes);
+    return fileName + '.zip';
   }
 
+  /// Dispatch handler, reached from DesignerGenerateCode.send when the
+  /// board family is 'ccode' — so the screen showing is the editMenu, and
+  /// both outcomes below report on its status label.
+  ///
+  /// The failures are real and reachable: _checkNoDrawings rejects a design
+  /// that links a drawing, and assignCcodeCmds rejects one with more than
+  /// 52 items needing a cmd letter. They used to raise a native alert(),
+  /// which browser automation cannot dismiss, so a scripted run hit the one
+  /// case it most needed to read and stopped there instead.
+  ///
+  /// @returns {{pfod: string, skipSave: boolean}}
   function send(rawCmd, state, depth) {
     if (!state.name) return { pfod: PFOD_EMPTY, skipSave: true };
+    let status;
     try {
       state.assignCcodeCmds(); // throws if more than 52 items need a cmd letter
-      _triggerCcodeDownload(state);
+      status = { text: 'Generated ' + _triggerCcodeDownload(state), level: 'ok' };
     } catch (e) {
-      alert(e.message);
+      status = { text: 'Generate Code failed:\n' + e.message, level: 'error' };
     }
-    return { pfod: PFOD_EMPTY, skipSave: true };
+    return {
+      pfod: DesignerEditMenu.statusUpdate(status.text, status.level),
+      skipSave: true
+    };
   }
 
   return Object.freeze({ send });

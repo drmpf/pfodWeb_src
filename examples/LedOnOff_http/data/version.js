@@ -3,7 +3,9 @@
 // Depends on: nothing
 // Called by:  pfodWeb.js (reads window.JS_VERSION on load and stores in this.js_ver,
 //             logs version after bundle load)
-  var JS_VERSION = "V4.1.7-- 23th August 2026";  
+  var JS_VERSION = "V4.1.9-- 2nd Sept 2026";  
+// V4.1.9 added more AI restictions to assisted UI coding, fixed code generation bug when menu had two dwg menu items  
+// V4.1.8 optimized for AI assisted UI coding  
 // V4.1.7 tighten up validation, breaking change remove all browser storage 
 // V4.1.6 improved raw message viewer and docs
 // V4.1.5 changed code generation to support sub-classing

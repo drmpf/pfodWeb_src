@@ -257,9 +257,9 @@ const DwgLibrary = (() => {
 
   /// Replace spaces and any other character outside [A-Za-z0-9_] with
   /// '_' — a dwg name is used directly as a download filename
-  /// (dwg.name + '.pfodDwg_json') and as a pfod wire loadCmd identifier
-  /// (DWG_PREVIEW_KEY_PREFIX + dwg.name, dwgWireEncoder.js), so it must
-  /// stay filename/identifier-safe. Matches dwgArduinoExport.js's own
+  /// (dwg.name + '.pfodDwg_json'), so it must stay filename-safe. It no
+  /// longer reaches the wire: a preview loadCmd is a short allocated cmd
+  /// ("_7", dwgWireEncoder.js's dwgPreviewKey), not the name. Matches dwgArduinoExport.js's own
   /// _identifier() charset exactly (that one strips instead of
   /// replacing, for a C++ identifier; this replaces, so two names that
   /// only differ by punctuation don't collapse into the exact same

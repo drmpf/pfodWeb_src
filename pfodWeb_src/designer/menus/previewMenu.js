@@ -173,7 +173,7 @@ const DesignerPreviewMenu = (() => {
     // for loadCmd.
     if (item.type === 'drawing') {
       const disabledPrefix = item.formats.disabled ? '!+' : '+';
-      const loadCmd = window.DWG_PREVIEW_KEY_PREFIX + (item.dwgName || '');
+      const loadCmd = window.dwgPreviewKey(item.dwgName || '');
       return disabledPrefix + wireCmd + slotFmt + '~' + loadCmd;
     }
     const labelPrefix    = (item.type === 'label')   ? '!' : '';
@@ -411,8 +411,10 @@ const DesignerPreviewMenu = (() => {
   /// @returns {{pfod: string, skipSave: boolean}}
   function handleDwgPreviewFetch(rawCmd, state, depth) {
     const bareCmd = rawCmd.substring(depth, rawCmd.length - 1);
-    if (!bareCmd.startsWith(window.DWG_PREVIEW_KEY_PREFIX)) return PFOD_EMPTY;
-    const dwgName = bareCmd.substring(window.DWG_PREVIEW_KEY_PREFIX.length);
+    // An unrecognised '_' cmd is not an error — it is simply not one of
+    // ours. Only cmds dwgPreviewKey has handed out resolve to a dwg.
+    const dwgName = window.dwgPreviewName(bareCmd);
+    if (dwgName === null) return PFOD_EMPTY;
     const dwg = DwgLibrary.get(dwgName);
     if (!dwg) {
       return { pfod: _renderNotLoadedDrawing(dwgName), skipSave: true };

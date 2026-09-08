@@ -134,7 +134,7 @@ const DesignerEditMenuItem = (() => {
   /// @returns {string}
   function _drawingPreviewFragment(state, item) {
     const previewSlot = designerItemPrefix(_effectiveItemFormat(state, item));
-    const dwgLoadCmd = item.dwgName ? (window.DWG_PREVIEW_KEY_PREFIX + item.dwgName) : 'dP';
+    const dwgLoadCmd = item.dwgName ? window.dwgPreviewKey(item.dwgName) : 'dP';
     return '|+BB' + previewSlot + '~' + dwgLoadCmd + '|!Z3<-6>~ ';
   }
 
@@ -265,6 +265,24 @@ const DesignerEditMenuItem = (() => {
     if (item.type === 'drawing') {
       const fmt1 = '<-1>' + DESIGNER_MENU_FMT;
       out += '|d' + EMI_LINK_DWG_CMD + fmt1 + '~' + (item.dwgName ? 'Change Drawing' : 'Create/Load Drawing');
+
+      // A drawing item is still a menu item: it can flash, play a sound,
+      // carry a background colour, and be switched between responding to
+      // the user and being a picture only.  This branch used to return
+      // before any of that was emitted, so the screen offered nothing but
+      // "Change Drawing".
+      //
+      // Same two controls, and the same cmds, the other item types use —
+      // the format screen reads state.formatItem, and EMI_IGNORE_CMD
+      // toggles formats.disabled — so nothing new is introduced on the
+      // dispatch side.  `disabled` on a drawing is what makes the wire
+      // item "|!+" (a dwg-label: drawn, never touched) rather than "|+".
+      state.formatItem = item;
+      out += '|' + EMI_FORMAT_MENU_CMD + fmt1 + "~Change Item's Appearance";
+      out += '|d' + EMI_IGNORE_CMD + fmt1 + '~';
+      out += (fmt.disabled ? 'User input Disabled' : 'Responds to User Input');
+      out += '\n<-3><b><y>Click here to change';
+
       // Dwg preview last — below the label/button, per the desired
       // "dwg on the bottom" layout.
       out += _drawingPreviewFragment(state, item);

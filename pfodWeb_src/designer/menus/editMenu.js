@@ -45,6 +45,12 @@ const EM_SELECT_TO_MOVE_CMD           = 'u';  // Move Items Up/Down
 const EM_EDIT_MENU_NAME_CMD           = 'j';  // Change Menu Name
 const EM_SAVE_TO_FILE_CMD             = 'S';  // Save Design to File
 const EM_EDIT_MENU_HELP_CMD           = 'w';  // Help (top-level)
+// Non-clickable status label under the file buttons — see _renderScreen.
+const EM_STATUS_CMD                   = 'I';
+// The pfod wire limit connectionManager.processReadBuffer enforces, less a
+// little headroom. statusUpdate carries free text of no fixed length, so it
+// is the one designer message that can run past it.
+const EM_STATUS_MAX_BYTES             = 1000;
 // Delete Items ('t') is NOT a plain constant here — its cmd must be
 // path-prefixed per activeMenuPath so it's a distinct string per menu
 // level (see deleteMenuItems.js's own _openCmd/openCmd doc comment for
@@ -190,6 +196,18 @@ const DesignerEditMenu = (() => {
 
     out += '|' + EM_SAVE_TO_FILE_CMD + DESIGNER_MENU_FMT + '~Save Design to File';
 
+    // Where Generate Code and Save Design report what happened — declared
+    // hidden here, revealed by a {;} from whichever one ran. It sits under
+    // the two buttons that write it.
+    //
+    // Both used to raise a native alert(), which is modal at the OS level:
+    // browser automation cannot dismiss one, so the two buttons a stage-2
+    // run exists to press could stop the session dead over a WARNING, after
+    // the file had already been written. A {;} update is not pushed onto
+    // menuNavStack either, so answering with one keeps their "fire and stay
+    // here" contract intact (see saveToFile.js's own header).
+    out += '|!' + EM_STATUS_CMD + '-~';
+
     out += '|' + EM_EDIT_MENU_HELP_CMD + designerLevelSuffix(state) + DESIGNER_MENU_FMT + '~Help';
 
     // Delete Items — disabled when no items.
@@ -201,7 +219,58 @@ const DesignerEditMenu = (() => {
     return out;
   }
 
-  return Object.freeze({ send });
+  /// Build the {;} that reveals the status label with `text`.
+  ///
+  /// For Generate Code and Save Design, which produce a file and sometimes
+  /// have something to say about it — a drawing they could not include, an
+  /// error that stopped them. The screen is already showing, so this
+  /// changes the one item in place rather than re-sending it.
+  ///
+  /// Every run answers with one of these, success included: the label is
+  /// the only record that the button did anything (the download itself is
+  /// silent), and a stale warning left over from the previous press would
+  /// otherwise read as the verdict on this one.
+  ///
+  /// Colour follows loadFromFile's: green for done, amber for a warning
+  /// (the file was still written), red for a failure (it was not).
+  ///
+  /// Free text is made label-safe first — an unescaped | or ~ would cut the
+  /// message short and take the rest of the screen with it — and its line
+  /// breaks are normalised, since the label renders \n but not the leading
+  /// indent of a wrapped source string.
+  ///
+  /// The whole message is trimmed to the pfod wire limit. The text is not
+  /// bounded by anything else — a warning names every drawing that could
+  /// not be included, and a design can reference plenty — and a message
+  /// over 1024 bytes is truncated by connectionManager's own reader, which
+  /// would close it early and file the rest as excess. Trimming here keeps
+  /// the message well-formed and says that it was cut.
+  ///
+  /// @param {string} text
+  /// @param {string} [level] 'ok' (default), 'warn' or 'error'
+  /// @returns {string} a {;} update
+  function statusUpdate(text, level) {
+    const safe   = String(text).replace(/[|~{}]/g, '_').replace(/[ \t]*\n[ \t]*/g, '\n');
+    const colour = level === 'error' ? '<r>' : (level === 'warn' ? '<y>' : '<g>');
+    const head   = '{;|!' + EM_STATUS_CMD + '~' + colour;
+    const enc    = new TextEncoder();
+    // Bytes, not characters: a drawing name may be non-ASCII, and it is
+    // the byte count the reader is counting.
+    const room = EM_STATUS_MAX_BYTES - enc.encode(head + '}').length;
+    let body = safe;
+    if (enc.encode(body).length > room) {
+      // Always re-cut from `safe`, never from the last attempt: cutting the
+      // cut string would stack an ellipsis per pass.
+      let cut = body.length;
+      do {
+        cut -= 8;
+        body = safe.slice(0, Math.max(0, cut)).replace(/\s+$/, '') + '…';
+      } while (cut > 0 && enc.encode(body).length > room);
+    }
+    return head + body + '}';
+  }
+
+  return Object.freeze({ send, statusUpdate });
 })();
 
 // editMenu is rendered as the response to other commands (newMenu,

@@ -179,12 +179,14 @@ Object.assign(DrawingViewer.prototype, {
   // and any "V<n>:" version prefix.  This is the cmd's leading identifier:
   //   - For drawing-fetch types (menuItemDwg/insertDwg/refresh/refresh-insertDwg)
   //     the cmd is "{<loadCmd>}" or "{V<n>:<loadCmd>}" — token IS the loadCmd,
-  //     i.e. the ENTIRE remaining body (a dwg-designer loadCmd is
-  //     DWG_PREVIEW_KEY_PREFIX + a DwgLibrary dwg name, which is free text —
-  //     spaces and other non-word characters are legal and must survive here
-  //     intact, since drawingsData/etc are keyed by this exact string
-  //     elsewhere — e.g. menuData.drawingItems[].loadCmd — and a mismatch
-  //     silently orphans the fetched content under the wrong key).
+  //     i.e. the ENTIRE remaining body. A real device's loadCmd is a short
+  //     pfodAutoCmd ("c7"), and a dwg-designer one is now the same shape
+  //     ("_7", dwgWireEncoder.js's dwgPreviewKey) — but this must still take
+  //     the whole body rather than a word-characters-only prefix: it used to
+  //     be the dwg's NAME, which is free text, and either way drawingsData
+  //     and menuData.drawingItems[].loadCmd are keyed by this exact string,
+  //     so a mismatch silently orphans the fetched content under the wrong
+  //     key.
   //   - For touch-style cmds the cmd is "{<menuItemCmd>~..." — token is the
   //     menuItemCmd (NOT the loadCmd; use _resolveLoadCmdFromRequest for that).
   // Stops only at a genuine wire delimiter (~ ` | }), never at a plain
@@ -541,17 +543,16 @@ Object.assign(DrawingViewer.prototype, {
     }
 
     window.pfodMenuDisplay.show(menuData, function(clickedCmd) {
-      // Designer connection's "Create/Edit Dwg" main-menu button: switch
-      // into the Dwg Controls Panel's full-bleed custom UI mode directly,
-      // client-side — same pattern as the toolbar's own Chart button
-      // (toolbarAndMenu.js). Gated on protocol==='designer' so this cmd
-      // byte can't be misinterpreted on a real device's own menu. The
-      // {f} request below still goes out unchanged and resolves to a
-      // harmless PFOD_EMPTY ack (see dwgDesigner/dwgControlsPanel.js).
-      if (clickedCmd === DWG_CONTROLS_PANEL_CMD && self.protocol === 'designer'
-          && window.designerDwgPanel) {
-        window.designerDwgPanel.show();
-      }
+      // Nothing connection-specific belongs here: this callback runs for
+      // every menu item of every protocol, and it ships to devices, where
+      // the designer half of the app does not exist.  It used to open the
+      // designer's Dwg Controls Panel from here by comparing against
+      // DWG_CONTROLS_PANEL_CMD — a const the device build does not ship, so
+      // the comparison threw and took every menu press with it.  That
+      // switch now happens in the designer's own handler for the cmd
+      // (dwgDesigner/dwgControlsPanel.js), which only exists where the name
+      // does.
+      //
       // Send versioned request if this is a known menu cmd with a cached version
       let fullCmd = '{' + clickedCmd + '}';
       if (self.menuCache && self.menuCmdSet.has(fullCmd)) {

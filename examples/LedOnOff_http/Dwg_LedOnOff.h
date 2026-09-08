@@ -16,21 +16,31 @@
 class Dwg_LedOnOff : public pfodDrawing {
   public:
     Dwg_LedOnOff();
-    void init();
+    virtual void init();
     bool sendDwg(); // returns true if dwg sent else false i.e. not this dwg's loadCmd
     bool processDwgCmds(); // return true if handled else false
     void sendFullDrawing();
     void sendUpdate();
-    unsigned long dwgRefresh;
+    unsigned long dwgRefresh_ms;
 
   protected:
     virtual void sendIndexedItems();
+    pfodAutoIdx idx_1;
   private:
     bool initialized;
-    pfodAutoIdx idx_1;
 
 };
 
-extern Dwg_LedOnOff dwg_LedOnOff;
+// The drawing object the menu code uses.  To add your own behaviour,
+// subclass Dwg_LedOnOff, define your own instance, and define this
+// function in YOUR .cpp to return it -- the weak default in
+// Dwg_LedOnOff.cpp is then replaced at link time and NONE of these
+// generated files need editing:
+//     MyLedOnOff myLedOnOff;
+//     Dwg_LedOnOff& get_dwg_LedOnOff() { return myLedOnOff; }
+// The unused default instance then never has init() called on it, so it
+// never registers with the parser and never allocates its pfodDwgs.
+Dwg_LedOnOff& get_dwg_LedOnOff();
+extern Dwg_LedOnOff dwg_LedOnOff; // the default instance
 #endif
 // ================= end of Dwg_LedOnOff.h  file

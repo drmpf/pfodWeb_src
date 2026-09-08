@@ -357,7 +357,7 @@ class DwgDesignerVirtualDevice {
   /// content, before firing a refresh request for it.
   /// @param {string} name — DwgLibrary dwg name (bare, not loadCmd-prefixed)
   invalidatePreviewVersion(name) {
-    delete this.versions[window.DWG_PREVIEW_KEY_PREFIX + name];
+    delete this.versions[window.dwgPreviewKey(name)];
   }
 
   /// Look up the numeric idx already minted for (identityName, idxName)
@@ -480,14 +480,17 @@ class DwgDesignerVirtualDevice {
     // something happened, the response is the real state.
     return new Promise(resolve => setTimeout(() => {
       if (bareCmd === '.') {
-        const loadCmd = window.DWG_PREVIEW_KEY_PREFIX + (this.currentPreviewName || '');
+        const loadCmd = window.dwgPreviewKey(this.currentPreviewName || '');
         const menuWire = DwgWireEncoder.encodeMainMenuWithDwgItem(this.previewItemCmd, loadCmd);
         console.log('[DWG_PREVIEW_DEBUG] resolving {.} with menu:', menuWire);
         resolve(menuWire);
         return;
       }
 
-      if (bareCmd.startsWith(window.DWG_PREVIEW_KEY_PREFIX)) {
+      // Only cmds dwgPreviewKey has handed out name a dwg; any other '_'
+      // cmd falls through to the generic handling below.
+      const previewName = window.dwgPreviewName(bareCmd);
+      if (previewName !== null) {
         if (this._pendingUpdates[bareCmd]) {
           const items = this._pendingUpdates[bareCmd];
           delete this._pendingUpdates[bareCmd];
@@ -496,7 +499,7 @@ class DwgDesignerVirtualDevice {
           resolve(updateWire);
           return;
         }
-        const dwgName = bareCmd.substring(window.DWG_PREVIEW_KEY_PREFIX.length);
+        const dwgName = previewName;
         if (this._pendingStarts[bareCmd]) {
           const forcedDwg = this._pendingStarts[bareCmd];
           delete this._pendingStarts[bareCmd];

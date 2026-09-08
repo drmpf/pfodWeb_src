@@ -222,8 +222,15 @@ function translateRawLine(rawLineString,isTouchAction=false) {
     
     // Parse parts: [colour]~colDelta~rowDelta[~colOffset[~rowOffset]]
     const colour = parseDwgColour(parts[0]);
-    const xSize = parseFloat(parts[1]); // colDelta
-    const ySize = parseFloat(parts[2]); // rowDelta
+    // colDelta/rowDelta default to 1 (spec) when omitted
+    let xSize = 1;
+    let ySize = 1;
+    if (parts.length > 1 && parts[1] !== '' && !isNaN(parseFloat(parts[1]))) {
+        xSize = parseFloat(parts[1]);
+    }
+    if (parts.length > 2 && parts[2] !== '' && !isNaN(parseFloat(parts[2]))) {
+        ySize = parseFloat(parts[2]);
+    }
     
     let xOffset = 0;
     let yOffset = 0;
@@ -311,7 +318,11 @@ function translateRawCircle(rawCircleString,isTouchAction=false) {
     
     // Parse parts: [colour]~dRadius[~colOffset[~rowOffset]]
     const colour = parseDwgColour(parts[0]);
-    const radius = parseFloat(parts[1]); // dRadius
+    // dRadius defaults to 1 (spec) when omitted
+    let radius = 1;
+    if (parts.length > 1 && parts[1] !== '' && !isNaN(parseFloat(parts[1]))) {
+        radius = parseFloat(parts[1]);
+    }
     
     let xOffset = 0;
     let yOffset = 0;
@@ -403,9 +414,19 @@ function translateRawArc(rawArcString,isTouchAction=false) {
     
     // Parse parts: [colour]~dArcAngle~dStartAngle~dRadius[~colOffset[~rowOffset]]
     const colour = parseDwgColour(parts[0]);
-    const angle = parseFloat(parts[1]); // dArcAngle
-    const start = parseFloat(parts[2]); // dStartAngle
-    const radius = parseFloat(parts[3]); // dRadius
+    // dArcAngle/dStartAngle/dRadius default to 90/0/1 (spec) when omitted
+    let angle = 90;
+    let start = 0;
+    let radius = 1;
+    if (parts.length > 1 && parts[1] !== '' && !isNaN(parseFloat(parts[1]))) {
+        angle = parseFloat(parts[1]);
+    }
+    if (parts.length > 2 && parts[2] !== '' && !isNaN(parseFloat(parts[2]))) {
+        start = parseFloat(parts[2]);
+    }
+    if (parts.length > 3 && parts[3] !== '' && !isNaN(parseFloat(parts[3]))) {
+        radius = parseFloat(parts[3]);
+    }
     
     let xOffset = 0;
     let yOffset = 0;
@@ -493,7 +514,8 @@ function translateRawText(rawTextString,isTouchAction=false) {
     
     // Parse parts: [colour]~text[~colOffset[~rowOffset[~alignment]]]
     const colour = parseDwgColour(parts[0]);
-    const rawText = parts[1]; // text with HTML tags
+    // text defaults to "" (spec) when omitted
+    const rawText = parts[1] !== undefined ? parts[1] : ''; // text with HTML tags
     
     let xOffset = 0;
     let yOffset = 0;
@@ -639,35 +661,48 @@ function translateRawValue(rawValueString,isTouchAction=false) {
     }
     
     // Parse value and units: value~units
+    // The device always sends a real value here (never blank) — see
+    // pfodLabel::send()/sendValue() in pfodParser/src/dwgs/pfodLabel.cpp.
+    // A non-numeric result therefore means the wire message was cut short
+    // (e.g. the 1024-byte cap), not a legitimately omitted default, so
+    // throw rather than silently show a fabricated reading.
     const valueAndUnits = backTickParts[1].split('~');
 
-    let intValue = 0;
-    if (valueAndUnits[0] !== undefined) {
-        if (isTouchAction && valueAndUnits[0] === 'c') {
-            intValue = 'COL';
-        } else if (isTouchAction && valueAndUnits[0] === 'r') {
-            intValue = 'ROW';
-        } else if (!isNaN(parseFloat(valueAndUnits[0]))) {
-            intValue = parseFloat(valueAndUnits[0]);
-        } else {
-            intValue = 0;
+    let intValue;
+    if (isTouchAction && valueAndUnits[0] === 'c') {
+        intValue = 'COL';
+    } else if (isTouchAction && valueAndUnits[0] === 'r') {
+        intValue = 'ROW';
+    } else {
+        intValue = parseFloat(valueAndUnits[0]);
+        if (isNaN(intValue)) {
+            throw new Error('Invalid value format: intValue is missing or not a number');
         }
     }
-    
+
     const units = valueAndUnits[1];
 
     // Parse max value
     const maxValue = parseInt(backTickParts[2]);
+    if (isNaN(maxValue)) {
+        throw new Error('Invalid value format: max is missing or not a number');
+    }
 
     // Parse min and display range: min~displaymax~displaymin
     const minAndDisplay = backTickParts[3].split('~');
     const minValue = parseInt(minAndDisplay[0]);
     const displayMax = parseFloat(minAndDisplay[1]);
     const displayMin = parseFloat(minAndDisplay[2]);
-    
+    if (isNaN(minValue) || isNaN(displayMax) || isNaN(displayMin)) {
+        throw new Error('Invalid value format: min/displayMax/displayMin missing or not numbers');
+    }
+
     // Parse decimals and optional alignment: decimals~alignment
     const decimalsAndAlign = backTickParts[4].split('~');
     const decimals = parseInt(decimalsAndAlign[0]);
+    if (isNaN(decimals)) {
+        throw new Error('Invalid value format: decimals is missing or not a number');
+    }
     const alignment = decimalsAndAlign.length > 1 ? decimalsAndAlign[1] : 'center';
     
     // Tags are left in the text so the canvas renderer (parsePfodInlineSegments
@@ -1020,8 +1055,15 @@ function translateRawTouchZone(rawTouchZoneString) {
     
     // Parse parts: cmd~width~height[~colOffset[~rowOffset]]
     const cmd = parts[0]; // cmd
-    const xSize = parseFloat(parts[1]); // width
-    const ySize = parseFloat(parts[2]); // height
+    // width/height default to 1 (spec) when omitted
+    let xSize = 1;
+    let ySize = 1;
+    if (parts.length > 1 && parts[1] !== '' && !isNaN(parseFloat(parts[1]))) {
+        xSize = parseFloat(parts[1]);
+    }
+    if (parts.length > 2 && parts[2] !== '' && !isNaN(parseFloat(parts[2]))) {
+        ySize = parseFloat(parts[2]);
+    }
     const xOffset = parts.length > 3 && parts[3] !== '' ? parseFloat(parts[3]) : undefined;
     const yOffset = parts.length > 4 && parts[4] !== '' ? parseFloat(parts[4]) : undefined;
     
@@ -1342,7 +1384,11 @@ function translateRawItemsToItemArray(rawData) {
         y: rawData.y,
         color: rawData.color,
         refresh: rawData.refresh,
-        items: []
+        items: [],
+        // Items that could not be parsed and were left out. Empty on every
+        // healthy drawing; non-empty means the drawing on screen is missing
+        // something — see the catch below.
+        skipped: []
     };
 
     // Process each raw item
@@ -1369,8 +1415,21 @@ function translateRawItemsToItemArray(rawData) {
                 const translatedItem = translateRawItem(rawItem);
                 result.items.push(translatedItem);
             } catch (itemError) {
+                // SKIP the item, do not abandon the drawing.
+                //
+                // Rethrowing here meant one unparseable item cost the user
+                // everything: a drawing whose wire message went over the
+                // 1024-byte pfod cap is auto-closed mid-item by
+                // connectionManager.processReadBuffer, that half item threw,
+                // and a chart with 40 lines, labels and 6 plots rendered as
+                // an empty canvas — with nothing on screen to say why.
+                //
+                // Dropping the tail is what the format doc already promises
+                // for an over-long message; this makes that true. The item
+                // is named in the console, and skipped[] carries the count
+                // out for anything that wants to say so on screen.
                 console.error(`Error translating raw_items at line ${index + 2}: "${rawItem}":`, itemError.message);
-                throw new Error(`Translation failed at line ${index + 2}: ${itemError.message}`);
+                result.skipped.push({ line: index + 2, raw: rawItem, reason: itemError.message });
             }
           }
          } else {
@@ -1378,8 +1437,18 @@ function translateRawItemsToItemArray(rawData) {
          }
         }
     });
+    if (result.skipped.length > 0) {
+        // One line the user can actually find, rather than N buried errors.
+        // The commonest cause by far is the 1024-byte cap: an over-long
+        // drawing arrives auto-closed part way through an item.
+        console.error(`[DWG] "${result.name || result.version || 'drawing'}": ` +
+            `${result.skipped.length} item(s) could not be read and were left out — ` +
+            `the drawing is drawn without them. A wire message over 1024 bytes is ` +
+            `cut at the cap, which breaks the item spanning the cut.`,
+            result.skipped);
+    }
     console.log(`Translated JSON:\n`, JSON.stringify(result,null,2));
-    
+
     return result;
 }
 

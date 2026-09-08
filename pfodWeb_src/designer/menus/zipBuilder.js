@@ -126,14 +126,24 @@ const DesignerZipBuilder = (() => {
     return result;
   }
 
-  // ── ZIP STORE reader ────────────────────────────────────────────
-  // Parses a minimal ZIP archive back into {path, data: Uint8Array}
-  // entries — the exact counterpart to buildZip() above, for reading a
-  // zip this SAME writer produced (loadFromFile.js's own zip-bundled
-  // design + dwgs). Only STORE (uncompressed) entries are supported —
-  // buildZip never writes anything else, so this reader has no need for
-  // general-purpose zip decompression (no new dependency required for
-  // either direction).
+  // ── ZIP reader ──────────────────────────────────────────────────
+  // Parses a ZIP archive back into {path, data: Uint8Array} entries.
+  //
+  // It reads STORE (0) and DEFLATE (8). The writer above still emits
+  // STORE only, and deliberately: a stored zip is read by every tool
+  // there is, so nothing is gained by compressing a few hundred bytes of
+  // json. Reading is the other way round. pfodWeb is the only thing that
+  // writes stored zips; a user who unzips a design, edits a drawing and
+  // zips it back up gets DEFLATE from Explorer, from Finder, from the
+  // `zip` command — from anything they are likely to reach for. Refusing
+  // that made an ordinary edit-and-return look like a corrupt file.
+  //
+  // So: conservative in what it writes, liberal in what it accepts.
+  //
+  // Inflating uses DecompressionStream, which is part of the platform —
+  // no dependency either direction — but it is async, which is why the
+  // reader below is. Both callers were already inside async file-reader
+  // callbacks, so that costs them an await and nothing else.
 
   /// Locate the End Of Central Directory record by scanning backward
   /// from the end of the buffer for its signature — buildZip never
@@ -150,9 +160,23 @@ const DesignerZipBuilder = (() => {
     throw new Error('[DesignerZipBuilder] readZip: not a valid zip (no End Of Central Directory record found)');
   }
 
+  /// Inflate one raw DEFLATE stream — a zip entry's payload has no zlib
+  /// header, hence 'deflate-raw' rather than 'deflate'.
   /// @param {Uint8Array} bytes
-  /// @returns {Array<{path: string, data: Uint8Array}>}
-  function readZip(bytes) {
+  /// @returns {Promise<Uint8Array>}
+  async function _inflateRaw(bytes) {
+    if (typeof DecompressionStream === 'undefined') {
+      throw new Error('[DesignerZipBuilder] readZip: this browser cannot decompress zip entries ' +
+        '(no DecompressionStream)');
+    }
+    const stream = new Blob([bytes]).stream()
+      .pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  /// @param {Uint8Array} bytes
+  /// @returns {Promise<Array<{path: string, data: Uint8Array}>>}
+  async function readZip(bytes) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const eocdPos       = _findEocd(view, bytes.length);
     const totalEntries  = view.getUint16(eocdPos + 10, true);
@@ -173,9 +197,9 @@ const DesignerZipBuilder = (() => {
       const localOffset = view.getUint32(pos + 42, true);
       const path = dec.decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
 
-      if (method !== 0) {
+      if (method !== 0 && method !== 8) {
         throw new Error('[DesignerZipBuilder] readZip: "' + path + '" uses unsupported compression method ' +
-          method + ' (only STORE/0 is supported)');
+          method + ' (only STORE/0 and DEFLATE/8 are supported)');
       }
       if (view.getUint32(localOffset, true) !== 0x04034b50) {
         throw new Error('[DesignerZipBuilder] readZip: malformed local file header for "' + path + '"');
@@ -186,7 +210,8 @@ const DesignerZipBuilder = (() => {
       const localNameLen  = view.getUint16(localOffset + 26, true);
       const localExtraLen = view.getUint16(localOffset + 28, true);
       const dataStart = localOffset + 30 + localNameLen + localExtraLen;
-      const data = bytes.slice(dataStart, dataStart + compSize);
+      const raw = bytes.slice(dataStart, dataStart + compSize);
+      const data = method === 8 ? await _inflateRaw(raw) : raw;
 
       entries.push({ path, data });
       pos += 46 + nameLen + extraLen + commentLen;
@@ -227,5 +252,184 @@ const DesignerZipBuilder = (() => {
     }
   }
 
-  return Object.freeze({ buildZip, readZip, triggerDownload });
+  /// Read a picked zip and return the entries of the DESIGN BUNDLE inside
+  /// it, whichever of the two things the user actually handed over:
+  ///
+  ///   a saved bundle      → its own entries, as they are
+  ///   a generated sketch  → the entries of the bundle in its menujson/
+  ///                         directory, unwrapped one level
+  ///
+  /// Only the layouts this app writes are recognised — nothing else:
+  ///
+  ///   a design bundle       <name>.pfodMenu_json    at the root
+  ///                         dwgs/<dwg>.pfodDwg_json
+  ///                         (Save Design — saveToFile.js)
+  ///
+  ///   a drawing bundle      <name>.pfodDwg_json     at the root
+  ///                         dwgs/<dwg>.pfodDwg_json
+  ///                         (Save Dwg — the drawing and everything it
+  ///                         inserts; dwgControlsPanelUI.js)
+  ///
+  ///   a generated sketch    <name>/menujson/<name>_menuJson.zip
+  ///                     or  <name>/menujson/<name>.pfodMenu_json
+  ///                         (the bare json when the design links no
+  ///                         drawings — see generateCode.js)
+  ///
+  /// A sketch is unwrapped so the user can hand over the whole thing
+  /// without extracting `menujson/` first; a bundle is passed through.
+  /// What the caller does with the entries is its own business — the
+  /// design loader wants a menu json and fails without one, the drawings
+  /// panel takes whatever drawings are there.
+  ///
+  /// Anything else returns an EMPTY list, and the caller reports that the
+  /// zip held nothing it could use. In particular a sketch generated
+  /// before the design moved into `menujson/` — its menu json and drawing
+  /// jsons flat together in a `json/` directory — is no longer accepted.
+  /// Loading it worked only because every entry was matched by file
+  /// extension wherever it happened to sit, which quietly accepted any zip
+  /// with the right-looking names in it. Re-generate such a sketch, or
+  /// load the files out of it individually.
+  ///
+  /// One wrapping folder is tolerated, whatever it is called, and whatever
+  /// else the zip tool left beside it — see _topDirs.
+  ///
+  /// @param {Uint8Array} bytes — the picked file
+  /// @returns {Promise<Array<{path: string, data: Uint8Array}>>} the
+  ///          bundle's own entries, or [] when the zip is not one of the
+  ///          layouts above
+  /// @throws whatever readZip throws on something that is not a zip at all
+  async function readBundle(bytes) {
+    const all = (await readZip(bytes)).filter((e) => !_isZipNoise(e.path));
+
+    // Try the layouts at the root; if nothing matches, try again inside
+    // each top-level directory. ONE level, and no more — that is what a zip
+    // tool adds when the FOLDER is selected rather than its contents, and
+    // it is as far as this can go without changing what the app accepts.
+    //
+    // Two levels would quietly reinstate the pre-menujson sketch layout,
+    // whose design sat at <name>/json/<name>.pfodMenu_json — exactly two
+    // down. That layout was dropped deliberately: it was only ever matched
+    // by finding the right-looking extension wherever it happened to sit,
+    // which accepted any zip at all with a likely name in it. Searching
+    // two deep here would bring it back by the side door, and a user with
+    // an old sketch would get a partial load — the design, none of its
+    // drawings — instead of being told to re-generate.
+    let level = [all];
+    for (let depth = 0; depth <= 1; depth++) {
+      for (const entries of level) {
+        const hit = await _matchLayouts(entries);
+        if (hit) return hit;
+      }
+      const next = [];
+      level.forEach((entries) => {
+        _topDirs(entries).forEach((dir) => next.push(_under(entries, dir)));
+      });
+      if (next.length === 0) break;
+      level = next;
+    }
+    return [];
+  }
+
+  /// The bundle layouts, tried against one set of paths.
+  /// @param {Array<{path: string, data: Uint8Array}>} entries
+  /// @returns {Promise<Array|null>} the entries, or null if none matched
+  async function _matchLayouts(entries) {
+    // A sketch: the design is the one thing in menujson/, in whichever of
+    // the two shapes it took.
+    const nested = entries.find((e) => /(^|\/)menujson\/[^/]+\.zip$/i.test(e.path));
+    if (nested) return readZip(nested.data);
+    const bare = entries.filter((e) => /(^|\/)menujson\/[^/]+\.pfodMenu_json$/i.test(e.path));
+    if (bare.length > 0) return bare;
+
+    // Otherwise the zip must itself be a bundle: the design at its root,
+    // its carried drawings under dwgs/. Matching on POSITION, not just
+    // extension, is what makes that a real check rather than a guess about
+    // any zip that happens to hold a json.
+    const flat = entries.filter((e) => /^[^/]+\.pfodMenu_json$/i.test(e.path) ||
+                                       /^dwgs\/[^/]+\.pfodDwg_json$/i.test(e.path));
+    return flat.length > 0 ? flat : null;
+  }
+
+  /// Distinct first path segments, in the order they appear.
+  ///
+  /// Candidates rather than one shared prefix: a zip need not have a single
+  /// top-level directory even when a wrapping folder is exactly what
+  /// happened. macOS puts a __MACOSX/ tree beside whatever was compressed
+  /// (filtered out below, but it is not the only such case), and a user who
+  /// left a readme next to the folder before zipping has two as well. Every
+  /// one of those has a real bundle inside one of its directories, so each
+  /// is tried rather than the whole thing rejected for not being tidy.
+  ///
+  /// Only ever reached when nothing matched at the current level, which is
+  /// what keeps this from misfiring: a bundle whose drawings all sit under
+  /// `dwgs/` would otherwise be "unwrapped" into root-level files matching
+  /// nothing.
+  ///
+  /// @param {Array<{path: string, data: Uint8Array}>} entries
+  /// @returns {string[]} each with its trailing slash
+  function _topDirs(entries) {
+    const seen = [];
+    entries.forEach((e) => {
+      const slash = e.path.indexOf('/');
+      if (slash < 0) return;
+      const dir = e.path.slice(0, slash + 1);
+      if (seen.indexOf(dir) === -1) seen.push(dir);
+    });
+    return seen;
+  }
+
+  /// The entries under `dir`, with that prefix removed.
+  /// @param {Array<{path: string, data: Uint8Array}>} entries
+  /// @param {string} dir — with its trailing slash
+  /// @returns {Array<{path: string, data: Uint8Array}>}
+  function _under(entries, dir) {
+    return entries.filter((e) => e.path.startsWith(dir))
+                  .map((e) => ({ path: e.path.slice(dir.length), data: e.data }));
+  }
+
+  /// Whether a zip member is packaging debris rather than a file the user
+  /// put there.
+  ///
+  /// macOS Finder writes a `__MACOSX/` tree beside whatever it compressed,
+  /// mirroring it with AppleDouble stubs named `._<original>`. Those stubs
+  /// are resource-fork metadata, but `._Menu_1.pfodMenu_json` sits at the
+  /// same position and carries the same extension as the real thing — so
+  /// left in, one could be picked up AS the design and parsed as binary
+  /// junk. Directory entries go too: a zero-length member whose name ends
+  /// in `/` is not a file, and passing one on as an entry with empty
+  /// content helps nobody.
+  ///
+  /// @param {string} p
+  /// @returns {boolean}
+  function _isZipNoise(p) {
+    if (p.endsWith('/')) return true;                 // directory entry
+    if (/(^|\/)__MACOSX\//.test(p)) return true;      // macOS metadata tree
+    const base = p.split('/').pop();
+    return base.startsWith('._') || base === '.DS_Store' || base === 'Thumbs.db';
+  }
+
+  /// Turn a readZip/readBundle failure into something the user can act on.
+  ///
+  /// STORE and DEFLATE both read now, which covers everything a user is
+  /// realistically going to hand over — so what is left here is a genuinely
+  /// odd file: bzip2, LZMA, an encrypted entry, or something that is not a
+  /// zip at all. There is no repair to suggest for those, only a name for
+  /// what happened, which is still better than the module-prefixed text.
+  ///
+  /// @param {Error} err — what readZip/readBundle threw
+  /// @returns {string} one or two lines for a label or notice
+  function explainReadFailure(err) {
+    const msg = (err && err.message) || String(err);
+    if (/unsupported compression method/i.test(msg)) {
+      return 'It is compressed in a format pfodWeb cannot read. Stored and ' +
+             'deflated zips both work — this is neither.\nRe-zip it with an ' +
+             'ordinary zip tool, or re-save it from pfodWeb.';
+    }
+    // Anything else: the technical text, minus the module prefix nobody
+    // outside this file needs.
+    return msg.replace(/^\[DesignerZipBuilder\]\s*read(Zip|Bundle):\s*/, '');
+  }
+
+  return Object.freeze({ buildZip, readZip, readBundle, triggerDownload,
+                         explainReadFailure });
 })();

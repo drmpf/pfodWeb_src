@@ -629,6 +629,50 @@
             gap: 8px;
             margin-bottom: 12px;
         }
+        /* Load-result notice — sits between the action row and the dwg
+           list, saying what the last load did ("3 dwg(s) loaded …").
+           Replaces the native alert() that used to carry the same text:
+           an alert has to be dismissed before the list it describes can
+           be looked at, and browser automation cannot dismiss one at all.
+           Rendered by dwgControlsPanelUI.js's _buildNoticeHtml(); absent
+           entirely (no reserved space) when there is nothing to report.
+           pre-line so the multi-line "still missing …" summary keeps its
+           line breaks. */
+        .dcp-notice {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding: 7px 9px;
+            border: 1px solid #bcd8f5;
+            border-radius: 5px;
+            background: #eef5fd;
+            color: #1b2430;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        .dcp-notice-warn {
+            border-color: #e6cf9a;
+            background: #fdf6e6;
+        }
+        .dcp-notice-text {
+            flex: 1;
+            white-space: pre-line;
+        }
+        /* Deliberately larger than the 12px text — it is the one thing on
+           this bar that has to be hit, by a pointer or by automation. */
+        .dcp-notice-close {
+            border: none;
+            background: transparent;
+            color: #5b6675;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0 2px;
+            cursor: pointer;
+        }
+        .dcp-notice-close:hover {
+            color: #1b2430;
+        }
         .dcp-btn {
             font-size: 12px;
             font-weight: 600;
@@ -931,6 +975,29 @@
            swatch/refresh/items stats after it are not. */
         .dcp-item-type-suffix {
             font-weight: 400;
+        }
+        /* A dwg whose wire message would not fit in one pfod command.
+           Over the cap the receiver auto-closes the message at the limit,
+           which cuts the last item in half — and a half-parsed item aborts
+           the WHOLE drawing, so it renders as nothing at all rather than
+           as most of itself. Red on the name and on the byte count, in
+           both the dwg list and the Edit Dwg header. */
+        .dcp-oversize {
+            color: #c62828;
+        }
+        /* The Edit Dwg heading is coloured by `.dcp-drawing-info-head h3`,
+           which is more specific than a bare class and so kept the name
+           blue there while the dwg list turned it red. Everywhere else the
+           class sits on the element itself and simply beats an inherited
+           colour; only this one needs saying twice. */
+        .dcp-drawing-info-head h3.dcp-oversize {
+            color: #c62828;
+        }
+        .dcp-oversize-warning {
+            font-size: 12px;
+            font-weight: 700;
+            color: #c62828;
+            margin-bottom: 6px;
         }
         .dcp-item-desc {
             font-size: 12px;
@@ -1404,6 +1471,11 @@
             display: none;
             flex-direction: column;
             flex: 1;
+            /* Positioning context for #menu-scroll-track / #menu-scroll-thumb,
+               which are placed against the scroll area's own box but must
+               NOT live inside it — anything inside scrolls away with the
+               content. */
+            position: relative;
             overflow: hidden;
             min-height: 0;
             width: 100%;
@@ -1428,7 +1500,98 @@
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             background-color: black;
-            padding: 4px 8px;
+            /* 2px at the sides, not 8px: on a phone the drawings are the
+               content, and every pixel of black margin either side is a
+               pixel they are not drawn in.  The vertical 4px stays — it is
+               the gap between stacked items, not wasted width.  The wider
+               black band on the RIGHT is the scroll strip
+               (.needs-scroll-gutter), which is deliberate. */
+            padding: 4px 2px;
+            /* A menu of two drawings is taller than the screen, and every
+               drawing canvas swallows touchstart/touchmove (pfodWebMouse
+               calls preventDefault so a touchZone drag is not read as a
+               page scroll).  On a phone the first drawing covers the whole
+               scroll area, so there is nowhere left to start a scroll
+               gesture and the second drawing cannot be reached at all —
+               turn the phone to landscape and the drawing shrinks, leaving
+               black margin beside it that DOES scroll.  The scrollbar
+               below is that margin: a strip of the scroll area that is
+               never covered by a canvas.
+               The strip is only reserved when there is something to scroll
+               to — see .needs-scroll-gutter, applied by
+               pfodMenuDisplay.handleMenuResize. */
+            scrollbar-width: thin;
+            scrollbar-color: #7a7a7a #000000;
+        }
+        /* Chrome / WebKit: styling the scrollbar at all is what turns an
+           OVERLAY scrollbar (drawn over the content, no layout space, and
+           invisible until it fades in) into a classic one that occupies
+           its own strip — which is the whole point here.  24px so it is a
+           comfortable finger target: it is the only way to scroll a menu
+           whose drawings cover the rest of it. */
+        #menu-scroll-area::-webkit-scrollbar {
+            width: 24px;
+        }
+        #menu-scroll-area::-webkit-scrollbar-track {
+            background: #000000;
+        }
+        #menu-scroll-area::-webkit-scrollbar-thumb {
+            background: #7a7a7a;
+            border-radius: 12px;
+            border: 4px solid #000000;
+        }
+        #menu-scroll-area::-webkit-scrollbar-thumb:hover {
+            background: #9a9a9a;
+        }
+        /* The strip, reserved only while the menu actually has content off
+           screen.  .needs-scroll-gutter is toggled by
+           pfodMenuDisplay.handleMenuResize against the measured overflow;
+           `stable` then holds the column steady so the scrollbar appearing
+           does not itself resize the drawings underneath it. */
+        #menu-scroll-area.needs-scroll-gutter {
+            scrollbar-gutter: stable;
+        }
+        /* Firefox on Android ignores the scrollbar styling above and keeps
+           overlay scrollbars, which reserve no space at all — so there the
+           strip has to be padded in by hand.  .overlay-scrollbars says the
+           browser is one of those (pfodMenuDisplay measures it once);
+           .needs-scroll-gutter says there is something to scroll to.  Both
+           are required: desktop already has a real strip, and a menu that
+           fits on screen needs none. */
+        #menu-scroll-area.overlay-scrollbars.needs-scroll-gutter {
+            padding-right: 40px;
+        }
+        /* A scrollbar of our own, drawn in that strip.
+           An overlay scrollbar cannot be made permanent — it is faded in by
+           the browser while scrolling and hidden the rest of the time — so
+           the strip read as nothing but a black margin: the user could not
+           tell it was scrollable, or that there was anything below.  These
+           two elements are that missing indicator: a always-visible track
+           with a thumb whose length says how much of the menu is on screen
+           and whose position says where you are.
+           pointer-events:none is what keeps them honest — every touch
+           passes straight through to the padding strip underneath, which is
+           scroll-area and scrolls natively, so the bar is a read-out and
+           never something to aim at. Only created for overlay-scrollbar
+           browsers (pfodMenuDisplay); desktop already draws a real one. */
+        #menu-scroll-track,
+        #menu-scroll-thumb {
+            position: absolute;
+            right: 8px;
+            display: none;
+            pointer-events: none;
+            z-index: 2;
+        }
+        #menu-scroll-track {
+            width: 16px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.14);
+        }
+        #menu-scroll-thumb {
+            width: 16px;
+            border-radius: 8px;
+            background: #b9b9b9;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
         }
         /* Prompt text fixed at the bottom of the menu.
            Capped at 50% of the menu height with internal scrolling so a
@@ -1788,6 +1951,28 @@
             border: 2px solid black;
             border-radius: 8px;
             box-sizing: border-box;
+            /* The canvas takes every touch gesture; the browser gets none.
+               Declared here rather than by preventDefault()ing touchstart,
+               because cancelling the FIRST touchstart of a sequence cancels
+               every default for that sequence — which is a blunter tool and
+               harder to reason about than saying so once, in one place.
+               `pinch-zoom` was allowed here for a while, so a drawing could
+               be zoomed.  It was given up deliberately: a pinch begins as a
+               SINGLE finger, so its first touchstart is indistinguishable
+               from a press — the menu item's cmd (or a DOWN-filter
+               touchZone) had already fired by the time the second finger
+               arrived, and a cmd cannot be unsent.  No pinch over a drawing
+               is the price of a press meaning exactly one thing.  Pinch
+               still works everywhere else on the menu. */
+            touch-action: none;
+            /* The rest of what "the canvas consumes the touch" means.  A
+               press held on a drawing is a touchZone press, not an attempt
+               to select something or to summon a callout — and since
+               touchstart is deliberately NOT cancelled (that is what keeps
+               pinch alive), these have to be withheld declaratively too. */
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
         /* Placeholder shown inside a menu drawing wrapper while the dwg
            dimensions are still in flight (first load, cache clear, slow BLE).

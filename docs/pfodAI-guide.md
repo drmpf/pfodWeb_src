@@ -22,6 +22,197 @@ explicitly rather than invented.
 
 ---
 
+## Two ways to work — decide this first
+
+Everything below describes the same three stages. What differs is **who
+presses the buttons in `pfodWeb.html`**, and that changes what you hand over
+and what you get back. Establish which one applies before designing
+anything: the deliverable is different, and finding out at the end wastes
+the design.
+
+> ## ⛔ There is no Python in this workflow. None. Anywhere.
+>
+> **Do not look for Python. Do not check whether it is installed. Do not
+> install it. Do not write a `.py` file. Do not reach for `zipfile`,
+> `http.server`, `json` or any other Python module.** If you have started
+> down that path, stop and re-read this box — nothing further along the
+> guide will need it.
+>
+> This is stated this bluntly because it keeps happening: an assistant
+> starting fresh reaches for Python out of habit for "write some files and
+> zip them", and every minute spent on it is wasted. There is no Python
+> anywhere in this project and none is wanted.
+>
+> The whole chain is **JavaScript and C++**:
+>
+> | Piece | Language |
+> |---|---|
+> | `pfodWeb.html` | pure JavaScript, self-contained, runs in the browser |
+> | The design files you write | JSON — write them with a **Node** script |
+> | The STORED-zip writer (§4.1.1) | JavaScript, Node built-ins, given in full |
+> | The static server (below) | JavaScript, Node built-ins, given in full |
+> | The generated sketch | C/C++ for Arduino |
+>
+> Both tools you could plausibly want are already written for you, in
+> JavaScript, with no dependency. Copy them. Do not reimplement either one
+> in another language.
+
+### A. You can drive the browser
+
+A browser-automation extension is connected — Claude in Chrome or
+equivalent — so the same assistant that writes the json also loads it,
+presses **Generate Code**, and reads what the screen says. Stage 2 needs no
+human. §4.1 is the whole of it.
+
+**What this needs.** Check these before starting, not halfway through: the
+failure mode of a missing piece is a half-loaded design and a user who has
+to unpick it.
+
+| | Why |
+|---|---|
+| **Chrome, with a browser-automation extension connected** (e.g. Claude in Chrome) | The only way to press the buttons. Everything in §4.1 assumes you can click and read the page. |
+| **Node.js** | Not for pfodWeb — for you. Two jobs: writing the design files, and zipping them (§4.1.1). |
+| **`pfodWeb.html`**, **served over http** | The prebuilt single file from the pfodParser library, with a static server in front of it — a browser extension may refuse to drive a `file://` page at all. Fifteen lines of Node, in §4.1. |
+| **Somewhere to write and read files** | The `.zip` has to exist on disk before you can base64 it, and the generated sketch comes back through the download folder (§4.1.3). |
+
+### B. You cannot
+
+No extension, or the user would rather drive it themselves. The assistant
+writes the json and stops; the user does stage 2 and reports back. That is
+not a lesser workflow — the hand-off is a review point, and the fine
+adjustments that make a drawing look right are usually quicker by hand than
+by another round of prompting.
+
+The loop:
+
+1. **The assistant writes** the `.pfodMenu_json` and every `.pfodDwg_json`,
+   and says which files there are and what each is for.
+2. **The user loads them** — one press if they are zipped as a bundle
+   (§4.1.1 describes the layout; it is worth building even when a human is
+   doing the loading), or file by file.
+3. **The user checks the preview and adjusts.** Nudging a label, resizing a
+   zone, fixing a colour is a click here and a guess-and-retry over chat.
+4. **The user sends back two things**: **Export PNG**, so the assistant can
+   see what it actually produced rather than imagining it, and **Save Dwg**
+   for any drawing they changed — that writes the corrected json, inserts
+   included.
+5. **The user re-prompts, pointing at the saved file, not the original.**
+   This is the step that goes wrong. An assistant that keeps editing its own
+   first draft silently discards every hand adjustment, and the next
+   iteration arrives having undone the user's work. If a drawing was
+   revised, the saved copy IS the drawing now.
+
+### Both: stop after each iteration
+
+**Design, generate, then STOP and say what you produced.** Do not start the
+next round on your own initiative — not even when you can see something you
+would improve, and especially not in approach A, where nothing physically
+prevents you from looping.
+
+Two reasons, and the second is the one that bites:
+
+* **The preview is the review.** A drawing is judged by looking at it, and
+  the user cannot look at anything while you are still going. Iterating past
+  them turns a two-minute correction into an unpicking job.
+* **They are probably editing it.** Between iterations the user is nudging
+  labels and fixing colours in the panel — the adjustments that are far
+  quicker by hand than by another round of prompting. Anything you generate
+  on top of your own last draft discards all of it, and it arrives looking
+  like progress.
+
+So Point 5 above is not only for approach B: whenever the user has touched
+anything, the drawing you must build on is **their saved copy**, not the one
+you last wrote. When you are unsure whether they changed something, ask —
+one question is cheaper than a silent overwrite.
+
+### Both: ask before adding any dependency
+
+**Never pull in a library, package or tool without asking first.** Say what
+you want, what it buys, and what it costs; then wait. This holds for both
+halves of the work, and they fail differently:
+
+* **In the sketch** — an Arduino library is not free. It costs flash and RAM
+  on a target that may have very little of either, it has to compile for
+  *that* board, and the user has to install it before anything builds at
+  all. A sketch that needs a library they do not have does not degrade, it
+  fails. `pfodParser` is already there and covers the whole protocol; a
+  second library is a claim that it does not.
+* **In your own tooling** — a package installed to write the json or build
+  the zip is a thing the user did not ask for and now has. It is rarely
+  needed: §4.1.1 supplies a complete STORED-zip writer and a static server
+  in a handful of lines of Node built-ins, precisely so that neither is a
+  reason to install anything.
+
+If a dependency genuinely is the right answer, the case is easy to make and
+takes one sentence. Making it is the requirement — not the outcome.
+
+### Both: build what was asked, and nothing more
+
+**Do not add menu items, drawings, sub-menus, charts, touch zones or device
+behaviour that the user did not ask for.** No "I also added a Settings
+sub-menu", no spare status label, no decorative extras around a gauge, no
+helpful third button beside the two that were requested.
+
+Unrequested scope is not a free bonus here. It is charged for immediately,
+in four ways:
+
+* **The user has to review every item of it**, and they cannot tell your
+  guesses from their requirements by looking at the screen.
+* **They have to hand-adjust it too.** Layout tuning is per-item work
+  (§"Two ways to work", approach B) — inventing items multiplies the one
+  job that is already the slowest.
+* **It consumes budgets that are genuinely small.** A menu message is
+  capped at 1024 wire bytes (§4 and §7); the Minimal C target runs out of
+  cmd letters past 52 items; flash and RAM on the board are finite. Padding
+  spends all three on something nobody wanted.
+* **It is hard to remove later** — once it is in the design, in the drawing
+  and in the generated sketch, taking it out is a change to three things.
+
+The same applies to the generated sketch in stage 3: fill in the marked
+extension points for the behaviour that was specified, and leave the rest
+alone. Do not invent extra commands, states or safety features and wire
+them in.
+
+If you think something is genuinely missing — a stop button on a motor
+control, a units label on a bare number — **say so in one line and let the
+user decide**. Naming a gap costs them a moment; building it costs them a
+review, an adjustment pass, and an argument with a sketch that already
+compiles.
+
+### Both: never modify the pfodParser library
+
+**Nothing under `src/` is yours to change.** Not `pfodParser.h/.cpp`, not
+`pfodDrawing`, not `pfodDwgs` or `src/dwgs/*.h`, not to add a helper, fix a
+signature, widen a buffer or "just add one method". §2's Library map marks
+every one of those files *No — library code*, and it means it.
+
+An edit there is worse than useless, because it is invisible and it does not
+last:
+
+* **It is shared.** One library serves every pfod sketch on that machine.
+  A change made for this project silently alters the others.
+* **It is overwritten.** The next library update from the Arduino Library
+  Manager or GitHub replaces the file and the change vanishes — usually
+  long after anyone remembers making it, presenting as a sketch that used
+  to build and now does not.
+* **It only works on one machine.** A sketch that needs a patched library
+  is not portable, and nothing in it says so. The user finds out when they
+  hand it to somebody else.
+
+**You do not need to.** The generated code is built to be extended from
+outside: every generated class is reached through a *weak*-symbol accessor,
+so you supply your own subclass and your own non-weak accessor in a file you
+create, and the linker prefers yours — without a single generated or library
+file changing (§4, §5.2, §5.3). The `.ino` carries marked extension points
+for anything with no natural class home (§5.1). That is the whole design;
+use it.
+
+If you are convinced the library itself is wrong — a real bug, not a missing
+convenience — **report it, do not patch it.** Say what breaks and where, and
+let the user take it upstream.
+
+---
+
 ## 1. The three-stage workflow
 
 | Stage | You do | Output |
@@ -33,12 +224,14 @@ explicitly rather than invented.
 * **Stage 1** is pure JSON authoring against the two format docs. You can do
   this stage entirely offline, with no board and no browser.
 * **Stage 2** happens in a browser (`pfodWeb.html`, connection type
-  **Designer** — see `pfodWeb-guide.html` §2, "Connection Setup"). This is a
-  human/browser step: open pfodWeb.html, pick **Designer**, import the design
-  (or build it interactively), select the target board, and generate the
-  sketch. You cannot run this step yourself, but you can hand a user a
-  ready-to-import `.pfodMenu_json` (plus its `dwgs/*.pfodDwg_json`) that
-  generates correctly on the first try if you follow the format docs' rules.
+  **Designer** — see `pfodWeb-guide.html` §2, "Connection Setup"): open
+  pfodWeb.html, pick **Designer**, import the design (or build it
+  interactively), select the target board, and generate the sketch. Either
+  hand a user a ready-to-import `.pfodMenu_json` (plus its
+  `dwgs/*.pfodDwg_json`) that generates correctly on the first try if you
+  follow the format docs' rules — or, if you can drive a browser, do this
+  stage yourself: see §4.1 for `window.pfodWebFileHook`, which loads those
+  files without the native file dialog that would otherwise stop you.
 * **Stage 3** is what this guide is mostly about: given the generated sketch,
   add the hardware/business logic the Designer cannot know (what pin does
   what, what a button press should actually do, how a label's text is
@@ -95,6 +288,56 @@ construct before writing JSON:
 | A live chart of sampled data | `chart` menu item (menu format) — up to 3 plots |
 | Reusable graphics (e.g. an LED shape used twice) | One dwg, embedded into others via `insertDwg` (dwg format §"insertDwg") |
 
+**An inserted dwg's header, except for version, is discarded — only its items are drawn.**
+Not just the background: on the wire, everything, except version, from `{+` up to the first
+`|` is parsed and thrown away for an inserted dwg — its `color`, its `x`/`y`
+size, and its refresh interval (dwg format §"insertDwg"). Only the child's
+`items` are merged into the parent, painted with the parent's own background
+behind them, clipped by the parent's region rather than their own.
+
+**The one header field that survives is the version**, which the client
+stores and sends back as `{V1:<cmd>}` so the device can answer "nothing
+changed" instead of resending the child.
+
+**Refresh is the trap.** An inserted dwg's `dwgRefresh_ms` schedules
+nothing. Only two things drive an automatic re-request: the menu's own
+refresh, and the **top-level** dwg's — the one a Drawing menu item points
+at. A child is re-fetched only when its parent is, so it updates at the
+*parent's* rate, and a child under a parent whose refresh is `0` is fetched
+once and then left alone however short its own interval says it is. Nothing
+reports this: no error, no retry, just a drawing that never updates. **Put
+the refresh interval on the top-level dwg**, not on the inserted one that
+happens to hold the changing value.
+
+Because none of them has a background, inserted dwgs can freely
+overlap each other, or sit on top of the main dwg's own content — they don't
+need to be spaced apart on the canvas to keep one's background from covering
+another. If an inserted dwg does need a
+background of its own, add it explicitly as a filled `rectangle` — the
+child's first item, sized to the area it wants to own. If that background
+also has to cover the main dwg or an earlier-inserted sibling (not just its
+own child items), give the rectangle an `idxName`: indexed items always
+paint above un-indexed ones, and it's the only way to control stacking
+between one inserted dwg and another (dwg format §6.1; see the radial-gauge
+recipe, §10.12, for indexed masking in practice).
+
+**A dwg with no touch zones should usually have its Drawing menu item
+disabled.** A drawing that defines no `touchZone` has no active areas of its
+own, so a press on it is a press on the *menu item* it belongs to: the
+client sends that item's cmd — on the way down, as soon as a finger or
+mouse button lands anywhere on the picture. On a phone, where a drawing
+often fills the screen, that turns every stray touch and every failed scroll
+grab into a cmd the device has to answer.
+
+Set the item to **User input Disabled** (the designer's "Responds to User
+Input" toggle on Edit Menu Item; a `!` on the wire) and the drawing is still
+drawn, still refreshed on its own interval, but never sends anything.
+
+**Leave it enabled when you want exactly that behaviour** — a press on the
+picture sends the item's cmd like any other menu button, so answering it
+with the menu is a "tap the drawing to refresh the whole screen"
+affordance. That is a deliberate choice, not the default to fall into.
+
 **One naming decision made at design time drives everything in stage 3:**
 `autoCmd` (menu items), `cmdName` (dwg touch zones / inserted dwgs) and
 `idxName` (dwg indexed items) become **literal C++ identifiers** in the
@@ -116,8 +359,16 @@ valid; only the human-readability differs.
 **Keep the wire message a device sends under 1024 bytes.** A drawing with
 many indexed items, several nested `insertDwg` levels, or long label/units
 text all add to the size of the single `{...}` message `sendFullDrawing()`
-produces — see §7 rule 11 for the exact limits and what happens if you go
-over (nothing errors; the tail is silently dropped).
+produces — see §7 rule 11 for the exact limits.
+
+Going over does not fail loudly. The receiver auto-closes the message at the
+cap, so the item spanning the cut arrives in half and everything after it is
+gone. pfodWeb draws what it could read and names what it dropped in the
+console (`N item(s) could not be read and were left out`); the drawing on
+screen is simply missing its tail. The Dwg Controls Panel measures each
+drawing before you ever send it and shows the name and byte count in red,
+with *"This dwg too large to send without truncation"*, so the usual way to
+meet this is in the designer rather than on the wire.
 
 ---
 
@@ -136,7 +387,29 @@ For a menu with `connection: "serial"` (or ble/tcp/http) and one or more
     Dwg_<Name2>.h
     Dwg_<Name2>.cpp
     ...
+    menujson/
+        <SketchName>_menuJson.zip   the design that produced this sketch
 ```
+
+**`menujson/` holds one file**, the same artifact *Save Design to File*
+downloads, so a generated sketch travels with a design that can be loaded
+straight back:
+
+* `<name>.pfodMenu_json` — when the design links no drawings.
+  **Edit existing Menu → Load Design from File** takes it.
+* `<name>_menuJson.zip` — when there are dwgs. Inside:
+
+  ```
+  <name>.pfodMenu_json
+  dwgs/<dwg>.pfodDwg_json      one per linked drawing
+  ```
+
+  The same **Edit existing Menu → Load Design from File** takes it — one
+  button offers both shapes, since which one a design was saved as depends
+  on whether it links a drawing rather than on anything you chose. The Dwg
+  Controls Panel's **Load Dwg** takes it too. Both accept the whole
+  generated sketch zip as well — they look inside `menujson/` for the
+  bundle, so there is no need to extract it first.
 
 **Generate does not export a `data/` folder.** For an HTTP connection that
 serves pfodWeb from the micro's own filesystem (`useLittleFSToServe_pfodWeb =
@@ -164,6 +437,394 @@ subclassed behaviour then travels with it as one file, and a new sketch that
 wants that same behaviour just adds it (plus the generated
 `Dwg_<Name>.h/.cpp`) rather than copying logic out of some other sketch's
 combined file. See §5.2–§5.3 for the mechanism.
+
+### 4.1 AI Driving stage 2, through a browser
+
+Stage 2 is a browser step, but it is not necessarily a *human* step. If you
+can drive Chrome, you can do it — subject to the two things a page-level
+automation cannot touch, both covered below: the native file dialog, and the
+native `alert()`.
+
+This is **approach A** — see "Two ways to work" above for what it needs
+before you start, and for what to do instead when the browser is not
+yours to drive.
+
+Node earns its place twice over. **Write the json with a script, not by
+hand:** a drawing is a long list of items whose coordinates are usually
+computed from each other (a gauge's ticks, a bar's segments), and a
+generating script is both shorter than the file it emits and re-runnable
+when the user asks for twelve ticks instead of ten. It also parses what it
+writes, so a design reaches the browser already known to be valid JSON —
+the alternative is finding out through a `alert('Invalid JSON file')` you
+cannot dismiss. **Then zip what it wrote:** one press loads a whole design
+plus every drawing, and Node has no zip writer, so §4.1.1 supplies one.
+Both are covered there.
+
+**Serving the page.** Put `pfodWeb.html` in a directory of its own and run
+this beside it. Node built-ins only, so there is nothing to install:
+
+```js
+// serve.js — one directory over http.   node serve.js <dir> [port]
+const http = require('http');
+const fs   = require('fs');
+const path = require('path');
+
+const root  = path.resolve(process.argv[2] || '.');
+const port  = Number(process.argv[3] || 8137);
+const TYPES = { '.html': 'text/html; charset=utf-8',
+                '.js':   'text/javascript; charset=utf-8',
+                '.css':  'text/css; charset=utf-8',
+                '.json': 'application/json; charset=utf-8' };
+
+http.createServer((req, res) => {
+  const rel  = decodeURIComponent(req.url.split('?')[0]);
+  const file = path.join(root, rel === '/' ? 'pfodWeb.html' : rel);
+  // The path came off a socket: keep it inside root.
+  if (file !== root && !file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+  fs.readFile(file, (err, body) => {
+    if (err) { res.writeHead(404).end(); return; }
+    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file).toLowerCase()]
+                                         || 'application/octet-stream' });
+    res.end(body);
+  });
+}).listen(port, '127.0.0.1', () => console.log('http://127.0.0.1:' + port + '/'));
+```
+
+It binds to `127.0.0.1`, so it is reachable from that machine's browser and
+nowhere else. Open `http://127.0.0.1:8137/` and drive that.
+
+> **`file://` is the human's route, not yours.** Someone opening the page
+> themselves just double-clicks it — loading their own json through the file
+> dialog, editing a drawing, exporting a `.png`. All of that works from
+> `file://` and needs no server. None of it is what §4.1 is about;
+> everything here assumes the served page.
+
+Nothing here requires a build of pfodWeb itself. Node is a prerequisite of
+*this repository's* build scripts too, but that is a separate matter — for
+design work you download the prebuilt `pfodWeb.html` and never run a build.
+
+#### 4.1.1 `window.pfodWebFileHook` — loading without the file dialog
+
+Every Load button in pfodWeb ends in a hidden `<input type="file">` and a
+`click()`, which opens a **native OS file-open dialog**. That dialog is
+outside the page and modal at the OS level, so no amount of clicking in the
+DOM gets past it, and until someone dismisses it by hand the session is
+stuck.
+
+`window.pfodWebFileHook` is the way through. Arm the file contents, then
+press the real button: the click delivers what you armed instead of opening
+the dialog. Everything after that — parse, validate, repair, dedup, the
+missing-drawing prompts — is the ordinary load path, unchanged, so what you
+exercise is the real thing and not a side door.
+
+| Call | Does |
+|---|---|
+| `arm({name, text})` | Queue one file. Returns the queue length. |
+| `arm([{…}, {…}])` | Queue several, in order. |
+| `arm({name, base64})` | Queue a **binary** file — a `.zip` design bundle. |
+| `armed()` | Names still queued, in the order they will be handed out. |
+| `clear()` | Drop the queue. Returns how many were discarded. |
+| `deleteAllDwgs()` | Save a snapshot of every drawing, then remove them all. Returns the names removed. |
+
+**Build a bundle and load it in ONE press.** This is the quick, reliable
+route, and the one to reach for by default. You are authoring the design
+json and every drawing json anyway; zip them into a `_menuJson.zip`
+yourself and arm that. One press of **Load Design from File** brings in the
+design and every drawing together — no per-file arming, no walking the
+missing-drawings block, and nothing left half-loaded if you lose count.
+
+The bundle layout is the one the app itself writes (§4):
+
+```
+<name>.pfodMenu_json         the design, at the root
+dwgs/<dwg>.pfodDwg_json      one per drawing it references
+```
+
+If you only want the DRAWINGS loaded and have no design to go with them,
+put a trivial one at the root anyway — a single Drawing item pointing at
+whichever drawing is the top of the set. That is exactly what the panel's
+own **Save Dwg** writes, and it is what makes the zip loadable in one press
+instead of needing a per-drawing route:
+
+```json
+{ "format": "pfodDesigner", "schema": 12, "name": "Gauge",
+  "rootMenu": { "promptText": "", "refresh_ms": 0,
+    "items": [ { "type": "drawing", "dwgName": "Gauge",
+                 "autoCmd": "drawing_Gauge_Cmd", "text": "Gauge" } ] } }
+```
+
+> **Node has no zip writer of its own, and you do not need one.** A STORED
+> zip — no compression — is just the files with headers around them, which
+> is a few lines and no dependency. Compressing a few hundred bytes of json
+> would gain nothing, so don't.
+>
+> pfodWeb reads STORE and DEFLATE both, so a zip from any other tool is
+> fine too if you have one to hand. This is here because Node does not.
+>
+> **This is the moment the guide keeps losing people to Python.** "Zip some
+> files" is the one step where reaching for `zipfile` feels natural. The
+> function below is the answer — copy it. No Python, no package, no shelling
+> out to `zip`.
+>
+> ```js
+> const { crc32 } = require('zlib');   // Node 20.12+
+> const u16 = (n) => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
+> const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; };
+>
+> /// entries: [{ path, data: Buffer }] -> one STORED zip Buffer
+> function storeZip(entries) {
+>   const parts = [], central = [];
+>   let offset = 0;
+>   for (const { path, data } of entries) {
+>     const name = Buffer.from(path, 'utf8');
+>     // flags, method=0 (STORE), time, date, crc, compressed, uncompressed
+>     const meta = Buffer.concat([u16(0), u16(0), u16(0), u16(0),
+>       u32(crc32(data)), u32(data.length), u32(data.length)]);
+>     parts.push(Buffer.concat([Buffer.from('PK\x03\x04'), u16(20), meta,
+>       u16(name.length), u16(0), name]), data);
+>     central.push(Buffer.concat([Buffer.from('PK\x01\x02'), u16(20), u16(20), meta,
+>       u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), name]));
+>     offset += 30 + name.length + data.length;
+>   }
+>   const cd = Buffer.concat(central);
+>   return Buffer.concat([...parts, cd,
+>     Buffer.concat([Buffer.from('PK\x05\x06'), u16(0), u16(0),
+>       u16(entries.length), u16(entries.length), u32(cd.length), u32(offset), u16(0)])]);
+> }
+> ```
+>
+> Paths go in with forward slashes and no leading `./`, exactly as the
+> layout above shows them — the reader matches on position, so
+> `dwgs/Gauge.pfodDwg_json` is a drawing and `./dwgs/Gauge.pfodDwg_json` is
+> nothing it recognises.
+
+> **Re-loading a bundle does NOT update what is already there.** Nothing in
+> this app overwrites a loaded drawing — a name already in DwgLibrary is
+> left exactly as it is and reported as *"already loaded, so left
+> unchanged"*. That is deliberate (it is usually the user's own edited
+> copy), but it makes the edit-rebuild-reload loop a trap: press Load a
+> second time and you keep the OLD drawings while the design comes in
+> beside its predecessor as `<name>_2`, so the screen looks like it worked.
+>
+> So on every reload after the first, clear the drawings first:
+>
+> ```js
+> pfodWebFileHook.deleteAllDwgs();   // → ['Gauge', 'Needle', 'Tick']
+> ```
+>
+> That is the hook point for it, and it is **deliberately not a button** —
+> wiping the library in one press is not something to leave in the UI beside
+> Create Dwg. It returns the names it removed, so log them; it is
+> idempotent, so calling it on an empty library is a harmless `[]`.
+>
+> **It saves a snapshot first.** Before anything is removed, every drawing
+> in the library goes into one `AllDwgs_<stamp>_menuJson.zip` in your
+> download folder — an ordinary design bundle, so loading it back restores
+> the lot. That matters because the library is where a drawing edited in
+> this session lives, and often the only place it lives; the panel's own
+> per-row delete saves a copy out for the same reason. If the snapshot
+> cannot be written, nothing is deleted.
+>
+> The snapshot design is ONE menu with one Drawing **row** per drawing —
+> not several menus. The rows are the top-level drawings, meaning the ones
+> no other drawing pulls in via `insertDwg`. So for a library of `Gauge`
+> (which inserts `Needle`) and `Standalone`, the menu has two rows,
+> `Gauge` and `Standalone`; `Needle` gets no row of its own because you
+> already see it inside `Gauge`. All three are in `dwgs/` and all three
+> load — the row list only decides what the menu shows.
+>
+> Designs are untouched. The panel does not repaint by itself — it shows the
+> change on its next render (any row click, or leaving and re-entering the
+> screen).
+>
+> For one drawing rather than all of them, `DwgLibrary.remove('Gauge')`.
+> `DwgLibrary` is a top-level `const`, so it answers to its bare name in
+> the console — there is no `window.DwgLibrary`.
+>
+> Read the result label or notice after loading — it names what it skipped,
+> and that is how you catch a reload that quietly kept stale drawings.
+
+```js
+// The whole design in one press. A zip is binary, so it arms as base64.
+pfodWebFileHook.arm({ name: 'Menu_1_menuJson.zip', base64: '…' });
+
+// Drawings only, out of that same bundle: press "Load Dwg" in the Dwg
+// Controls Panel instead. That one button takes a single .pfodDwg_json or
+// any bundle, so the same file serves both screens.
+pfodWebFileHook.arm({ name: 'Menu_1_menuJson.zip', base64: '…' });
+
+// A design that references no drawing needs no zip — arm the json.
+pfodWebFileHook.arm({ name: 'Menu_1.pfodMenu_json', text: '…the JSON…' });
+```
+
+**Loose files, when a bundle is not worth building.** One drawing to add,
+or files you were handed rather than authored:
+
+```js
+pfodWebFileHook.arm([
+  { name: 'LedOn.pfodDwg_json',  text: '…' },
+  { name: 'LedOff.pfodDwg_json', text: '…' },
+]);
+```
+
+**How much one press takes.** A `multiple` input ("Load Several Dwgs")
+takes the whole queue. A single-file input takes **one** and leaves the
+rest queued — which is what "Load next dwg" wants: arm the set once, then
+press repeatedly until the screen says everything is loaded. That works,
+but it is several presses and several screen-reads where a bundle is one
+of each, so prefer the bundle whenever you are producing the files.
+
+**It is inert until armed.** An un-armed click, and any click on a non-file
+input, goes straight to the real `click()`. So arming is per-press: if you
+arm nothing and press Load, the native dialog opens and you are stuck.
+`armed()` before pressing is the cheap way to be sure.
+
+Every file picker in the app is covered, because the hook wraps the shared
+`HTMLInputElement.prototype.click` rather than any one screen:
+
+| Screen | Button |
+|---|---|
+| Edit existing Menu | Load Design from File (`.pfodMenu_json` or `.zip`) |
+| Edit existing Menu, missing-drawings block | Load Several Dwgs · Load next dwg |
+| Dwg Controls Panel | Load Dwg (`.pfodDwg_json` or `.zip`) |
+| Dwg Controls Panel, missing-insertDwg prompt | Load File… |
+| Select Dwg for a menu item | Load Dwg from File |
+
+Saving a drawing back out is the Dwg Controls Panel's **Save Dwg**. A
+drawing that inserts nothing comes out as `<name>.pfodDwg_json`; one that
+inserts others cannot travel alone, so it comes out as an ordinary
+`<name>_menuJson.zip` — the drawing and everything it reaches under
+`dwgs/`, and at the root a trivial one-item design that displays it. That
+wrapper is what makes it a design bundle rather than a third layout, so
+**Load Dwg** and **Load Design from File** both read it. (It is a download,
+so getting the file is subject to §4.1.3.)
+
+#### 4.1.2 Alerts — what you can read, and what will trap you
+
+pfodWeb reports in three ways, and only one of them is fatal to automation:
+
+| Kind | What it is | Can you get past it? |
+|---|---|---|
+| **In-page label / notice** | Text on the screen itself | Yes — just read it |
+| **`pfodAlert`** | A styled DOM modal with a **Close** button | Yes — click Close |
+| **Native `alert()`** | The browser's own modal | **No.** Session stuck until a human dismisses it |
+
+**Nothing on the two buttons stage 2 exists to press raises a modal.**
+`Save Design to File`, `Generate Code` (both the Arduino and the Minimal C
+targets) and the Dwg Controls Panel's `Generate Code - Serial` all report
+in-page, success and warning alike:
+
+* **Edit Menu screen** — a status label under `Save Design to File`,
+  revealed by the press: green `Saved Menu_1_menuJson.zip` / `Generated
+  Menu_1.zip` when there was nothing else to say, amber when the file was
+  written but a referenced drawing was not loaded (it names them), red when
+  nothing was produced at all (Minimal C refusing a design that links a
+  drawing, or one with more than 52 items). Every press writes this label,
+  so what you read is always about the press you just made.
+* **Dwg Controls Panel** — `Generate Code - Serial` and `Save Dwg` both
+  report on the same notice bar the loads use, described below.
+
+**A load that works reports in-page too — no modal at all.** After a
+successful load (including one where fields had to be repaired), look here:
+
+* **Load Design from File** — its own status label: `<name> loaded`, plus a
+  line per thing worth knowing (`3 of 3 dwg(s) loaded from the zip`, `7
+  field(s) were adjusted for this board — see the list`).
+* **The change list** — when loading a design moves it between boards, every
+  ADC range and chart scale is re-derived for the new board, which is more
+  than a status label can hold: a pfod message is capped at 1024 bytes. The
+  label carries the count and a scrollable popup lists the fields, one per
+  line, with a `Close` button. The count on the label is the part that
+  stays; read the popup once and dismiss it.
+* **Dwg Controls Panel** — a dismissible notice between the
+  "Generate Code - Serial" button and the dwg list: `1 dwg loaded: <name>`,
+  or `3 drawing(s) loaded from "<file>.zip"`. It stays until you close it
+  with its `×` or another load replaces it, so it is safe to read after a
+  couple of intervening clicks. A `.zip` never overwrites a drawing already
+  in the library — the notice names the ones it left alone. A bundle's menu
+  design is loaded here too, on the same terms: `Menu design "Menu_1"
+  loaded`, or `… is already in the menu list, so it was left unchanged`.
+* **Missing-drawings block** (after picking a design that needs drawings) —
+  two labels, and both matter. "Still to load: …" is the state, and is the
+  one to act on. Below it, a summary of what the last press did:
+  `16 of 16 picked file(s) matched a missing drawing and were loaded.`,
+  green when the press did exactly what was asked and amber when something
+  was skipped — a drawing already in the library is left alone rather than
+  overwritten, and a file this menu never asked for is not loaded, both of
+  which the summary names. Neither label repeats the other, so read both.
+
+Read one of those after every load. Silence is not success.
+
+**These still raise a native `alert()` — avoid triggering them.** All are
+"nothing loaded" failures on a file you handed in, plus two on controls a
+stage-2 run has no reason to touch:
+
+| Where | Trigger |
+|---|---|
+| Load Dwg, Load File… | file could not be read |
+| Load Dwg, Load File… | content is not valid JSON |
+| Load Dwg, Load File… | valid JSON, but not a drawing (no `"format": "pfodDwgDesigner"`) |
+| Load File… for a missing insertDwg | the file's drawing `name` is not the one asked for |
+| Load chart config (message viewer) | the file is not a valid pfod chart config |
+| touchActionInput editor (Save) | prompt text left blank |
+| Export PNG | nothing is being previewed |
+
+Every one of them is a bad file, and every one is avoidable from your side.
+So, before arming: parse the JSON yourself, give every drawing a
+`.pfodDwg_json` name and every design a `.pfodMenu_json` (or `.zip`) name,
+make sure each drawing's own `name` field is the name being asked for, and
+load every referenced `insertDwg` drawing **before** pressing Generate.
+Get those right and no native alert can fire.
+
+The designer's own menu screens (missing-drawings, Select Dwg for an item)
+use `pfodAlert` instead, so a stray file there costs you a click on
+**Close**, not the session.
+
+#### 4.1.3 Getting the generated sketch back
+
+Pressing **Generate Code** downloads `<SketchName>.zip` to the browser's
+download folder (`~/Downloads`, `C:\Users\<you>\Downloads`). That is the
+one step you cannot finish through the page: a download leaves the page's
+world entirely — the DOM never sees the bytes — so no amount of clicking
+retrieves it, and there is no `window.` hook for it the way there is for
+loading.
+
+> **On Windows, every `.zip` download puts an overlay up first** — a
+> "right-click → Properties → Unblock" reminder covering the page, with one
+> OK button. Generate Code, Generate Minimal C code, Save Design and the
+> panel's Save Dwg and Generate Code - Serial all raise it — anything that
+> writes a `.zip`. Unlike a native `alert()` it is ordinary
+> DOM, so click its button and carry on; just do not mistake it for the
+> page having hung. Bare `.pfodMenu_json` / `.pfodDwg_json` downloads skip
+> it, as does the `deleteAllDwgs()` snapshot.
+
+What happens next depends on what else you can do:
+
+* **You can read the filesystem** (a coding agent with shell access on the
+  same machine — the usual case): just take it from the download folder.
+  Unzip it wherever you are doing the work and carry on to stage 3. **No
+  human is needed.**
+
+  ```
+  <SketchName>.zip  →  <SketchName>/
+                           <SketchName>.ino
+                           pfodMainMenu.h / .cpp
+                           Dwg_<Name>.h / .cpp        one pair per drawing
+                           menujson/<…>               the design (see §4)
+  ```
+
+  Then write your own file beside them — `<SketchName>App.cpp` is the usual
+  shape — subclassing the generated classes and overriding their hooks.
+  §5.2, §5.3 and the §6 recipes cover that; **never edit a generated file's
+  body**, or the next Generate overwrites your logic.
+
+* **Browser only, no filesystem**: the zip is out of reach, and someone has
+  to move it to where the code is being written. That is the only case in
+  which this step needs a person.
+
+The design itself needs no such hand-off — it is already in the browser's
+own storage, and `menujson/` inside the zip is only the copy that travels
+with the sketch.
 
 ---
 
@@ -245,7 +906,8 @@ class pfodMainMenu {
     virtual void sendMainMenuUpdate(pfodParser &parser); // cheap refresh of a cached menu
     virtual void handle(pfodParser &parser);              // called every loop() via the fn pointer
   protected:
-    pfodAutoCmd dwgMenuItem_Cmd;    // one such member per top-level drawing menu item
+    pfodAutoCmd dwgMenuItem_LedOnOff_Cmd;  // one per top-level drawing item,
+                                           // named from that item's own autoCmd
   ...
 };
 
@@ -301,7 +963,7 @@ void pfodMainMenu::handle(pfodParser& parser) {
     } else if ('@' == cmd) {         // standard chart/time-sync handshake — leave as generated
       plot_msOffset = millis(); clearPlot = true;
       parser.print(F("{@`0}"));
-    } else if (parser.cmdEquals(dwgMenuItem_Cmd)) {
+    } else if (parser.cmdEquals(dwgMenuItem_LedOnOff_Cmd)) {
       // a touch INSIDE this drawing that no dwg's processDwgCmds() claimed (returned false) —
       // see the return-value contract in §6.1. Generic fallback: refresh the drawing.
       sendMainMenuUpdate(parser);
@@ -543,6 +1205,216 @@ number/string.
 
 ## 6. Completing the generated code — recipes
 
+### The shape of the logic — model, view, controller
+
+Every recipe below is an instance of one structure. Follow it and each recipe
+is a few lines in an obvious place; ignore it and you end up fighting the
+protocol, usually in one of the two ways described here.
+
+| | What it is | Where it lives |
+|---|---|---|
+| **View** | The `.pfodMenu_json` and `.pfodDwg_json` | The design files, and the generated `pfodMainMenu.*` / `Dwg_<Name>.*` that render them. **You edit neither.** |
+| **Model** | Plain data holding what is to be displayed | Classes you write, in your own files |
+| **Controller** | Updates the model; hands it to the view when asked | Split in two — see below |
+
+#### The view is the JSON, not your C++
+
+If the screen should look different — another label, a moved zone, a
+different colour — **change the design and re-generate**. Do not build view
+structure in C++. The generated `sendFullDrawing()` *is* the view, rendered;
+editing it is both overwritten on the next generate (§7 rule 1) and a second
+description of the layout that will drift from the first.
+
+#### Anything that will change MUST be indexed
+
+This is the rule that catches people, and its symptom does not look like a
+design mistake.
+
+The wire protocol **appends**. Re-sending an un-indexed item does not replace
+the earlier one — it draws a *second* item, with the first still underneath.
+A value that updates once a second builds a stack of stale text, each drawn
+over the last, and it reads as a rendering bug.
+
+An **indexed** item is addressable: re-sending that index updates the item
+already on screen. So, at design time, give every item whose text, value,
+colour or position will ever change an `idxName` (§3, and `pfodDwg_json`
+format §5). The generator turns each one into a `pfodAutoIdx` member of the
+`Dwg_<Name>` class (§5.6 — never hand-assign one), and that member is how
+you address it later:
+
+```cpp
+dwgsPtr->label().idx(idx_tempLabel).text(...).send();   // updates in place
+```
+
+Deciding this is a *design*-time act with a stage-3 consequence: an item that
+was not given an `idxName` cannot be updated at all until the json is changed
+and the code re-generated.
+
+#### The model is data, and knows nothing about pfod
+
+Hold what is to be displayed in classes of your own — **one per drawing, or
+one per group of related views**. A tank level, its temperature and its alarm
+state belong to one model class because they are one thing on screen; two
+unrelated gauges get two.
+
+The model must contain **no `dwgsPtr`, no `send…()`, no parser reference**. It
+does not know it is being displayed. That is what lets the same data feed a
+drawing and a menu item, lets you change the view without touching it, and
+keeps it testable. Scattering the state through globals in the `.ino` works
+right up until a second view needs the same number.
+
+#### The controller is two halves, because they have different triggers
+
+* **Update** — reads sensors, applies logic, writes the model. Runs on its
+  own schedule, from `loop()` or an ISR.
+* **Transfer** — reads whatever the model currently holds and sends it as
+  indexed values. Runs **only** when the client asks.
+
+**The transfer half belongs in your `Dwg_<Name>` subclass**, in an override of
+`sendIndexedItems()` (§5.3) — the one method both the initial send and every
+refresh call through, so both stay in sync by construction. The update half
+goes in the same subclass when it is trivial (a getter reading a pin), and in
+a separate class of its own when it is not.
+
+#### Why the split is not optional: nothing is ever pushed
+
+**The client asks; the device answers.** There are no push updates. A
+`{...}` message sent without a matching request pending is unsolicited and
+the client drops it (§6.2). How often the client asks is set by
+`dwgRefresh_ms` on the drawing, or `refresh_ms` on a menu.
+
+So the update half *cannot* "send when the value changes" — there is nowhere
+to send to. It writes the model and stops. The transfer half only ever reads
+the model, and only when called. Crossing the two produces the single
+commonest mistake in stage 3: calling `sendUpdate()` from `loop()`, which
+silently goes nowhere (§6.2).
+
+```
+   sensor / logic          the model            the client asked
+        │                      │                        │
+   [ Controller: update ] ──► [ Model ] ◄── [ Controller: transfer ]
+     loop(), on its own      plain data       sendIndexedItems(), only
+        schedule            no pfod at all      when a request arrives
+```
+
+#### Worked example: `examples/LedOnOff_serial/`
+
+The whole sketch is one `LedOnOffApp.cpp` — real, shipped code — and it maps
+onto the three roles exactly. Read it alongside this table.
+
+| Role | In this sketch |
+|---|---|
+| **View** | `LedOn` and `LedOff` (the two buttons) and `LedOnOff` (the parent, carrying the status label `idx_1` and inserting the other two). Generated into `Dwg_*.h/.cpp`, never edited. |
+| **Model** | `ledIsOn`, with `turnLedOn()` / `turnLedOff()` / `isLedOn()` |
+| **Controller — update** | `MyLedOn::Dwg_LedOn_cmd_c1()` and its `LedOff` twin |
+| **Controller — transfer** | `MyLedOnOff::sendIndexedItems()` |
+
+**The model.** Four lines, and not a single pfod type in sight:
+
+```cpp
+static bool ledIsOn = false;
+static void turnLedOn()  { digitalWrite(ledPin, highIsOn ? HIGH : LOW); ledIsOn = true;  }
+static void turnLedOff() { digitalWrite(ledPin, highIsOn ? LOW : HIGH); ledIsOn = false; }
+static bool isLedOn()    { return ledIsOn; }
+```
+
+This is the **trivial** case the split allows for: the model is a variable
+and three functions rather than a class, and that is proportionate. The line
+to watch is not size but dependency — the moment this needed `dwgsPtr` or a
+`pfodParser&` it would have stopped being a model. Give it a class of its own
+when it grows state that has to stay consistent (a mode plus a setpoint plus
+a fault flag), or when a second view needs it.
+
+**The transfer half** reads the model and re-sends one indexed item:
+
+```cpp
+void MyLedOnOff::sendIndexedItems() {
+  if (isLedOn()) {
+    dwgsPtr->label().idx(idx_1).color(dwgsPtr->RED).text("Led is ON")
+      .bold().offset(20, 11.5).center().decimals(2).send();
+  } else {
+    dwgsPtr->label().idx(idx_1).color(dwgsPtr->BLACK).text("Led is Off")
+      .bold().offset(20, 11.5).center().decimals(2).send();
+  }
+}
+```
+
+It asks the model and nothing else. It does not know what changed, when, or
+why — which is what lets a touch, a refresh and the very first draw all reach
+it unchanged.
+
+**The update half** changes the model, then asks for the transfer:
+
+```cpp
+bool MyLedOn::Dwg_LedOn_cmd_c1(int row, int col, uint8_t touchType, const byte* editedText) {
+  (void)row; (void)col; (void)touchType; (void)editedText;
+  turnLedOn();                       // update: the model, and only the model
+  get_dwg_LedOnOff().sendUpdate();   // transfer: reply to the touch just received
+  return true;
+}
+```
+
+Two things here are worth more than they look:
+
+* **`sendUpdate()` is legitimate because a request is being answered.** This
+  is inside the handling of an incoming touch, so it *is* the reply. The same
+  call from `loop()` would go nowhere (§6.2). Same function, and the only
+  difference is whether anyone asked.
+* **It updates `get_dwg_LedOnOff()`, not `this`.** The button that was
+  touched has no label; the drawing that has to change is the *parent* that
+  inserts it. The thing the model feeds and the thing the user touched are
+  routinely different objects, and keeping update and transfer separate is
+  what makes that a one-line detail rather than a redesign.
+
+#### Menus update differently from drawings — and more easily
+
+Everything above about indexing is a **drawing** rule. Menus work the other
+way round, and in your favour:
+
+| | Drawing | Menu |
+|---|---|---|
+| How an item is addressed | by **index** — its `pfodAutoIdx` | by **cmd** — its `pfodAutoCmd` |
+| Which items can be updated | only those given an `idxName` at design time | **all of them** |
+| Decision needed at design time | yes — miss an `idxName` and re-generation is the only fix | none |
+
+**Every menu item has a cmd already** — it is how the item reports being
+pressed, so it is not optional and never missing. That makes every menu item
+updateable for free, with nothing to plan for. A generated
+`sendMainMenuUpdate()` is just the item list re-sent by cmd with current
+values:
+
+```cpp
+void pfodMainMenu::sendMainMenuUpdate(pfodParser& parser) {
+  parser.menuUpdate();                         // starts the update message
+  parser.onOffDisplay(datadisplay_A0_Cmd);     // addressed by cmd, not index
+  parser.print('`');
+  parser.print(datadisplay_A0_var);            // the current value
+  ...
+```
+
+So a menu needs no equivalent of the indexing decision. What it *does* share
+is the constraint that an update can only change items the menu **already
+sent** — it can alter or hide one, never introduce one. A menu item that
+might need to appear later has to be in the design from the start, sent
+hidden, and revealed by the update.
+
+#### Replacing instead of updating
+
+You can always send the whole thing again — `sendFullDrawing()` for a
+drawing, `sendMainMenu()` for a menu — instead of an update. **This is
+unusual, and it is not the fallback for "the update didn't work".**
+
+Reach for it only when the **structure** changed, not the values: items that
+are genuinely gone rather than hidden, a drawing resized, a menu rebuilt from
+different data. For anything else an update is smaller (it matters against
+the 1024-byte cap, §7), leaves the client's cached copy alone, and is what
+the refresh path calls anyway.
+
+If you find yourself re-sending everything to make a value appear, the actual
+problem is almost always the one above: the item was never given an
+`idxName`, so there is nothing to update and replacement looks like the only
+way. Fix it in the design.
+
 ### 6.1 A touch zone should do something (button press, toggle, etc.)
 
 This is the pattern demonstrated end-to-end by
@@ -580,7 +1452,7 @@ So:
   fully handled.
 * Return **`false`** only if you have *not* replied, to let the message
   propagate up to `pfodMainMenu::handle()`'s fallback branch
-  (`parser.cmdEquals(dwgMenuItem_Cmd)`, §5.2), which sends a generic
+  (`parser.cmdEquals(dwgMenuItem_<Item>_Cmd)`, §5.2), which sends a generic
   `sendMainMenuUpdate()`. pfod requires **every** message to get exactly one
   reply, or the app disconnects — the fallback exists for cases where no
   single drawing knows what to refresh.

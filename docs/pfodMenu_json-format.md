@@ -35,15 +35,44 @@ designer can:
 * **One or more `drawing` items** → `<Name>_menuJson.zip` containing
 
   ```
-  <Name>_menuJson/
-      <Name>.pfodMenu_json
-      dwgs/
-          <DwgA>.pfodDwg_json
-          <DwgB>.pfodDwg_json      <- every dwg reached, including via insertDwg
+  <Name>.pfodMenu_json             <- at the zip's root, no wrapper directory
+  dwgs/
+      <DwgA>.pfodDwg_json
+      <DwgB>.pfodDwg_json          <- every dwg reached, including via insertDwg
   ```
 
   The `.pfodMenu_json` bytes are identical either way; the loader accepts both.
 
+  Three commands write this exact shape — *Save Design to File*, the Dwg
+  Controls Panel's *Save Dwg* (which wraps the drawing in a trivial
+  one-item design so it is an ordinary bundle), and every *Generate Code*
+  target, which carries it in the sketch's `menujson/` directory. They all
+  go through one builder, `saveToFile.js`'s `buildBundleFrom`.
+
+  The loader matches on POSITION, not just on extension: the design at the
+  root, the drawings under `dwgs/`. Write that shape. Matching on position
+  is what makes it a real check rather than a guess about any zip that
+  happens to hold a likely-looking json.
+
+  Reading is more forgiving than writing, because a user will unzip a
+  bundle, edit a drawing and zip it back up — and no ordinary tool
+  reproduces what pfodWeb writes. So on the way in:
+
+  * **One wrapping directory is looked through**, whatever it is called.
+    Zipping the *folder* rather than its contents puts its name in front of
+    every path; that is the obvious gesture and it loads. Only one level —
+    see below.
+  * **Packaging debris is ignored**: a macOS `__MACOSX/` tree and its
+    `._`-prefixed AppleDouble stubs, `.DS_Store`, `Thumbs.db`, and
+    directory entries. The zip therefore does not need a single tidy
+    top-level folder — a stray readme beside it is fine too.
+  * **STORE and DEFLATE are both read.** pfodWeb only ever writes STORE
+    (there is nothing to gain compressing a few hundred bytes of json), but
+    every desktop zip tool writes DEFLATE, so refusing it would break the
+    round trip for no benefit.
+
+  Still rejected, and deliberately: a design **two** or more directories
+  down.
 When you add a `drawing` menu item to a zip bundle, **add the matching
 `.pfodDwg_json` under `dwgs/` too**. The loader reads a zip's `dwgs/` entries into the
 drawing library *before* it parses the menu json, so a self-contained bundle resolves

@@ -157,6 +157,11 @@ class PfodMenuCache {
      */
     removeMenu(bareCmd) {
         this._load();
+        // Read the drawings this menu reaches BEFORE the entry goes — after
+        // the delete there is nothing left to walk. It is the OLD cached
+        // menu's drawings that are stale, not whatever the replacement
+        // response happens to reference.
+        const reached = this._drawingsReachedByMenu(bareCmd);
         const had = this._cache.menus[bareCmd] !== undefined;
         delete this._cache.menus[bareCmd];
         this._cache.menuCmds = this._cache.menuCmds.filter(c => c !== bareCmd);
@@ -164,6 +169,92 @@ class PfodMenuCache {
             this._save();
             console.log('[MENU_CACHE] Removed cached menu for cmd "' + bareCmd + '"');
         }
+        // A menu is only stale together with its drawings. Dropping the menu
+        // alone left every drawing it showed — and every insertDwg under
+        // those, at any depth — cached at its old version, so the menu was
+        // re-fetched fresh and then filled with stale content.
+        this._removeDrawingCaches(reached, 'menu "' + bareCmd + '"');
+    }
+
+    /**
+     * Every drawing a cached menu reaches: the drawings its own Drawing items
+     * name, then each of those drawings' insertDwg children, to any depth.
+     *
+     * Both halves come out of localStorage, so this works on a cold start
+     * with no in-memory DrawingManager: the menu's parsed items carry
+     * `loadCmd` (pfodMenuParser sets it for dwg / dwg-label items), and each
+     * per-drawing cache entry carries `unindexedItems`, which is where an
+     * insertDwg item lands (it is never indexed).
+     *
+     * @param {string} bareCmd
+     * @returns {string[]} drawing names, each once
+     */
+    _drawingsReachedByMenu(bareCmd) {
+        const parsed = this.getParsedMenu(bareCmd);
+        const roots = [];
+        if (parsed && Array.isArray(parsed.items)) {
+            parsed.items.forEach((item) => {
+                if (item && item.loadCmd) roots.push(item.loadCmd);
+            });
+        }
+        const seen = new Set();
+        const queue = roots.slice();
+        while (queue.length > 0) {
+            const name = queue.shift();
+            // The `seen` guard is not just an optimisation: two drawings can
+            // insert each other, and nothing rejects that on load, so an
+            // unguarded walk would not terminate.
+            if (!name || seen.has(name)) continue;
+            seen.add(name);
+            const entry = this._readDrawingCache(name);
+            const items = (entry && entry.unindexedItems) || [];
+            items.forEach((it) => {
+                if (it && it.type === 'insertDwg' && it.drawingName) queue.push(it.drawingName);
+            });
+        }
+        return Array.from(seen);
+    }
+
+    /**
+     * The parsed per-drawing cache entry for `drawingName`, or null.
+     * Never throws: a corrupt or absent entry simply ends that branch of the
+     * walk, which is the right answer — there is nothing there to clear.
+     *
+     * @param {string} drawingName
+     * @returns {object|null}
+     */
+    _readDrawingCache(drawingName) {
+        try {
+            const raw = localStorage.getItem('pfodWeb_dwg_' + this.connectionId + '_' + drawingName);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            console.warn('[MENU_CACHE] Could not read cached drawing "' + drawingName + '":', e);
+            return null;
+        }
+    }
+
+    /**
+     * Drop both cache entries for each named drawing — the per-drawing raw
+     * cache and the per-menuDwg merged cache. DrawingManager writes both
+     * (saveDrawingDataToStorage / saveMenuDwgMergedToStorage), so clearing
+     * one and leaving the other puts back exactly the stale content that was
+     * being cleared.
+     *
+     * @param {string[]} names
+     * @param {string} why — for the log line
+     */
+    _removeDrawingCaches(names, why) {
+        if (!names || names.length === 0) return;
+        names.forEach((name) => {
+            try {
+                localStorage.removeItem('pfodWeb_dwg_' + this.connectionId + '_' + name);
+                localStorage.removeItem('pfodWeb_menuDwg_' + this.connectionId + '_' + name);
+            } catch (e) {
+                console.warn('[MENU_CACHE] Could not clear cached drawing "' + name + '":', e);
+            }
+        });
+        console.log('[MENU_CACHE] Cleared ' + names.length + ' drawing(s) reached by ' + why +
+                    ': ' + names.join(', '));
     }
 
     /**
@@ -203,7 +294,30 @@ class PfodMenuCache {
     clearMenus() {
         this._cache = { menuCmds: [], menus: {} };
         this._save();
-        console.log('[MENU_CACHE] Cleared all menus for "' + this.connectionId + '"');
+        // Every drawing cached for this connection, not just the ones the
+        // menus still reach. This is the clear-EVERYTHING path, and a walk
+        // from the menus would leave behind any drawing they no longer
+        // mention — a design edited since it was last cached, or a drawing
+        // whose menu entry has already been evicted — which is precisely the
+        // stale content someone pressing Clear Cache is trying to be rid of.
+        const dwgPrefix  = 'pfodWeb_dwg_' + this.connectionId + '_';
+        const mergePrefix = 'pfodWeb_menuDwg_' + this.connectionId + '_';
+        const toRemove = [];
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.startsWith(dwgPrefix) || key.startsWith(mergePrefix))) {
+                    toRemove.push(key);
+                }
+            }
+            // Collected first, removed after: removing inside the loop
+            // reindexes localStorage under the cursor and skips entries.
+            toRemove.forEach((key) => localStorage.removeItem(key));
+        } catch (e) {
+            console.warn('[MENU_CACHE] Could not clear cached drawings:', e);
+        }
+        console.log('[MENU_CACHE] Cleared all menus and ' + toRemove.length +
+                    ' cached drawing entry(s) for "' + this.connectionId + '"');
     }
 }
 

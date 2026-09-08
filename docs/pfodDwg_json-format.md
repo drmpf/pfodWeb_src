@@ -30,6 +30,12 @@ drawings through `insertDwg` items.
 A drawing may be saved on its own, or bundled inside a menu design's
 `<Name>_menuJson.zip` under `dwgs/<DwgName>.pfodDwg_json`.
 
+The Dwg Controls Panel's **Save Dwg** picks between those two: a drawing
+that inserts no other is written on its own; one that does is written as a
+bundle carrying every drawing it reaches, with a trivial one-item design at
+the root so it is an ordinary `_menuJson.zip` rather than a shape of its
+own. See `pfodMenu_json-format.md` for the layout.
+
 ---
 
 ## 2. Top-level object
@@ -960,13 +966,43 @@ An `insertDwg` is **never indexed** — any `idx` found on one is stripped. Addr
 The inserted drawing is served after the whole parent, so all of its indexed items
 paint **above** the parent's — see [§6.1](#61-draw-order-is-not-array-order).
 
-**An inserted drawing keeps its items and loses its canvas.** Two of the child's own
-top-level fields are read and then ignored:
+**An inserted drawing keeps its items and loses its canvas.** The child's own top-level
+fields are read and then, except for version, ignored:
 
 | Field | What happens |
 |---|---|
 | `color` | **Never painted.** Only the *top-level* drawing's `color` fills the canvas. |
-| `x` / `y` | **Neither bounds nor clips anything.** The child's items draw wherever the parent's transform puts them, including outside the child's declared canvas — and outside the parent's. |
+| `x` / `y` | **Neither bounds nor clips anything.** The clip region comes from the top-level drawing, so the child's items draw wherever the parent's transform puts them, including outside the child's declared canvas. |
+| `dwgRefresh_ms` | **Never scheduled.** Only the top-level drawing's refresh is honoured — see below. |
+
+**On the wire, that is everything, except version, from `{+` up to the first `|`** — the background
+colour, the size and the refresh interval are all parsed and discarded for an inserted
+drawing. Version is kept. Only the items after the first `|` are added to the parent.
+
+**What the version is kept for.** The client stores an inserted drawing's version like
+any other and sends it back on the next fetch (`{V1:<cmd>}`), so the device can answer
+"nothing changed" rather than resending the whole child. It is the one header field an
+inserted drawing still controls.
+
+#### Refresh is a top-level decision
+
+**An inserted drawing's `dwgRefresh_ms` never schedules anything.** Two things drive an
+automatic re-request, and neither is a child:
+
+* the **menu's** own refresh, and
+* the **top-level drawing's** refresh — the one a menu Drawing item points at.
+
+An inserted drawing is re-fetched only when its parent is: every parent response is
+re-scanned for its `insertDwg` items and a version-stamped request goes out per child. So
+a child under a refreshing parent is re-checked **at the parent's rate**, and a child
+under a parent whose refresh is `0` is fetched once and then left alone — however short
+its own interval says it is.
+
+This is worth stating plainly because the failure is silent and looks like a broken
+timer: put `2000` on the drawing that actually changes, leave the top-level drawing at
+`0`, and nothing ever refreshes — no error, no retry, just a screen that never updates.
+**Put the refresh on the top-level drawing**, and accept that its children come along at
+that rate.
 
 The child's items are merged into the parent and drawn with the parent's background
 behind them. So **a drawing meant to be inserted cannot rely on its own background**.
@@ -978,6 +1014,17 @@ does not ([§10.12](#1012-a-radial-gauge)).
 If a child needs a background, give it one **explicitly**: a filled `rectangle` as its
 first item, sized to the area it wants to own. That is drawn like any other item, so it
 travels with the drawing wherever it is inserted.
+
+**Because there is no background to protect, inserted drawings can freely overlap each
+other, or sit on top of the main drawing's own content** — unlike un-indexed items in a
+single drawing, they don't need to be spaced apart on the canvas to keep one from hiding
+behind another's background, because none of them has one. If a child's own explicit
+background rectangle needs to cover the main drawing or an earlier-inserted sibling —
+not just that child's own later items — give the rectangle an `idxName`: indexed items
+always paint above un-indexed ones, and among inserted drawings paint order otherwise
+follows `insertDwg` order in the parent's `items`
+([§6.1](#61-draw-order-is-not-array-order)), so indexing is the only way to reach back
+and cover something already drawn.
 
 **Position and scale an inserted drawing with `pushZero`**, not with these offsets: the
 child inherits the transform in force at the `insertDwg`'s position, and that is the only

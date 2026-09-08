@@ -487,7 +487,8 @@ Object.assign(DrawingViewer.prototype, {
   //
   // Parameters:
   //   prefix - drawing-name prefix marking the preview namespace
-  //            (window.DWG_PREVIEW_KEY_PREFIX, i.e. "__dcpPreview__")
+  //            (window.DWG_PREVIEW_KEY_PREFIX, i.e. "_" — every preview
+  //            loadCmd is "_<n>", see dwgWireEncoder.js dwgPreviewKey)
   clearPreviewDrawings(prefix) {
     const dm = this.redraw.redrawDrawingManager;
 

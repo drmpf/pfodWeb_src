@@ -12,21 +12,23 @@
  *     see or pass on the json.  Matches the dwg designer's own
  *     single-file export (dwgControlsPanelUI.js's _downloadDwgAsJson).
  *
- *   - One or more linked dwgs → a `<name>_menuJson.zip` holding the
- *     design's own `.pfodMenu_json` plus every dwg any Drawing menu item
- *     links to (recursively including whatever each reaches via
- *     insertDwg), each as its own `.pfodDwg_json` (dwgLibrary.js's
- *     buildSaveableDwg()) — so the design is portable on its own without
- *     depending on the browser's local DwgLibrary storage still having
- *     those dwgs loaded.  Layout matches Generate Code's exactly: one
- *     top-level `<name>_menuJson/` directory so the zip extracts to
- *     something self-contained, with both the menu json and every dwg
- *     json flat together in a `json/` subdirectory beneath it
- *     (generateCode.js's own `<name>/json/`, which is what the shipped
- *     sketches carry -- see examples/README.md's "The `json` folders").
+ *   - One or more linked dwgs → a `<name>_menuJson.zip`:
+ *
+ *         <name>.pfodMenu_json
+ *         dwgs/<dwg>.pfodDwg_json      one per linked drawing
+ *
+ *     covering every dwg any Drawing menu item links to, recursively
+ *     including whatever each reaches via insertDwg, each written by
+ *     dwgLibrary.js's buildSaveableDwg() — so the design is portable on
+ *     its own without depending on the browser's local DwgLibrary storage
+ *     still having those dwgs loaded.
  *
  * The menu json is byte-identical either way, so the two shapes are
- * interchangeable on load — loadFromFile.js accepts both.
+ * interchangeable on load — loadFromFile.js has a button for each.
+ *
+ * Generate Code puts whichever of the two applies into its sketch's own
+ * `menujson/` directory (see generateCode.js), so the design that produced
+ * a sketch travels with it as the same one file the user could have saved.
  *
  * Why on the editMenu (not main menu): Save operates on the active
  * design.  Main menu always clears state.name on entry so there's no
@@ -96,8 +98,144 @@ const DesignerSaveToFile = (() => {
     return id || 'Menu';
   }
 
-  /// Trigger a browser download of `json` as a bare `<fileName>.pfodMenu_json`
-  /// — the no-linked-dwgs case.  Same Blob + object-URL + synthetic-anchor
+  /// Build the design's portable bundle, in whichever of the two shapes
+  /// fits — WITHOUT downloading it.
+  ///
+  /// This is the one place either shape is decided, because it now has two
+  /// callers: Save Design downloads what comes back, and Generate Code
+  /// drops it into the sketch's own `json/` directory. That is the point of
+  /// having it here — a design's bundle is the same artifact whichever
+  /// command produced it, so "Load Design from .zip" can read a zip pulled
+  /// out of a generated sketch exactly as if it had been saved directly.
+  ///
+  /// @param {DesignerState} state
+  /// @param {string} fileName — filesystem-safe base name, no extension
+  /// @returns {{name: string, bytes: Uint8Array, isZip: boolean,
+  ///            dwgNames: string[], missing: string[]}}
+  ///          `name` carries the right extension for the shape chosen;
+  ///          `missing` lists dwgs the design references that are not
+  ///          currently loaded, so their content could not be carried.
+  function buildBundle(state, fileName) {
+    const collected = new Set();
+    const missing = [];
+    _collectMenuDwgs(state.rootMenu, collected, missing);
+    const bundle = buildBundleFrom(fileName, state.exportToJSON(), Array.from(collected));
+    bundle.missing = missing;
+    return bundle;
+  }
+
+  /// The same two shapes, built from the PARTS rather than from a
+  /// DesignerState — for a caller that has a design and a drawing list but
+  /// no live state to hand.
+  ///
+  /// The Dwg Designer's own "Generate Code - Serial" is that caller: it
+  /// synthesises a one-item wrapper design around the drawing being
+  /// exported (dwgArduinoExport.js's _generateWrapperMenuJSON) and has no
+  /// DesignerState of its own. It used to lay its json out flat and by
+  /// hand, which is how it ended up writing a shape no loader would take.
+  /// There is one definition of the layout, and this is it.
+  ///
+  /// @param {string} fileName — filesystem-safe base name, no extension
+  /// @param {string} menuJson — the design, already serialised
+  /// @param {string[]} dwgNames — every drawing to carry, already resolved
+  ///        (each must be in DwgLibrary; a name that is not is skipped)
+  /// @returns {{name, bytes, isZip, dwgNames, missing}}
+  function buildBundleFrom(fileName, menuJson, dwgNames) {
+    const enc = new TextEncoder();
+    const present = (dwgNames || []).filter((n) => DwgLibrary.get(n));
+
+    // Nothing to carry — the design on its own. A lone .pfodMenu_json holds
+    // exactly the same bytes and costs the reader no unzip. This also
+    // covers "links drawings, but none are loaded": there is no content
+    // available either way.
+    if (present.length === 0) {
+      return { name: fileName + '.pfodMenu_json', bytes: enc.encode(menuJson),
+               isZip: false, dwgNames: [], missing: [] };
+    }
+
+    // The layout itself, and the only place it is written down:
+    //
+    //   <fileName>.pfodMenu_json     the design, at the root
+    //   dwgs/<dwg>.pfodDwg_json      one per drawing it carries
+    //
+    // Two levels of wrapper directory used to sit above that
+    // (`Menu_1_menuJson/json/`), which meant three clicks to reach the one
+    // file a person opening the zip is looking for. The zip's own name
+    // already says what it is, and every extractor offers to make a folder
+    // from it, so the outer directory did nothing the file name did not.
+    //
+    // Nothing PARSES these paths — the reader matches on position — so the
+    // layout exists to be legible to a person who unzips it.
+    const entries = [{ path: fileName + '.pfodMenu_json', data: enc.encode(menuJson) }];
+    present.forEach((name) => {
+      entries.push({
+        path: 'dwgs/' + name + '.pfodDwg_json',
+        data: enc.encode(JSON.stringify(buildSaveableDwg(DwgLibrary.get(name)), null, 2)),
+      });
+    });
+
+    return {
+      name: fileName + '_menuJson.zip',
+      bytes: DesignerZipBuilder.buildZip(entries),
+      isZip: true, dwgNames: present, missing: [],
+    };
+  }
+
+  /// A DRAWING and everything it inserts — the Dwg Controls Panel's
+  /// "Save Dwg".
+  ///
+  /// A drawing that inserts nothing is one self-contained `.pfodDwg_json`,
+  /// exactly as Export Dwg always wrote. One that inserts others cannot
+  /// be: handing it over alone means handing over a lead file plus a hunt
+  /// for its parts, and nothing says the parts are missing until it is
+  /// loaded somewhere and comes up short.
+  ///
+  /// So the multi-drawing case is a `<name>_menuJson.zip` — an ORDINARY
+  /// design bundle, not a shape of its own. The drawing and everything it
+  /// reaches go under `dwgs/`, and at the root is a trivial one-item
+  /// design that displays the drawing, built by the same
+  /// DwgArduinoExport.buildWrapperMenuJSON that Generate Code - Serial
+  /// wraps a drawing in.
+  ///
+  /// That wrapper is what makes it load. A zip whose root held a drawing
+  /// instead would have been a third bundle shape, needing its own branch
+  /// in the reader and its own handling in every loader — for a file that
+  /// already has a perfectly good representation. With the wrapper it goes
+  /// through the ordinary path: the drawings land in DwgLibrary, and the
+  /// design lands in the menu list where opening it shows the drawing.
+  ///
+  /// An inserted drawing that is not currently loaded cannot be carried
+  /// and is reported in `missing` for the caller to say so.
+  ///
+  /// @param {string} fileName — filesystem-safe base name, no extension
+  /// @param {string} dwgName — the drawing being saved, as named in DwgLibrary
+  /// @returns {{name, bytes, isZip, dwgNames, missing}}
+  function buildDwgBundle(fileName, dwgName) {
+    const collected = new Set();
+    const missing = [];
+    DwgArduinoExport.collectAllDwgs(dwgName, collected, missing);
+
+    // Inserts nothing (itself is all collectAllDwgs found): the drawing on
+    // its own, with no zip and no wrapper design to explain.
+    if (collected.size <= 1) {
+      const only = DwgLibrary.get(dwgName);
+      return {
+        name: fileName + '.pfodDwg_json',
+        bytes: new TextEncoder().encode(JSON.stringify(buildSaveableDwg(only), null, 2)),
+        isZip: false, dwgNames: [], missing,
+      };
+    }
+
+    // The drawing itself is carried under dwgs/ like any other — the root
+    // is the wrapper design, so this is a design bundle in every respect.
+    const wrapper = DwgArduinoExport.buildWrapperMenuJSON(dwgName, fileName);
+    const bundle = buildBundleFrom(fileName, wrapper, Array.from(collected));
+    bundle.missing = missing;
+    return bundle;
+  }
+
+  /// Trigger a browser download of a bare `.pfodMenu_json` — the
+  /// no-linked-dwgs case.  Same Blob + object-URL + synthetic-anchor
   /// pattern deleteEmptyMenuList.js's _downloadBeforeDelete and
   /// dwgControlsPanelUI.js's _downloadDwgAsJson already use for this file
   /// type.  Deliberately NOT DesignerZipBuilder.triggerDownload: that one
@@ -105,74 +243,58 @@ const DesignerSaveToFile = (() => {
   /// Unblock" overlay, which is meaningless for a plain json.
   /// revokeObjectURL is deferred for the same reason as the zip path — see
   /// the note above.
-  /// @param {string} fileName — filesystem-safe name, no extension
-  /// @param {string} json
-  function _triggerJsonDownload(fileName, json) {
-    const blob = new Blob([json], { type: 'application/json' });
+  /// @param {string} name — full file name, extension included
+  /// @param {Uint8Array} bytes
+  function _triggerJsonDownload(name, bytes) {
+    const blob = new Blob([bytes], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = fileName + '.pfodMenu_json';
+    a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  /// Collect the design's linked dwgs, then download it in whichever of
-  /// the two shapes fits — bare .pfodMenu_json when there is no dwg
-  /// content to carry, otherwise the .zip bundle described above.
+  /// Download the design in whichever of the two shapes buildBundle chose.
+  ///
+  /// Returns what to say about it rather than saying it: a missing dwg used
+  /// to raise a native alert(), which browser automation cannot dismiss —
+  /// it would stop a scripted run dead over a warning, after the file had
+  /// already been written.  The caller puts this on the editMenu status
+  /// label instead (see editMenu.js's statusUpdate).
+  ///
   /// @param {DesignerState} state
+  /// @returns {{text: string, level: string}}
   function _triggerDownload(state) {
-    const collected = new Set();
-    const missing = [];
-    _collectMenuDwgs(state.rootMenu, collected, missing);
+    const bundle = buildBundle(state, _fileNameId(state.name));
 
-    if (missing.length > 0) {
-      alert('Warning: ' + missing.length + ' referenced dwg(s) are not currently loaded ' +
-        'and will be missing from the saved file:\n' + missing.join(', '));
+    if (bundle.isZip) {
+      DesignerZipBuilder.triggerDownload(bundle.name, bundle.bytes);
+    } else {
+      _triggerJsonDownload(bundle.name, bundle.bytes);
     }
 
-    const fileName = _fileNameId(state.name);
-
-    // Nothing to bundle — save the design on its own.  Note this also
-    // covers "the design DOES link dwgs but none of them are currently
-    // loaded" (collected empty, missing non-empty): the warning above has
-    // already fired and there is no dwg content available to carry, so a
-    // zip would hold exactly the same single json entry.
-    if (collected.size === 0) {
-      _triggerJsonDownload(fileName, state.exportToJSON());
-      return;
+    if (bundle.missing.length > 0) {
+      return {
+        text: 'Saved ' + bundle.name + '\n' + bundle.missing.length +
+              ' referenced dwg(s) are not loaded and are missing from it:\n' +
+              bundle.missing.join(', '),
+        level: 'warn'
+      };
     }
-
-    // Same layout Generate Code produces: one top-level directory, and both
-    // kinds of json flat together in a `json/` subdirectory beneath it
-    // (generateCode.js's own `<name>/json/`). That is the shape the shipped
-    // sketches carry and the one examples/README.md documents, so a design
-    // saved here drops straight into a sketch folder. Nothing reads these
-    // paths -- loadFromFile.js finds entries by extension -- so the only
-    // thing at stake is that the two zips look the same.
-    const jsonDir = fileName + '_menuJson/json/';
-    const enc = new TextEncoder();
-    const entries = [
-      { path: jsonDir + fileName + '.pfodMenu_json', data: enc.encode(state.exportToJSON()) },
-    ];
-    Array.from(collected).forEach((name) => {
-      const dwg = DwgLibrary.get(name);
-      entries.push({
-        path: jsonDir + name + '.pfodDwg_json',
-        data: enc.encode(JSON.stringify(buildSaveableDwg(dwg), null, 2)),
-      });
-    });
-
-    const zipBytes = DesignerZipBuilder.buildZip(entries);
-    DesignerZipBuilder.triggerDownload(fileName + '_menuJson.zip', zipBytes);
+    return { text: 'Saved ' + bundle.name, level: 'ok' };
   }
 
   /// Dispatch handler.  Save only ever fires from the editMenu screen
   /// where state.name is guaranteed set; the empty-name check is
   /// defensive against future call paths that might reach `{S}` from
   /// outside that flow.
+  ///
+  /// Answers with a {;} carrying the outcome, not {} — a {;} updates the
+  /// screen already showing without pushing anything onto menuNavStack, so
+  /// "fire and stay here" still holds.
   ///
   /// @param {string}        rawCmd
   /// @param {DesignerState} state
@@ -182,11 +304,21 @@ const DesignerSaveToFile = (() => {
     if (!state.name) {
       return { pfod: PFOD_EMPTY, skipSave: true };
     }
-    _triggerDownload(state);
-    return { pfod: PFOD_EMPTY, skipSave: true };
+    const status = _triggerDownload(state);
+    return {
+      pfod: DesignerEditMenu.statusUpdate(status.text, status.level),
+      skipSave: true
+    };
   }
 
-  return Object.freeze({ send });
+  // buildBundle is exported for generateCode.js and buildBundleFrom for
+  // dwgArduinoExport.js — both put the same artifact under their sketch's
+  // own menujson/ directory, so there is one definition of the layout.
+  // collectMenuDwgs goes out for designer/targetPrompt.js, which bundles a
+  // design it holds as stored bytes rather than as a live state, so it
+  // cannot use buildBundle and needs the drawing list separately.
+  return Object.freeze({ send, buildBundle, buildBundleFrom, buildDwgBundle,
+                         collectMenuDwgs: _collectMenuDwgs });
 })();
 
 // Self-register into the top-level designer dispatcher.

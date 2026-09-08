@@ -58,8 +58,15 @@ const DesignerSelectFromMenuList = (() => {
     // X is the initially-hidden nav button (shown after a successful load).
     // All three are reset on every fresh {b} render — only {;} partial
     // updates change them during a single visit to this screen.
-    out += '|L' + DESIGNER_MENU_FMT + '~Load Design from File';
-    out += '|!I~<y><i>Use the Load button above to load saved <b>.pfodMenu_json</b> menu files';
+    //
+    // ONE Load button, taking both shapes Save Design produces. Which one a
+    // design was saved as depends on whether it links a drawing — a
+    // property of the design, not a choice the user made — so a button per
+    // shape asked them to answer a question they had no reason to be able
+    // to answer, and greyed out their file when they guessed wrong. The
+    // chooser offers either; the extension picked decides how it is read.
+    out += '|L' + DESIGNER_MENU_FMT + '~Load Design from File\n<-1>.pfodMenu_json or .zip';
+    out += '|!I~<y><i>Load a saved <b>.pfodMenu_json</b> menu file, or a <b>.zip</b> bundle holding a menu and its drawings';
     out += '|X-~';
     if (names.length === 0) {
       // Practically unreachable — auto-save inserts the active design
@@ -88,7 +95,7 @@ const DesignerSelectFromMenuList = (() => {
     return out;
   }
 
-  /// Every item this screen owns, hidden — Load Design from File, its
+  /// Every item this screen owns, hidden — the Load button, the
   /// instruction label, the hidden X nav button, the empty-list note, and
   /// one row per saved design.
   ///

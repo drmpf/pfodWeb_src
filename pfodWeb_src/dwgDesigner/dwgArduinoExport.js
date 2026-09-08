@@ -15,17 +15,20 @@
  * for that OTHER, split-class style, which this "Generate Code" feature
  * does NOT use).
  *
- * Zips everything with a hand-rolled, dependency-free STORE-only zip
- * writer (same one pfodWebDesigner's own createAndDownloadZip uses, ported
- * verbatim: no new external library), and triggers a browser download.
+ * Zips everything with the app's shared STORE-only zip writer
+ * (designer/menus/zipBuilder.js) and triggers a browser download. A
+ * hand-rolled second writer used to live in this file; it took only text,
+ * so it could not carry the binary design bundle below, and being a
+ * separate implementation nothing proved readZip could read what it wrote.
  *
- * Also bundles each included dwg's own re-loadable design as
- * json/<dwgName>.pfodDwg_json (dwgLibrary.js's own buildSaveableDwg() format —
- * same one dwgControlsPanelUI.js's own Export/_downloadDwgAsJson() produces
- * — so the design can be re-opened later via Load Dwg), plus one
- * json/<name>_serial.pfodMenu_json for the wrapper menu itself
- * (_generateWrapperMenuJSON) — so the whole generated sketch's menu can be
- * pulled back into the Designer later via Load Design from File.
+ * The sketch carries the design that produced it in menujson/, exactly as
+ * the menu designer's own Generate Code does — saveToFile.js's
+ * buildBundleFrom builds it, around the one-item wrapper design this
+ * module synthesises (_generateWrapperMenuJSON). That is the only layout
+ * the loaders accept, so the generated sketch can be picked straight back
+ * up with Load Design from File. It used to write the wrapper design and
+ * each drawing's json flat in a `json/` directory instead — a shape
+ * nothing reads, so a sketch generated here could not be re-loaded at all.
  *
  * An insertDwg target that isn't currently loaded in DwgLibrary is
  * reported back to the caller (missingDrawings) but does NOT stop
@@ -34,8 +37,10 @@
  * so the rest of the sketch still compiles.
  *
  * Exports:    window.DwgArduinoExport.exportDwgAsZip(dwgName)
- * Depends on: DwgLibrary + buildSaveableDwg (dwgDesigner/dwgLibrary.js, loaded earlier),
- *             flattenTouchActions (dwgDesigner/dwgValidate.js, loaded earlier)
+ * Depends on: DwgLibrary (dwgDesigner/dwgLibrary.js, loaded earlier),
+ *             flattenTouchActions (dwgDesigner/dwgValidate.js, loaded earlier),
+ *             DesignerZipBuilder + DesignerSaveToFile.buildBundleFrom
+ *             (designer/menus/, loaded later — reached only at click time)
  * Called by:  dwgDesigner/dwgControlsPanelUI.js's Generate Code buttons
  *             (main Dwg Controls Panel list screen, and the Edit Dwg screen)
  *
@@ -88,6 +93,42 @@ const DwgArduinoExport = (() => {
   /// @returns {string}
   function _identifier(name) {
     return (name || '').replace(/[^a-zA-Z0-9_]/g, '');
+  }
+
+  /// The pfodAutoCmd member name for a Drawing MENU ITEM, from that item's
+  /// own autoCmd: "drawing_Home_Cmd" → "dwgMenuItem_Home_Cmd".
+  ///
+  /// One rule, one place. Both code generators emit this member — this file
+  /// for the single-dwg wrapper menu (Generate Code - Serial) and
+  /// generateCode.js for a full design — and they had drifted: this one
+  /// hard-coded "dwgMenuItem_Cmd" while the other derived a name per item.
+  /// That was harmless only because the wrapper menu holds exactly one
+  /// Drawing item, but it meant the same design produced different member
+  /// names depending on which button generated it, and only one of the two
+  /// matched the guide.
+  ///
+  /// Only the leading type word is dropped, so the rest of the autoCmd —
+  /// which state.js's _makeAutoCmd has already made unique within its menu,
+  /// dedup suffix included — survives intact.
+  ///
+  /// @param {string} autoCmd — a drawing menu item's autoCmd
+  /// @returns {string} a valid C++ identifier
+  function _dwgMenuItemCmdVar(autoCmd) {
+    const id  = _identifier(autoCmd);
+    const pos = id.indexOf('_');
+    return 'dwgMenuItem_' + (pos >= 0 ? id.substring(pos + 1) : id);
+  }
+
+  /// The same name for the single-dwg WRAPPER menu, derived from the dwg's
+  /// own name through the autoCmd _generateWrapperMenuJSON would mint for
+  /// it. Going the long way round — name → autoCmd → member — is the point:
+  /// the sketch and the .pfodMenu_json bundled beside it then agree, so
+  /// re-generating from that bundle through the menu designer produces the
+  /// same member name.
+  /// @param {string} topDwgName — the raw (unsanitized) dwg name
+  /// @returns {string}
+  function _wrapperCmdVar(topDwgName) {
+    return _dwgMenuItemCmdVar(_makeAutoCmd(ITEM_TYPE_DRAWING, topDwgName, []));
   }
 
   // Colours this export run had to degrade to BLACK — see _convertColor.
@@ -565,6 +606,40 @@ const DwgArduinoExport = (() => {
       '  debugPtr = getDebugPtr();\n' +
       '#endif\n' +
       '  pfodDrawing::init();\n';
+    // Prime the auto-assigned identifiers, BEFORE the inserted drawings.
+    //
+    // pfodAutoIdx / pfodAutoCmd hand out their value on FIRST USE, so
+    // without this a drawing's idx and cmd depend on the order the client
+    // happens to ask for things -- different across runs, and different
+    // between two clients connecting in a different order. Sending the
+    // drawing once at boot fixes them, and it goes nowhere: a
+    // default-constructed pfodParser has io == NULL, so every write() is a
+    // silent no-op.
+    //
+    // Ahead of the children, not after them, so the numbering follows the
+    // nesting: this drawing takes its own idx values first, and everything
+    // it inserts gets higher ones. Init order then reads the same way the
+    // drawing does.
+    if (insertedDwgNames.length > 0) {
+      code += '  // Forces this dwg\'s own pfodAutoIdx/pfodAutoCmd to a fixed,\n' +
+        '  // deterministic value at boot instead of leaving it lazily assigned by\n' +
+        '  // client request order -- sent to a local discard sink\n' +
+        '  // (default-constructed pfodParser leaves io=NULL, so its write()s\n' +
+        '  // silently no-op), never a real client. Runs BEFORE the drawings\n' +
+        '  // inserted below, so this dwg takes the lower idx values and each\n' +
+        '  // child it inserts takes higher ones.\n';
+    } else {
+      code += '  // Forces this dwg\'s own pfodAutoIdx to a fixed, deterministic value at\n' +
+        '  // boot instead of leaving it lazily assigned by client request order --\n' +
+        '  // sent to a local discard sink (default-constructed pfodParser leaves\n' +
+        '  // io=NULL, so its write()s silently no-op), never a real client.\n';
+    }
+    code += '  pfodParser primingSink;\n' +
+      '  setParser(&primingSink);\n' +
+      '  sendFullDrawing();' +
+      (insertedDwgNames.length > 0
+        ? '  // before any included dwgs to match later gets higher idx\n\n'
+        : '\n');
     insertedDwgNames.forEach((drawingName) => {
       if (missingDwgSet.has(drawingName)) {
         code += '  // MISSING: ' + _dwgAccessor(drawingName) + '.init(); -- drawing \'' + drawingName +
@@ -682,117 +757,26 @@ const DwgArduinoExport = (() => {
     return { names: Array.from(collected), missing };
   }
 
-  // ── ZIP writer — hand-rolled, STORE-only (no compression), no external
-  //    dependency — ported verbatim from pfodWebDesigner/src/
-  //    arduinoExport.js's own createAndDownloadZip(), split into a pure
-  //    "build the bytes" function here (download is a separate, thin
-  //    step — see exportDwgAsZip) so this stays independently testable. ──
-
-  function _crc32(data) {
-    const table = new Uint32Array(256);
-    for (let i = 0; i < 256; i++) {
-      let c = i;
-      for (let j = 0; j < 8; j++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-      table[i] = c;
-    }
-    let crc = 0xFFFFFFFF;
-    for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
-    return (crc ^ 0xFFFFFFFF) >>> 0;
-  }
-  function _u16le(v) { return new Uint8Array([v & 0xFF, (v >>> 8) & 0xFF]); }
-  function _u32le(v) { return new Uint8Array([v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF]); }
-
-  /// Build a complete, valid (STORE-only) .zip file as a Blob from a flat
-  /// list of {filename, content} text files.
-  /// @param {Array<{filename:string, content:string}>} files
-  /// @returns {Blob}
-  function _buildZipBlob(files) {
-    const encoder = new TextEncoder();
-    const now = new Date();
-    const zipDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
-    const zipTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
-
-    const localParts = [];
-    const centralParts = [];
-    let offset = 0;
-
-    files.forEach((file) => {
-      const nameBytes = encoder.encode(file.filename);
-      const contentBytes = encoder.encode(file.content);
-      const crc = _crc32(contentBytes);
-
-      const localHeader = new Uint8Array(30 + nameBytes.length);
-      let p = 0;
-      localHeader.set([0x50, 0x4B, 0x03, 0x04], p); p += 4;
-      localHeader.set(_u16le(20), p); p += 2;   // version needed
-      localHeader.set(_u16le(0), p); p += 2;    // flags
-      localHeader.set(_u16le(0), p); p += 2;    // compression: store
-      localHeader.set(_u16le(zipTime), p); p += 2;
-      localHeader.set(_u16le(zipDate), p); p += 2;
-      localHeader.set(_u32le(crc), p); p += 4;
-      localHeader.set(_u32le(contentBytes.length), p); p += 4; // compressed size
-      localHeader.set(_u32le(contentBytes.length), p); p += 4; // uncompressed size
-      localHeader.set(_u16le(nameBytes.length), p); p += 2;
-      localHeader.set(_u16le(0), p); p += 2;     // extra field length
-      localHeader.set(nameBytes, p);
-
-      localParts.push(localHeader, contentBytes);
-
-      const centralHeader = new Uint8Array(46 + nameBytes.length);
-      p = 0;
-      centralHeader.set([0x50, 0x4B, 0x01, 0x02], p); p += 4;
-      centralHeader.set(_u16le(20), p); p += 2;  // version made by
-      centralHeader.set(_u16le(20), p); p += 2;  // version needed
-      centralHeader.set(_u16le(0), p); p += 2;   // flags
-      centralHeader.set(_u16le(0), p); p += 2;   // compression: store
-      centralHeader.set(_u16le(zipTime), p); p += 2;
-      centralHeader.set(_u16le(zipDate), p); p += 2;
-      centralHeader.set(_u32le(crc), p); p += 4;
-      centralHeader.set(_u32le(contentBytes.length), p); p += 4;
-      centralHeader.set(_u32le(contentBytes.length), p); p += 4;
-      centralHeader.set(_u16le(nameBytes.length), p); p += 2;
-      centralHeader.set(_u16le(0), p); p += 2;   // extra field length
-      centralHeader.set(_u16le(0), p); p += 2;   // comment length
-      centralHeader.set(_u16le(0), p); p += 2;   // disk number start
-      centralHeader.set(_u16le(0), p); p += 2;   // internal attrs
-      centralHeader.set(_u32le(0), p); p += 4;   // external attrs
-      centralHeader.set(_u32le(offset), p); p += 4; // local header offset
-      centralHeader.set(nameBytes, p);
-
-      centralParts.push(centralHeader);
-      offset += localHeader.length + contentBytes.length;
-    });
-
-    const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
-    const centralOffset = offset;
-
-    const endRecord = new Uint8Array(22);
-    let p = 0;
-    endRecord.set([0x50, 0x4B, 0x05, 0x06], p); p += 4;
-    endRecord.set(_u16le(0), p); p += 2;  // disk number
-    endRecord.set(_u16le(0), p); p += 2;  // disk with central dir
-    endRecord.set(_u16le(files.length), p); p += 2; // entries on this disk
-    endRecord.set(_u16le(files.length), p); p += 2; // total entries
-    endRecord.set(_u32le(centralSize), p); p += 4;
-    endRecord.set(_u32le(centralOffset), p); p += 4;
-    endRecord.set(_u16le(0), p); p += 2; // comment length
-
-    return new Blob([...localParts, ...centralParts, endRecord], { type: 'application/zip' });
-  }
-
   /// pfodMainMenu.h — the single-dwg main menu wrapper, ported verbatim
   /// from Menu_withDwg/pfodMainMenu.h (the real V4.1.2 generator's own
   /// reference output for "a menu with a single dwg"): one pfodAutoCmd
-  /// (dwgMenuItem_Cmd) for the dwg's own menu row, sendMainMenu/
+  /// (dwgMenuItem_<Dwg>_Cmd) for the dwg's own menu row, sendMainMenu/
   /// sendMainMenuUpdate left virtual (matching that reference exactly —
   /// this is the one place virtual survives even in the flat, no-Base
   /// style), and the plot_msOffset/clearPlot pair the reference always
   /// declares regardless of whether there's an actual chart (they only
   /// back the {@} "current time" handshake every pfodApp connection does).
-  /// This file never depends on the dwg's own name — the same wrapper
-  /// shape works for any single top-level dwg.
+  /// The one thing here that does depend on the dwg is the member name —
+  /// the same rule generateCode.js uses, so a design generated from either
+  /// button declares the same member.
+  ///
+  /// It is derived here rather than passed in: a parameter is one a caller
+  /// can forget, and forgetting it emits `pfodAutoCmd undefined;` — which
+  /// compiles nowhere and is not obviously wrong in a diff.
+  /// @param {string} topDwgName — the raw (unsanitized) dwg name
   /// @returns {string}
-  function _generateMainMenuHeader() {
+  function _generateMainMenuHeader(topDwgName) {
+    const cmdVar = _wrapperCmdVar(topDwgName);
     return '#ifndef PFOD_MAIN_MENU_H\n' +
       '#define PFOD_MAIN_MENU_H\n\n' +
       '// pfodMainMenu.h  file  =================\n' +
@@ -811,7 +795,7 @@ const DwgArduinoExport = (() => {
       '    virtual void init(pfodCloseConnectionPtr _closeConnectionFnPtr = NULL);\n' +
       '    virtual void handle(pfodParser &parser);\n\n' +
       '  protected:\n' +
-      '    pfodAutoCmd dwgMenuItem_Cmd; // drawing menu item\n\n' +
+      '    pfodAutoCmd ' + cmdVar + '; // drawing menu item\n\n' +
       '    virtual void sendMainMenu(pfodParser &parser);\n' +
       '    virtual void sendMainMenuUpdate(pfodParser &parser);\n\n' +
       '    unsigned long plot_msOffset; // set by {@} response\n' +
@@ -844,16 +828,17 @@ const DwgArduinoExport = (() => {
   /// pfodMainMenu.cpp — ported verbatim from Menu_withDwg/pfodMainMenu.cpp,
   /// with the wrapped dwg's own identifier substituted in wherever the
   /// reference hard-coded "Cmd" (init() calling dwg_<name>.init(), and
-  /// sendMainMenu() printing dwg_<name> as the loadCmd). The dwgMenuItem_Cmd
-  /// branch in handle() is for a touch on the dwg's own MENU ROW that its
-  /// processDwgCmds() didn't already consume (matches the reference's own
-  /// comment) — it is not part of the dwg's own touchZone handling, which
-  /// lives entirely inside Dwg_<name>.cpp.
+  /// sendMainMenu() printing dwg_<name> as the loadCmd). The
+  /// dwgMenuItem_<Dwg>_Cmd branch in handle() is for a touch on the dwg's
+  /// own MENU ROW that its processDwgCmds() didn't already consume (matches
+  /// the reference's own comment) — it is not part of the dwg's own
+  /// touchZone handling, which lives entirely inside Dwg_<name>.cpp.
   /// @param {string} topDwgName — the raw (unsanitized) dwg name, for the
   ///        {.} example in the header comment
   /// @param {string} topDwgIdentifier — _identifier(topDwgName)
   /// @returns {string}
   function _generateMainMenuCpp(topDwgName, topDwgIdentifier) {
+    const cmdVar = _wrapperCmdVar(topDwgName);
     return '// pfodMainMenu.cpp  file ==============\n' +
       '// generated by pfodWeb Designer Dwg Code Generator\n' +
       '/*\n' +
@@ -896,6 +881,18 @@ const DwgArduinoExport = (() => {
       '#endif\n' +
       '  initialized = true;\n' +
       '  closeConnectionFnPtr = _closeConnectionFnPtr;\n' +
+      // Same priming the full menu generator emits (generateCode.js) and the
+      // drawings do for themselves: pfodAutoCmd assigns on first use, so
+      // without a send at boot the cmds fall out of client request order.
+      // Ahead of the drawing, so the menu takes the lower values.
+      '  // Forces this menu\'s pfodAutoCmds to fixed, deterministic values at boot\n' +
+      '  // instead of leaving them lazily assigned by client request order -- sent\n' +
+      '  // to a local discard sink (default-constructed pfodParser leaves io=NULL,\n' +
+      '  // so its write()s silently no-op), never a real client. Runs BEFORE the\n' +
+      '  // drawing below, so this menu takes the lower cmds and the drawing and\n' +
+      '  // everything it inserts take higher ones.\n' +
+      '  pfodParser primingSink;\n' +
+      '  sendMainMenu(primingSink);  // before any included dwgs to match later gets higher idx\n\n' +
       '  get_dwg_' + topDwgIdentifier + '().init(); // initialize drawing -- \'' + topDwgName + '\'\n' +
       '}\n\n' +
       'void pfodMainMenu::handle(pfodParser &parser) {\n' +
@@ -924,7 +921,7 @@ const DwgArduinoExport = (() => {
       '      clearPlot = true; // clear plot on reconnect as have new plot_msOffset\n' +
       '      parser.print(F("{@`0}")); // return `0 as \'current\' raw data milliseconds\n\n' +
       '      // now handle commands returned from button/sliders\n' +
-      '    } else if (parser.cmdEquals(dwgMenuItem_Cmd)) { // user touch not handled by dwg, handle it here\n' +
+      '    } else if (parser.cmdEquals(' + cmdVar + ')) { // user touch not handled by dwg, handle it here\n' +
       '      // in the main Menu of ' + topDwgName + '\n' +
       '      // drawing loadCmd handled internally by get_dwg_' + topDwgIdentifier + '().init()\n' +
       '      // add touchZone handling here for input not handled in processDwgCmds()\n' +
@@ -950,7 +947,7 @@ const DwgArduinoExport = (() => {
       '  parser.sendRefreshAndVersion(refresh_ms); // send the menu version\n' +
       '  // send menu items\n' +
       '  parser.print(F("|+")); // start Drawing\n' +
-      '  parser.print(dwgMenuItem_Cmd); // drawing menu item cmd\n' +
+      '  parser.print(' + cmdVar + '); // drawing menu item cmd\n' +
       '  parser.print(F("~"));\n' +
       '  parser.print(get_dwg_' + topDwgIdentifier + '()); // the drawing\'s loadCmd\n' +
       '  parser.endOfMsg();  // close pfod message. Send }\n' +
@@ -959,7 +956,7 @@ const DwgArduinoExport = (() => {
       '  parser.menuUpdate();  // start an Update Menu pfod message. Send {;\n' +
       '  // send menu items\n' +
       '  parser.print(F("|+")); // drawing menu item update\n' +
-      '  parser.print(dwgMenuItem_Cmd);\n' +
+      '  parser.print(' + cmdVar + ');\n' +
       '  parser.endOfMsg();  // close pfod message. Send }\n' +
       '  // ============ end of menu ===========\n' +
       '}\n' +
@@ -1041,11 +1038,33 @@ const DwgArduinoExport = (() => {
   /// _makeAutoCmd — all loaded earlier, before this file, and declared at
   /// module scope there) rather than hand-duplicating that shape, so this
   /// stays in sync with the Designer's own export format automatically.
-  /// @param {string} dwgName — raw (unsanitized) dwg name
-  /// @param {string} topDwgIdentifier — _identifier(dwgName), also the
-  ///        sketch folder's own name minus the '_serial' suffix
+  /// Two callers, so the design name is a parameter rather than derived:
+  /// Generate Code - Serial names it after the sketch ('<id>_serial'),
+  /// while the Dwg Controls Panel's Save Dwg names it after the drawing.
+  /// Both want the identical one-item design, which is why there is one
+  /// function rather than two that could drift.
+  ///
+  /// @param {string|string[]} dwgName — raw (unsanitized) dwg name, or
+  ///        several for a design that shows more than one
+  /// @param {string} designName — the design's own `name` field
   /// @returns {string} JSON string
-  function _generateWrapperMenuJSON(dwgName, topDwgIdentifier) {
+  function _generateWrapperMenuJSON(dwgName, designName) {
+    // One name or several. A snapshot of the whole drawing library wants a
+    // Drawing item per top-level drawing, so opening it shows all of them;
+    // the two sketch callers pass a single name and get what they always
+    // got. autoCmd is minted against the items already built, since
+    // _makeAutoCmd dedupes only against what it is shown.
+    const names = Array.isArray(dwgName) ? dwgName : [dwgName];
+    const items = [];
+    names.forEach((n) => {
+      items.push({
+        type: ITEM_TYPE_DRAWING,
+        autoCmd: _makeAutoCmd(ITEM_TYPE_DRAWING, n, items),
+        text: n,
+        formats: { disabled: false, sound: false, flash: false },
+        dwgName: n,
+      });
+    });
     const rootMenu = {
       promptText: '',
       promptFormat: {
@@ -1053,15 +1072,7 @@ const DwgArduinoExport = (() => {
         flash: false, sound: false, disabled: false,
         fontColour: null, bgColour: null,
       },
-      items: [
-        {
-          type: ITEM_TYPE_DRAWING,
-          autoCmd: _makeAutoCmd(ITEM_TYPE_DRAWING, dwgName, []),
-          text: dwgName,
-          formats: { disabled: false, sound: false, flash: false },
-          dwgName: dwgName,
-        },
-      ],
+      items: items,
       refresh_ms: 0,
     };
     // Same field set and key order as DesignerState.exportToJSON(), per this
@@ -1074,7 +1085,7 @@ const DwgArduinoExport = (() => {
     const out = {
       format:     EXPORT_FORMAT_TAG,
       schema:     DESIGNER_STATE_SCHEMA_VERSION,
-      name:       topDwgIdentifier + '_serial',
+      name:       designName,
       connection: 'serial',
       boardName:  _currentBoardName(),
       savedAt:    new Date().toISOString(),
@@ -1115,33 +1126,38 @@ const DwgArduinoExport = (() => {
       const cName = _identifier(name);
       files.push({ filename: sketchDir + 'Dwg_' + cName + '.h', content: _generateHeader(flatDwg) });
       files.push({ filename: sketchDir + 'Dwg_' + cName + '.cpp', content: _generateCpp(flatDwg, missingSet) });
-      // buildSaveableDwg (dwgLibrary.js) does its own flattening/stripping,
-      // so it gets the RAW (nested) dwg, not flatDwg — matches
-      // dwgControlsPanelUI.js's own _downloadDwgAsJson()/.pfodDwg_json format
-      // exactly, so this file can be re-loaded via Load Dwg later.
-      files.push({ filename: sketchDir + 'json/' + name + '.pfodDwg_json', content: JSON.stringify(buildSaveableDwg(dwg), null, 2) });
     });
 
-    files.push({ filename: sketchDir + 'pfodMainMenu.h', content: _generateMainMenuHeader() });
-    files.push({ filename: sketchDir + 'pfodMainMenu.cpp', content: _generateMainMenuCpp(dwgName, topDwgIdentifier) });
+    files.push({ filename: sketchDir + 'pfodMainMenu.h',
+                 content: _generateMainMenuHeader(dwgName) });
+    files.push({ filename: sketchDir + 'pfodMainMenu.cpp',
+                 content: _generateMainMenuCpp(dwgName, topDwgIdentifier) });
     files.push({ filename: sketchDir + topDwgIdentifier + '_serial.ino', content: _generateIno(topDwgIdentifier) });
-    // Re-loadable design for the wrapper menu itself (see
-    // _generateWrapperMenuJSON's own doc) — alongside each bundled dwg's
-    // own json/<dwgName>.pfodDwg_json above.
-    files.push({
-      filename: sketchDir + 'json/' + topDwgIdentifier + '_serial.pfodMenu_json',
-      content: _generateWrapperMenuJSON(dwgName, topDwgIdentifier),
-    });
 
-    const blob = _buildZipBlob(files);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = topDwgIdentifier + '_serial.zip';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // The design that produced this sketch, in the ONE layout the loaders
+    // accept — built by saveToFile.js's buildBundleFrom, exactly as the
+    // menu designer's own Generate Code does it.
+    //
+    // This used to be laid out here by hand: the wrapper design and each
+    // drawing's json flat together in a `json/` directory. That is a shape
+    // nothing writes any more and nothing reads, so a sketch generated
+    // from this button could not be loaded back at all — which is the bug
+    // this replaces. The wrapper design (see _generateWrapperMenuJSON) is
+    // a real one-item design around the drawing being exported, so it
+    // bundles like any other.
+    const enc = new TextEncoder();
+    const bundle = DesignerSaveToFile.buildBundleFrom(
+      topDwgIdentifier + '_serial',
+      _generateWrapperMenuJSON(dwgName, topDwgIdentifier + '_serial'), names);
+
+    // One zip writer for the whole app (designer/menus/zipBuilder.js). The
+    // hand-rolled one that used to live in this file took only text, so it
+    // could not have carried the bundle above at all — and being a second
+    // implementation, nothing proved readZip could read what it wrote.
+    const entries = files.map((f) => ({ path: f.filename, data: enc.encode(f.content) }));
+    entries.push({ path: sketchDir + 'menujson/' + bundle.name, data: bundle.bytes });
+    DesignerZipBuilder.triggerDownload(topDwgIdentifier + '_serial.zip',
+      DesignerZipBuilder.buildZip(entries));
 
     const unsupportedColours = Array.from(_degradedColours);
     _degradedColours = null;
@@ -1160,6 +1176,16 @@ const DwgArduinoExport = (() => {
   return Object.freeze({
     exportDwgAsZip,
     collectAllDwgs: _collectAllDwgs,
+    // Shared with saveToFile.js's buildDwgBundle — Save Dwg wraps the
+    // drawing in the same one-item design so what it writes is an ordinary
+    // design bundle and loads through the ordinary path.
+    buildWrapperMenuJSON: _generateWrapperMenuJSON,
+    // Shared with generateCode.js, which owns the OTHER generator that
+    // declares this member. Exported rather than duplicated because the two
+    // had already drifted once: this file hard-coded one name while that one
+    // derived a name per item, so the same design produced different member
+    // names depending on which Generate button was pressed.
+    dwgMenuItemCmdVar: _dwgMenuItemCmdVar,
     identifier: _identifier,
     generateDwgHeader: _generateHeader,
     generateDwgCpp: _generateCpp,

@@ -32,11 +32,12 @@
  * loads straight in; a file with problems shows the "Load Dwg —
  * Validation Errors" view (matching alt-a-mockup.html) before anything
  * is saved. Every other action-row button (Create Dwg, Edit, Copy,
- * Export Dwg, Generate Code, Unload Dwg) is now wired to the same
- * pipeline, as is Load Several Dwgs — the bulk loader, which takes a
- * hand-picked set of files, one folder per press. See
- * _startLoadSeveralDwgs() for why the folder-picking variant that used
- * to sit beside it was dropped.
+ * Save Dwg, Generate Code, Unload Dwg) is now wired to the same
+ * pipeline. Load Dwg takes a single .pfodDwg_json or a .zip — a saved
+ * drawing with the ones it inserts, a design bundle, or a whole generated
+ * sketch — and never overwrites anything already in the library. See
+ * _readAndLoadZip() for why, and for what it does with a menu design it
+ * finds in the same zip.
  *
  * Lives under dwgDesigner/ — the dedicated home for all dwg-designer
  * code going forward (see dwgControlsPanel.js's header comment).
@@ -126,6 +127,48 @@ const DesignerDwgPanel = (() => {
   // cleared by the render that honours it.
   let _revealItemIndex = null;
 
+  // What the last load did, shown as a dismissible notice between the
+  // action row and the dwg list — see _setLoadNotice(). null = no notice.
+  // Deliberately NOT one-shot: the panel re-renders on every selection
+  // change and preview refresh, and a message that vanished on the next
+  // click would be no better than the alert it replaced. It stays until
+  // the user closes it or another load replaces it.
+  let _loadNotice = null;
+
+  /// Record what a load did, for the notice bar on the main panel.
+  ///
+  /// This is where the "N dwgs loaded" reporting goes now. It used to be
+  /// a native alert(), which browser automation cannot dismiss — it is
+  /// modal at the OS level, so an AI driving this panel simply stopped
+  /// there — and which a user had to click through before they could see
+  /// the list it was describing. The notice sits directly above that list
+  /// instead, says the same thing, and blocks nothing.
+  ///
+  /// Callers must re-render (_renderMainView / _selectLoadedDwg) for it
+  /// to appear; every current caller already does as the last thing it
+  /// does anyway.
+  ///
+  /// @param {string} text  what happened, plain text
+  /// @param {boolean} [isWarning] true tints it amber — the load worked
+  ///        but something is worth reading (dwgs skipped, insertDwg
+  ///        references still unresolved)
+  function _setLoadNotice(text, isWarning) {
+    _loadNotice = { text: String(text), warn: !!isWarning };
+  }
+
+  /// The notice bar's HTML, or '' when there is nothing to say.
+  /// Rendered between the action row and the dwg list by _renderMainView.
+  /// @returns {string}
+  function _buildNoticeHtml() {
+    if (!_loadNotice) return '';
+    return '<div class="dcp-notice' + (_loadNotice.warn ? ' dcp-notice-warn' : '') + '"' +
+        ' id="dcp-notice">' +
+      '<span class="dcp-notice-text">' + _esc(_loadNotice.text) + '</span>' +
+      '<button type="button" class="dcp-notice-close" id="dcp-notice-close"' +
+        ' title="Close" aria-label="Close">&times;</button>' +
+    '</div>';
+  }
+
   /// Remember the current scroll position of whichever list is on screen.
   /// MUST be called before root.innerHTML is replaced — after that the
   /// element is gone and its scrollTop with it.
@@ -212,10 +255,10 @@ const DesignerDwgPanel = (() => {
 
     const listHtml = _buildListHtml(dwgNames);
 
-    // Selection-row buttons (Edit/Copy/Export Dwg/Generate Code/Unload Dwg)
+    // Selection-row buttons (Edit/Copy/Save Dwg/Generate Code/Unload Dwg)
     // act on an existing dwg, so they're disabled whenever none are loaded
     // yet — enabled once DesignerState.listDwgNames() reports at least one.
-    // Create Dwg/Load Dwg/Load Several Dwgs need no existing dwg, so they're
+    // Create Dwg and Load Dwg need no existing dwg, so they're
     // always enabled.
     const disabledAttr = hasDwgs ? '' : ' disabled';
 
@@ -229,22 +272,35 @@ const DesignerDwgPanel = (() => {
       '<h1 class="dcp-title">Dwg Controls Panel</h1>' +
       '<div class="dcp-action-row">' +
         '<button type="button" class="dcp-btn dcp-btn-primary" id="dcp-create-dwg">Create Dwg</button>' +
-        '<button type="button" class="dcp-btn" id="dcp-load-dwg">Load Dwg</button>' +
-        '<button type="button" class="dcp-btn" id="dcp-export-dwg"' + disabledAttr + '>Export Dwg</button>' +
-        // The one bulk loader. A folder-picking variant used to sit beside
-        // this, but `webkitdirectory` opens the OS FOLDER chooser, which
-        // lists only sub-folders — a folder holding nothing but dwgs shows
-        // an empty pane ("No items match your search" on Windows) and reads
-        // as the wrong folder every time. No dialog option avoids that, and
-        // this button covers the same ground: a second folder is a second
-        // press, and the file chooser shows what is being loaded.
-        '<button type="button" class="dcp-btn" id="dcp-load-several-dwgs"' +
-          ' title="Pick one or more .pfodDwg_json files — Ctrl+A selects every dwg in the' +
-          ' folder. Loads one folder per press; press again for another folder.">' +
-          'Load Several Dwgs</button>' +
+        // ONE Load button for both shapes Save Dwg produces, and for a
+        // design bundle or generated sketch too. Which shape a drawing was
+        // saved as depends on whether it inserts another — a property of
+        // the drawing, not a choice the user made — so a button per shape
+        // asked a question they had no reason to be able to answer.
+        '<button type="button" class="dcp-btn" id="dcp-load-dwg"' +
+          ' title="Load a .pfodDwg_json drawing, or a .zip — a saved drawing with' +
+          ' the ones it inserts, a Save Design bundle, or a generated sketch.' +
+          ' Drawings already loaded are never overwritten.">' +
+          'Load Dwg</button>' +
+        '<button type="button" class="dcp-btn" id="dcp-save-dwg"' + disabledAttr +
+          ' title="Save this drawing. On its own if it inserts nothing, otherwise' +
+          ' as a .zip carrying every drawing it inserts.">' +
+          'Save Dwg</button>' +
         '<button type="button" class="dcp-btn" id="dcp-generate-code"' + disabledAttr + '>Generate Code - Serial</button>' +
       '</div>' +
+      // What the last load did, if anything — sits between the buttons and
+      // the list it describes. Empty string when there is nothing to say,
+      // so the layout is unchanged until a load happens.
+      _buildNoticeHtml() +
       listHtml;
+
+    const noticeClose = root.querySelector('#dcp-notice-close');
+    if (noticeClose) {
+      noticeClose.addEventListener('click', () => {
+        _loadNotice = null;
+        _renderMainView(root);
+      });
+    }
 
     root.querySelector('#dcp-back-to-menu').addEventListener('click', _backToMenu);
     root.querySelector('#dcp-export-png').addEventListener('click',
@@ -252,9 +308,8 @@ const DesignerDwgPanel = (() => {
     root.querySelector('#dcp-exit-designer').addEventListener('click', _exitDesigner);
     root.querySelector('#dcp-create-dwg').addEventListener('click', () => _renderCreateDwgScreen(root));
     root.querySelector('#dcp-load-dwg').addEventListener('click', () => _startLoadDwg(root));
-    root.querySelector('#dcp-load-several-dwgs').addEventListener('click', () => _startLoadSeveralDwgs(root));
-    root.querySelector('#dcp-export-dwg').addEventListener('click', () => _exportDwg());
-    root.querySelector('#dcp-generate-code').addEventListener('click', () => _generateCode(_selectedDwgName));
+    root.querySelector('#dcp-save-dwg').addEventListener('click', () => _saveDwg());
+    root.querySelector('#dcp-generate-code').addEventListener('click', () => _generateCode(_selectedDwgName, true));
     root.querySelectorAll('.dcp-item-row').forEach((row) => {
       row.addEventListener('click', () => {
         _selectedDwgName = row.getAttribute('data-name');
@@ -444,6 +499,34 @@ const DesignerDwgPanel = (() => {
     return new TextEncoder().encode(wire).length;
   }
 
+  /// Biggest wire message that survives the trip in one piece.
+  ///
+  /// Past this, connectionManager.processReadBuffer stops looking for the
+  /// closing '}' and auto-closes the message at the cap — which cuts
+  /// whatever item straddles the boundary in half, and drops every item
+  /// after it. webTranslator now skips what it cannot read rather than
+  /// abandoning the drawing, so the result is a drawing missing its tail
+  /// instead of an empty canvas; either way it is not the drawing the user
+  /// designed, and silently losing items is worth saying in red.
+  const DCP_MAX_WIRE_BYTES = 1023;
+
+  /// @param {number} byteSize — from _computeDwgResponseByteSize
+  /// @returns {boolean} true when this dwg cannot be sent in one piece
+  function _isOversize(byteSize) {
+    return byteSize > DCP_MAX_WIRE_BYTES;
+  }
+
+  /// The warning line shown under the name/byte count of an oversize dwg,
+  /// or '' when it fits. Both screens use the same words.
+  /// @param {number} byteSize
+  /// @returns {string} HTML
+  function _oversizeWarningHtml(byteSize) {
+    if (!_isOversize(byteSize)) return '';
+    return '<div class="dcp-oversize-warning">This dwg too large to send ' +
+      'without truncation &mdash; ' + byteSize + ' bytes, limit ' +
+      DCP_MAX_WIRE_BYTES + '</div>';
+  }
+
   /// Stored dwgRefresh_ms -> the whole SECONDS this panel edits and displays.
   /// The panel is the only place in the app that works in seconds — the
   /// stored field, the wire start header and the generated sketch's own
@@ -504,16 +587,25 @@ const DesignerDwgPanel = (() => {
       // blank, so the row's shape/spacing matches Screen 0b now and
       // needs no layout change once a real description exists.
       const description = (typeof dwg.description === 'string') ? dwg.description : '';
+      // Name and byte count go red together when the dwg cannot be sent in
+      // one piece — the name so an over-long dwg is spottable while
+      // scanning a long list, the count so it is obvious WHY.
+      const byteSize = _computeDwgResponseByteSize(name);
+      const over = _isOversize(byteSize);
+      const nameCls = over ? ' class="dcp-oversize"' : '';
+      const sizeCls = over ? ' class="dcp-oversize"' : '';
       return '<div class="dcp-item-row' + selectedClass + '" data-name="' + _esc(name) + '">' +
         '<div class="dcp-item-info">' +
           '<div class="dcp-item-type">' +
-            '<b>' + _esc(name) + '</b>' +
-            '<span class="dcp-item-type-suffix"> &mdash; ' + _computeDwgResponseByteSize(name) + ' bytes, ' +
+            '<b' + nameCls + '>' + _esc(name) + '</b>' +
+            '<span class="dcp-item-type-suffix"> &mdash; ' +
+              '<span' + sizeCls + '>' + byteSize + ' bytes</span>, ' +
               dwg.x + '&times;' + dwg.y + ', ' +
               '<span class="dcp-swatch" style="background:' + swatchHex + '"></span>' +
               ' &middot; items: ' + (Array.isArray(dwg.items) ? dwg.items.length : 0) +
             '</span>' +
           '</div>' +
+          _oversizeWarningHtml(byteSize) +
           '<div class="dcp-item-desc">' + _esc(description) + '</div>' +
         '</div>' +
         _buildRowActionsHtml(name) +
@@ -602,6 +694,15 @@ const DesignerDwgPanel = (() => {
         '<label>Description <span style="text-transform:none; font-weight:400">(optional)</span></label>' +
         '<textarea id="dcp-create-desc" style="min-height:52px"></textarea>' +
         '<div class="dcp-helper">Shown wherever this dwg is listed, so it\'s findable/reusable later without opening it</div>' +
+      '</div>' +
+      // Same caveat as the Edit Drawing panel — see its own copy for why.
+      // It matters more here, if anything: this is where a drawing meant to
+      // be inserted gets its size and refresh set in the first place.
+      '<div class="dcp-helper" style="margin:-4px 0 10px">' +
+        'Width, Height, Refresh and Background colour apply only when this dwg is ' +
+        'viewed as a stand alone drawing. <b>All four are ignored when it is inserted ' +
+        'in another drawing</b> — only its items are drawn, at the parent\'s size, ' +
+        'colour and refresh rate.' +
       '</div>' +
       '<div class="dcp-field-row dcp-num-row">' +
         '<div class="dcp-field"><label>Width (1&ndash;255)</label>' +
@@ -1141,19 +1242,25 @@ const DesignerDwgPanel = (() => {
         '</div>' +
         '<div class="dcp-drawing-info">' +
           '<div class="dcp-drawing-info-head">' +
-            '<h3>' + _esc(dwg.name) + '</h3>' +
+            // Red name + red byte count + the warning line below, the same
+            // three signals the dwg list gives — an oversize dwg looks the
+            // same wherever it is met.
+            '<h3' + (_isOversize(byteSize) ? ' class="dcp-oversize"' : '') + '>' +
+              _esc(dwg.name) + '</h3>' +
             // Disabled while the properties editor is open, so the only
             // ways out of it are its own Cancel / Save Changes buttons.
             '<button type="button" class="dcp-btn dcp-btn-ghost" id="dcp-edit-toggle-props"' +
               (propsOpen ? ' disabled' : '') + '>Edit Drawing Properties</button>' +
           '</div>' +
           '<div class="dcp-drawing-meta-line">' +
-            '<b>' + byteSize + ' bytes, ' + dwg.x + '&times;' + dwg.y + '</b>' +
+            '<b' + (_isOversize(byteSize) ? ' class="dcp-oversize"' : '') + '>' +
+              byteSize + ' bytes</b><b>, ' + dwg.x + '&times;' + dwg.y + '</b>' +
             '<span class="dcp-sep">&middot;</span><span class="dcp-meta-label">Colour:</span> ' +
             '<span class="dcp-swatch" style="background:' + swatchHex + '"></span>' +
             '<span class="dcp-sep">&middot;</span><span class="dcp-meta-label">Refresh:</span> ' + _refreshMsToSecs(dwg.dwgRefresh_ms) + 's' +
             '<span class="dcp-sep">&middot;</span><span class="dcp-meta-label">Items:</span> ' + itemCount +
           '</div>' +
+          _oversizeWarningHtml(byteSize) +
           '<div class="dcp-drawing-desc-line">' + _esc(description) + '</div>' +
         '</div>' +
         '<div class="dcp-edit-props-panel" id="dcp-edit-props-panel" style="display:' + (propsOpen ? 'block' : 'none') + '">' +
@@ -1164,6 +1271,19 @@ const DesignerDwgPanel = (() => {
           '<div class="dcp-field">' +
             '<label>Description <span style="text-transform:none; font-weight:400">(optional)</span></label>' +
             '<textarea id="dcp-edit-desc" style="min-height:52px">' + _esc(description) + '</textarea>' +
+          '</div>' +
+          // Everything below applies only while this drawing is the TOP-LEVEL
+          // one — the drawing a menu's Drawing item points at. Inserted into
+          // another drawing, its whole wire header is discarded and only its
+          // items are merged into the parent (pfodDwg_json-format.md's own
+          // insertDwg section). Refresh is the one that costs real debugging
+          // time: set it here, insert the drawing somewhere, and it silently
+          // never fires — the parent's rate is the only one that counts.
+          '<div class="dcp-helper" style="margin:-4px 0 10px">' +
+            'Width, Height, Refresh and Background colour apply only when this dwg is ' +
+            'viewed as a stand alone drawing. <b>All four are ignored when it is ' +
+            'inserted in another drawing</b> — only its items are drawn, at the ' +
+            'parent\'s size, colour and refresh rate.' +
           '</div>' +
           '<div class="dcp-field-row dcp-num-row">' +
             '<div class="dcp-field"><label>Width (1&ndash;255)</label>' +
@@ -1340,7 +1460,7 @@ const DesignerDwgPanel = (() => {
       /// still empty.
       function _pressShowItem(idx) {
         const item = dwg.items[idx];
-        const loadCmd = window.DWG_PREVIEW_KEY_PREFIX + originalName;
+        const loadCmd = window.dwgPreviewKey(originalName);
         _dwgDesignerAdapter.device.ensureAutoAssignments(originalName, dwg);
         let kind, value, originalHidden;
         if (item.type === 'touchZone') {
@@ -3084,7 +3204,7 @@ const DesignerDwgPanel = (() => {
       /// Show silently did nothing on the Unhide screen (every
       /// selectable Unhide row IS currently hidden).
       function pressShow(field, value) {
-        const loadCmd = window.DWG_PREVIEW_KEY_PREFIX + dwgName;
+        const loadCmd = window.dwgPreviewKey(dwgName);
         _dwgDesignerAdapter.device.ensureAutoAssignments(dwgName, dwg);
         // An insertDwg target is identified on the wire by its own
         // loadCmd (|hd/|uhd), never an auto-minted cmd — insertDwg's own
@@ -4312,7 +4432,7 @@ const DesignerDwgPanel = (() => {
       /// Show silently did nothing on the Unhide screen (every
       /// selectable Unhide row IS currently hidden).
       function pressShow(field, value) {
-        const loadCmd = window.DWG_PREVIEW_KEY_PREFIX + dwgName;
+        const loadCmd = window.dwgPreviewKey(dwgName);
         _dwgDesignerAdapter.device.ensureAutoAssignments(dwgName, dwg);
         // An insertDwg target is identified on the wire by its own
         // loadCmd (|hd/|uhd), never an auto-minted cmd — insertDwg's own
@@ -5525,11 +5645,54 @@ const DesignerDwgPanel = (() => {
 
   // ── Load Dwg ──────────────────────────────────────────────────────
 
+  /// Every drawing name a DESIGN's Drawing menu items point at, present in
+  /// the library or not — the menu-side counterpart of
+  /// _findMissingInsertDwgNames below, which covers the drawing-side ones.
+  ///
+  /// Both kinds of reference can be short in the same bundle and they fail
+  /// differently: a missing insertDwg leaves a hole inside a drawing that
+  /// otherwise draws, while a missing menu reference is a whole menu row
+  /// with nothing behind it. So they are found separately and said
+  /// separately.
+  ///
+  /// The names that ARE present matter too, as roots for the insertDwg
+  /// walk: a drawing in the library but not in the zip can still insert one
+  /// that is in neither, and nothing else would look at it.
+  ///
+  /// Walks sub-menus to any depth — a Drawing item is no less linked for
+  /// being three levels down, and a bundle short of it is no less short.
+  /// @param {object} design — a parsed .pfodMenu_json
+  /// @returns {string[]} de-duplicated, in encounter order
+  function _findMenuDwgNames(design) {
+    const names = [];
+    const seen = new Set();
+    const walk = (menu) => {
+      if (!menu || !Array.isArray(menu.items)) return;
+      menu.items.forEach((item) => {
+        if (!item) return;
+        if (item.type === 'drawing' && item.dwgName && !seen.has(item.dwgName)) {
+          seen.add(item.dwgName);
+          names.push(item.dwgName);
+        }
+        if (item.subMenu) walk(item.subMenu);
+      });
+    };
+    walk(design && design.rootMenu);
+    return names;
+  }
+
   /// Distinct insertDwg drawingNames a dwg references that are NOT
   /// currently in DwgLibrary — matches pfodWebDesigner's own control.js
   /// scan (`item.type.toLowerCase() === 'insertdwg' && item.drawingName`),
   /// adapted to a synchronous DwgLibrary.get() lookup instead of that
   /// project's own server-side existing-drawings fetch.
+  ///
+  /// One level only, which is right for its caller: the single-file loader
+  /// prompts for each missing name and rescans whatever arrives, so the
+  /// recursion is the prompting loop. The zip loader has no such loop and
+  /// uses DwgArduinoExport.collectAllDwgs instead, which walks the chain
+  /// itself.
+  ///
   /// @param {object} dwg — a dwg object with a flat items array
   /// @returns {Array<string>} distinct missing drawingNames, in
   ///          first-encountered order
@@ -5571,9 +5734,14 @@ const DesignerDwgPanel = (() => {
     const stillMissing = [];
     _promptNextMissingInsertDwg(root, queue, handled, stillMissing, (finalStillMissing) => {
       if (finalStillMissing.length > 0) {
-        alert('"' + dwg.name + '" still references ' + finalStillMissing.length +
-          ' drawing(s) that were not loaded:\n' + finalStillMissing.join(', ') +
-          '\n\nThese insertDwg items may not display correctly until the referenced drawings are loaded.');
+        // The dwg itself loaded; only its inserted references are short.
+        // That is a warning on the notice bar, not a modal — see
+        // _setLoadNotice.
+        _setLoadNotice('"' + dwg.name + '" loaded, but still references ' +
+          finalStillMissing.length + ' drawing(s) that were not loaded: ' +
+          finalStillMissing.join(', ') +
+          '\nThose insertDwg items may not display correctly until the referenced drawings are loaded.',
+          true);
       }
       proceed();
     });
@@ -5746,7 +5914,11 @@ const DesignerDwgPanel = (() => {
     if (!input) {
       input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.pfodDwg_json';
+      // Both shapes, from one button — see the action row's own comment.
+      // A .zip covers a Save Dwg bundle, a Save Design bundle and a whole
+      // generated sketch; the extension of what was picked decides which
+      // reader runs.
+      input.accept = '.pfodDwg_json,.zip';
       input.id = 'dcp-load-dwg-input';
       input.style.display = 'none';
       document.body.appendChild(input);
@@ -5755,7 +5927,9 @@ const DesignerDwgPanel = (() => {
     input.value = '';
     input.onchange = () => {
       const file = input.files && input.files[0];
-      if (file) _readAndLoadFile(root, file, onLoaded);
+      if (!file) return;
+      if (/\.zip$/i.test(file.name)) _readAndLoadZip(root, file);
+      else _readAndLoadFile(root, file, onLoaded);
     };
     input.click();
   }
@@ -5807,6 +5981,10 @@ const DesignerDwgPanel = (() => {
 
       if (errors.length === 0) {
         DwgLibrary.save(dwg);
+        // Set BEFORE the missing-insertDwg walk, so that walk's own
+        // "still references …" warning replaces this rather than the
+        // other way round — the warning is the more important of the two.
+        _setLoadNotice('1 dwg loaded: ' + dwg.name);
         _checkForMissingInsertDwgs(root, dwg, () => {
           if (onLoaded) { onLoaded(dwg.name); } else { _selectLoadedDwg(dwg.name, root); }
         });
@@ -5817,162 +5995,359 @@ const DesignerDwgPanel = (() => {
     reader.readAsText(file);
   }
 
-  /// Open a MULTI-FILE picker for "Load Several Dwgs" — the only bulk load.
+  /// Load the menu design a picked .zip carries, if it carries one, and
+  /// say what happened to it.
   ///
-  /// A folder-picking variant lived here too, built on `webkitdirectory`.
-  /// It was dropped: that input opens the OS FOLDER chooser, which lists
-  /// only sub-folders, so a folder holding nothing but .pfodDwg_json files
-  /// shows an empty pane — "No items match your search" on Windows — and
-  /// reads as the wrong folder. That is the browser's own dialog, not
-  /// something this code could filter differently, and no alternative
-  /// avoids it (showDirectoryPicker() behaves the same way). A plain
-  /// `multiple` input opens the normal file chooser, which lists the dwgs
-  /// so the user can see what they are loading; Ctrl+A takes the lot.
+  /// A design already in the list is NOT replaced and NOT loaded again
+  /// under a suffixed name — it is reported as the duplicate it is. That
+  /// differs from "Edit existing Menu → Load Design from .zip", which
+  /// renames on collision, and deliberately: there the user asked for that
+  /// design and wants it open, whereas here the design is cargo riding
+  /// along with the drawings, and quietly adding "Menu_1_2" to the list
+  /// would be an edit nobody asked for.
   ///
-  /// The one thing lost with it is reaching sub-folders in a single pick.
-  /// A file chooser cannot multi-select across folders — an OS limitation —
-  /// but pressing this again loads another folder, and DwgLibrary.save()
-  /// accumulates, so several folders is several presses rather than
-  /// impossible. (Re-loading a dwg already in the library renames it via
-  /// nextFreeName rather than replacing it, so overlapping picks leave
-  /// duplicates.)
+  /// The import runs on a throwaway DesignerState via importAsSavedDesign,
+  /// so the design the user is editing right now — and the "current
+  /// design" pointer — are left exactly as they were. The board comes from
+  /// that live design, since a menu has to be validated against a real
+  /// target's pins and ADC ranges.
   ///
-  /// `accept` is the same '.pfodDwg_json' _startLoadDwg uses, so the chooser
-  /// filters to dwgs on its own; _readAndLoadAllFiles does the reading,
-  /// skipping, repairing, saving and the summary alert.
-  function _startLoadSeveralDwgs(root) {
-    let input = document.getElementById('dcp-load-several-dwgs-input');
-    if (!input) {
-      input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.pfodDwg_json';
-      input.multiple = true;
-      input.id = 'dcp-load-several-dwgs-input';
-      input.style.display = 'none';
-      document.body.appendChild(input);
-    }
-    // Reset so picking the same files twice in a row still fires 'change'.
-    input.value = '';
-    input.onchange = () => {
-      const files = input.files ? Array.from(input.files) : [];
-      // `accept` is a filter on the dialog, not a guarantee — a user can
-      // switch it to "All files" and pick anything — so the name test still
-      // runs here, exactly as it does on the directory route.
-      const jsonFiles = files.filter((f) => /\.pfodDwg_json$/i.test(f.name));
-      console.log('[DwgControlsPanel] Load Several Dwgs: picked ' + files.length +
-        ' file(s), ' + jsonFiles.length + ' matching *.pfodDwg_json');
-      if (jsonFiles.length > 0) {
-        _readAndLoadAllFiles(root, jsonFiles);
-        return;
-      }
-      if (files.length === 0) return; // cancelled — say nothing
-      alert('Load Several Dwgs:\n\n' +
-        'None of the ' + files.length + ' file(s) picked end in .pfodDwg_json.\n\n' +
-        'Dwg files must end in .pfodDwg_json — a menu design (.pfodMenu_json) is not a dwg.');
-    };
-    input.click();
+  /// @param {Array<{path: string, data: Uint8Array}>} menuEntries
+  /// @param {TextDecoder} dec
+  /// @returns {{text: string, warn: boolean}|null} a line for the notice,
+  ///          or null when the zip held no design at all
+  /// The live menu design's state, or null when the designer is not open.
+  ///
+  /// The Dwg panel swaps its own adapter in over the designer's, so the real
+  /// one — and the design open in it — is reached through _savedAdapter. It
+  /// supplies the board a loaded design is validated against, and it is the
+  /// design that gets saved before a target switch.
+  /// @returns {DesignerState|null}
+  function _activeDesignState() {
+    return (_savedAdapter && _savedAdapter.device && _savedAdapter.device.state) || null;
   }
 
-  /// Load every dwg-shaped .pfodDwg_json file found under a picked directory
-  /// tree. Non-dwg .pfodDwg_json files — whether well-formed-but-wrong-shape
-  /// (dwgFileRejectReason returns a reason) OR not even valid JSON (a directory scan
-  /// will routinely turn up unrelated files — board configs, menu
-  /// designs, etc. — that don't parse as JSON at all) — are BOTH
-  /// silently skipped, no error logged: a directory is expected to
-  /// contain other files, unlike a deliberately-picked single file
-  /// in Load Dwg (which still alerts on a genuine parse failure — the
-  /// user explicitly chose that one file). Unlike single Load Dwg, a
-  /// file WITH validation errors isn't routed to the interactive
-  /// Validation Errors screen — there's no reasonable way to show that
-  /// per-file across a whole directory's worth of files — repairs are
-  /// applied automatically (validateAndRepairDwg already does this) and
-  /// every file is saved; a final summary alert reports counts so the
-  /// user isn't left guessing what happened. A genuine FileReader I/O
-  /// error (couldn't even read the file's bytes, unrelated to its
-  /// content) is the only case still logged/counted as a real failure.
-  /// @param {Array<File>} files
-  function _readAndLoadAllFiles(root, files) {
-    let remaining = files.length;
-    let loaded = 0, repaired = 0, skipped = 0, failed = 0;
-    const loadedNames = [];
+  async function _loadZipMenu(menuEntries, dec) {
+    if (menuEntries.length === 0) return null;
+    const entry = menuEntries[0];
+    const base = entry.path.split('/').pop();
 
-    const done = () => {
-      if (--remaining > 0) return;
-      // Loading a folder's worth at once normally resolves insertDwg
-      // references to sibling files within the SAME batch automatically
-      // (every file is saved before this runs) — this only reports
-      // references that are STILL unresolved even after the whole batch
-      // was loaded, same "still missing" idea as the single
-      // Load Dwg flow's own _checkForMissingInsertDwgs, but scoped to
-      // just the dwgs loaded in this batch (not a full-library rescan)
-      // and folded into the one summary alert rather than an interactive
-      // per-file prompt sequence, which doesn't fit a bulk operation.
-      const missingAcrossBatch = new Set();
-      loadedNames.forEach((name) => {
-        const dwg = DwgLibrary.get(name);
-        if (dwg) _findMissingInsertDwgNames(dwg).forEach((m) => missingAcrossBatch.add(m));
-      });
-      console.log('[DwgControlsPanel] Load Several Dwgs: loaded=' + loaded +
-        ' (repaired=' + repaired + '), skipped=' + skipped + ', failed=' + failed +
-        ', stillMissingInsertDwgs=' + missingAcrossBatch.size);
-      alert('Load Several Dwgs:\n' +
-        loaded + ' dwg(s) loaded' + (repaired > 0 ? ' (' + repaired + ' with automatic repairs)' : '') + '\n' +
-        skipped + ' non-dwg .pfodDwg_json file(s) skipped\n' +
-        failed + ' file(s) failed to read' +
-        (missingAcrossBatch.size > 0
-          // Not "not found under this folder" any more: sub-folders are no
-          // longer scanned, so a referenced dwg one level down is missing
-          // from the BATCH without being missing from the disk. Naming the
-          // batch says what was actually looked at.
-          ? '\n\nWarning: still missing ' + missingAcrossBatch.size +
-            ' referenced drawing(s) (not among the dwgs just loaded):\n' +
-            Array.from(missingAcrossBatch).join(', ')
-          : ''));
-      // Same idea as the single-file load: select something from the
-      // batch that just arrived rather than leaving the selection on
-      // whatever was there before. The first loaded name is the one the
-      // list shows first, so it is the least surprising landing point.
-      if (loadedNames.length > 0) {
-        _selectLoadedDwg(loadedNames[0], root);
-      } else {
-        _renderMainView(root);
+    // The live design supplies the board to validate against. Without it
+    // there is nothing sensible to import onto, so say so rather than
+    // guessing at a target.
+    const active = _activeDesignState();
+    if (!active || !active.board) {
+      return { text: 'The zip holds a menu design (' + base + '), which could not be loaded ' +
+        'because no design is currently open.', warn: true };
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(dec.decode(entry.data));
+    } catch (err) {
+      console.error('[DwgControlsPanel] "' + entry.path + '": invalid JSON — not loaded', err);
+      return { text: 'The menu design in this zip (' + base + ') is not valid JSON and was not loaded.',
+        warn: true };
+    }
+
+    const incoming = (parsed && typeof parsed.name === 'string') ? parsed.name : null;
+    if (!incoming) {
+      return { text: 'The menu design in this zip (' + base + ') has no name and was not loaded.',
+        warn: true };
+    }
+
+    // What the design says it needs, worked out once and reported whatever
+    // happens to the design itself.
+    //
+    // This was originally computed only for a design that actually landed,
+    // on the reasoning that a duplicate is left unchanged so the zip's copy
+    // says nothing about the one in the list. That was wrong, and wrong in
+    // the commonest case there is: a duplicate is a duplicate BECAUSE it is
+    // the same design, and re-loading its bundle to top up the drawing
+    // library is exactly why someone opens this dialog. Staying quiet then
+    // withheld the one thing they came for.
+    const menuDwgNames = _findMenuDwgNames(parsed);
+    const missingDwgs = menuDwgNames.filter((n) => !DwgLibrary.get(n));
+
+    if (DesignerState.listNames().indexOf(incoming) !== -1) {
+      return { text: 'The menu design in this zip ("' + incoming + '") is already in the menu ' +
+        'list, so it was left unchanged.', warn: true, missingDwgs, menuDwgNames };
+    }
+
+    try {
+      const partial = DesignerState.importAsSavedDesign(active.board, parsed, incoming);
+      if (partial) {
+        // The COUNT here and the per-field list in the popup — the same
+        // split loadFromFile.js makes, and for the same reason: moving a
+        // design between boards re-derives an ADC range and a scale for
+        // every data display and every chart plot, which is a paragraph
+        // nobody reads inlined into a notice line.
+        const changes = String(partial.message).split('\n').slice(1)
+          .map((l) => l.trim()).filter((l) => l !== '');
+        try {
+          DesignerDetailsPopup.show(incoming + ' — ' + changes.length + ' change(s)',
+            'These fields were adjusted as the design was loaded:', changes);
+        } catch (e) {
+          console.warn('[DwgControlsPanel] could not show the change list:', e, changes);
+        }
+        return { text: 'Menu design "' + incoming + '" loaded. ' + changes.length +
+          ' field(s) were adjusted for this board — see the list.',
+          warn: true, missingDwgs, menuDwgNames };
       }
-    };
+      return { text: 'Menu design "' + incoming + '" loaded — open it from "Edit existing Menu".',
+        warn: false, missingDwgs, menuDwgNames };
+    } catch (err) {
+      console.error('[DwgControlsPanel] "' + entry.path + '": import failed', err);
+      return { text: 'The menu design in this zip ("' + incoming + '") could not be loaded: ' +
+        err.message.replace(/\s*\n\s*/g, '; '), warn: true };
+    }
+  }
 
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onerror = () => {
-        failed++;
-        console.error('[DwgControlsPanel] FileReader error for', file.name, reader.error);
-        done();
-      };
-      reader.onload = () => {
+  /// Load every drawing out of a picked .zip.
+  ///
+  /// NOTHING already in the library is overwritten. That is the whole
+  /// difference from the loose-file loader this replaces, which renamed a
+  /// colliding dwg to "<name>_2" and left the user with two drawings where
+  /// they wanted one. A zip is normally a bundle the user saved themselves,
+  /// so re-loading it after editing one of its drawings is the ordinary
+  /// case — and silently replacing the edited copy, or silently duplicating
+  /// it, are both worse than leaving it alone and saying so.
+  ///
+  /// A menu design in the zip IS loaded too, last, once the drawings it
+  /// references are in the library — but never over one already in the
+  /// list, which is reported as the duplicate it is. See _loadZipMenu.
+  ///
+  /// The zip may be a saved bundle or a whole generated sketch; the design
+  /// bundle is found either way (DesignerZipBuilder.readBundle).
+  ///
+  /// Everything that happened goes to the notice bar — see _setLoadNotice.
+  /// @param {Element} root
+  /// @param {File} file
+  function _readAndLoadZip(root, file) {
+    const reader = new FileReader();
+    reader.onerror = () => {
+      _setLoadNotice('Could not read "' + file.name + '". See the console for details.', true);
+      console.error('[DwgControlsPanel] FileReader error for', file.name, reader.error);
+      _renderMainView(root);
+    };
+    // async: reading a zip inflates any deflated entry, which is async.
+    reader.onload = async () => {
+      let entries;
+      try {
+        // Takes a saved bundle, or a generated sketch zip carrying one
+        // inside it — see readBundle.
+        entries = await DesignerZipBuilder.readBundle(new Uint8Array(reader.result));
+      } catch (err) {
+        // Say WHY: "could not be read as a zip" fits a corrupt file just
+        // as well, and sent the user looking for the wrong problem.
+        _setLoadNotice('"' + file.name + '" could not be read.\n' +
+          DesignerZipBuilder.explainReadFailure(err), true);
+        console.error('[DwgControlsPanel] readZip failed for', file.name, err);
+        _renderMainView(root);
+        return;
+      }
+
+      const dec = new TextDecoder();
+
+      // The target question comes before ANYTHING is loaded.
+      //
+      // A bundle's wrapper menu records the target it was saved under (Save
+      // Dwg writes the live one), so a bundle from another machine can name
+      // a board this designer is not set to. Asking after the drawings were
+      // in the library left "change target" meaning "keep the drawings but
+      // not the design" — half a bundle built for the wrong board. Choosing
+      // to switch has to leave the library untouched, so the check runs
+      // first and returns without loading a thing.
+      //
+      // Only the DESIGN can mismatch: a .pfodDwg_json records no board and
+      // holds no pins.
+      const designEntry = entries.find((e) => /\.pfodMenu_json$/i.test(e.path.split('/').pop()));
+      if (designEntry) {
+        let designJson = null;
+        try { designJson = JSON.parse(dec.decode(designEntry.data)); }
+        catch (_) { /* reported later by _loadZipMenu; nothing loaded yet */ }
+        const mismatch = designJson
+          ? DesignerState.targetMismatch(_activeDesignState() && _activeDesignState().board, designJson)
+          : null;
+        if (mismatch) {
+          const answer = await DesignerTargetPrompt.ask(mismatch, file.name, () => {
+            // Persist any unsaved edits to the design open in the menu
+            // designer, THEN keep a copy of it under its own name. The save
+            // alone preserves nothing: one storage slot per design name
+            // means that once the target changes, the next save overwrites
+            // it against the new board — pins cleared, boardName replaced.
+            const st = _activeDesignState();
+            if (st) {
+              try { st.save(); } catch (_) { /* quota/private mode */ }
+            }
+            // Every design built for the board being left, not just the one
+            // open: the target is about to become the bundle's, and each of
+            // them loses its pins the first time it is opened against it.
+            DesignerTargetPrompt.preserveAllNotOn(mismatch.designBoard);
+          });
+          if (answer === 'switch') {
+            _setLoadNotice('Nothing was loaded from "' + file.name + '". ' +
+              DesignerTargetPrompt.switchedMessage(mismatch), true);
+            _renderMainView(root);
+            // Leave the Dwg panel too — the target only takes effect once the
+            // designer is restarted, and _exitDesigner puts the real adapter
+            // back before it goes.
+            _exitDesigner();
+            return;
+          }
+          // Accepting this board accepts it for every stored design, so the
+          // same question is not asked again the next time one is opened.
+          // There is a state here: targetMismatch needs its board, so a null
+          // one produces no mismatch and this branch is not reached.
+          const adoptSt = _activeDesignState();
+          DesignerTargetPrompt.adoptCurrentTarget(adoptSt.board, adoptSt);
+        }
+      }
+
+      const loaded = [], repaired = [], existing = [], skipped = [];
+      const menuEntries = [];
+
+      entries.forEach((entry) => {
+        const base = entry.path.split('/').pop();
+        // Held back, not skipped: the design is loaded after the drawings,
+        // so its Drawing items already resolve — see _loadZipMenu.
+        if (/\.pfodMenu_json$/i.test(base)) { menuEntries.push(entry); return; }
+        if (!/\.pfodDwg_json$/i.test(base)) return;  // a sketch's .ino/.cpp etc.
+
         let raw;
         try {
-          raw = JSON.parse(reader.result);
+          raw = JSON.parse(dec.decode(entry.data));
         } catch (parseError) {
-          skipped++;
-          console.log('[DwgControlsPanel] "' + file.name + '" is not valid JSON — skipped');
-          done();
+          skipped.push(base);
+          console.log('[DwgControlsPanel] "' + entry.path + '" is not valid JSON — skipped');
           return;
         }
         const rejectReason = dwgFileRejectReason(raw);
         if (rejectReason) {
-          skipped++;
-          console.log('[DwgControlsPanel] "' + file.name + '" ' + rejectReason + ' — skipped');
-          done();
+          skipped.push(base);
+          console.log('[DwgControlsPanel] "' + entry.path + '" ' + rejectReason + ' — skipped');
           return;
         }
-        const { dwg, errors } = validateAndRepairDwg(raw, file.name, true);
-        dwg.name = DwgLibrary.nextFreeName(dwg.name);
+        // isLoad=true: a zip entry is untrusted external data, so a
+        // duplicate idxName is repaired and reported rather than thrown —
+        // a throw here would abandon every remaining entry.
+        const { dwg, errors } = validateAndRepairDwg(raw, base, true);
+        // The drawing's own name is its identity, and the name a menu
+        // references it by. Already present means already present.
+        if (DwgLibrary.get(dwg.name)) { existing.push(dwg.name); return; }
         DwgLibrary.save(dwg);
-        loadedNames.push(dwg.name);
-        loaded++;
-        if (errors.length > 0) repaired++;
-        done();
-      };
-      reader.readAsText(file);
-    });
+        loaded.push(dwg.name);
+        if (errors.length > 0) repaired.push(dwg.name);
+      });
+
+      const parts = [loaded.length + ' drawing(s) loaded from "' + file.name + '"' +
+        (repaired.length > 0 ? ' (' + repaired.length + ' with automatic repairs)' : '')];
+      if (existing.length > 0) {
+        parts.push(existing.length + ' already loaded, so left unchanged: ' +
+          existing.join(', ') + '.\nNothing in the library is overwritten by a zip.');
+      }
+      if (skipped.length > 0) {
+        parts.push(skipped.length + ' entry(s) were not a valid drawing and were skipped: ' +
+          skipped.join(', '));
+      }
+      // The design, last, so the drawings its Drawing items reference are
+      // already in the library by the time it lands.
+      const menuNote = await _loadZipMenu(menuEntries, dec);
+      if (menuNote) parts.push(menuNote.text);
+
+      // insertDwg references this zip did not satisfy.
+      //
+      // The single-file Load Dwg has always checked this — see
+      // _checkForMissingInsertDwgs — but the zip path never did, so a
+      // bundle short of one drawing loaded looking entirely successful and
+      // the gap only showed up later, as a piece of a drawing silently not
+      // rendering. A bundle is the case where it matters MOST: it is
+      // supposed to be self-contained, so a reference it does not satisfy
+      // means the bundle itself is short.
+      //
+      // Checked after every drawing is saved, so a reference one entry of
+      // the zip makes to another entry of the same zip resolves and is not
+      // reported. Reported, never prompted: the single-file path walks the
+      // user through the missing ones one at a time, which is right for one
+      // file picked by hand and wrong for a bulk load — it is the same
+      // blocking-with-a-file-dialog trap the menu side just lost.
+      //
+      // Three things decide the roots, and each was a real gap:
+      //
+      //   loaded    the drawings this zip brought in
+      //   existing  the ones it carried that were ALREADY in the library.
+      //             Scanning only `loaded` meant a zip whose drawings were
+      //             all duplicates scanned nothing at all — and re-loading
+      //             a bundle over a library that already has most of it is
+      //             the ordinary case, not an edge one.
+      //   menuRoots what the design points at, so a drawing that is in the
+      //             library but not in the zip is still walked.
+      //
+      // And the walk is transitive (collectAllDwgs recurses), because an
+      // insert's own insert is just as absent. A flat one-level check
+      // reported the first rank and stopped.
+      const menuRoots = ((menuNote && menuNote.menuDwgNames) || [])
+        .filter((n) => DwgLibrary.get(n));
+      const roots = loaded.concat(existing, menuRoots);
+      const unresolved = [];
+      const walked = new Set();
+      roots.forEach((name) => {
+        if (!DwgLibrary.get(name)) return;   // absent roots are the menu's story, below
+        const found = [];
+        DwgArduinoExport.collectAllDwgs(name, walked, found);
+        found.forEach((ref) => {
+          if (unresolved.indexOf(ref) === -1) unresolved.push(ref);
+        });
+      });
+      if (unresolved.length > 0) {
+        parts.push(unresolved.length + ' drawing(s) referenced by insertDwg are not loaded: ' +
+          unresolved.join(', ') +
+          '\nThose inserts will not display until the drawings are loaded.');
+      }
+
+      // The other half of the same gap: the design this zip carried points
+      // at drawings the zip did not bring. Said separately from the
+      // insertDwg line because it fails differently and is fixed
+      // differently — a menu row with nothing behind it, not a hole inside
+      // a drawing that otherwise draws.
+      const menuMissing = (menuNote && menuNote.missingDwgs) || [];
+      if (menuMissing.length > 0) {
+        parts.push(menuMissing.length + ' drawing(s) used by that menu design are not loaded: ' +
+          menuMissing.join(', ') +
+          '\nIts menu items will show them as not loaded until they are.');
+      }
+
+      // Nothing in the zip was a drawing or a design. "0 drawing(s) loaded"
+      // on its own reads as though the zip were empty, and leaves the user
+      // with no idea whether they picked the wrong file or hit a bug — say
+      // which it was.
+      if (loaded.length === 0 && existing.length === 0 &&
+          skipped.length === 0 && !menuNote) {
+        parts.length = 0;
+        parts.push('"' + file.name + '" holds no drawings and no menu design.\n' +
+          'Expected a Save Design bundle, or a generated sketch with one in its ' +
+          'menujson folder. A sketch generated before that folder existed has to be ' +
+          're-generated.');
+      }
+
+      console.log('[DwgControlsPanel] Load Dwg (zip): loaded=' + loaded.length +
+        ' (repaired=' + repaired.length + '), existing=' + existing.length +
+        ', skipped=' + skipped.length + ', menus=' + menuEntries.length);
+      _setLoadNotice(parts.join('\n'),
+        loaded.length === 0 || existing.length > 0 || skipped.length > 0 ||
+        unresolved.length > 0 || menuMissing.length > 0 ||
+        (menuNote && menuNote.warn));
+
+      // Land on something from the batch that just arrived, as the
+      // single-file load does, rather than leaving the selection wherever
+      // it happened to be.
+      if (loaded.length > 0) {
+        _selectLoadedDwg(loaded[0], root);
+      } else {
+        _renderMainView(root);
+      }
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   // ── Unload Dwg ────────────────────────────────────────────────────
@@ -5989,14 +6364,34 @@ const DesignerDwgPanel = (() => {
   /// saveToFile.js) — a single, distinctive extension rather than a
   /// generic .json a directory scan could confuse with unrelated files.
   function _downloadDwgAsJson(dwg) {
-    const json = JSON.stringify(buildSaveableDwg(dwg), null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+    _downloadBytesAsFile(dwg.name + '.pfodDwg_json',
+      new TextEncoder().encode(JSON.stringify(buildSaveableDwg(dwg), null, 2)),
+      'application/json');
+  }
+
+  /// Hand `bytes` to the browser as a download called `name`.
+  ///
+  /// Deliberately NOT DesignerZipBuilder.triggerDownload for a json: that
+  /// one hardcodes application/zip and, on Windows, pops the "right-click →
+  /// Unblock" overlay, which is meaningless for a plain file. (A zip DOES
+  /// go through it, overlay and all — see _saveDwg.)
+  ///
+  /// revokeObjectURL is deferred: revoking synchronously after .click()
+  /// races with some browsers and produces an empty file. Same reason
+  /// saveToFile.js's own _triggerJsonDownload defers it.
+  ///
+  /// @param {string} name — full file name, extension included
+  /// @param {Uint8Array} bytes
+  /// @param {string} mime
+  function _downloadBytesAsFile(name, bytes, mime) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = dwg.name + '.pfodDwg_json';
+    link.download = name;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   /// Unload the selected dwg: save it out to a local file first (so the
@@ -6013,42 +6408,102 @@ const DesignerDwgPanel = (() => {
     _renderMainView(root);
   }
 
-  // ── Copy / Export Dwg ────────────────────────────────────────────
+  // ── Copy / Save Dwg ──────────────────────────────────────────────
 
-  /// Export the selected dwg — same file download _unloadDwg() uses,
-  /// minus the removal: the library entry is left untouched.
-  function _exportDwg() {
+  /// "Save Dwg" — the selected drawing AND everything it inserts, in
+  /// whichever of the two shapes fits. The library entry is left untouched
+  /// (that is the difference from Unload, which saves and then removes).
+  ///
+  /// Was "Export Dwg", which wrote the one drawing and nothing else. A
+  /// drawing that inserts others is not usable on its own — handing one
+  /// over meant handing over a lead file and then a hunt for its parts, and
+  /// the parts were easy to forget because nothing said they were missing
+  /// until the drawing was loaded somewhere and came up short.
+  ///
+  ///   inserts nothing → <name>.pfodDwg_json, exactly as before
+  ///   inserts others  → <name>_menuJson.zip — the ordinary design bundle,
+  ///                     every drawing under dwgs/ and a one-item menu at
+  ///                     the root that shows this one, so the same Load
+  ///                     Dwg / Load Design paths read it back
+  ///
+  /// Same two-shape rule Save Design follows, built by the same function
+  /// (saveToFile.js's buildDwgBundle), so Load Dwg reads either back.
+  ///
+  /// An inserted drawing that is not currently loaded cannot be carried;
+  /// the notice names them rather than letting the zip go out short.
+  function _saveDwg() {
     if (!_selectedDwgName) return;
     const dwg = DwgLibrary.get(_selectedDwgName);
     if (!dwg) return;
-    _downloadDwgAsJson(dwg);
+
+    const bundle = DesignerSaveToFile.buildDwgBundle(_fileNameId(_selectedDwgName),
+      _selectedDwgName);
+    if (bundle.isZip) {
+      DesignerZipBuilder.triggerDownload(bundle.name, bundle.bytes);
+    } else {
+      _downloadBytesAsFile(bundle.name, bundle.bytes, 'application/json');
+    }
+
+    const what = bundle.isZip
+      ? ('"' + _selectedDwgName + '" saved as ' + bundle.name + ', with ' +
+         bundle.dwgNames.length + ' inserted drawing(s): ' + bundle.dwgNames.join(', '))
+      : ('"' + _selectedDwgName + '" saved as ' + bundle.name +
+         ' — it inserts no other drawing, so it needs no zip.');
+    const short = bundle.missing.length > 0
+      ? ('\n' + bundle.missing.length + ' inserted drawing(s) are not loaded and could NOT be ' +
+         'included: ' + bundle.missing.join(', '))
+      : '';
+    _setLoadNotice(what + short, bundle.missing.length > 0);
+    _renderMainView(_getRoot());
+  }
+
+  /// Filesystem-safe base name for a download — matches saveToFile.js's own
+  /// _fileNameId, so a drawing called "Led On/Off" cannot produce a file
+  /// name the OS refuses.
+  /// @param {string} s
+  /// @returns {string}
+  function _fileNameId(s) {
+    let id = (s || '').replace(/[^A-Za-z0-9]/g, '_');
+    if (id && /^[0-9]/.test(id)) id = '_' + id;
+    return id || 'Dwg';
   }
 
   /// "Generate Code - Serial" — downloads Dwg_<name>.h/.cpp (this dwg and
   /// every dwg it reaches via insertDwg) as a zip — see
   /// dwgArduinoExport.js's own exportDwgAsZip doc for exactly what is and
   /// isn't included, and why.
+  ///
+  /// Reports on the notice bar, like Save Dwg and Load Dwg. It used to
+  /// raise a native alert(), which browser automation cannot dismiss — it
+  /// would stop a scripted run dead over a warning, after the zip had
+  /// already been written.
+  ///
+  /// Both warnings go in ONE notice: two in a row would replace each other
+  /// and the first would never be read.
+  ///
   /// @param {string} dwgName
-  function _generateCode(dwgName) {
+  /// @param {boolean} [fromMainView] true when the press came from the main
+  ///        panel, which is the only screen that renders the notice bar —
+  ///        from the Edit Dwg screen the notice is left to appear on the
+  ///        way back out, since it is not one-shot.
+  function _generateCode(dwgName, fromMainView) {
     if (!dwgName || !DwgLibrary.get(dwgName)) return;
     const { missingDrawings, unsupportedColours } = DwgArduinoExport.exportDwgAsZip(dwgName);
-    // Both warnings are collected into ONE alert: two in a row would have the
-    // user dismiss the first without reading it.
     const warnings = [];
     if (missingDrawings.length > 0) {
-      warnings.push('The following inserted drawing(s) are not loaded and so could not be included:\n  ' +
-        missingDrawings.join(', ') + '\nThe generated files will not include these drawings.');
+      warnings.push('The following inserted drawing(s) are not loaded and so could not be included: ' +
+        missingDrawings.join(', ') + '. The generated files will not include these drawings.');
     }
     if (unsupportedColours.length > 0) {
       warnings.push('The following colour(s) cannot be expressed by the pfodParser builder methods, ' +
-        'which take a palette number 0-255, and were generated as BLACK:\n  ' +
+        'which take a palette number 0-255, and were generated as BLACK: ' +
         unsupportedColours.join(', ') +
-        '\nThe drawing still previews in its real colour here — only the generated sketch differs. ' +
+        '. The drawing still previews in its real colour here — only the generated sketch differs. ' +
         'Use a palette number instead, or build those primitive strings by hand.');
     }
-    if (warnings.length > 0) {
-      alert('Generate Code completed.\n\nWarning:\n\n' + warnings.join('\n\n'));
-    }
+    _setLoadNotice('Generate Code done for "' + dwgName + '".' +
+      (warnings.length > 0 ? '\n' + warnings.join('\n') : ''), warnings.length > 0);
+    if (fromMainView) _renderMainView(_getRoot());
   }
 
   /// Duplicate the selected dwg under the next free "<name>_<n>" name

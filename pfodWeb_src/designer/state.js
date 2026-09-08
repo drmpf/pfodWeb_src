@@ -1015,6 +1015,13 @@ function _parseMenuTolerant(input, path, warnings) {
 const STORAGE_PREFIX     = 'pfodDesigner.v1.';
 const LIST_KEY           = 'pfodDesigner.v1.list';
 const CURRENT_KEY        = 'pfodDesigner.v1.current';
+// '<PRESERVED_PREFIX><name>' marks a design whose CURRENT stored bytes have
+// already been written out to a file, ahead of a target change. It exists to
+// stop the same version being downloaded twice: the target picker writes it
+// as the target moves, and the designer would otherwise write it again when
+// it opens and finds the same mismatch. save() removes it, because a save
+// replaces the very bytes it was vouching for.
+const PRESERVED_PREFIX   = 'pfodDesigner.v1.preserved.';
 
 // Wrapper format tag for exportToBlob() / importFromObject() — lets a
 // future schema bump reject a foreign or stale file cleanly.
@@ -1330,6 +1337,9 @@ class DesignerState {
         baud:       this.baud,
       };
       localStorage.setItem(STORAGE_PREFIX + this.name, JSON.stringify(payload));
+      // These are new bytes, so any "already written to a file" mark left by
+      // a target change no longer describes what is stored.
+      localStorage.removeItem(PRESERVED_PREFIX + this.name);
       DesignerState._addToList(this.name);
       localStorage.setItem(CURRENT_KEY, this.name);
     } catch (err) {
@@ -1564,6 +1574,41 @@ class DesignerState {
 
     const warnings = [];
     this.rootMenu = _parseMenuTolerant(payload.rootMenu, 'rootMenu', warnings);
+    // A design saved under a different target, restored here.
+    //
+    // This is the path a target change actually takes: change the target,
+    // reopen, and the last-used design comes back through here — or it is
+    // opened from the design list, which is loadNamed -> _tryLoad -> here.
+    // Both were silently clearing the pins, because the target question was
+    // only ever asked on the FILE load paths.
+    //
+    // Recorded rather than acted on: this runs inside the constructor, with
+    // no screen to ask over and no way to await an answer. The designer
+    // raises it on the next cmd, before anything is dispatched or saved —
+    // see DesignerTargetPrompt.resolvePending. Nothing here writes to
+    // storage, so the saved copy keeps its pins until that is answered.
+    const restoredBoard = (typeof payload.boardName === 'string' && payload.boardName)
+      ? payload.boardName : null;
+    this.pendingTargetMismatch =
+      (restoredBoard && this.board && restoredBoard !== this.board.name)
+        ? { designBoard: restoredBoard, currentBoard: this.board.name }
+        : null;
+    if (this.pendingTargetMismatch) {
+      // Capture the stored bytes NOW — before a single pin is touched, and
+      // before the answer is known.
+      //
+      // Only the capture happens here; the file is written by the UI layer a
+      // moment later (DesignerTargetPrompt). That is not the same compromise
+      // as deciding later: once these bytes are in hand they cannot be
+      // changed by anything downstream, whereas re-reading storage after the
+      // clearing would depend on nothing having saved in between — an
+      // invariant resting on the two lines below happening to be memory-only.
+      //
+      // Unconditional, because BOTH answers destroy this version. Keeping the
+      // design on the current board overwrites it on the next save just as
+      // surely as switching does.
+      this.pendingTargetMismatch.storedPayload = raw;
+    }
     // Clear any item.pin whose name is no longer present on the current
     // board — catches both target switches and board updates that removed
     // a pin.  Done every load so stale pins never reach code generation.
@@ -1782,6 +1827,284 @@ class DesignerState {
   /// Read the "most recently in use" pointer; null if unset.
   static _readCurrentPointer() {
     try { return localStorage.getItem(CURRENT_KEY); } catch (_) { return null; }
+  }
+
+  /// Import `parsed` and persist it as a saved design called `name`,
+  /// WITHOUT disturbing the design the user is currently editing.
+  ///
+  /// Every other import path runs on the live state, because the user
+  /// asked for that design to be opened. This one exists for the Dwg
+  /// Controls Panel: a .zip picked there is a bundle of drawings that
+  /// happens to also carry its menu, and the user is in the middle of
+  /// editing something else. The design belongs in the list, but nothing
+  /// about it should move the user.
+  ///
+  /// So the import runs on a throwaway instance, and the "current design"
+  /// pointer that instance's own save() rewrote is put back afterwards —
+  /// otherwise the next session would open the imported design instead of
+  /// the one being worked on.
+  ///
+  /// @param {BaseBoard} board — the board to validate pins/ranges against
+  /// @param {object} parsed — a parsed .pfodMenu_json
+  /// @param {string} name — must already be free; the caller dedups
+  /// @returns {Error|null} the PARTIAL error when the file loaded with
+  ///          issues (it is still saved), or null on a clean import.
+  ///          A hard failure throws, and nothing is written.
+  /// The raw localStorage bytes for a design, or null.
+  ///
+  /// Safe to call only while the stored copy is known good — that is, before
+  /// anything has cleared pins against a board the design was not built for.
+  /// The restore path cannot use it for that reason and captures the bytes
+  /// itself; the file-load paths can, because they have not touched the open
+  /// design at all.
+  /// @param {string} name
+  /// @returns {string|null}
+  static readStoredPayload(name) {
+    if (typeof name !== 'string' || !name) return null;
+    try { return localStorage.getItem(STORAGE_PREFIX + name); }
+    catch (_) { return null; }
+  }
+
+  /// Record that the design's CURRENT stored bytes have been written to a
+  /// file, so nothing writes them again.
+  ///
+  /// Two places notice a design is about to be retargeted — the target
+  /// picker, as the target moves, and the designer, when it opens and finds
+  /// a design built for another board — and in the ordinary case they are
+  /// noticing the SAME change, one after the other. Without this the user
+  /// gets the same file twice, the second named "… (1)".
+  ///
+  /// The mark is per design and dies with the next save(), so it means
+  /// exactly "what is in storage under this name right now is already on
+  /// disk" — never "this design has been backed up at some point".
+  ///
+  /// @param {string} name — the design's name
+  /// @param {string} boardName — the board those bytes were built for
+  /// @param {string} fileName — what was written, so the prompt can still
+  ///        tell the user where the version went
+  static markPreserved(name, boardName, fileName) {
+    if (typeof name !== 'string' || !name) return;
+    try {
+      localStorage.setItem(PRESERVED_PREFIX + name,
+        JSON.stringify({ boardName: boardName, fileName: fileName }));
+    } catch (_) {}
+  }
+
+  /// Move EVERY stored design onto `boardName`.
+  ///
+  /// There is no such thing as a mixed-target machine: the target picked on
+  /// the connection screen is the target, and every design is for it. So
+  /// once the user accepts a board for one design, they have accepted it for
+  /// all of them, and this writes that decision down.
+  ///
+  /// Without it the acceptance lived only in memory, and the answer was
+  /// re-asked on the next open — for the same design (whose stored copy
+  /// still named the old board until some dispatch happened to save it) and
+  /// then again for every other design in the list, one at a time.
+  ///
+  /// Each design is RETARGETED, not relabelled. Stamping the new board name
+  /// over a payload that still holds the old board's pins produces a design
+  /// that lies about itself: it says UNO and carries ESP32 pin numbers, and
+  /// the next Generate Code writes those pin numbers into the sketch. So
+  /// every design is put through the same restore the designer itself does
+  /// — _tryLoad clears the pins the new board does not have and re-derives
+  /// the ADC-seeded ranges — and then saved back.
+  ///
+  /// The design currently OPEN is saved from live state instead of being
+  /// rebuilt from storage, so that unsaved edits are not thrown away; it has
+  /// already been through the same restore.
+  ///
+  /// Preserving the old-target versions to disk is the CALLER's job, and has
+  /// to happen before this runs — after it, the pins are gone.
+  ///
+  /// @param {object} board — the board object every design now belongs to
+  /// @param {DesignerState} [openState] — the design open in the designer,
+  ///        if any. There may well be none: the target can be changed with
+  ///        the designer closed.
+  /// @returns {string[]} the designs actually moved (one already on this
+  ///          board is left alone, so a no-op change reports nothing)
+  static adoptTarget(board, openState) {
+    if (!board || typeof board.name !== 'string' || !board.name) return [];
+    const moved = [];
+    // save() writes the "most recently used" pointer, and rebuilding the
+    // other designs must not steal it from whatever the user is actually
+    // working on.  Same guard importAsSavedDesign uses.
+    const previousCurrent = DesignerState._readCurrentPointer();
+    DesignerState.listNames().forEach((n) => {
+      const raw = DesignerState.readStoredPayload(n);
+      if (!raw) return;
+      let payload;
+      try { payload = JSON.parse(raw); } catch (_) { return; }
+      if (!payload || payload.boardName === board.name) return;
+      try {
+        if (openState && openState.name === n) {
+          openState.save();
+        } else {
+          // The constructor restores this design against `board`, which is
+          // where the pin clearing and the ADC retargeting happen; save()
+          // then writes it back stamped with the new board.
+          new DesignerState(board, n).save();
+        }
+        moved.push(n);
+      } catch (e) {
+        console.warn('[DesignerState] could not retarget design "' + n + '":', e);
+      }
+    });
+    try {
+      if (previousCurrent === null) localStorage.removeItem(CURRENT_KEY);
+      else localStorage.setItem(CURRENT_KEY, previousCurrent);
+    } catch (_) {}
+    return moved;
+  }
+
+  /// The file markPreserved recorded for this design and board, if the
+  /// bytes it vouched for are still the ones in storage.
+  ///
+  /// Read, never consumed: the mark is cleared by save(), which is the only
+  /// event that can make it wrong. Consuming it here would mean the second
+  /// of two callers looking at the same unchanged design wrote a duplicate
+  /// after all. A mark naming a different board is not about this change and
+  /// is ignored.
+  ///
+  /// @param {string} name
+  /// @param {string} boardName — the board the caller is preserving from
+  /// @returns {string|null} the file already written, or null if there is
+  ///          none and the caller should write one
+  static preservedFile(name, boardName) {
+    if (typeof name !== 'string' || !name) return null;
+    try {
+      const raw = localStorage.getItem(PRESERVED_PREFIX + name);
+      if (!raw) return null;
+      const mark = JSON.parse(raw);
+      if (!mark || mark.boardName !== boardName) return null;
+      return mark.fileName || null;
+    } catch (_) { return null; }
+  }
+
+  /// The stored design, as loadable file PARTS, for saving to disk before
+  /// the target changes.
+  ///
+  /// Parts, not a file: whether it ends up a `.pfodMenu_json` or a
+  /// `<name>_menuJson.zip` carrying its drawings is DesignerSaveToFile's
+  /// decision, made in one place for every command that writes a design.
+  /// This supplies the base name, the json and the rootMenu the drawing
+  /// list is read from.
+  ///
+  /// There is one localStorage slot per design NAME, and save() stamps it
+  /// with whatever board is current. So a design opened under a new target
+  /// is not modified — it is overwritten: same slot, new boardName, pins
+  /// cleared. The version built for the old board has to leave the browser
+  /// to survive; another localStorage entry is not a backup, it is one more
+  /// thing in the same place that clearing site data takes with it.
+  ///
+  /// Built from the STORED payload, never from the live state — the caller
+  /// captures those bytes before _tryLoad clears a pin, and they carry the
+  /// ORIGINAL boardName, connection and pins. Rebuilding from the live state
+  /// would stamp the new board and defeat the whole exercise.
+  ///
+  /// The payload shape (save()) and the file shape (exportToJSON) are not
+  /// the same — a payload written straight out would not load back — so the
+  /// fields are mapped across here, in exportToJSON's own order.
+  ///
+  /// @param {string} name — the design's name
+  /// @param {string} rawPayload — the localStorage bytes, captured intact
+  /// @returns {{baseName: string, text: string, rootMenu: object}|null}
+  ///          `baseName` carries NO extension — the bundler adds the one
+  ///          that matches the shape it chose.
+  static designFileFromPayload(name, rawPayload) {
+    if (typeof name !== 'string' || !name || typeof rawPayload !== 'string') return null;
+    let payload;
+    try { payload = JSON.parse(rawPayload); } catch (_) { return null; }
+    if (!payload || !payload.rootMenu) return null;
+
+    const out = {
+      format:     EXPORT_FORMAT_TAG,
+      schema:     DESIGNER_STATE_SCHEMA_VERSION,
+      name:       name,
+      connection: payload.connection,
+      boardName:  payload.boardName,
+      savedAt:    new Date().toISOString(),
+      js_ver:     (typeof window !== 'undefined') ? window.JS_VERSION : undefined,
+      rootMenu:   payload.rootMenu,
+    };
+    // The old board's name is in the FILE name too: a folder of downloads a
+    // week later is where this has to be recognisable, and "Menu_1.pfodMenu_json"
+    // beside the current one says nothing about which is which.
+    const boardPart = payload.boardName
+      ? '_' + String(payload.boardName).replace(/[^A-Za-z0-9]+/g, '_').replace(/_+$/, '')
+      : '_old_target';
+    const safeName = name.replace(/[^A-Za-z0-9]+/g, '_').replace(/_+$/, '') || 'Menu';
+    return {
+      // No extension: the caller runs this through saveToFile's own bundler,
+      // which appends either ".pfodMenu_json" or "_menuJson.zip" depending on
+      // whether the design links any drawings. Deciding that here would mean
+      // a second implementation of the rule.
+      baseName: safeName + boardPart,
+      text: JSON.stringify(out, null, 2),
+      // For working out which drawings have to travel with it.
+      rootMenu: payload.rootMenu,
+    };
+  }
+
+  /// Does this file target a different board from the one now selected?
+  ///
+  /// Asked BEFORE importing, and that ordering is the whole point.
+  /// importFromObject runs _clearInvalidPins() against whatever board is
+  /// current, so by the time an import has finished, a design built for
+  /// another target has already lost every pin that board does not have —
+  /// and offering to switch afterwards would be offering to reload a design
+  /// that had already been stripped. The caller asks first, and only calls
+  /// import once the user has chosen which board to import against.
+  ///
+  /// Only a file that RECORDS a board can mismatch. Schema 11 and earlier
+  /// carry no `boardName` and are assumed to be UNO designs
+  /// (LEGACY_ASSUMED_BOARD_NAME); they are not treated as a mismatch here,
+  /// because the file is not claiming a target — it simply predates the
+  /// field. The consequence of that assumption is already reported by
+  /// _retargetAdcRanges, and only when it actually changed something.
+  /// Prompting on every legacy file instead would put a target question in
+  /// front of the user on loads where nothing is wrong.
+  ///
+  /// Drawings never reach here: a .pfodDwg_json records no board and holds
+  /// no pins, so a drawing loads against whatever target is current. A
+  /// drawing BUNDLE is a different matter — its wrapper menu carries the
+  /// board, and that menu comes through this check like any other.
+  ///
+  /// @param {BaseBoard} currentBoard — the board now selected
+  /// @param {object} parsed — a parsed .pfodMenu_json
+  /// @returns {{designBoard: string, currentBoard: string}|null} null when
+  ///          the file records no board, or records the current one
+  static targetMismatch(currentBoard, parsed) {
+    const designBoard = (parsed && typeof parsed.boardName === 'string' && parsed.boardName)
+      ? parsed.boardName : null;
+    if (!designBoard) return null;
+    const currentName = (currentBoard && currentBoard.name) ? currentBoard.name : null;
+    if (!currentName || designBoard === currentName) return null;
+    return { designBoard: designBoard, currentBoard: currentName };
+  }
+
+  static importAsSavedDesign(board, parsed, name) {
+    const previousCurrent = DesignerState._readCurrentPointer();
+    const restoreCurrent = () => {
+      try {
+        if (previousCurrent === null) localStorage.removeItem(CURRENT_KEY);
+        else localStorage.setItem(CURRENT_KEY, previousCurrent);
+      } catch (_) { /* same quota/private-mode case save() already tolerates */ }
+    };
+
+    const scratch = new DesignerState(board, name);
+    try {
+      scratch.importFromObject(parsed, name);
+    } catch (err) {
+      // A hard failure throws before importFromObject's own save(), so
+      // nothing was written and the pointer never moved. A partial one
+      // throws after, so it did.
+      if (!err.partial) throw err;
+      restoreCurrent();
+      return err;
+    }
+    restoreCurrent();
+    return null;
   }
 
   /// First unused "Menu_<n>" name on this machine.  Matches Java

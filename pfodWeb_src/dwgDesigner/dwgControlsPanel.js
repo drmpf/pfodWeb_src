@@ -31,15 +31,27 @@
 
 const DesignerDwgControlsPanel = (() => {
 
-  /// Dispatch handler.  Always returns the harmless empty ack — this
-  /// button has no menu content of its own; the actual screen switch
-  /// is done client-side in responseHandlers.js's onItemClick.
+  /// Dispatch handler.  Switches pfodWeb into the Dwg Controls Panel and
+  /// returns the harmless empty ack — this button has no menu content of
+  /// its own.
+  ///
+  /// The switch used to be done from responseHandlers.js's onItemClick
+  /// instead, which meant a file shipped to DEVICES carried a branch
+  /// comparing against DWG_CONTROLS_PANEL_CMD — a const declared in
+  /// designer/menus/mainMenu.js, which the device build does not ship.  On
+  /// a device that identifier does not read undefined, it THROWS, and it
+  /// was the first operand of the guard, so every menu press on a device
+  /// build died there.  A designer-only behaviour belongs in a
+  /// designer-only file, where the name it needs is guaranteed to exist.
   ///
   /// @param {string}        rawCmd
   /// @param {DesignerState} state
   /// @param {number}        depth
   /// @returns {{pfod: string, skipSave: boolean}}
   function send(rawCmd, state, depth) {
+    if (window.designerDwgPanel) {
+      window.designerDwgPanel.show();
+    }
     return { pfod: PFOD_EMPTY, skipSave: true };
   }
 

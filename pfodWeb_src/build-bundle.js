@@ -183,6 +183,12 @@ const config = {
       scripts: [
         'version.js',
         'connectionManager.js',
+        // Wraps HTMLInputElement.prototype.click so a script can supply a
+        // menu/dwg file without the native file dialog (window.pfodWebFileHook).
+        // No dependencies, and inert until armed — it only has to be loaded
+        // before the first file picker can be clicked, which any position
+        // above the designer satisfies.
+        'fileLoadHook.js',
         // ── designer/ — in-browser virtual pfod device (transport='designer') ──
         // Declaration order: shared types → BaseBoard → BoardLoader →
         // per-board data (<Board>.json) → state → dispatch → menus → index.
@@ -209,6 +215,18 @@ const config = {
         'designer/boards/shared/inoTemplates.js',
         ...discoverBoardJsonFiles(),
         'designer/state.js',
+        // The "built for another board" modal, shared by BOTH load paths —
+        // loadFromFile.js (a designer menu) and dwgControlsPanelUI.js (the
+        // Dwg panel). Placed here because it is designer-level rather than a
+        // menu handler; it calls DesignerState.targetMismatch and
+        // boardSelector's setCurrentTargetId, both at click time, so its
+        // position relative to those two does not matter.
+        'designer/targetPrompt.js',
+        // The scrollable "everything that changed on load" list. Separate
+        // from the load screen's own status label because that label is a
+        // pfod message, and a pfod message is capped at 1024 bytes —
+        // retargeting a design between boards produces more than that.
+        'designer/detailsPopup.js',
         'designer/dispatch.js',
         // Designer menus.  formats.js MUST come before mainMenu.js (it
         // defines DESIGNER_*_FMT + designerSpacing used by every menu);
@@ -226,16 +244,18 @@ const config = {
         // readability. dwgControlsPanel.js only needs
         // DesignerDispatch/PFOD_EMPTY (dispatch.js, loaded above);
         // dwgControlsPanelUI.js only needs DesignerState (state.js,
-        // loaded above). Neither depends on mainMenu.js at load time —
-        // DWG_CONTROLS_PANEL_CMD is read by responseHandlers.js at click
-        // time, not by these files.
+        // loaded above). Neither depends on mainMenu.js at load time:
+        // DWG_CONTROLS_PANEL_CMD is only read where the menu is BUILT
+        // (mainMenu.js itself), and the cmd is routed by DesignerDispatch's
+        // own 'f' registration rather than by comparing against the const.
         'dwgDesigner/dwgLibrary.js',
         'dwgDesigner/dwgValidate.js',
         'dwgDesigner/dwgControlsPanel.js',
-        // dwgWireEncoder.js defines window.DWG_PREVIEW_KEY_PREFIX and the
-        // pure DwgLibrary-JS-object -> pfod-wire-text encoders — must load
-        // before dwgDesignerAdapter.js, which calls into it from
-        // DwgDesignerVirtualDevice.processCmd().
+        // dwgWireEncoder.js defines window.DWG_PREVIEW_KEY_PREFIX, the
+        // dwgPreviewKey/dwgPreviewName cmd allocator every preview loadCmd
+        // comes from, and the pure DwgLibrary-JS-object -> pfod-wire-text
+        // encoders — must load before dwgDesignerAdapter.js, which calls
+        // into it from DwgDesignerVirtualDevice.processCmd().
         'dwgDesigner/dwgWireEncoder.js',
         // dwgDesignerAdapter.js declares `class DwgDesignerVirtualAdapter
         // extends PfodConnectionBase` — PfodConnectionBase must already be

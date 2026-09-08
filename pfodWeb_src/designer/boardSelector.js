@@ -244,6 +244,17 @@ function _renderCurrentLevel() {
 /// close the overlay.  Shared by the board-level click and the family-
 /// level single-board auto-select short-circuit below.
 function _commitBoardSelection(id) {
+  // BEFORE the target moves: EVERY stored design built for another board is
+  // about to be retargeted — pins the new board does not have are cleared
+  // the first time each is opened — so each one's current version is written
+  // to disk here, while it still has its pins.  Not just the design that is
+  // open: the target is picked on this screen, with the designer shut, so
+  // there may be no open design at all.  A no-op for designs already on the
+  // board picked and for versions already written.  See
+  // designer/targetPrompt.js.
+  if (typeof DesignerTargetPrompt !== 'undefined') {
+    DesignerTargetPrompt.preserveDesignsFor(id);
+  }
   setCurrentTargetId(id);
   // updateURLFromForm() lives in pfodCommon.html's inline script and
   // is a global function — call it so the new ?designer=<id> lands

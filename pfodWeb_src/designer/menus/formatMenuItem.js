@@ -90,19 +90,30 @@ const DesignerFormatMenuItem = (() => {
 
     const fmt1 = '<-1>' + DESIGNER_MENU_FMT;
 
-    // Font Size slider.
-    out += '|F' + FMI_FONT_SIZE_CMD + fmt1;
-    out += '`' + fmt.fontSize + '`' + FMI_FONT_SIZE_MAX + '`' + FMI_FONT_SIZE_MIN;
-    out += '~Font Size ~~+' + FMI_FONT_SIZE_MAX + '~' + FMI_FONT_SIZE_MIN;
+    // A drawing menu item carries no text of its own — the drawing supplies
+    // its own labels — so font size, font colour and B/I/U would be
+    // controls that visibly do nothing.  Background colour still applies
+    // (pfodMenuDisplay paints the wrapper behind the canvas with it), and
+    // so do flash and sound.
+    const hasText = item.type !== 'drawing';
 
-    // Colour pickers.
-    out += '|F' + FMI_FONT_COLOUR_CMD + fmt1 + '~Set Font colour';
+    if (hasText) {
+      // Font Size slider.
+      out += '|F' + FMI_FONT_SIZE_CMD + fmt1;
+      out += '`' + fmt.fontSize + '`' + FMI_FONT_SIZE_MAX + '`' + FMI_FONT_SIZE_MIN;
+      out += '~Font Size ~~+' + FMI_FONT_SIZE_MAX + '~' + FMI_FONT_SIZE_MIN;
+
+      out += '|F' + FMI_FONT_COLOUR_CMD + fmt1 + '~Set Font colour';
+    }
+
     out += '|F' + FMI_BG_COLOUR_CMD   + fmt1 + '~Set Background colour';
 
-    // Sticky-format toggles (B/I/U).
-    out += '|F' + FMI_BOLD_CMD      + fmt1 + '~' + (fmt.bold      ? 'Clear' : 'Set')    + ' <b>Bold</b>';
-    out += '|F' + FMI_ITALIC_CMD    + fmt1 + '~' + (fmt.italic    ? 'Clear' : 'Set')    + ' <i>Italic</i>';
-    out += '|F' + FMI_UNDERLINE_CMD + fmt1 + '~' + (fmt.underline ? 'Clear' : 'Set')    + ' <u>Underline</u>';
+    if (hasText) {
+      // Sticky-format toggles (B/I/U).
+      out += '|F' + FMI_BOLD_CMD      + fmt1 + '~' + (fmt.bold      ? 'Clear' : 'Set')    + ' <b>Bold</b>';
+      out += '|F' + FMI_ITALIC_CMD    + fmt1 + '~' + (fmt.italic    ? 'Clear' : 'Set')    + ' <i>Italic</i>';
+      out += '|F' + FMI_UNDERLINE_CMD + fmt1 + '~' + (fmt.underline ? 'Clear' : 'Set')    + ' <u>Underline</u>';
+    }
 
     // Non-sticky toggles (Flash/Sound).
     out += '|F' + FMI_FLASH_CMD + fmt1 + '~' + (fmt.flash ? 'Remove' : 'Set to') + ' Flash';

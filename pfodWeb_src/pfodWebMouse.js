@@ -128,14 +128,69 @@ window.pfodWebMouse = {
     };
     proxy.redraw = proxyRedraw;
 
-    canvas.addEventListener('mousedown',  (e) => self.handleMouseDown.call(proxy, e));
+    // A press means the PRIMARY button.  Without this a right-click ran the
+    // whole press path — on a drawing with no touchZones it sent the menu
+    // item's cmd and held the display, while the browser opened a context
+    // menu over the top.  handleMouseUp already ignores an up it saw no
+    // down for, so guarding the down alone is enough.
+    const primaryOnly = (fn) => (e) => { if (e.button === 0) fn(e); };
+    canvas.addEventListener('mousedown',  primaryOnly((e) => self.handleMouseDown.call(proxy, e)));
     canvas.addEventListener('mouseup',    (e) => self.handleMouseUp.call(proxy, e));
     canvas.addEventListener('mousemove',  (e) => self.handleMouseMove.call(proxy, e));
     canvas.addEventListener('mouseleave', (e) => self.handleMouseLeave.call(proxy, e));
     canvas.addEventListener('click',      (e) => self.handleClick.call(proxy, e));
-    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); self.handleMouseDown.call(proxy, e.touches[0]); }, { passive: false });
-    canvas.addEventListener('touchmove',  (e) => { e.preventDefault(); self.handleMouseMove.call(proxy, e.touches[0]); }, { passive: false });
-    canvas.addEventListener('touchend',   (e) => self.handleMouseUp.call(proxy, e.changedTouches[0]));
+    // The drawing is not a document: there is nothing on it to copy, save or
+    // inspect, and a menu popping up over it is the browser acting on a
+    // press the canvas is supposed to own.  Covers the right-click above and
+    // the touch long-press that raises the same menu on Android.
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Gestures are withheld from the browser declaratively — `touch-action:
+    // none` on the canvas (pfodCommon.css) — rather than by cancelling
+    // touchstart here.  Same effect, said once in one place, and it does not
+    // depend on every listener remembering to do it.
+    const multiTouch = (e) => e.touches && e.touches.length > 1;
+    canvas.addEventListener('touchstart', (e) => {
+      // A second finger is never ours: every touchZone is single-finger and
+      // these handlers only read touches[0].  Ignoring it stops a zoom
+      // being recorded as a press.
+      if (multiTouch(e)) return;
+      self.handleMouseDown.call(proxy, e.touches[0]);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      if (multiTouch(e)) return;
+      // Every one-finger drag on a drawing belongs to the drawing.  A drag
+      // that starts on empty canvas is NOT diverted into scrolling the menu
+      // — that was tried and is not wanted; the menu is scrolled from the
+      // strip beside the drawing (pfodMenuDisplay's scroll gutter).
+      //
+      // Belt and braces to `touch-action: pinch-zoom` (pfodCommon.css),
+      // which is what withholds panning from the browser: harmless where
+      // the browser was not going to pan anyway, and it costs nothing to be
+      // explicit once the gesture is known to be a one-finger drag.
+      e.preventDefault();
+      self.handleMouseMove.call(proxy, e.touches[0]);
+    }, { passive: false });
+    canvas.addEventListener('touchend', (e) => {
+      self.handleMouseUp.call(proxy, e.changedTouches[0]);
+      if (multiTouch(e)) return;   // the tail of a zoom is the browser's
+      // handleClick is what carries the CLICK touchZone filter, and it was
+      // only ever reached through the mouse `click` event — which a touch
+      // device does not deliver here, since the browser's synthesised mouse
+      // events are suppressed below.  So a CLICK-filter zone did nothing at
+      // all on Android while the same zone worked on Windows.  Run it
+      // directly.  Safe to call unconditionally: it checks hasDragged and
+      // the long-press timeout itself, exactly as it does for a mouse, and
+      // handleMouseUp above handles different filters (UP / DOWN_DRAG_UP),
+      // so nothing fires twice.
+      self.handleClick.call(proxy, e.changedTouches[0]);
+      // THIS is where the cancel belongs.  A browser follows a touch with
+      // synthesised mouse events — mousedown, mouseup, click — and this
+      // canvas listens for all three, so without it every tap on a drawing
+      // would run the handlers a second time.  Cancelling touchend
+      // suppresses them, and by then the gesture is over, so no zoom or
+      // scroll can be affected by it.
+      e.preventDefault();
+    }, { passive: false });
   },
 
   /// End the display hold a press-on-a-touchZone started, and let the
@@ -232,13 +287,46 @@ window.pfodWebMouse = {
     const foundTouchZone = window.pfodWebMouse.findTouchZoneAt.call(this, x, y, colPixelsHalf9mm, rowPixelsHalf9mm);
     this.touchState.targetTouchZone = foundTouchZone;
 
-    // Only a press that actually landed on a live touchZone holds the
-    // display.  findTouchZoneAt excludes TOUCH_DISABLED zones, so pressing
-    // one of those — or empty canvas — returns null here and auto-refresh
-    // carries on: a disabled zone is meant to swallow the touch, not freeze
-    // the drawing.  The hold stays set through a drag out of the zone or off
-    // the canvas and is cleared only when the gesture ends (_endTouchHold).
-    if (foundTouchZone) {
+    // A drawing with NO touchZones at all is just a picture on a menu item,
+    // so pressing it is pressing that item: send the MENU ITEM's cmd, here
+    // on the way DOWN.
+    //
+    // On the way down, not on a click, because "was that a click or a drag"
+    // is a question with no good answer on a touchscreen — a finger always
+    // moves a little — and there is nothing to decide anyway: a drawing
+    // with no active areas has only one thing a press can mean.
+    //
+    // this.currentIdentifier is that cmd: setupMenuCanvasListeners puts the
+    // menu item's own cmd on each per-canvas proxy, so a press reports the
+    // item it belongs to rather than whatever was last set on the shared
+    // viewer.  pfodMenuDisplay._handleClick is the path every other menu
+    // item's press takes, so the menu-version cache applies to this one too.
+    const dmDown = this.redraw.redrawDrawingManager;
+    const dwgDown = this._menuDrawingName;
+    const hasAnyTouchZones =
+      Object.keys(dmDown.allTouchZonesByCmd[dwgDown] || {}).length > 0;
+    if (!foundTouchZone && !hasAnyTouchZones) {
+      const itemCmd = this.currentIdentifier;
+      if (itemCmd && window.pfodMenuDisplay) {
+        console.info(`[MOUSE_DOWN] No touchZones in "${dwgDown}" — sending menu item cmd "${itemCmd}"`);
+        window.pfodMenuDisplay._handleClick(itemCmd);
+      } else {
+        console.warn(`[MOUSE_DOWN] No touchZones and no menu item cmd for "${dwgDown}"`);
+      }
+    }
+
+    // What HOLDS the display until the press is released: a press on a live
+    // touchZone, and a press on a drawing that has none (which has just sent
+    // its menu item's cmd above — the reply to that must not be painted
+    // under the finger that asked for it).
+    //
+    // findTouchZoneAt excludes TOUCH_DISABLED zones, so pressing one of
+    // those — or pressing empty canvas on a drawing that HAS zones — holds
+    // nothing and auto-refresh carries on: a disabled zone is meant to
+    // swallow the touch, not freeze the drawing.  The hold stays set through
+    // a drag out of the zone or off the canvas and is cleared only when the
+    // gesture ends (_endTouchHold).
+    if (foundTouchZone || !hasAnyTouchZones) {
       this.touchState.holdingUpdates = true;
       // Remember WHICH viewer is holding.  Canvas events run against a
       // per-canvas proxy (setupMenuCanvasListeners) carrying that drawing's
@@ -251,7 +339,7 @@ window.pfodWebMouse = {
         console.info(`[MOUSE_DOWN] Cancelled refresh timer`);
       }
     } else {
-      console.info(`[MOUSE_DOWN] No touchZone here — refresh left running`);
+      console.info(`[MOUSE_DOWN] Outside every touchZone — refresh left running`);
     }
 
     // Only back up state when this touchZone actually has a touchAction/
@@ -352,6 +440,14 @@ window.pfodWebMouse = {
     const distance = Math.sqrt(dx * dx + dy * dy);
 
     // Only consider as drag if moved more than a small threshold
+    //
+    // No dead zone, deliberately.  A finger wobble on a touchZone whose
+    // filter does not include DRAG sends nothing anyway — the filter, not a
+    // distance threshold, is what decides whether movement means anything.
+    // On one that DOES include DRAG, a wobble is a drag and sending it is
+    // correct.  Repeats cannot pile up either: a queued drag cmd for this
+    // zone replaces the one already waiting, so there is only ever the
+    // latest one outstanding (see addToRequestQueue's type replacement).
     if (distance > 0) {
       console.log(`[MOUSE_DRAG] Distance moved: ${distance.toFixed(2)}, setting hasDragged = true`);
       this.touchState.hasDragged = true;
@@ -549,27 +645,13 @@ window.pfodWebMouse = {
           return;
         } 
       } else {
-        // Special case: no touchZones defined or clicked outside all touchZones
-        // Only send update request if no touchZones are defined. This is
-        // purely "does this drawing have any touchZones at all", nothing
-        // to do with touch-action backup/restore — checked against the
-        // LIVE DrawingManager directly rather than touchActionBackups
-        // (which may legitimately not exist at all now that a backup is
-        // only created when the touched zone actually has a touchAction/
-        // touchActionInput — see handleMouseDown).
-        const dm = this.redraw.redrawDrawingManager;
-        const dwg = this._menuDrawingName;
-        const hasTouchZones = Object.keys(dm.allTouchZonesByCmd[dwg] || {}).length > 0;
-
-        if (!hasTouchZones) {
-          // No touchZones defined, so queue a general update request
-          console.log("No touchZones defined - requesting general update on click");
-
-          // Queue a general update request
-          this.queueDrawingUpdate(dwg);
-        } else {
-          console.log("Touch outside defined touchZones - ignoring");
-        }
+        // Outside every touchZone of a drawing that HAS touchZones: nothing
+        // to do.  A drawing with NO touchZones is not handled here at all —
+        // its press sends the menu item's cmd on the way DOWN
+        // (handleMouseDown), so that a press means the same thing on a
+        // touchscreen as under a mouse without having to guess whether the
+        // finger that moved two pixels meant a click or a drag.
+        console.log("Touch outside defined touchZones - ignoring");
       }
     }
 

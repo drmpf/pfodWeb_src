@@ -48,8 +48,25 @@ class DesignerVirtualDevice {
       return Promise.resolve(PFOD_NO_REPLY);
     }
     const parsed = parseVersion(rawCmd);
-    return Promise.resolve(DesignerDispatch.dispatch(rawCmd, this.state, parsed.cmdStart))
-      .then(result => this._normalizeResult(result));
+    // A design restored under a different target asks which board it should
+    // be on, BEFORE anything is dispatched — because _normalizeResult below
+    // saves after all but the emptiest replies, and the restore has already
+    // cleared the pins in memory. One dispatch is all it takes to write that
+    // over the good copy still in storage.
+    //
+    // The file-load paths ask for themselves; this catches the two that
+    // cannot — opening a design from the list, and startup restoring the
+    // last-used one after the target changed. See
+    // DesignerTargetPrompt.resolvePending, which records nothing and asks
+    // once per restore.
+    return Promise.resolve(DesignerTargetPrompt.resolvePending(this.state))
+      .then((leaving) => {
+        // Target changed: the designer is on its way out, so answer with
+        // nothing rather than dispatching against the board being left.
+        if (leaving) return PFOD_EMPTY;
+        return Promise.resolve(DesignerDispatch.dispatch(rawCmd, this.state, parsed.cmdStart))
+          .then(result => this._normalizeResult(result));
+      });
   }
 
   /// Normalise handler return: plain string OR {pfod, skipSave}.
