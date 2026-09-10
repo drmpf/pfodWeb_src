@@ -1,4 +1,4 @@
-# pfodWeb / pfodProxy source repository V4.1.9
+# pfodWeb / pfodProxy source repository V4.1.10
 
 <p align="center">
 
@@ -11,7 +11,7 @@
 
 </p>
 
-pfodWeb.html V4.1.8 is optimized for use by AI to design user interfaces. See AI Coding below.
+pfodWeb.html V4.1.8+ is optimized for use by AI to design user interfaces. See AI Coding below.
 
 pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) designer, code generator and client for controlling and monitoring Arduino and other embedded devices from a browser — 
 no app install, no internet, server access required. pfodWeb.html renders device-defined drawings, menus, 

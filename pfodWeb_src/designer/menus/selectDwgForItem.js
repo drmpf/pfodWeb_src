@@ -389,6 +389,34 @@ const DesignerSelectDwgForItem = (() => {
       : DesignerDispatch.dispatch('{k}', state, DISPATCH_ROOT_DEPTH);
   }
 
+  /// Point a Drawing item at `dwgName`, and carry the name across to the
+  /// item's own text.
+  ///
+  /// A Drawing menu item's text is NOT user-editable: the item editor's
+  /// drawing branch (editMenuItem.js) returns before the text-edit rows,
+  /// so the only thing the text can sensibly be is the name of the dwg
+  /// the item shows — and this is the one place a dwg gets linked, both
+  /// on first creation and on every later "Change Drawing", so setting
+  /// it here keeps the two permanently in step.
+  ///
+  /// The autoCmd is re-minted from the new text for exactly the reason
+  /// editMenuItem.js's _applyTextField re-mints it after a text edit —
+  /// the generated C++ handler is named after the item's text, so a
+  /// drawing that shows TomorrowChart generates
+  /// drawing_TomorrowChart_Cmd rather than the placeholder minted from
+  /// the "Drawing" default before any dwg was chosen. The item itself is
+  /// excluded from the uniqueness scan so re-linking the SAME dwg is a
+  /// no-op instead of appending a `_2`.
+  /// @param {DesignerState} state
+  /// @param {Object} item     the Drawing item (already in the menu, or pending)
+  /// @param {string} dwgName  DwgLibrary name of the dwg just picked/loaded
+  function _setLinkedDwg(state, item, dwgName) {
+    item.dwgName = dwgName;
+    item.text    = dwgName;
+    item.autoCmd = _makeAutoCmd(item.type, item.text,
+                                state.getAllItems().filter((it) => it !== item));
+  }
+
   /// Link `dwgName` to the right item and request a real back-navigation
   /// — '{<}' is handled specially by responseHandlers.js exactly like a
   /// press of the toolbar's own back-arrow button (pops menuNavStack and
@@ -417,10 +445,10 @@ const DesignerSelectDwgForItem = (() => {
     }
     const activeItem = state.getActiveItem();
     if (activeItem) {
-      activeItem.dwgName = dwgName;
+      _setLinkedDwg(state, activeItem, dwgName);
     } else if (state._pendingDrawingItem) {
       const item = state._pendingDrawingItem;
-      item.dwgName = dwgName;
+      _setLinkedDwg(state, item, dwgName);
       const menu = state.getActiveMenu();
       menu.items.push(item);
       state.activeItemIdx = menu.items.length - 1;
