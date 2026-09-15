@@ -285,7 +285,7 @@ class PfodMenuDisplay {
         // Apply <bw> contrast default for prompt text when not explicitly specified.
         if (header.title) {
             const promptContrastHex = xtermColorToHex(getBlackWhite(menuBgColor));
-            pfodSetFormattedText(this._promptEl, header.title, promptContrastHex);
+            pfodSetFormattedText(this._promptEl, header.title, promptContrastHex, undefined, true); // prompt bar: links allowed
             applyPfodFormats(this._promptEl, header.promptFormat);
             if (!header.promptFormat.textColor) {
                 this._promptEl.style.color = promptContrastHex;

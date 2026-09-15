@@ -295,6 +295,10 @@ class DrawingViewer {
           const stack = (new Error()).stack.split('\n').slice(2, 7).map(l => l.trim()).join(' | ');
           console.info(`[SR_TRACE] ${fmt(_sr)} -> ${fmt(v)} :: ${stack}`);
           _sr = v;
+          // Toolbar busy indicator (requestQueue.js): spins the reload
+          // icon while a non-background cmd is out.  Lives here because
+          // this setter is the one place every set/clear passes through.
+          this._showToolbarBusy(v);
         },
         configurable: true,
       });

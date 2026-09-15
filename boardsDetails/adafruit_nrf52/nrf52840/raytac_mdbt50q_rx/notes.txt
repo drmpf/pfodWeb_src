@@ -1,0 +1,80 @@
+Board: Raytac nRF52840 Dongle (MDBT50Q-RX)
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/raytac_mdbt50q_rx/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/raytac_mdbt50q_rx/variant.h
+   (the vendor's own BSP, dropped into the repo by the user). PRIMARY and
+   ONLY source needed — this is an extremely minimal board (PINS_COUNT=3):
+   one LED (PIN_LED1=0, also aliased LED_BUILTIN/LED_CONN/LED_RED/
+   LED_BLUE — a single-color LED, not RGB, despite the RED/BLUE alias
+   names), one button (PIN_BUTTON1=PIN_DFU=2), and a second LED (pin 1)
+   the vendor's own comment explicitly says is "not populated by default"
+   — left untagged.
+2. https://www.adafruit.com/product/5199 ("nRF52840 USB Key w TinyUF2
+   Bootloader") — confirms this is a USB dongle form factor product,
+   consistent with variant.h's own comment that the Serial1 UART pins
+   are deliberately both set to the same invalid pin number ("Bad things
+   happen if the serial pins aren't defined... define them with an
+   invalid pin number") — real Serial is native USB-CDC, no GPIO
+   involved, matching every other nRF52840 board in this family.
+
+DECISIONS
+=========
+KEPT/TAGGED: GPIO0 (LED1/LED_BUILTIN) tagged led_low (LED_STATE_ON=0 in
+variant.h = active-low — trusted directly, since this is Adafruit's own
+first-party hardware description, unlike the Seeed XIAO family's
+misleading LED_STATE_ON macro found earlier this session; no independent
+Adafruit-guide LED-polarity spot-check was done for this specific board
+since it's a minor accessory product with no dedicated Learn guide, but
+the general "Adafruit's own LED_STATE_ON macro is reliable" finding was
+established via a direct spot-check on the flagship Feather nRF52840
+Express board — see that board's own notes.txt). GPIO2 (BUTTON1/DFU)
+tagged button.
+
+NOT EXPOSED: GPIO1 (LED2) — vendor's own comment says "not populated by
+default," so tagging it would mislead most users whose physical unit
+lacks this LED. Left with no chipGpios entry (already invisible by
+default, since it has no static-const alias in variant.h either).
+
+NO GENERAL-PURPOSE GPIO EXISTS ON THIS BOARD — it is a dongle, not a dev
+board with a header. NUM_DIGITAL_PINS=3, all three accounted for above.
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): WebSearch of Adafruit's own
+product/blog pages for this exact dongle confirmed: a single BLUE LED
+(not implied by the "LED_RED"/"LED_BLUE" alias names both pointing at
+this one pin in variant.h — good that this board's own board.json note
+never claimed a specific color) and a DFU-entry button used exactly as
+described ("hold down the dongle's button while inserting into USB").
+No pinout diagram/table was found for this specific product (it's a
+minimal dongle, not documented with a full Learn-guide pinout page the
+way the dev boards are) — this confirms the identity/behavior of the
+two tagged pins but adds no new pin-count information beyond what
+variant.h already fully specifies (only 3 pins total on this board).
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+found and fetched github.com/adafruit/Adafruit_nRF52_Bootloader/src/
+boards/raytac_mdbt50q_rx/board.h directly (BLEDIS_MANUFACTURER=
+"Raytac", BLEDIS_MODEL="MDBT50Q-RX" — confirms this exact product).
+Declares `LED_STATE_ON=0` (active-low) and `BUTTON_DFU=PINNUM(0,15)`.
+Cross-referenced against this board's own variant.cpp g_ADigitalPinMap:
+D0 is P1.13 (LED1) — matches bootloader's LED_PRIMARY_PIN=PINNUM(1,13)
+exactly; D2 is P0.15 (Button) — matches BUTTON_DFU=PINNUM(0,15) exactly.
+Both this board's tagged pins (GPIO0 led_low, GPIO2 button) are now
+confirmed via a genuine, board-specific, official bootloader source, on
+top of the earlier product-description corroboration. Also confirmed
+D1=P1.11 (LED2) matching this board's own "not populated by default"
+comment for PIN_LED2 — the bootloader doesn't reference a second LED
+pin at all (LEDS_NUMBER=1), consistent with the base unit shipping with
+only one LED populated.
+
+NOT GUESSED: both tagged pins trace directly to an explicit vendor
+macro, independently corroborated by Adafruit's own product
+description AND the official bootloader source; nothing was inferred.
+
+SUMMARY: 3 total Arduino pin indices (0-2); 1 tagged LED (active-low), 1
+tagged button, 1 left untagged/invisible (unpopulated LED2).

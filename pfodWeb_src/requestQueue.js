@@ -33,7 +33,77 @@
 // mechanics.  This file uses validateResponseAgainstRequest via the
 // DrawingViewer prototype.
 
+/**
+ * Request types whose in-flight time should NOT show the toolbar busy
+ * indicator: the 1 s http data poll and the TCP keep-alive run all the
+ * time in the background and would keep the icon spinning permanently.
+ * Everything else — a button or touch cmd, a menu navigation, the timer
+ * refresh of a menu or drawing — is a real exchange with the device the
+ * user can reasonably wait on.
+ */
+const PFOD_BUSY_SILENT_TYPES = new Set(['dataRefresh', 'keepAlive']);
+
+/**
+ * Minimum time the busy indicator stays lit.  A fast device — or the
+ * designer's virtual one — answers in a few milliseconds, which is under
+ * one frame: without a hold the flash is never painted and a button press
+ * still looks like nothing happened.
+ */
+const PFOD_BUSY_MIN_MS = 150;
+
 Object.assign(DrawingViewer.prototype, {
+
+  /**
+   * Light the toolbar reload button while a cmd is out and its reply is
+   * pending, so a button press has visible feedback (the canvas itself
+   * does not change until the reply is applied).  Lit = `pfod-busy` on
+   * #btn-reload: amber background, black icon, icon spinning (rotation,
+   * or an opacity pulse under prefers-reduced-motion) — styled in
+   * pfodCommon.css, the same convention as the red Freeze button.
+   *
+   * Called from the `sentRequest` setter in pfodWeb.js's constructor —
+   * fourteen sites across requestQueue.js, drawingProcessing.js and
+   * drawingDataProcessor.js assign that property (one sets it, the rest
+   * clear it on every outcome: reply, empty reply, validation drop,
+   * error), so hanging the indicator off the property means a clear
+   * anywhere turns it off and a future site cannot forget it.
+   *
+   * ON is immediate.  OFF is held until the button has been lit for
+   * PFOD_BUSY_MIN_MS: a reply inside that window arms a timer for the
+   * remainder rather than clearing at once.  A new ON inside the window
+   * cancels that timer and simply stays lit, so back-to-back cmds (a menu
+   * reply followed by its drawings) read as one lit period, not a
+   * flicker.  A silent request (data poll, keep-alive) counts as OFF and
+   * neither cuts nor extends a running hold.
+   *
+   * The button is visibility:hidden while a text-input / numeric /
+   * selection screen is up, but Accept on those hides the screen
+   * (body → message-mode, "Requesting ...") before the 'input' cmd is
+   * queued, so the toolbar is back and lights up for the reply like any
+   * other cmd; the same holds for the back button, whose 'back' cmd goes
+   * out after the menu is hidden.
+   * @param {object|null} req  the value just assigned to sentRequest
+   */
+  _showToolbarBusy(req) {
+    const btn = document.getElementById('btn-reload');
+    const on = !!req && !PFOD_BUSY_SILENT_TYPES.has(req.requestType);
+    if (on) {
+      if (this._busyOffTimer) { clearTimeout(this._busyOffTimer); this._busyOffTimer = null; }
+      btn.classList.add('pfod-busy');
+      this._busySince = Date.now();
+      return;
+    }
+    if (this._busyOffTimer) return;           // a hold is already running to its end
+    const remaining = PFOD_BUSY_MIN_MS - (Date.now() - (this._busySince || 0));
+    if (remaining <= 0) {
+      btn.classList.remove('pfod-busy');
+      return;
+    }
+    this._busyOffTimer = setTimeout(() => {
+      this._busyOffTimer = null;
+      btn.classList.remove('pfod-busy');
+    }, remaining);
+  },
 
   // Returns true when the post-response repaint should be deferred:
   // while a touch is HOLDING the display, or while a real (non-refresh)
@@ -200,15 +270,23 @@ Object.assign(DrawingViewer.prototype, {
         // Network failure or HTTP error during polling (distinct from {.} getting no pfod
         // response — here the connection itself is down).  Stop polling and alert.
         // Polling restarts automatically when any subsequent cmd response is received.
-        pfodAlert(
-          `Connection lost — device stopped responding during data polling.\n\n` +
-          `${dataRefreshError.message}\n\n` +
-          `You can:\n` +
-          `• Click "Close" to dismiss this alert\n` +
-          `• Use the pfodWeb toolbar's reload button to reconnect\n` +
-          `• Use the pfodWeb toolbar's back button to go back`,
-          () => { console.log('[DATAREFRESH] User closed connection-lost alert'); }
-        );
+        //
+        // Never stack this on top of an http retry alert that is already
+        // showing — the user then sees two overlapping popups for one
+        // outage.  If a retry is pending, the retry alert already says
+        // what is happening; leave it.
+        if (!this.httpRetryTimer) {
+          this._closeHttpRetryAlert();
+          this._httpRetryAlert = pfodAlert(
+            `Connection lost — device stopped responding during data polling.\n\n` +
+            `${dataRefreshError.message}\n\n` +
+            `You can:\n` +
+            `• Click "Close" to dismiss this alert\n` +
+            `• Use the pfodWeb toolbar's reload button to reconnect\n` +
+            `• Use the pfodWeb toolbar's back button to go back`,
+            () => { console.log('[DATAREFRESH] User closed connection-lost alert'); }
+          );
+        }
         // Do not reschedule — polling stopped; restarts on next successful cmd response
       } else {
         this.scheduleDataRefresh();
@@ -284,6 +362,10 @@ Object.assign(DrawingViewer.prototype, {
       }
 
       const responseText = await this.connectionManager.send(request.cmd, respCallbacks);
+
+      // The device answered — any "will retry" alert from a previous
+      // failure is stale now.
+      this._closeHttpRetryAlert();
 
       // Schedule dataRefresh 1 second after this send completes (HTTP only)
       this.scheduleDataRefresh();
@@ -650,6 +732,23 @@ Object.assign(DrawingViewer.prototype, {
 
       // Display alert to user for all errors
       const isInitialMainMenu = request.isInitial && request.requestType === 'mainMenu';
+      const isHttp = this.connectionManager.protocol === 'http';
+      if (isHttp && !isJSONError && !this.exitPending) {
+        // Direct http to the device: nothing here is worth stopping for.
+        // A device on http is typically shared by more than one browser,
+        // and each pfodParser drops a message whose dedup character
+        // matches the previous one it saw — so another client's traffic
+        // can make ours look ignored (a 1-byte " " body, NO_PFOD_IN_RESPONSE)
+        // and the adapter's own retries, which deliberately reuse the same
+        // dedup character, cannot get past that.  Keep the page alive
+        // instead: say what happened, wait, and resend the same request
+        // through send() again, which allocates a fresh dedup character
+        // and starts a fresh retry budget.
+        this._scheduleHttpRetry(request, error);
+        console.log(`[SENTREQUEST] CLEARED: "${request.cmd}" (${request.requestType}) - http retry scheduled at ${new Date().toISOString()}`);
+        this.sentRequest = null;
+        return;
+      }
       if (isBleRetryBackoff) {
         console.info('[QUEUE] BLE retry backoff active — suppressing connection alert, will keep retrying');
       } else if (isRetryExhausted && this.exitPending) {
@@ -753,6 +852,99 @@ Object.assign(DrawingViewer.prototype, {
         }, 10);
       }
     }
+  },
+
+  /**
+   * How long an http connection waits before resending a request the
+   * device did not answer.  Long enough for another client's burst (a
+   * menu refresh plus its drawings) to clear, short enough that a page
+   * left on a desk recovers on its own.
+   */
+  HTTP_RETRY_DELAY_MS: 30000,
+
+  /**
+   * Take down the alert put up by _scheduleHttpRetry (or the http
+   * dataRefresh failure), if it is still showing.  Safe to call when there
+   * is none.  Used on every successful reply and before showing a new one,
+   * so at most one connection alert is ever on screen.
+   */
+  _closeHttpRetryAlert() {
+    if (this._httpRetryAlert) {
+      this._httpRetryAlert.close();
+      this._httpRetryAlert = null;
+    }
+  },
+
+  /**
+   * Cancel a pending http retry — the user has taken over (reload / back /
+   * exit), so the old request must not come back from the timer behind
+   * whatever they asked for.  Closes the alert too.
+   */
+  _cancelHttpRetry() {
+    if (this.httpRetryTimer) {
+      clearTimeout(this.httpRetryTimer);
+      this.httpRetryTimer = null;
+      console.info('[HTTP_RETRY] Pending retry cancelled');
+    }
+    this._closeHttpRetryAlert();
+  },
+
+  /**
+   * http only: tell the user the device did not answer `request`, then
+   * resend that same request after HTTP_RETRY_DELAY_MS.
+   *
+   * "Resend" means putting the original request object back at the head
+   * of the queue and letting processRequestQueue() run it through
+   * connectionManager.send() again — NOT a reconnect.  Before that the
+   * dedup sequence is wound back to the character a new connection starts
+   * with (resetDedupChar()), so the resend does not just take the next
+   * character — the other client is on the same refresh cadence, and two
+   * sequences stepping in lockstep would clash again — and send() starts
+   * a fresh retry budget (its own retries reuse the one character).
+   *
+   * One alert at a time: any earlier connection alert is closed first, and
+   * the alert closes itself when the retried request gets a reply.  A
+   * second failure simply replaces it.  Closing the alert by hand does not
+   * cancel the retry; reload / back / exit do (clearPendingQueue).
+   *
+   * @param {object} request  the queue entry that failed (cmd, requestType,
+   *                          touchZoneInfo, isInitial, _id — reused as is)
+   * @param {Error}  error    what send() threw; NO_PFOD_IN_RESPONSE errors
+   *                          carry .responseBytes from HTTPConnection.sendOnce
+   */
+  _scheduleHttpRetry(request, error) {
+    this._cancelHttpRetry();
+    const attempts = this.connectionManager.getMaxRetries() + 1;
+    const secs = Math.round(this.HTTP_RETRY_DELAY_MS / 1000);
+    let what;
+    if (error.code === 'NO_PFOD_IN_RESPONSE') {
+      const n = error.responseBytes;
+      what = n === 0
+        ? `Sent ${request.cmd} but got nothing back on each of ${attempts} attempts.`
+        : `Sent ${request.cmd} but only got ${n} byte${n === 1 ? '' : 's'} back — no pfod reply — on each of ${attempts} attempts.`;
+    } else {
+      what = `Sent ${request.cmd} — ${error.message}`;
+    }
+    this._httpRetryAlert = pfodAlert(
+      `The device did not answer.\n\n` +
+      `${what}\n\n` +
+      `Will retry in ${secs} seconds with the message id reset, in case another ` +
+      `client is using this device at the same time.\n\n` +
+      `You can:\n` +
+      `• Wait — this closes by itself when the device answers\n` +
+      `• Use the pfodWeb toolbar's reload button to retry now\n` +
+      `• Use the pfodWeb toolbar's back button to go back`,
+      () => { console.info('[HTTP_RETRY] User closed the retry alert; retry still pending'); }
+    );
+    console.warn(`[HTTP_RETRY] "${request.cmd}" (${request.requestType}) failed: ${error.message} — retrying in ${secs}s with the dedup sequence reset`);
+    this.httpRetryTimer = setTimeout(() => {
+      this.httpRetryTimer = null;
+      if (this.exitPending) return;
+      console.info(`[HTTP_RETRY] Resending "${request.cmd}" (${request.requestType}) from the connection's first dedup char`);
+      resetDedupChar();
+      this.requestQueue.unshift(request);
+      this.processRequestQueue();
+    }, this.HTTP_RETRY_DELAY_MS);
   }
 
 });

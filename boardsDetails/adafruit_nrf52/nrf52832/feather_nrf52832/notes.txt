@@ -1,0 +1,109 @@
+Board: Adafruit Feather nRF52832
+Chip: Nordic nRF52832 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52832/feather_nrf52832/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/feather_nrf52832/variant.h —
+   PRIMARY source. Confirmed via WebSearch that nRF52832 (unlike
+   nRF52833/nRF52840) has NO USB peripheral hardware at all — this
+   board's Serial is a real dedicated UART (PIN_SERIAL_RX=8/
+   PIN_SERIAL_TX=6, singular "PIN_SERIAL_" naming, distinct from every
+   other board in this family's "PIN_SERIAL1_" optional-secondary-UART
+   naming) bridged to USB via an onboard CP2104 chip. This is genuinely
+   the pfodApp wired connection's real pins, unlike every nRF52833/840
+   board where Serial is native USB and any declared UART pins are
+   optional/secondary.
+2. Spot-check of Adafruit's own LED_STATE_ON macro reliability done on
+   the flagship Feather nRF52840 Express board (see that board's own
+   notes.txt) — confirmed accurate there via Adafruit's own Learn guide
+   code examples. Extrapolated to this board as the same first-party
+   vendor/design team, not independently re-verified per-board (a
+   deliberate efficiency choice given the volume of boards in this
+   family — flagged here for transparency).
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): fetched Adafruit's own "Bluefruit
+nRF52 Feather Learning Guide" Device Pinout page directly. CONFIRMED
+red LED=pin 17, blue LED=pin 19, matching this board's own PIN_LED1/
+PIN_LED2 exactly. ALSO FOUND A REAL ERROR IN THIS NOTES.TXT'S EARLIER
+CLAIM: the "KEPT available" section originally said "no PIN_VBAT/
+PIN_AREF cross-reference exists in this specific board's variant.h" —
+this was WRONG. The file DOES declare `#define PIN_VBAT PIN_A7` (A7 =
+GPIO31) and a separate `#define PIN_AREF (24)` (a real pin, aliased via
+`static const uint8_t AREF`) — I simply failed to notice these two
+lines when first writing this board's board.json/notes.txt. Adafruit's
+own guide independently confirms A7/P0.31 is "hard wired to a voltage-
+divider on the LIPO battery input" for battery monitoring. This does
+NOT change the capability decision (A7 has no separate enable/gating
+pin the way the Seeed XIAO nRF52840 family's VBAT does, so it was
+already correctly left as a plain, always-safe analog_input, matching
+the standard battery-monitor KEEP policy) — only the notes.txt's
+explanation was wrong, now fixed, and a pinNotes entry documenting A7's
+real identity was added to board.json (it had none before).
+
+DECISIONS
+=========
+FORCED serial_tx/serial_rx (not general GPIO): GPIO6 (PIN_SERIAL_TX),
+GPIO8 (PIN_SERIAL_RX) — the pfodApp wired Serial connection genuinely
+depends on these two pins on this specific board (no native USB to fall
+back to), unlike the rest of this family.
+
+TAGGED: GPIO17 (PIN_LED1/LED_BUILTIN/LED_RED) and GPIO19 (PIN_LED2/
+LED_CONN/LED_BLUE), both led_high (LED_STATE_ON=1) — independently
+confirmed via Adafruit's own Device Pinout page (source #3 above).
+
+KEPT available (general-purpose, no dedicated onboard consumer found):
+A0-A5 (GPIO2-5,28-29), A6 (GPIO30, no special use found), A7/GPIO31
+(confirmed VBAT battery-voltage-divider pin, see source #3 — kept per
+standard battery-monitor KEEP policy since no enable/gating pin exists
+for it), AREF (GPIO24, a real, separately-declared external-reference-
+capable pin — no dedicated onboard consumer found for it), SPI bus
+(GPIO12-14,27), Wire bus (GPIO25-26).
+
+NO BUTTON: variant.h declares no PIN_BUTTON macro at all for this board
+— confirmed not an oversight (this older/simpler Feather predates the
+onboard-user-button convention later Feather nRF52840 boards added).
+
+NOT EXPOSED (invisible, no chipGpios entry, matches how un-aliased
+#define-only pins behave by default): PIN_NFC1(9)/PIN_NFC2(10) — #define
+only, never aliased via static const in this file, so already invisible
+without any action needed.
+
+NOT GUESSED: LED tags trace to variant.h's own macro (spot-check
+precedent from the flagship board); serial-pin forcing traces to the
+confirmed absence of USB hardware on this chip (WebSearch) plus the
+file's own distinct naming convention.
+
+SUMMARY: 32 total Arduino pin indices (0-31); 2 forced to
+serial_tx/serial_rx (the genuine wired connection on this USB-less
+chip), 2 tagged LED (active-high), remainder (A0-A7/AREF/SPI/Wire) kept
+as general-purpose GPIO with no confirmed dedicated consumer.
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+downloaded and viewed the official "feather nRF52 PINOUT" diagram
+(adafruit.com/product/3406, linked from this board's own Learn guide
+Device Pinout page — a differently-styled, apparently older/community-
+style diagram than the newer standardized "Adafruit <board> Pinout"
+template used for the nRF52840-generation boards, but still the
+correct, official diagram for this specific product). CONFIRMED: A0-A5
+=2-5,28-29 exactly matching PIN_A0-A5; SCK=12/MOSI=13/MISO=14 exactly
+matching PIN_SPI_SCK/MOSI/MISO; RX=8/TX=6 exactly matching
+PIN_SERIAL_RX/TX; LED1=17/LED2=19 exactly matching PIN_LED1/PIN_LED2;
+no button shown anywhere on the diagram, consistent with this board
+having none. Also independently RE-CONFIRMED the A7/VBAT finding from
+the first re-check pass: the diagram explicitly warns "Avoid using this
+pin directly — Used to measure the LiPo battery level" on pin 31 (A7) —
+a THIRD independent source (after the Learn-guide text and this
+board's own variant.h) for that fact.
+
+One minor, functionally-irrelevant discrepancy noted: the diagram's
+"Extra Functions" box lists NFC2 at index 18, while this board's own
+variant.h declares `#define PIN_NFC2 (10)`. Not investigated further —
+NFC1/NFC2 are never aliased via `static const uint8_t` in this file
+either way (confirmed earlier), so this pin is entirely invisible to
+this repo's parser regardless of which index is actually correct; the
+discrepancy has zero effect on this board's generated output. Flagged
+here only for completeness, not treated as needing resolution.

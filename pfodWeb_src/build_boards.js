@@ -136,8 +136,13 @@ const REQUIRED_BOARD_FIELDS = [
 
 /// Parsers known to this script — values that may appear in board.json's
 /// `family` field.  Adding support for a new MCU family means writing a
-/// build<Family>Board() function and registering its key here.
-const SUPPORTED_FAMILIES = new Set(['unlistedBoard', 'ccode', 'avr', 'esp32', 'esp8266', 'rp2040']);
+/// build<Family>Board() function and registering its key here — UNLESS
+/// the new chip's pins_arduino.h already declares pins via the same
+/// `static const uint8_t NAME = value;` convention buildEsp32Board()
+/// parses (as esp8266, rp2040 and nrf52 all do despite being unrelated
+/// silicon) — then just add the family id here and to the dispatch list
+/// in main(), no new parser function needed.
+const SUPPORTED_FAMILIES = new Set(['unlistedBoard', 'ccode', 'avr', 'esp32', 'esp8266', 'rp2040', 'nrf52', 'adafruit_nrf52']);
 
 /// Strip JSONC-style `//` line comments and `/* ... */` block comments
 /// from a text payload so the result is plain JSON ready for JSON.parse.
@@ -754,18 +759,19 @@ function buildEsp32Board(src, cfg) {
 
     // Assemble notes.  Order: strapping note (highest priority), then
     // chip-level note (e.g. flash/USB), then "Check if available on board"
-    // for GPIOs absent from pins_arduino.h.  Suppressed for the esp32 and
-    // esp8266 families: their per-board pin-exclusion audits already strip
-    // every genuinely-internal/dedicated GPIO out of chipGpios, so a GPIO
-    // that reaches this point without a pins_arduino.h alias is a
-    // confirmed, just-unnamed pin, not an unverified one.  Left in place
-    // for rp2040, which hasn't had the same board-by-board audit.
+    // for GPIOs absent from pins_arduino.h.  Suppressed for the esp32,
+    // esp8266 and nrf52 families: their per-board pin-exclusion audits
+    // already strip every genuinely-internal/dedicated GPIO out of
+    // chipGpios, so a GPIO that reaches this point without a
+    // pins_arduino.h alias is a confirmed, just-unnamed (or confirmed-
+    // internal-only, in nrf52's case) pin, not an unverified one.  Left
+    // in place for rp2040, which hasn't had the same board-by-board audit.
     const noteParts = [];
     const strapNote = pinNotesMap[String(g)];
     if (strapNote) noteParts.push(strapNote);
     const chipNote = chipEntry && chipEntry.note;
     if (chipNote) noteParts.push(chipNote);
-    if (!inPinsH && cfg.family !== 'esp32' && cfg.family !== 'esp8266') noteParts.push('Check if available on board');
+    if (!inPinsH && cfg.family !== 'esp32' && cfg.family !== 'esp8266' && cfg.family !== 'nrf52' && cfg.family !== 'adafruit_nrf52') noteParts.push('Check if available on board');
     const finalNote = noteParts.join('\n');
 
     const pinObj = { name, label, codeName, capabilities: caps };
@@ -1197,7 +1203,9 @@ function main() {
 
     const board = (cfg.family === 'esp32' ||
                    cfg.family === 'esp8266' ||
-                   cfg.family === 'rp2040')          ? buildEsp32Board(src, cfg)
+                   cfg.family === 'rp2040' ||
+                   cfg.family === 'nrf52' ||
+                   cfg.family === 'adafruit_nrf52')  ? buildEsp32Board(src, cfg)
                 : (cfg.family === 'ccode'  ||
                    cfg.family === 'unlistedBoard') ? buildCcodeBoard(src, cfg)
                 : buildAvrBoard(src, cfg);

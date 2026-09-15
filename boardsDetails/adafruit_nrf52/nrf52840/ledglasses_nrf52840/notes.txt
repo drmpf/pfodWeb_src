@@ -1,0 +1,88 @@
+Board: Adafruit LED Glasses Driver nRF52840
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/ledglasses_nrf52840/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/ledglasses_nrf52840/
+   variant.h — extensive "not connected" comments on A0-A5, A7, and the
+   entire default SPI bus (all four of MISO/MOSI/SCK/SS).
+2. WebSearch (Adafruit's own product page, adafruit.com/product/5217):
+   "The driver looks similar to a Feather but does not have any breakout
+   pins to keep it compact. If you need access to GPIO pins, Adafruit
+   recommends an nRF52840 ItsyBitsy, nRF52840 Feather, or Feather Sense
+   instead." Also confirms the trade-off: an onboard LIS3DH
+   accelerometer and PDM microphone, plus a STEMMA QT (I2C) connector.
+   This directly corroborates variant.h's own "not connected" comments —
+   independent confirmation this is a genuinely pin-less driver board,
+   not an incompletely-documented dev board.
+
+DECISIONS
+=========
+TAGGED: GPIO2 (PIN_LED1) led_high, GPIO3 (PIN_NEOPIXEL) led_neopixel —
+per Adafruit's own product description this drives the actual LED
+Glasses front-panel matrix via the ribbon connector, not just a small
+onboard status indicator, GPIO4 (PIN_BUTTON1) button.
+
+EXCLUDED (capabilities: [], each citing the vendor's own "not
+connected" comment, independently corroborated by source #2 above):
+A0-A5 (GPIO14-19), A7 (GPIO21), and the entire default SPI bus
+(GPIO10-13).
+
+KEPT available (no "not connected" comment, and confirmed by source #2
+as the STEMMA QT I2C connector used for the onboard LIS3DH and/or
+external sensors): Wire bus SCL/SDA (GPIO8/9). A6/VBAT (GPIO20) — the
+one genuinely routed analog pin per variant.h's own comment ("only A6
+is routed and used for battery"), kept per the standard battery-monitor
+KEEP policy (no enable-sequencing pin found for this specific board,
+unlike the Seeed XIAO nRF52840 family's VBAT).
+
+NOT EXPOSED (invisible, #define-only): PDM mic (GPIO5/6), QSPI flash
+(GPIO22-27), Serial1 (GPIO0/1, also "not connected" per the vendor's own
+comment, consistent with everything else that's marked that way on this
+board).
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): found this product's real Learn
+guide name is "Adafruit EyeLights LED Glasses and Driver" (not the
+"LED Glasses Driver" name used elsewhere) and fetched its Pinouts page
+directly. CONFIRMED: red LED labeled "LED" on the board / `LED_RED` in
+Arduino (GPIO2), NeoPixel labeled "Neo" / `PIN_NEOPIXEL` (GPIO3), user
+button labeled "SW" / `PIN_BUTTON1` (GPIO4), and the STEMMA QT
+connector labeled "I2C" on the board (matching the SCL/SDA GPIO8/9 KEEP
+decision) — also separately confirms an onboard accelerometer and
+microphone exist (matching this board's PDM mic pins, already
+correctly left invisible). This specific Pinouts page excerpt did NOT
+cover A0-A5 or the default SPI pins' connection status one way or the
+other — the "not connected" exclusion decision for those continues to
+rest on variant.h's own explicit comments plus the earlier product-page
+confirmation ("does not have any breakout pins"), not on this page.
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+downloaded and viewed the full official pinout diagram directly
+(cdn-learn.adafruit.com/.../Adafruit_EyeLights_LED_Glasses_Driver.png).
+CONFIRMED every existing decision exactly: MICROPHONE_CLOCK=6/P0.00,
+MICROPHONE_DATA=5/P0.27, LED=2/P0.31, NEOPIXEL=3/P1.15, SWITCH=4/P0.30,
+SDA=9/P0.06, SCL=8/P0.08 — all matching this board's own variant.h
+indices precisely. Critically, this diagram does NOT show A0-A5, A7,
+or any of the default SPI pins (10-13) AT ALL — not even as
+unconnected/greyed-out callouts — the strongest possible confirmation
+that the vendor's own "not connected" comments in variant.h are
+accurate: Adafruit's own diagram author didn't consider them worth
+depicting as real board features at all. The board render also shows
+an "Accel" label directly silkscreened near the STEMMA QT connector,
+confirming the onboard accelerometer shares the general I2C bus
+(SDA=9/SCL=8) rather than needing a separate dedicated bus — consistent
+with the existing KEEP decision for that bus.
+
+NOT GUESSED: every exclusion traces to an explicit vendor comment,
+independently corroborated by Adafruit's own product page, Pinouts
+page, and now the full pinout diagram image.
+
+SUMMARY: 28 total Arduino pin indices (0-27); 3 tagged (1 LED, 1
+NeoPixel, 1 button); 12 explicitly excluded ("not connected" per vendor
++ independent corroboration); Wire bus (STEMMA QT) and VBAT kept
+available; mic/flash/Serial1 never appear (unaliased #define-only, also
+independently "not connected" where checked).

@@ -1,0 +1,230 @@
+Board: Seeed XIAO nRF52840 (base)
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino-derived "Seeed nRF52 Boards" core)
+Variant dir: variants/nrf52/nrf52840/Seeed_XIAO_nRF52840/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Seeed_nRF52/variants/Seeed_XIAO_nRF52840/variant.h and
+   variant.cpp (the vendor's own BSP, dropped into the repo by the user
+   for this import). PRIMARY source for every pin index/meaning — the
+   vendor's own g_ADigitalPinMap array comments name each pin's exact
+   peripheral role ("// LSM6DS3TR", "// MIC", "// BQ25100", "// On-board
+   QSPI Flash", etc). Confirmed the array's inline comments ("D20 is
+   P0.26 (LED RED)" etc, continuing "D21".."D32") are STALE/WRONG vendor
+   documentation — real Arduino pin index is determined by ARRAY
+   POSITION, not the comment text (position 11 = LED_RED per variant.h's
+   own #define LED_RED (11), not "D20" as the comment claims). This is a
+   comment-only vendor typo with zero functional effect (comments don't
+   compile) but would have misled a less careful reading — verified by
+   cross-checking every #define in variant.h against its array position
+   in variant.cpp, all consistent by position.
+2. https://wiki.seeedstudio.com/XIAO_BLE/ (fetched via WebFetch) —
+   CONFIRMED: onboard RGB LED is common-anode / active-LOW
+   (digitalWrite LOW = on), directly contradicting variant.h's own
+   LED_STATE_ON=(1) macro (which would imply active-high if trusted at
+   face value) — trusted the wiki over the macro, tagged led_r_low/
+   led_g_low/led_b_low, not led_*_high. Also confirmed: no user-
+   accessible button pin (PIN_BUTTON1 = PINS_COUNT sentinel, matches);
+   NFC1/NFC2 are "free GPIO" per this page's general description (later
+   research below narrowed this — see item 3); VBAT_ENABLE(14)/
+   PIN_CHARGING_CURRENT(22) purposes; LSM6DS3TR IMU + PDM mic are
+   Sense/Sense-Plus-only populated components (base board has the pin
+   definitions but unpopulated pads for these).
+3. https://forum.seeedstudio.com/t/nrf52840-plus-using-pins-d14-and-d15-as-gpio/295248
+   (fetched via WebFetch) — CRITICAL finding, not obvious from the wiki
+   alone: P0.09/P0.10 (this board's NFC1/NFC2, Arduino index 30/31) are,
+   by nRF52840 SILICON default, latched to the NFC antenna function via
+   the UICR NFCPINS register. Using them as plain GPIO requires clearing
+   that register bit — a ONE-WAY change (reverting needs a J-Link and
+   full chip erase) that none of this core's generated pfodWeb sketches
+   ever perform. A plain pinMode()/digitalWrite() on these pins would
+   silently do nothing while NFCPINS is still set. This directly
+   contradicts a naive reading of item 2's "free GPIO" wiki phrasing —
+   trusted the more specific, technically-detailed forum finding.
+4. https://docs.cirkitdesigner.com/component/... (Cirkit Designer pinout
+   pages, via WebFetch's search-result synthesis) — used only to confirm
+   the physical header pinout: base/Sense expose D0-D10 (11 pins) plus
+   power/ground on the edge castellated pads; NOTHING at Arduino index
+   11 and above is brought out to any header pad on this board (LED,
+   IMU, mic, QSPI flash, NFC, VBAT are all internal-only, wired directly
+   to onboard components). This is the basis for excluding indices
+   11-32 wholesale (they are either genuinely dedicated to onboard
+   hardware, or simply have no physical pad a user could wire to).
+5. https://learn.adafruit.com/introducing-the-adafruit-nrf52840-feather/nrf52-adc
+   (Adafruit's own nRF52 ADC guide, via WebSearch) — confirmed the
+   Adafruit-derived core's default analogReference() is AR_INTERNAL
+   (0.6V * gain 6 = 0-3.6V), used for this board.json's
+   adc.defaultRefVolts. variant.h's own ADC_RESOLUTION(12) macro used
+   for adc.bits/max (12-bit, 0-4095).
+
+DECISIONS
+=========
+KEPT available (plain digital_input/digital_output/pwm_output, plus
+analog_input on A0-A5, i2c_sda/scl on D4/D5, spi_ss/sck/miso/mosi on
+D7/D8/D9/D10): D0-D10 — the 11 real header-exposed GPIOs, no dedicated
+onboard consumer, matches this repo's general "keep general-purpose bus
+pins available" policy.
+
+TAGGED (button/led vocabulary): GPIO11/12/13 (LED_RED/BLUE/GREEN) tagged
+led_r_low/led_b_low/led_g_low + digital_output + pwm_output. Internal-
+only (no header pad) but this is exactly what the led_* capability
+vocabulary exists for — letting the Designer offer "control the onboard
+LED" without requiring a physical wire. No button tag anywhere (no
+physical button pin exists on this board per source #2).
+
+EXCLUDED (capabilities: [], each with a note explaining why):
+- GPIO14 (VBAT_ENABLE): control line for the battery-voltage divider;
+  needs a specific LOW-then-read-then-HIGH sequence the Designer's plain
+  pin types can't express safely, and misuse risks damaging the VBAT pin
+  per source #2's own wiki text.
+- GPIO15-18 (LSM6DS3TR-C IMU power/SCL/SDA/INT1): dedicated I2C bus +
+  control lines to the onboard accelerometer/gyro (unpopulated pad on
+  this base board, but same pin definitions and same exclusion
+  reasoning as the Sense variant where it IS populated).
+- GPIO19-21 (PDM mic power/clock/data): dedicated bus to the onboard
+  microphone (unpopulated pad on this base board).
+- GPIO22 (PIN_CHARGING_CURRENT): dedicated onboard BQ25100 charge-IC
+  configuration pin, not general GPIO.
+- GPIO23 (unnamed ~CHG charge-status signal): real per variant.cpp's
+  array comment but never aliased by any macro in variant.h, so it is
+  not reachable from a sketch on this core at all — documented here for
+  completeness, no chipGpios entry actually needed (it simply never
+  appears in the generated output since nothing aliases it).
+- GPIO24-29 (QSPI flash SCK/CS/IO0-3): dedicated bus to the onboard 2MB
+  flash chip.
+- GPIO30/31 (NFC1/NFC2): NFC/UICR caveat, source #3.
+- GPIO32 (PIN_VBAT): requires the VBAT_ENABLE sequencing from GPIO14,
+  which the Designer can't express — see source #2/#4's read-enable
+  procedure.
+
+NOT GUESSED: nothing in this board's chipGpios reflects a guess — every
+capability/exclusion above traces to a specific source in the list.
+
+SUMMARY: 33 total Arduino pin indices (0-32); 11 kept as plain
+general-purpose GPIO (D0-D10), 3 tagged as onboard LED channels
+(GPIO11-13), 19 excluded as dedicated-to-onboard-hardware or
+UICR/sequencing-constrained (GPIO14-32).
+
+POST-REVIEW RE-VERIFICATION (2026-09-13, same day, user-requested):
+====================================================================
+User asked to check pins/functions against https://wiki.seeedstudio.com/XIAO_BLE/
+directly, including the per-board pinout images. Two WebFetch calls against
+that URL gave CONFLICTING summaries about whether NFC1/NFC2 are on a header
+pad — a reminder that WebFetch's AI-summarized answer is not the same as the
+page's actual content, especially for image-derived claims. Downloaded the
+page's raw HTML directly (curl) and found it contains a REAL <table> element
+per board (not just images) with an exact P0.xx/P1.xx-to-pin-name mapping —
+parsed those tables directly (no AI summarization in the loop) for this
+re-verification. This is a strictly better source than either earlier
+WebFetch summary or the Cirkit Designer secondary source originally cited.
+
+Findings against the raw table for this board (table order: 5V, GND, 3V3,
+D0-D10, NFC1, NFC2, Reset, ADC_BAT/READ_BAT_ENABLE, RF Switch Port
+Select/Power, CHARGE_LED, USER_LED_R/B/G):
+- Every P0.xx/P1.xx address in the table matches this board's own
+  variant.cpp g_ADigitalPinMap exactly — full independent confirmation of
+  every pin identity already recorded above.
+- The table's function column for NFC1/NFC2 reads "NFC" ONLY (not
+  "GPIO, NFC") — stronger, more authoritative confirmation of the
+  NFC/UICR exclusion decision than the community forum thread alone.
+  Cross-checked this repo's own imported boards.txt for a
+  `-DCONFIG_NFCT_PINS_AS_GPIOS`-style build flag (mentioned by some
+  community sources as the fix to clear NFCPINS) — NOT present anywhere
+  in the file, so the exclusion is correct for this exact build
+  configuration, not just "correct in general for the chip."
+- GPIO23 (the ~CHG signal from the original pass) has an official name in
+  the table: "CHARGE_LED" / "CHG-LED_Red", at P0.17 — confirms it is a
+  charge-status LED signal, not merely an anonymous status line. Table
+  explicitly does NOT call it "User-controlled" (unlike USER_LED_R/B/G,
+  which the table DOES label that way) — corroborates excluding it as
+  non-user-controlled rather than tagging it led_*. Board.json note text
+  updated from the vaguer "~CHG" phrasing to cite this real name.
+- LED polarity re-confirmed by a THIRD independent method this pass: the
+  page's own raw body text (not a table, not a summary) contains the
+  literal sentence "You need to replace HIGH with LOW to turn ON the
+  LED" — direct, unambiguous, first-party confirmation of active-LOW,
+  matching the earlier wiki-summary and initVariant()-boot-behavior
+  findings.
+- Removed the earlier "Internal only, not on any header pad" claim from
+  every board.json note for GPIO14-32 — that claim traced back to an
+  AI-summarized secondary source (Cirkit Designer pinout pages) whose
+  reliability this same re-verification pass just demonstrated is
+  questionable for exactly this kind of claim (see the NFC1/NFC2
+  conflicting-WebFetch-summary finding above). The exclusion DECISIONS
+  for GPIO14-32 do not depend on that claim at all (they rest on
+  "dedicated to a specific onboard peripheral" / "NFC-by-default silicon
+  behavior" / "requires unsupported sequencing", all independently
+  confirmed via the vendor's own variant.cpp and the wiki's raw table) —
+  removing the unverified header-exposure claim doesn't change any
+  capability, only removes an overreaching side-comment.
+- Lesson generalized into [[newChipFamilyAI-guide]]: prefer a page's raw
+  HTML (tables, body text) over an AI tool's summarized description of
+  that same page, especially for claims about images/diagrams — a
+  summarizer can (and did, in this session) produce directly conflicting
+  answers about the same page on two separate calls.
+
+No capability/exclusion decision changed as a result of this pass — every
+original decision was independently RE-CONFIRMED by a stronger source.
+Only notes.txt/board.json wording was corrected (removed the unverified
+header-pad claim, added the official pin names, cited the raw table and
+the boards.txt build-flag check).
+
+FOLLOW-UP (2026-09-13, same day): user separately confirmed via a direct
+schematic read that all three RGB LED channels are wired active-LOW at
+P0.06 (blue), P0.30 (green), P0.26 (red) — exact match with this board's
+GPIO12/13/11 chipGpios entries (led_b_low/led_g_low/led_r_low). A fourth
+independent confirmation of the same fact (after the wiki body text, the
+initVariant() boot behavior, and now the schematic directly) — no
+ambiguity remains on LED polarity for this family. Also re-checked this
+board's own IMU/mic wiki table rows per the user's request — see the
+Sense board's notes.txt (this base board has no IMU/mic populated, but
+the same wiki-table-incompleteness finding for GPIO16/17/19 applies
+identically to both, since the table content and gap are the same for
+this pin set regardless of which board's silkscreen options are
+populated). User also separately confirmed via the schematic that P0.31
+is VBAT/AIN7 — matches this board's GPIO32 (PIN_VBAT) exactly.
+
+SECOND RE-CHECK (2026-09-13, same day, user-requested — recheck against
+the actual pinout diagram images, not just the raw HTML table): found
+the real image URLs in the wiki's raw HTML
+(files.seeedstudio.com/wiki/XIAO-BLE/XIAO_nRF52840_{front,back}_pinout.png)
+and viewed both directly via the Read tool's image support. Front image:
+exact match for D0-D10, CHARGE LED (P0.17), RGB-R/G/B (P0.26/P0.30/P0.06,
+all shown at Arduino indices 11/13/12 as already recorded), and Reset
+(P0.18) — no changes. Back image: exact match for NFC1/NFC2 (P0.09/
+P0.10, shown as small solder pads near the "NFC" silkscreen, colored
+"Peripheral"/navy — NOT "Digital GPIO"/green, confirming this board's
+exclusion decision is correctly board-specific and not something that
+should also apply to the Plus/Sense Plus boards, see that pair's own
+notes.txt for the contrasting finding that DID change their treatment);
+also confirmed P0.31 = VBAT = AIN7 directly on this same back image
+("D16/AIN7 ... P0.31 ... BAT" on the Plus image; this base board's own
+back image labels it "ADC_BAT"/"READ_BAT_ENABLE" for the P0.14 enable
+line specifically, with the P0.31 VBAT reading pin referenced only in
+the adjoining "Battery Management Logic" annotation, not as its own
+box — user's schematic-based confirmation above fills that gap for this
+board directly.) BAT+/BAT-/SWCLK/SWDIO test pads: none of these are
+aliased by any Arduino pin index in this board's own variant.h, so none
+of them were ever reachable from a sketch regardless — no board.json
+entry needed or added.
+
+One genuine documentation-quality finding, NOT acted on: the back
+image's own "Battery Management Logic" annotation text literally reads
+"P0.31 / 35 (VBAT_ADC)" — but this board's own variant.h defines
+`PIN_VBAT (32)`, not 35 (35 is the correct value for the Plus/Sense Plus
+boards' own, differently-numbered VBAT pin). Confirmed this is a
+copy-paste error in Seeed's own graphic (not a real ambiguity) by
+checking the Sense board's own back image, which carries the IDENTICAL
+"35" text — i.e. the same static annotation block was evidently reused
+across multiple board images without updating this one number (the
+other two numbers in the same block, 14 and 22, happen to be identical
+between base/Sense and Plus/Sense Plus, so they didn't need changing and
+don't expose the copy-paste). Trusted the vendor's own primary source
+(variant.h's explicit `#define PIN_VBAT (32)`, used to compile the
+actual firmware) over the wiki graphic's annotation text for this one
+number — no board.json change (GPIO32 was already correctly keyed, and
+already excluded regardless of the exact number involved). Recorded here
+so a future reviewer who spots this same "35" in the base board's own
+diagram doesn't mistake it for evidence this repo's GPIO32 assignment is
+wrong.

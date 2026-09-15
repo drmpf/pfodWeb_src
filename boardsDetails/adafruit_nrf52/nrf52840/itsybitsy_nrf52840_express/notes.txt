@@ -1,0 +1,58 @@
+Board: Adafruit ItsyBitsy nRF52840 Express
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/itsybitsy_nrf52840_express/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/itsybitsy_nrf52840_express/
+   variant.h — PRIMARY source.
+2. This repo's own precedent at variants/rp2040/rp2040/
+   breadstick_raspberry/board.json — established that DotStar (APA102,
+   2-wire clock+data) LED pins should NOT be tagged led_neopixel (that
+   tag is documented in designer/boards/shared/PinType.js as WS2812-
+   style single-wire only) and that no dedicated DotStar capability tag
+   exists anywhere in this repo's vocabulary. Applied here: this board's
+   PIN_DOTSTAR_DATA(8)/PIN_DOTSTAR_CLOCK(6) are left completely alone.
+
+PARSER-LEVEL FINDING — REQUIRED A SOURCE EDIT
+==============================================
+variant.h declares `#define PIN_A7 (0xff)` — a sentinel meaning "no A7
+channel exists on this board" (the line's own comment: "to compile with
+Firmata library") — then `static const uint8_t A7 = PIN_A7;`.
+build_boards.js's alias-scanning regex only recognizes DECIMAL numeric
+literals; confirmed by direct test that it parses "0xff" as decimal "0"
+(matches the leading "0", stops at "x"), which would have silently
+resolved this alias to a phantom "A7 (GPIO0)" pin — GPIO0 is genuinely
+unrelated (PIN_SERIAL1_RX on this board) and has no other alias, so the
+phantom would not even collide visibly with something already named,
+making it easy to miss. FIX: deleted the `static const uint8_t A7 = ...`
+line outright from this repo's copy (not commented out — this parser has
+no C-comment awareness, confirmed pattern from earlier XIAO nRF52840
+work this session). This affects 3 other boards in this family
+identically (feather_nrf52840_sense_tft, pca10056, pca10100 — the
+latter two also sentinel A6 the same way) — each has the identical fix
+applied in its own pins_arduino.h, documented in its own notes.txt.
+
+DECISIONS
+=========
+TAGGED: GPIO3 (PIN_LED1/LED_BUILTIN — single-color LED, both RED/BLUE
+alias names point at the same physical pin, not an RGB LED) led_high,
+GPIO4 (PIN_BUTTON1) button.
+
+NOT TAGGED (established precedent, not a gap): DotStar data/clock
+(GPIO8/6) — see sources above; also already invisible by default since
+#define-only.
+
+KEPT available: A0-A6 (GPIO14-20), SPI bus (GPIO5,23-25), Wire bus
+(GPIO21-22) — no confirmed dedicated consumer.
+
+NOT EXPOSED: QSPI flash (GPIO26-31), all #define-only.
+
+NOT GUESSED: LED polarity from the family-wide spot-check; button from
+an unambiguous vendor macro; DotStar non-tagging from established
+in-repo precedent, not a fresh judgment call.
+
+SUMMARY: 32 total Arduino pin indices (0-31, A7/GPIO0-phantom bug fixed
+at the source); 2 tagged (1 LED, 1 button); A0-A6/SPI/Wire kept
+general-purpose; DotStar/QSPI never appear (unaliased #define-only).

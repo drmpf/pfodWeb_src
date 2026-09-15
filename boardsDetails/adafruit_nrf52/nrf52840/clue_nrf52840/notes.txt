@@ -1,0 +1,86 @@
+Board: Adafruit CLUE
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/clue_nrf52840/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/clue_nrf52840/variant.h —
+   PRIMARY source. NOTE: this file's own header include-guard is
+   "_VARIANT_CLUE52840_" — a vendor copy-paste artifact ALSO found (by
+   this repo) on feather_nrf52840_sense_tft's variant.h, which uses the
+   IDENTICAL wrong guard name. The two files are otherwise completely
+   different boards with different pin layouts — the guard name overlap
+   is cosmetic only (C preprocessor include guards don't leak between
+   separate files each included independently) and does not affect
+   correctness, but is worth recording since it caused momentary
+   confusion during research (briefly cross-attributed a fact from one
+   file's PIN_A7=0xff sentinel to the other before re-checking against
+   the actual grep results).
+
+DECISIONS
+=========
+TAGGED: GPIO17 (PIN_LED1) led_high, GPIO43 (PIN_LED2, vendor's own
+"dual white LEDs" comment) led_high, GPIO18 (PIN_NEOPIXEL) led_neopixel,
+GPIO5 (PIN_BUTTON1, Button A) button, GPIO11 (PIN_BUTTON2, Button B)
+button.
+
+EXCLUDED (capabilities: []): GPIO29/30/31/35 (PIN_SPI1_SCK/MOSI/SS/
+MISO) — this board's SECOND SPI bus is entirely dedicated to the onboard
+1.3" TFT display (SS1=31 matches PIN_TFT_CS(31) exactly), unlike the
+Seeed XIAO nRF52840 Plus's I2S/SPI1 pins which have no onboard consumer
+and stay general — a genuinely different situation despite superficial
+"second SPI-shaped bus" similarity, correctly NOT treated the same way.
+GPIO35 also doubles as PIN_PDM_DIN (the onboard mic's data line,
+#define-only) — consistent, both uses are non-general.
+
+KEPT available: A0-A7 (GPIO21-28), default SPI bus (GPIO13-16), Wire bus
+(GPIO19-20, shared by the onboard BMP280 pressure, SHT30 humidity/temp,
+APDS9960 gesture/color, and LSM6DS33+LIS3MDL IMU sensors — kept
+general-purpose per this repo's established "general bus, even with
+onboard devices on it" policy, matching the Feather nRF52840 Sense's
+identical situation).
+
+NOT EXPOSED: PDM mic (GPIO36, the CLK line — DIN already excluded
+above as part of SPI1), buzzer (GPIO46), QSPI flash (GPIO37-42), TFT
+DC/RST/LITE (GPIO32-34) — all #define-only.
+
+NOT GUESSED: LED/button/NeoPixel identity from unambiguous vendor
+macros; SPI1-vs-TFT dedication confirmed by the exact SS1/PIN_TFT_CS
+pin-number match.
+
+SUMMARY: 47 total Arduino pin indices (0-46); 5 tagged (2 LED, 1
+NeoPixel, 2 button); 4 excluded (onboard TFT's dedicated SPI1 bus);
+A0-A7/default-SPI/Wire (including the sensor-sharing I2C bus) kept
+general-purpose; mic-CLK/buzzer/flash/TFT-control-lines never appear
+(unaliased #define-only).
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): downloaded and viewed the full
+official pinout diagram directly (cdn-learn.adafruit.com/.../
+Adafruit_nRF52840_CLUE_pinout.png). CONFIRMED every existing decision
+exactly: L(red LED)=17/P1.01, NEOPIXEL=18/P0.16, WHITE_LEDS=43/P0.10
+(matching this board's own "dual white LEDs" PIN_LED2), BUTTON_A=5/
+P1.02, BUTTON_B=11/P1.10, SDA=20/P0.24, SCL=19/P0.25, MICROPHONE_DATA=
+35/P0.00, MICROPHONE_CLOCK=36/P0.01, SPEAKER=46/P1.00, TFT_CS=31/P0.12,
+TFT_DC=32/P0.13, TFT_SCK=29/P0.14, TFT_MOSI=30/P0.15, TFT_RESET=33/
+P1.03, TFT_BACKLIGHT=34/P1.05 — all matching this board's own
+variant.h/board.json indices exactly.
+
+The diagram ALSO shows two real, physically-present pins that have NO
+macro anywhere in this board's OWN variant.h at all — confirmed via a
+direct grep against the vendor source, ruling out a transcription gap
+on my part: PROXIMITY_LIGHT_INTERRUPT (index 44, physical P0.09 — the
+same silicon pin also used for NFC1) and ACCELEROMETER_GYRO_INTERRUPT
+(index 45, P1.06 — the onboard LSM6DS33's interrupt line). Per the
+user's explicit instruction this pass to disregard CircuitPython (the
+diagram mixes Arduino-index and CircuitPython/board-pin naming, and
+these two labels most likely come from CircuitPython's own `board.py`
+pin definitions, which this Arduino-only BSP simply never exposed as a
+named macro at all) — since neither is aliased via `static const
+uint8_t` in this board's own variant.h, BOTH remain entirely invisible
+to this repo's parser by default, exactly like every other confirmed-
+but-unaliased dedicated pin in this family. No board.json change
+needed; recorded here purely for documentation completeness so a
+future reviewer who spots these two labels on the diagram knows they
+were found and deliberately not acted on (not missed).

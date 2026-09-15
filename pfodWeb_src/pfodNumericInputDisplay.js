@@ -150,7 +150,7 @@ class PfodNumericInputDisplay {
     const container = document.getElementById('numeric-input-container');
     if (container) container.style.backgroundColor = bgColor;
     const contrastHex = xtermColorToHex(getBlackWhite(bgColor || '#000000'));
-    pfodSetFormattedText(promptEl, promptText, contrastHex);
+    pfodSetFormattedText(promptEl, promptText, contrastHex, undefined, true); // prompt bar: links allowed
     promptEl.style.color = contrastHex;
 
     // Show transient popup with the valid display-value range

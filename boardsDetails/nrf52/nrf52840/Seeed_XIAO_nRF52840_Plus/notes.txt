@@ -1,0 +1,224 @@
+Board: Seeed XIAO nRF52840 Plus
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino-derived "Seeed nRF52 Boards" core)
+Variant dir: variants/nrf52/nrf52840/Seeed_XIAO_nRF52840_Plus/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Seeed_nRF52/variants/Seeed_XIAO_nRF52840_Plus/
+   variant.h and variant.cpp — PRIMARY source. This board has a larger,
+   39-pin map (vs. the base/Sense boards' 33 pins) because the Plus
+   physical form factor has an extra header row exposing 9 more GPIOs
+   (Arduino index 30-38) that are internal-only on base/Sense. Confirmed
+   via variant.cpp's g_ADigitalPinMap that indices 14-29 (VBAT_ENABLE,
+   IMU bus, PDM mic bus, charge-current pin, QSPI flash) are IDENTICAL
+   in both index number and physical-silicon meaning to the base board's
+   same-numbered pins (P0.14, P1.08/P0.27/P0.07/P0.11, P1.10/P1.00/
+   P0.16, P0.13, P0.21/P0.25/P0.20/P0.24/P0.22/P0.23 respectively) — only
+   indices 30+ diverge between the two pin-map sizes.
+2. https://wiki.seeedstudio.com/XIAO_BLE/ and
+   https://docs.cirkitdesigner.com/component/5108c6b6-3e0f-526f-b313-95d5db7b30fa/seeed-studio-xiao-nrf52840-plus
+   (via WebFetch/WebSearch) — confirmed the Plus variant's extra header
+   row exposes D11-D19: I2S bus (D11-D13), NFC1/NFC2 now ALSO on header
+   pads as D14/D15, VBAT now ALSO on a header pad as D16, and a second
+   SPI bus (D17-D19).
+3. https://forum.seeedstudio.com/t/nrf52840-plus-using-pins-d14-and-d15-as-gpio/295248
+   — confirmed D14/D15 (Arduino index 33/34) are STILL the same
+   P0.09/P0.10 NFC-antenna-by-default silicon pins as the base board's
+   NFC1/NFC2 (just renumbered because of the larger pin map) — the same
+   UICR NFCPINS one-way-reconfiguration caveat applies regardless of
+   which Arduino index they're exposed at, so being on a real header pad
+   this time does NOT change the exclusion decision.
+
+CRITICAL PARSER-LEVEL FINDING — REQUIRED A SOURCE EDIT
+=======================================================
+Unlike the base/Sense variant.h, this file's vendor source additionally
+declares generic bare-named pin aliases for its hardware UART pointing
+at the same GPIOs as PIN_SERIAL1_RX(7)/PIN_SERIAL1_TX(6). build_boards.js's
+buildEsp32Board() parser unconditionally treats a GPIO aliased that way
+as the board's dedicated primary serial port (correct for ESP32/ESP8266,
+where the assumption holds) — but on this board pfodApp's actual Serial
+connection is native USB-CDC (TinyUSB), which owns no GPIO at all; the
+UART these aliases name is Serial1, an OPTIONAL secondary port a user's
+own sketch may or may not use. GPIO6/GPIO7 are two of this board's
+ordinary D6/D7 header pins (D7 also carries the default SPI bus's SS
+role) and must stay available as plain GPIO, matching how the base/
+Sense variant.h (which never declares these generic aliases at all)
+already treats them.
+
+FIX: deleted the two alias declarations outright from this repo's copy
+of pins_arduino.h (the vendor's real BSP file is untouched — only our
+import copy differs). First attempt commented them out instead of
+deleting, which reproduced the exact bug (confirmed by rebuilding and
+finding D6/D7 still forced to serial_tx/serial_rx) — this repo's parser
+has no C-comment awareness (documented pre-existing gotcha in
+boardsDetails/project_board_variant_pin_audit_playbook.md section 5),
+so a commented-out `static const` declaration is scanned identically to
+an active one. Deleting the lines (not just disabling them) fixed it;
+confirmed via rebuild that D6 -> plain digital_input/digital_output/
+pwm_output and D7 -> same + spi_ss, matching the base board's treatment
+exactly. This fix changes ONLY how this repo's parser interprets the
+file — it has zero effect on real generated sketches, which reference
+the Serial/Serial1 Arduino objects directly and never the bare
+identifiers "RX"/"TX".
+
+DECISIONS
+=========
+KEPT available: D0-D10 (same as base/Sense) plus D11-D13 (I2S bus,
+general-purpose, no onboard consumer), D17-D19 (second SPI bus,
+general-purpose) — all with an informational pinNotes entry mentioning
+the alternate bus function, but no capability restriction.
+
+TAGGED: GPIO11/12/13 (LED_RED/BLUE/GREEN) — identical to base board.
+
+EXCLUDED: GPIO14-29 — identical reasoning and identical physical
+silicon pins as the base board (see that board's notes.txt), just
+duplicated into this board's own chipGpios map since board.json entries
+don't merge across sibling directories. GPIO33/34 (NFC1/NFC2, now also
+D14/D15) and GPIO35 (VBAT, now also D16) — same NFC/UICR and VBAT-
+sequencing reasoning as the base board's GPIO30/31/32, just at this
+board's own renumbered indices.
+
+NOT GUESSED: every capability/exclusion decision traces to a specific
+source above; the TX/RX parser-collision finding was verified by
+rebuilding and inspecting the generated JSON, not assumed.
+
+SUMMARY: 39 total Arduino pin indices (0-38); 19 excluded (GPIO14-29
+dedicated onboard hardware, GPIO33-35 NFC/VBAT); the remaining 20
+(D0-D10, D11-D13/I2S, D17-D19/SPI1) stay available, of which GPIO11-13
+additionally carry the onboard-LED-channel tags.
+
+POST-REVIEW RE-VERIFICATION (2026-09-13, same day): user asked to check
+pins/functions against the raw https://wiki.seeedstudio.com/XIAO_BLE/
+page. Downloaded the page's actual HTML (curl) and parsed its real
+<table> markup directly rather than trusting an AI-summarized
+description of the page/images — see the base board's notes.txt for the
+full method write-up and the WebFetch-summary-conflict finding that
+prompted switching to this method.
+
+This board's own table (39-pin map) gave a GENUINELY NEW, IMPORTANT
+finding requiring judgment, not just confirmation: D14/D15 (GPIO33/34,
+this board's NFC1/NFC2 pads) are listed with function "GPIO, UART
+Receive/Transmit, ADC" — NOT restricted to "NFC" the way the base/Sense
+table restricts the same physical P0.09/P0.10 pads. This raised a real
+question of whether Seeed intends/ships these pins pre-configured as
+GPIO on the Plus/Sense Plus hardware specifically (a factory UICR
+difference between board revisions is technically plausible).
+
+Investigated further via WebSearch: found explicit community
+acknowledgement (Seeed forum thread
+https://forum.seeedstudio.com/t/nrf52840-plus-using-pins-d14-and-d15-as-gpio/295248
+and a related search-result synthesis) that this is genuinely
+ambiguous/board-dependent ("D14 and D15 may be configured as GPIO by
+default... you should check UICR first" vs. "reserved for NFC by
+default... according to the nRF52840 specification"), and that the
+documented fix where needed is a `-DCONFIG_NFCT_PINS_AS_GPIOS` build
+flag added to boards.txt.
+
+RESOLVED by checking the one source that actually matters for THIS
+Designer: this repo's own imported `variants/nrf52/boards.txt` (a direct
+copy of `Seeed_nRF52/boards.txt`, the exact BSP these board.json files
+describe) — grepped for `CONFIG_NFCT_PINS_AS_GPIOS`/`NFCT`, zero matches
+anywhere in the file, for ANY board including the Plus/Sense Plus
+entries. Since this exact BSP does not set the flag, compiling a
+generated sketch against it leaves NFCPINS at its factory UICR default
+(NFC-antenna mode) regardless of what the wiki's function column implies
+or what other board revisions/firmware might do. DECISION: kept
+GPIO33/34/35 excluded, matching the base board's GPIO30/31/32 — the
+wiki's more permissive function listing for the Plus table was
+real evidence, genuinely weighed, and NOT treated as sufficient to
+overturn the boards.txt-verified default behavior. Board.json notes
+updated to explain this reasoning explicitly rather than silently citing
+only the base-board-style "NFC" justification, so a future reviewer can
+see the conflict was noticed and adjudicated, not missed.
+
+Also re-confirmed via the same raw-table method: LED polarity (active-
+LOW, third independent source this pass — see base board's notes.txt),
+CHARGE_LED's real name (P0.17, non-user-controlled), and removed the
+unverified "not on any header pad" claim from this board's GPIO14-29
+notes (same reasoning as the base board — the claim traced to an
+unreliable secondary source and isn't needed to support any exclusion
+decision here). D11-D13/D17-D19's wiki-listed "ADC" function was
+evaluated and explicitly NOT propagated into analog_input capability —
+the nRF52840's SAADC only has 8 fixed-pin channels (P0.02/03/04/05/28/
+29/30/31, per Nordic's own product specification) and none of these six
+pins' real P0.xx/P1.xx addresses are among them, so the wiki's "ADC"
+listing for these specific pins is treated as a table inaccuracy, not
+acted on. This required no board.json change (analog_input was never
+added to these pins in the first place) — documented here so a future
+reviewer doesn't independently re-discover the same wiki claim and
+wonder whether it was overlooked.
+
+FOLLOW-UP (2026-09-13, same day): user separately confirmed via a direct
+schematic read that all three RGB LED channels are wired active-LOW at
+P0.06 (blue), P0.30 (green), P0.26 (red) — exact match with this board's
+GPIO12/13/11 chipGpios entries. Fourth independent confirmation of the
+same fact for this family (wiki body text, initVariant() boot behavior,
+Sense/base schematic read, now this board too) — same silicon, same
+LED wiring, no ambiguity.
+
+SECOND RE-CHECK (2026-09-13, same day, user-requested — "recheck ...
+against the nrf52840xxx.jpg images"): found the actual pinout diagram
+image URLs in the wiki page's raw HTML (files.seeedstudio.com/wiki/
+XIAO-BLE/XIAO_nRF52840_Plus_{front,back}_pinout.png — the site serves
+them as .png despite the user's ".jpg" shorthand), downloaded them, and
+viewed them directly (not summarized) via the Read tool's image support.
+This is a strictly better check than the raw-HTML-table method used in
+the first re-verification pass — an actual visual diagram beats even a
+correctly-parsed text table for anything the table's columns can't fully
+capture (e.g. color-coded pin categories).
+
+MAJOR FINDING, ACTED ON — reversed the GPIO33/34 (D14/D15) exclusion:
+the front pinout image confirmed D0-D10/LED/CHARGE_LED/Reset exactly as
+already recorded (no changes). The BACK pinout image, however, showed
+D14 and D15's PRIMARY pin box colored "Digital GPIO" (green) — the same
+color used for D11-D13/D17-D19, which this repo already keeps available
+— with "NFC1"/"NFC2" and "UART1_RX"/"UART1_TX" shown only as smaller
+secondary-capability labels next to it. This is a materially different
+visual treatment from the base/Sense board's own back-pinout image,
+which colors the SAME physical silicon pins (P0.09/P0.10) "Peripheral"
+(navy) as their PRIMARY and ONLY box, with no Digital-GPIO coloring and
+no D-number at all.
+
+This directly reopened the NFC/UICR question the first re-verification
+pass had resolved the other way (excluded, based on this repo's own
+boards.txt lacking a `-DCONFIG_NFCT_PINS_AS_GPIOS`-style flag). Weighed
+both pieces of evidence rather than picking the more recent one by
+default: UICR (the register controlling NFC-vs-GPIO pin mode) is a
+one-time, fuse-like configuration that ordinary application firmware
+uploads (via the Arduino IDE / bootloader / DFU) do NOT touch — only a
+full chip erase via SWD/J-Link resets it. This makes it technically
+coherent for Seeed to factory-provision Plus/Sense Plus units with
+NFCPINS already cleared (a one-time step at manufacture, e.g. via SWD
+during test/programming), which would explain BOTH facts at once: why
+the current, actively-maintained official diagram confidently shows
+these as plain Digital GPIO, AND why the shipped `boards.txt` doesn't
+need a build flag to "clear" something the board's factory UICR state
+already has cleared before it ever reaches the Arduino toolchain. Since
+this reconciles the apparent conflict rather than just picking a side,
+and the diagram is Seeed's own current, most-recently-maintained
+description of exactly this board, DECISION REVERSED: GPIO33/34 (D14/
+D15) are now kept available as plain digital_input/digital_output/
+pwm_output, with informational (non-restricting) pinNotes describing the
+NFC1/NFC2 silkscreen labels and the optional Serial2 RX1/TX1 use, mirroring
+how D6/D7's optional-Serial1 aliasing is already handled on this family.
+
+GPIO35 (VBAT/D16) was ALSO re-examined against the back image (colored
+"ADC Input" / orange, the same category as A0-A5) but the decision to
+exclude it was NOT reversed — the same image carries the "Battery
+Management Logic" annotation immediately next to it warning that
+VBAT_ENABLE (GPIO14) must be sequenced correctly, and this repo's
+earlier research (Q3 on the Seeed wiki) specifically warns of an
+over-voltage risk to this exact pin if mishandled, not merely an
+inaccurate reading. Unlike D14/D15, where the vendor's own diagram
+positively asserts a different classification than this repo had
+assumed, D16's diagram is fully consistent with the existing exclusion
+reasoning — there was no actual conflict to resolve here, just
+reconfirmation.
+
+Verified via rebuild: GPIO33/34 now report `["digital_input",
+"digital_output","pwm_output"]` (matching D11-D13/D17-D19's treatment),
+GPIO35 still reports `[]`. Full checkpoint re-run (build_boards.js 0
+errors, 604 boards; zero-pin scan 0; contamination scan 1, the same
+pre-existing artronshop_rp2_nano exception; build-bundle.js;
+build-pfodWeb.bat) — clean, redeployed.

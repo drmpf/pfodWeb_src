@@ -68,6 +68,10 @@ const EMI_FONT_SIZE_MIN       = -6;
 // declaration).  Item text is single-line in pfodApp; cap chosen to
 // match Java's V2_MenuItem default-text field length.
 const EMI_TEXT_MAX_LEN        = 64;
+// Labels get twice that: a label is where a [text](url) link goes (see
+// docs/pfodAI-guide.md, "A link to a web page goes in a label or a
+// prompt"), and a real url plus its link text does not fit in 64.
+const EMI_LABEL_TEXT_MAX_LEN  = 128;
 const EMI_SCALE_TEXT_MAX_LEN  = 20;   // PWM display max/min scale strings (Java maxChars=20)
 const EMI_DATA_RANGE_MAX_LEN  = 11;   // PWM data variable range integers (Java maxChars=11)
 const EMI_TEXT_PROMPT_FILLER  = '\n\n';
@@ -760,7 +764,8 @@ const DesignerEditMenuItem = (() => {
       case EMI_EDIT_TEXT_CMD: {
         const item = state.getActiveItem();
         const promptLine = (item && (item.type === 'onoff' || item.type === 'onoffdisplay')) ? 'Edit Leading Text' : 'Edit Item Text';
-        return textEdit(EMI_EDIT_TEXT_CMD, 'text', promptLine);
+        const maxLen = (item && item.type === 'label') ? EMI_LABEL_TEXT_MAX_LEN : undefined;
+        return textEdit(EMI_EDIT_TEXT_CMD, 'text', promptLine, maxLen);
       }
       case EMI_TRAILING_TEXT_CMD:
         return textEdit(EMI_TRAILING_TEXT_CMD, 'trailingText', 'Edit Trailing Text');

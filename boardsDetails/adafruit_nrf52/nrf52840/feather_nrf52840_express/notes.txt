@@ -1,0 +1,73 @@
+Board: Adafruit Feather nRF52840 Express
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/feather_nrf52840_express/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/feather_nrf52840_express/
+   variant.h — PRIMARY source.
+2. WebSearch against Adafruit's own "Introducing the Adafruit nRF52840
+   Feather" Learn guide — confirmed `digitalWrite(LED_BUILTIN, HIGH)`
+   turns the LED ON in Adafruit's own example code, matching variant.h's
+   LED_STATE_ON=1 exactly. THIS IS THE FLAGSHIP SPOT-CHECK for the whole
+   Adafruit nRF52 family this session: establishes that Adafruit's own
+   first-party LED_STATE_ON macro is reliable and can be trusted
+   directly for every other board in this family (contrast with the
+   Seeed XIAO nRF52840 family, whose LED_STATE_ON macro was found wrong
+   earlier this session — Seeed is a third-party porter of Adafruit's
+   own core, Adafruit is the original hardware designer here).
+
+DECISIONS
+=========
+TAGGED: GPIO3 (PIN_LED1/LED_BUILTIN/LED_RED) led_high, GPIO4 (PIN_LED2/
+LED_CONN/LED_BLUE) led_high, GPIO7 (PIN_BUTTON1) button, GPIO8
+(PIN_NEOPIXEL) led_neopixel.
+
+KEPT available (no confirmed dedicated consumer): A0-A5 (GPIO14-19,
+general analog), A6/VBAT (GPIO20 — a plain resistor-divider battery
+read with NO enable-sequencing pin unlike the Seeed XIAO family's VBAT,
+so safe to leave as ordinary analog_input), A7/AREF (GPIO21, external
+reference input, user-available), SPI bus (GPIO5/24-26), Wire bus
+(GPIO22-23).
+
+NOT EXPOSED (invisible by default, no chipGpios entry needed): PIN_
+NEOPIXEL_POWER (GPIO34), QSPI flash (GPIO27-32), PIN_NFC1/NFC2
+(GPIO33/2) — all declared ONLY via #define in variant.h, never aliased
+via `static const uint8_t`, so they never appear as pickable pins in the
+Designer at all regardless of any board.json entry. This is a
+significant simplification found this session: unlike the Seeed XIAO
+nRF52840 family (where most dedicated pins WERE aliased via bare
+`static const uint8_t` and therefore needed an explicit `capabilities:
+[]` override to suppress), almost every dedicated-hardware pin across
+this entire Adafruit_nrf52 BSP is #define-only — only pins the vendor
+ALSO gave a bare A<n>/SS/MOSI/MISO/SCK/SDA/SCL alias will show up by
+default at all. This changes the practical work for this family from
+"add an exclude entry for every dedicated pin" to "add a positive tag
+entry only for the LED/button/NeoPixel pins actually worth exposing,
+and separately double-check every A<n>/SPI/Wire alias for a hidden
+dedicated consumer" (done above — none found on this specific board).
+
+NOT GUESSED: LED polarity traces to a direct Adafruit Learn-guide
+spot-check (source #2); button/NeoPixel identity trace directly to
+unambiguous vendor macros.
+
+SUMMARY: 35 total Arduino pin indices (0-34); 4 tagged (2 LED, 1 button,
+1 NeoPixel); the rest (A0-A7/SPI/Wire) kept general-purpose with no
+confirmed dedicated consumer; NEOPIXEL_POWER/QSPI/NFC never appear at
+all (unaliased #define-only pins).
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): downloaded and viewed the full
+official pinout diagram directly (cdn-learn.adafruit.com/.../
+Adafruit_Feather_nRF52840_Pinout.png, found via the Learn guide's
+Pinouts page HTML). This is a complete, single-image, pin-by-pin
+reference (Arduino index / physical P0.xx-P1.xx / CircuitPython name
+all shown together) — EVERY pin in this board's board.json/
+pins_arduino.h matched exactly: SWITCH=7/P1.02, L(red LED)=3/P1.15,
+BLUE_LED=4/P1.10, NEOPIXEL=8/P0.16, NFC1=33/P0.09, NFC2=2/P0.10,
+VOLTAGE_MONITOR(A6)=20/P0.29, AREF(A7)=21/P0.31, SCL=23/P0.11,
+SDA=22/P0.12, A0-A5=14-19. Zero discrepancies found — the strongest
+possible confirmation available for this board, and the template used
+for a second, closer look at circuitplayground_nrf52840 (see that
+board's notes.txt for a real finding this method surfaced there).

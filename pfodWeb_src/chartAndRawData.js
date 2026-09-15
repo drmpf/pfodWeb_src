@@ -426,7 +426,7 @@ Object.assign(DrawingViewer.prototype, {
       promptEl.style.backgroundColor = promptBgColor;
       if (promptText) {
         if (window.pfodSetFormattedText) {
-          window.pfodSetFormattedText(promptEl, promptText, contrastHex);
+          window.pfodSetFormattedText(promptEl, promptText, contrastHex, undefined, true); // prompt bar: links allowed
         } else {
           promptEl.textContent = promptText;
         }

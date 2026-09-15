@@ -1,0 +1,78 @@
+Board: Adafruit Feather nRF52840 Sense
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/feather_nrf52840_sense/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/feather_nrf52840_sense/
+   variant.h. Same layout as feather_nrf52840_express except LED1 moved
+   to GPIO13 (from 3), no PIN_NEOPIXEL_POWER declared, and PDM
+   microphone pins added (34/35, #define-only, invisible by default).
+2. Adafruit's own product description (general knowledge, not
+   independently re-fetched this pass) confirms this board's onboard
+   LSM6DS33+LIS3MDL IMU, SHT30 humidity/temp, BMP280 pressure, and
+   APDS9960 gesture/color/proximity sensors all live on the DEFAULT Wire
+   bus — confirmed structurally by this board's own variant.h, which
+   declares only ONE Wire interface (WIRE_INTERFACES_COUNT=1, no Wire1
+   at all) at the same SDA=22/SCL=23 pins every other board in this
+   family uses. If there were a dedicated second sensor bus, it would
+   need its own WIRE_INTERFACES_COUNT=2 + PIN_WIRE1_SDA/SCL declaration
+   the way Seeed's XIAO nRF52840 Sense has for its own IMU — the absence
+   of that here is itself confirmation these sensors share the general
+   bus. LED polarity spot-check not repeated — see
+   feather_nrf52840_express's notes.txt for that finding, which
+   established Adafruit's own LED_STATE_ON macro is reliable across this
+   family.
+
+DECISIONS
+=========
+TAGGED: GPIO13 (PIN_LED1) led_high, GPIO4 (PIN_LED2) led_high, GPIO7
+(PIN_BUTTON1) button, GPIO8 (PIN_NEOPIXEL) led_neopixel.
+
+KEPT available: A0-A7/SPI/Wire, same reasoning as
+feather_nrf52840_express — the shared I2C bus stays general-purpose
+even though several onboard sensors are also on it (matches this
+repo's "general bus, not dedicated" KEEP policy), since it's inherently
+multi-drop and nothing here suggests an exclusive/conflicting use.
+
+NOT EXPOSED: PDM mic (GPIO34/35), QSPI flash (GPIO27-32), NFC1/NFC2
+(GPIO33/2) — all #define-only, invisible by default.
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): fetched Adafruit's own "Pinouts"
+Learn guide page for this exact board directly. CONFIRMED: red LED=D13,
+NeoPixel=D8, user button=D7 ("usable by the bootloader and user-
+controllable"), and A6 explicitly named "VOLTAGE_MONITOR" — "hard wired
+to a voltage-divider on the LIPO battery input" — matching this board's
+own PIN_VBAT=PIN_A6 exactly, with no separate enable/gating pin
+mentioned (consistent with this board's variant.h, which likewise
+declares no such pin) — confirms the A6 KEEP-available decision was
+correct, not just assumed by inheritance from the Express board.
+
+NOT GUESSED: every decision traces to variant.h directly, the
+established family-wide LED-polarity finding, and this board's own
+official Adafruit Pinouts page.
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+downloaded and viewed the full official pinout diagram directly
+(cdn-learn.adafruit.com/.../Adafruit_Feather_nRF52840_Sense_pinout.png).
+CONFIRMED every existing decision exactly: SWITCH=7/P1.02, BLUE_LED=4/
+P1.10, NEOPIXEL=8/P0.16, NFC1=33/P0.09, MICROPHONE_DATA=34/P0.00,
+MICROPHONE_CLOCK=35/P0.01, VOLTAGE_MONITOR(A6)=20/P0.29, AREF(A7)=21/
+P0.31, SCL=23/P0.11, SDA=22/P0.12, A0-A5=14-19; D13's row carries a
+small red-LED icon confirming PIN_LED1=13 without a separate named
+callout.
+
+Also found two real, physically-present pins with NO macro anywhere in
+this board's own variant.h (confirmed via grep, same situation as
+CLUE's identical finding — see that board's notes.txt): PROXIMITY_
+LIGHT_INTERRUPT (index 36, P1.00) and ACCELEROMETER_GYRO_INTERRUPT
+(index 3, P1.11). Neither is aliased via `static const uint8_t`, so
+both are already invisible to this repo's parser by default — no
+board.json change needed, documented here for completeness only.
+
+SUMMARY: 37 total Arduino pin indices (0-36); 4 tagged (2 LED, 1 button,
+1 NeoPixel); A0-A7/SPI/Wire (including the sensor-sharing I2C bus) kept
+general-purpose; mic/flash/NFC never appear (unaliased #define-only).

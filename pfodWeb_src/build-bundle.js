@@ -111,6 +111,9 @@ function buildBoardHierarchy(boardDataById) {
     if (chipId === 'esp8266' || chipId === 'esp8285') return chipId.toUpperCase();
     if (chipId === 'rp2040' || chipId === 'rp2350') return chipId.toUpperCase();
     if (chipId === 'rp2040w') return 'RP2040 W/2W';
+    if (chipId === 'nrf52840') return 'nRF52840';
+    if (chipId === 'nrf52833') return 'nRF52833';
+    if (chipId === 'nrf52832') return 'nRF52832';
     return chipId;
   };
 

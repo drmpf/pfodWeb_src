@@ -1,0 +1,121 @@
+Board: Adafruit Feather nRF52840 Sense TFT
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/feather_nrf52840_sense_tft/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/feather_nrf52840_sense_tft/
+   variant.h. NOTE: this file's own header include-guard is literally
+   "_VARIANT_CLUE52840_" — a vendor copy-paste bug (copied from
+   Adafruit's genuinely different CLUE board file) with no functional
+   effect on this parser (regex-scanned, never compiled; include guards
+   don't leak between separately-processed files). Caused a momentary
+   research mix-up this session (briefly cross-attributed this board's
+   facts to CLUE's board.json before re-checking against the raw grep
+   results for the A7=0xff sentinel) — worth flagging for any future
+   reviewer who searches this repo for "CLUE" and finds an unrelated
+   board's file.
+2. This repo's own precedent at variants/esp32/esp32s3/
+   adafruit_feather_esp32s3_tft/board.json — established that Adafruit's
+   "*_tft" Feather product line consistently dedicates the board's
+   ENTIRE default SPI bus to the onboard display (not shared as
+   general-purpose), rather than assuming from first principles. Direct
+   WebSearches specifically for "Feather nRF52840 Sense TFT" pinout
+   details did not surface a distinct product page for this exact
+   nRF52840 variant (only the plain, non-TFT Feather Sense's own
+   pinout), so this cross-chip-family, same-vendor, same-naming-
+   convention precedent was the deciding evidence instead of a fresh,
+   board-specific source.
+
+PARSER-LEVEL FINDING — REQUIRED A SOURCE EDIT
+==============================================
+Same hex-sentinel A7 bug as itsybitsy_nrf52840_express and the pca10056/
+pca10100 DKs (see itsybitsy's notes.txt for the full mechanism
+write-up). FIX: deleted the `static const uint8_t A7 = PIN_A7;` line
+outright from this repo's copy.
+
+DECISIONS
+=========
+TAGGED: GPIO13 (PIN_LED1) led_high, GPIO8 (PIN_NEOPIXEL) led_neopixel,
+GPIO3 (PIN_BUTTON1) button.
+
+EXCLUDED (capabilities: [], by analogy to the same-vendor ESP32-S3
+Feather TFT precedent, since this board's own SPI_INTERFACES_COUNT=1
+means there is no separate dedicated display bus to fall back on the
+way CLUE has): the entire default SPI bus — GPIO5 (SS), GPIO24 (MISO),
+GPIO25 (MOSI), GPIO26 (SCK).
+
+KEPT available: A0-A6 (GPIO14-20, including A6/VBAT — no confirmed
+enable-sequencing pin, so treated as a plain battery-monitor analog
+input per this family's standard policy), Wire bus (GPIO22-23, hosting
+the onboard LSM6DS3TR-C IMU and PDM microphone's power gate, kept
+general-purpose per this repo's established "general bus" policy).
+
+NOT EXPOSED: NEOPIXEL_POWER (GPIO7), TFT DC/RST/LITE (GPIO36-38), mic
+(GPIO33/34), PIN_LSM6DS3_IRQ (GPIO4), PIN_SENSOR_POWER (GPIO21), QSPI
+flash (GPIO27-32), NFC1/NFC2 (GPIO39/40) — all #define-only.
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): searched specifically for
+"Feather nRF52840 Sense TFT" on Adafruit's own site and Learn system —
+FOUND NO PUBLIC PRODUCT PAGE OR LEARN GUIDE for this exact board,
+same situation as metro_nrf52840_express (see that board's own
+notes.txt). At this point the SPI-bus-dedicated-to-TFT decision still
+rested only on analogy to Adafruit's ESP32-S3 Feather TFT product line
+— see the SECOND re-check below for how this was fully resolved.
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+found a genuinely new, board-specific, official source not surfaced by
+the earlier product-page searches: github.com/adafruit/
+Adafruit_nRF52_Bootloader/src/boards/feather_nrf52840_sense_tft/board.h
+— the actual UF2 bootloader's own board definition for this exact
+product (UF2_PRODUCT_NAME="Adafruit Feather nRF52840 Sense TFT",
+confirming this is a real, named, official Adafruit product even
+without a Learn guide). This file declares every pin as a raw physical
+P0.xx/P1.xx address (`PINNUM(port, pin)`), which was cross-referenced
+against this board's own `variant.cpp` g_ADigitalPinMap (which
+annotates each Arduino index with the same physical address AND a
+plain-English label) to translate between the two.
+
+RESULT: every single decision in this board's board.json is now
+CONFIRMED, not just analogized:
+- LED_PRIMARY_PIN=P0.11 = variant.cpp's D13 ("LED1") = this repo's
+  GPIO13, tagged led_high. Matches exactly.
+- LED_NEOPIXEL=P1.08 + NEOPIXEL_POWER_PIN=P1.02 = variant.cpp's D8
+  ("NeoPixel") and D7 ("Neopixel Power") = this repo's GPIO8/GPIO7.
+  Matches exactly.
+- BUTTON_DFU=P1.06 = variant.cpp's D3 ("Button") = this repo's GPIO3,
+  tagged button. Matches exactly.
+- DISPLAY_VSENSOR_PIN=P1.07 = variant.cpp's D21 ("Sensor Power") = this
+  repo's GPIO21 (PIN_SENSOR_POWER, also gates the PDM mic per this
+  board's own variant.h). Matches exactly.
+- DISPLAY_PIN_SCK=P0.26 and DISPLAY_PIN_MOSI=P0.05 — THE DECIDING FACT:
+  these are the IDENTICAL physical addresses as variant.cpp's D26 ("SPI
+  SCK") and D25 ("SPI MOSI") — i.e. this board's DEFAULT SPI bus and
+  the bootloader's own TFT display driver genuinely use the exact same
+  physical pins. This is no longer an analogy to a different chip
+  family's product line — it's now DIRECTLY CONFIRMED for this exact
+  board that the SPI bus is TFT-dedicated. The GPIO5/24/25/26 exclusion
+  decision was correct.
+- DISPLAY_PIN_CS=P1.05, DC=P1.01, RST=P1.03, BL=P0.27 = variant.cpp's
+  D35/D36/D37/D38 (TFT CS/DC/Reset/Backlight) = this repo's PIN_TFT_CS/
+  DC/RST/LITE. Matches exactly (all already correctly invisible,
+  #define-only).
+
+This was the single lowest-confidence decision in the whole Adafruit
+nRF52 family before this check (see the FIRST re-check note above) —
+now fully and independently confirmed via a genuine, board-specific,
+official Adafruit source. No remaining low-confidence flag for this
+board.
+
+NOT GUESSED: LED/button/NeoPixel identity from unambiguous vendor
+macros; SPI-bus-dedication now independently confirmed via the
+official bootloader source cross-referenced against this board's own
+variant.cpp, not merely analogized from a different product line.
+
+SUMMARY: 47 total Arduino pin indices (0-46, A7/GPIO0-phantom bug fixed
+at the source); 3 tagged (1 LED, 1 NeoPixel, 1 button); 4 excluded
+(dedicated TFT SPI bus); A0-A6/Wire kept general-purpose; the rest
+never appear (unaliased #define-only).

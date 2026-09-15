@@ -1,0 +1,57 @@
+Board: Nordic nRF52833 DK (PCA10100)
+Chip: Nordic nRF52833 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52833/pca10100/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/pca10100/variant.h — byte-
+   for-byte identical pin layout to the nRF52840 sibling DK (pca10056),
+   confirmed via diff. Same 4 LEDs/4 buttons/dual-UART/SPI/Wire/QSPI
+   layout.
+2. WebSearch: confirmed nRF52833 has a native full-speed 12 Mbps USB 2.0
+   device controller, same capability class as nRF52840 (unlike
+   nRF52832, which has none) — this was necessary to verify since this
+   board's variant.h being byte-identical to pca10056's could otherwise
+   have been a vendor copy-paste-without-adjusting-for-a-USB-less-chip
+   bug (the exact class of thing this session already found once, on
+   the Seeed XIAO nRF52840 Plus's TX/RX aliasing). Confirmed genuine:
+   Serial really is native USB-CDC here too, matching the file as
+   written.
+
+PARSER-LEVEL FINDING — REQUIRED A SOURCE EDIT
+==============================================
+Identical hex-sentinel A6/A7 bug as the nRF52840 sibling DK (pca10056)
+— see that board's notes.txt for the full mechanism write-up. Same fix
+applied: both `static const uint8_t A6/A7 = ...` lines deleted outright
+from this repo's copy.
+
+DECISIONS
+=========
+Identical to pca10056 (nRF52840 DK) — see that board's notes.txt for
+the full per-pin reasoning. TAGGED: GPIO13-16 (LED1-4) led_low, GPIO11/
+12/24/25 (BUTTON1-4) button. KEPT available: A0-A5, AREF, Serial1/2,
+SPI, Wire. NOT EXPOSED: QSPI flash, NFC1/NFC2 (#define-only).
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+github.com/adafruit/Adafruit_nRF52_Bootloader also carries a dedicated
+src/boards/pca10100/board.h entry (BLEDIS_MODEL="PCA10100", distinct
+file from pca10056's), declaring the identical `LED_PRIMARY_PIN=13`,
+`LED_SECONDARY_PIN=14`, `LED_STATE_ON=0`, `BUTTON_DFU=11`,
+`BUTTON_DFU_OTA=12` values as its nRF52840 sibling — matching this
+board's own PIN_LED1-4/PIN_BUTTON1-4/LED_STATE_ON exactly, with zero
+translation needed. Same conclusion as pca10056: this independently
+confirms the LED/button tags via a genuine, board-specific, official
+source rather than general Nordic DK convention or copy-paste
+assumption from the nRF52840 sibling.
+
+NOT GUESSED: pin identity from unambiguous vendor macros; USB capability
+independently verified via WebSearch specifically because the byte-
+identical file to a different-chip sibling warranted a sanity check;
+LED/button tags now independently confirmed via this board's own
+bootloader source entry (not just inferred from pca10056's).
+
+SUMMARY: 48 total Arduino pin indices (0-47, A6/A7 GPIO0-phantom bug
+fixed at the source); 8 tagged (4 LED, 4 button); remainder kept
+general-purpose. Structurally identical to pca10056 except chip bucket.

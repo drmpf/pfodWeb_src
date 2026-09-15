@@ -60,6 +60,40 @@ function applyPfodFormats(el, formats) {
 }
 
 /**
+ * Internal tag name a Markdown link is rewritten to before the tag scanner
+ * runs: `[text](url)` becomes `<\u0001url>text</\u0001>`, which then opens and
+ * closes on the style stack like <b> does.  A control character, so nothing a
+ * sketch or the designer can type produces it — and pfod's own <a> (aqua)
+ * is never involved.
+ */
+const PFOD_LINK_TAG = '\u0001';
+
+/**
+ * Turn a link url from a label/prompt into the href the anchor gets, or null
+ * when there is nothing sensible to point at.
+ *
+ * Full http(s) urls name their own host and are used as written on every
+ * connection type.  A url beginning `/` means a page on the device's own web
+ * root, and pfodWeb is not always served by the device it is talking to:
+ *   - served by the device (the normal http case): HTTPConnection.baseURL is
+ *     '' and location.origin IS the device;
+ *   - pfodWeb.html opened elsewhere with ?targetIP=: baseURL is the device's
+ *     http://ip:port;
+ *   - serial / BLE / proxy / designer: there is no device web root — the
+ *     link is dropped and only its text shows.
+ * new URL() also normalises dot segments (/a/../b → /b) before any request.
+ *
+ * @param {string} url  as written in the text (already matched by PFOD_MD_LINK_RE)
+ * @returns {string|null}
+ */
+function pfodLinkHref(url) {
+    if (/^https?:\/\//i.test(url)) return url;
+    const conn = window.pfodConnectionManager && window.pfodConnectionManager.adapter;
+    if (!conn || conn.protocol !== 'http') return null;
+    return new URL(url, conn.baseURL || window.location.origin).href;
+}
+
+/**
  * Populate a container element with pfod inline-formatted text.
  * Parses <b>, <i>, <u>, <+N>, <-N>, <colorCode>, </tag> tags within the text string.
  * Closing tags terminate their matching open tag and all tags enclosed within it (stack-based).
@@ -67,6 +101,10 @@ function applyPfodFormats(el, formats) {
  * All open tags auto-terminate at end of string.
  * Decodes pfod escape sequences in output text: &#96; &#123; &#124; &#125; &#126;
  *   &lt; &#92; &amp; (decoded in that order so &amp;lt; renders as &lt; not <).
+ * Markdown links `[text](url)` (PFOD_MD_LINK_RE, redraw.js) render as a native
+ *   <a target="_blank"> only when `allowLinks` is true — menu labels and the
+ *   prompt bars, none of which has a click handler of its own, so a tap on a
+ *   link can never send a cmd.  Everywhere else the text shows as sent.
  *
  * @param {HTMLElement} container - Element to populate (existing children are cleared first)
  * @param {string} text - Raw text potentially containing inline format tags and escape sequences
@@ -77,8 +115,10 @@ function applyPfodFormats(el, formats) {
  *        falls back to viewport sizing when no container-type ancestor is present.
  *        Dialogs override this to use getActualFontSizeForDialog (base 14 px) so inline
  *        sizes match the dialog's fixed-pixel layout.
+ * @param {boolean} [allowLinks=false] - Render `[text](url)` as a link.  Pass true only
+ *        from a site with no click handler (labels, prompt bars).
  */
-function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
+function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowLinks) {
     // Default font size resolver: container-query inline-size scaling.  Inside
     // #menu-container this resolves against the menu width (capped 500px); elsewhere
     // it falls back to viewport sizing, matching the previous vw behaviour.
@@ -146,11 +186,20 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
     // Normalise line endings to LF so newline handling is uniform throughout
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
+    // Markdown links: where allowed, rewrite to the internal link tag so the
+    // scanner below handles them as one more entry on the style stack.  A
+    // url never sits between < and >, so the rewrite cannot land inside a
+    // tag.  Where not allowed the text is left exactly as the device sent
+    // it — `[..](..)` shows as written.
+    if (allowLinks) {
+        text = text.replace(PFOD_MD_LINK_RE, '<' + PFOD_LINK_TAG + '$2>$1</' + PFOD_LINK_TAG + '>');
+    }
+
     // decodeEscapes() is shared with redraw.js's parsePfodInlineSegments
     // (dwg canvas text) — defined once in redraw.js, which loads first.
 
     // Stack of active open tags — each entry describes the style delta that tag contributes.
-    // {tag: string, bold: bool, italic: bool, underline: bool, deltaSize: number, textColor: string}
+    // {tag: string, bold: bool, italic: bool, underline: bool, deltaSize: number, textColor: string, href: string}
     const stack = [];
 
     // Used to detect whether ALL rendered content ended up in font-size-changed spans,
@@ -166,15 +215,16 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
 
     // Compute cumulative style from all active stack entries.
     function getCurrentStyle() {
-        let bold = false, italic = false, underline = false, fontSize = 0, textColor = null;
+        let bold = false, italic = false, underline = false, fontSize = 0, textColor = null, href = null;
         for (const e of stack) {
             if (e.bold)                    bold      = true;
             if (e.italic)                  italic    = true;
             if (e.underline)               underline = true;
             if (e.deltaSize !== undefined) fontSize += e.deltaSize;
             if (e.textColor !== undefined) textColor = e.textColor;
+            if (e.href !== undefined)      href      = e.href;
         }
-        return { bold, italic, underline, fontSize, textColor };
+        return { bold, italic, underline, fontSize, textColor, href };
     }
 
     // Append a text segment to the target, wrapping in a styled span
@@ -197,8 +247,9 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
         function appendRun(run) {
             if (!run) return;
             if (style.fontSize === 0) hasUnsizedText = true;
+            let node;
             if (!hasStyle) {
-                target.appendChild(document.createTextNode(decodeEscapes(run)));
+                node = document.createTextNode(decodeEscapes(run));
             } else {
                 const span = document.createElement('span');
                 span.textContent = decodeEscapes(run);
@@ -211,8 +262,24 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
                     hasFontSizeSpan = true;
                 }
                 if (style.textColor) span.style.color = style.textColor;
-                target.appendChild(span);
+                node = span;
             }
+            // Inside a link: a native anchor around the run.  New tab, never
+            // this one — navigating pfodWeb's own tab away fires {!} on
+            // unload and drops the session.  No click listener: the anchor
+            // does the work, and the containers that allow links have no
+            // handler of their own for it to fall through to.  Styled by the
+            // one a.pfod-link rule in pfodCommon.css.
+            if (style.href) {
+                const a = document.createElement('a');
+                a.className = 'pfod-link';
+                a.href = style.href;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                a.appendChild(node);
+                node = a;
+            }
+            target.appendChild(node);
         }
 
         // Split only on the U+0080 sized-spacer character \u2014 newlines
@@ -237,6 +304,14 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
     // Parse an opening tag's content (without angle brackets).
     // Returns a style-delta object for recognised inline format tags, null for unrecognised ones.
     function parseOpenTag(tagContent) {
+        // The internal link tag from the Markdown pre-pass above.  The
+        // stack entry is named PFOD_LINK_TAG (not the full content) so the
+        // pre-pass's </\u0001> closes it.  href is null when there is no
+        // device web root to resolve a /path against — the entry then adds
+        // no style at all and the link text renders plain.
+        if (tagContent.charCodeAt(0) === 1) {
+            return { tag: PFOD_LINK_TAG, href: pfodLinkHref(tagContent.substring(1)) };
+        }
         if (tagContent === 'b')  return { bold: true };
         if (tagContent === 'i')  return { italic: true };
         if (tagContent === 'u')  return { underline: true };
@@ -280,7 +355,7 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
             if (parsed !== null) {
                 appendSegment(text.substring(segStart, i));
                 segStart = closeIdx + 1;
-                parsed.tag = tagContent;
+                if (parsed.tag === undefined) parsed.tag = tagContent;
                 stack.push(parsed);
             }
             // unrecognised tag: leave it in the current literal segment
@@ -373,7 +448,9 @@ function renderPfodLabel(item, menuBgColor) {
 
     const textSpan = document.createElement('span');
     textSpan.className = 'pfod-button-text';
-    const allFontSized = pfodSetFormattedText(textSpan, item.text, contrastHex);
+    // Labels have no click handler, so a [text](url) link in one can be a
+    // real link — nothing a tap can send.
+    const allFontSized = pfodSetFormattedText(textSpan, item.text, contrastHex, undefined, true);
     // When every rendered segment is in an explicit font-size span (no bare text
     // nodes), collapse the block container's strut to 0 so line spacing is
     // governed by each span's own font-size rather than the div's default.

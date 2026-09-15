@@ -1,0 +1,118 @@
+{
+  "boardName": "XIAO_nRF52840_Plus",
+  "displayName": "Seeed XIAO nRF52840 Plus",
+
+  "family": "nrf52",
+
+  "inputOnlyGpios": [],
+
+  "connections": ["serial", "ble"],
+
+  // Informational only (does not change capabilities) — these GPIOs keep
+  // their normal digital_input/digital_output/pwm_output capabilities
+  // (general-purpose bus pins with no exclusive onboard consumer, KEEP
+  // policy) but are also wired to a second on-chip peripheral bus a user
+  // sketch could opt into instead of plain GPIO. NOTE: Seeed's own wiki
+  // pinout table additionally lists "ADC" as a function for D11-D13/
+  // D17-D19 — this is NOT reflected in analog_input capability here,
+  // because the nRF52840's SAADC peripheral only has 8 fixed analog
+  // input channels hard-wired to P0.02/03/04/05/28/29/30/31 (Nordic
+  // nRF52840 Product Specification) and none of D11-D13/D17-D19's real
+  // pins (P0.15/P0.19/P1.01/P1.03/P1.05/P1.07) are among them — treated
+  // as a wiki table inaccuracy (likely a copy-pasted function list) and
+  // NOT propagated into this board.json.
+  //
+  // D14/D15 (GPIO33/34) also keep their normal capabilities here — see
+  // the chipGpios comment below for why this is a deliberate reversal of
+  // an earlier exclusion decision for these two pins specifically.
+  // See boardsDetails/nrf52/nrf52840/Seeed_XIAO_nRF52840_Plus/notes.txt
+  // for the full research trail.
+  "pinNotes": {
+    "30": "Also usable as I2S_SD (second I2S audio bus data line)",
+    "31": "Also usable as I2S_SCK (second I2S audio bus clock line)",
+    "32": "Also usable as I2S_WS (second I2S audio bus word-select line)",
+    "33": "NFC1 (P0.09), also usable as RX1/Serial2's RX",
+    "34": "NFC2 (P0.10), also usable as TX1/Serial2's TX",
+    "36": "Also usable as MOSI1 (second SPI bus)",
+    "37": "Also usable as MISO1 (second SPI bus)",
+    "38": "Also usable as SCK1 (second SPI bus)"
+  },
+
+  // This is the 39-pin ("Plus") pin map — the extra physical header row
+  // this variant has (vs. the 33-pin base/Sense boards) exposes 9 more
+  // GPIOs (30-38) that are internal-only on base/Sense. Confirmed via
+  // Seeed's own wiki pinout TABLE (raw HTML <table> markup, fetched and
+  // parsed directly — not just the diagram image) on
+  // https://wiki.seeedstudio.com/XIAO_BLE/ and this repo's own
+  // Seeed_nRF52/variants/Seeed_XIAO_nRF52840_Plus/variant.cpp
+  // g_ADigitalPinMap. Pins 30-32 (I2S), 33/34 (NFC1/NFC2, see below) and
+  // 36-38 (SPI1) are genuine general-purpose bus pins here (see pinNotes
+  // above) — only 35 (VBAT) needs excluding, for the SAME reason as the
+  // base/Sense board's 32 (it is the identical physical nRF52840 silicon
+  // pad — P0.31 — just renumbered on this variant's larger pin map, and
+  // carries the same real over-voltage risk if read without the
+  // VBAT_ENABLE sequencing — see that entry below).
+  //
+  // D14/D15 (GPIO33/34, physical pads P0.09/P0.10 — the SAME silicon as
+  // the base/Sense board's excluded NFC1/NFC2): after this repo's first
+  // pass excluded these here too (matching base/Sense), the user asked
+  // for a recheck directly against Seeed's own pinout DIAGRAM IMAGES
+  // (not just the text table). Downloaded and visually inspected
+  // XIAO_nRF52840_Plus_back_pinout.png and .../Sense_Plus_back_pinout.png
+  // directly (files.seeedstudio.com/wiki/XIAO-BLE/) — both diagrams
+  // color D14/D15's PRIMARY pin box "Digital GPIO" (the same green used
+  // for D11-D13/D17-D19, which this repo already keeps available), with
+  // "NFC1"/"NFC2" and "UART1_RX"/"UART1_TX" shown only as smaller
+  // secondary-capability labels alongside it. This is a clear, deliberate
+  // visual distinction from the base/Sense board's OWN diagram, which
+  // colors NFC1/NFC2 primary "Peripheral" (navy) with no Digital-GPIO
+  // box or D-number at all for the same physical silicon pins. Since
+  // UICR (the register that latches these pins to NFC-antenna mode by
+  // default) is a one-time fuse-like configuration NOT touched by normal
+  // application firmware uploads (only a full chip erase via SWD/J-Link
+  // resets it), a plausible and technically coherent explanation is that
+  // Seeed's factory provisioning clears NFCPINS once for Plus/Sense Plus
+  // units specifically, which is also consistent with this repo's own
+  // `boards.txt` not needing a `-DCONFIG_NFCT_PINS_AS_GPIOS`-style build
+  // flag (that flag would only matter for a from-scratch SWD reflash,
+  // not a normal Arduino IDE upload). Given Seeed's own current,
+  // actively-maintained diagram is the most authoritative and most
+  // recently-updated source available, this repo now follows it and
+  // treats GPIO33/34 as available — reversing the earlier exclusion.
+  // See boardsDetails/nrf52/nrf52840/Seeed_XIAO_nRF52840_Plus/notes.txt
+  // for the full research trail, including the earlier (superseded)
+  // reasoning, so a future reviewer can see the reversal was deliberate.
+  "chipGpios": {
+    "11": { "capabilities": ["digital_output", "pwm_output", "led_r_low"],
+             "note": "USER_LED_R (LED_RED/LED_BUILTIN), P0.26 — active-LOW" },
+    "12": { "capabilities": ["digital_output", "pwm_output", "led_b_low"],
+             "note": "USER_LED_B (LED_BLUE), P0.06 — active-LOW" },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_g_low"],
+             "note": "USER_LED_G (LED_GREEN), P0.30 — active-LOW" },
+    "14": { "capabilities": [],
+             "note": "ADC_BAT/VBAT_ENABLE, P0.14 — LOW to read VBAT, HIGH otherwise" },
+    "15": { "capabilities": [], "note": "6 DOF IMU_PWR, P1.08 — dedicated power-enable line" },
+    "16": { "capabilities": [], "note": "LSM6DS3TR-C IMU I2C bus (Wire1) SCL, P0.27 — for the IMU" },
+    "17": { "capabilities": [], "note": "LSM6DS3TR-C IMU I2C bus (Wire1) SDA, P0.07 — for the IMU" },
+    "18": { "capabilities": [], "note": "6 DOF IMU__INT1, P0.11 — dedicated interrupt line" },
+    "19": { "capabilities": [], "note": "PDM Microphone_PWR, P1.10 — dedicated power-enable line" },
+    "20": { "capabilities": [], "note": "PDM Microphone_CLK, P1.00 — dedicated clock line" },
+    "21": { "capabilities": [], "note": "PDM Microphone_DATA, P0.16 — dedicated data line" },
+    "22": { "capabilities": [], "note": "PIN_CHARGING_CURRENT, P0.13 — high-Z=50mA, LOW=100mA" },
+    "23": { "capabilities": [], "note": "CHARGE_LED (CHG-LED_Red), P0.17 — onboard charge-status LED" },
+    "24": { "capabilities": [], "note": "Onboard QSPI flash SCK — dedicated bus to the onboard 2MB flash" },
+    "25": { "capabilities": [], "note": "Onboard QSPI flash CS — dedicated bus to the onboard 2MB flash" },
+    "26": { "capabilities": [], "note": "Onboard QSPI flash IO0 — dedicated bus to the onboard 2MB flash" },
+    "27": { "capabilities": [], "note": "Onboard QSPI flash IO1 — dedicated bus to the onboard 2MB flash" },
+    "28": { "capabilities": [], "note": "Onboard QSPI flash IO2 — dedicated bus to the onboard 2MB flash" },
+    "29": { "capabilities": [], "note": "Onboard QSPI flash IO3 — dedicated bus to the onboard 2MB flash" },
+    "35": { "capabilities": [],
+             "note": "PIN_VBAT/D16 (AIN7_BAT), P0.31 — needs GPIO14 driven LOW first" }
+  },
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  "dac": {},
+
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.6" }
+}

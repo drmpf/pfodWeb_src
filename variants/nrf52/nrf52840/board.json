@@ -1,0 +1,92 @@
+{
+  // Output filename and BoardLoader data-variable name (fallback only —
+  // every real board under this chip has its own boards.txt entry that
+  // overrides both boardName and displayName, see section 5 of
+  // docs/pfodWeb-variants-guide.html).
+  "boardName": "XIAO_nRF52840",
+  "displayName": "Seeed XIAO nRF52840",
+
+  // Parser dialect that interprets this variant's pins_arduino.h.
+  // "nrf52" is its own family value (separate top-level entry in the
+  // Designer's target picker), but it routes through the same
+  // buildEsp32Board() parser as "esp32"/"esp8266"/"rp2040" — Seeed's
+  // Adafruit_nRF52_Arduino-derived variant.h declares pins via the
+  // identical `static const uint8_t NAME = value;` convention.
+  "family": "nrf52",
+
+  // No input-only-GPIO concept on nRF52840 — every exposed pin is a
+  // bidirectional GPIO (P0.xx/P1.xx), unlike ESP32's ADC-input-only pins.
+  "inputOnlyGpios": [],
+
+  // nRF52840 has Bluetooth LE but no WiFi. Serial is native USB-CDC
+  // (TinyUSB) on every XIAO nRF52840 variant, not a UART — it costs no
+  // GPIO pin at all (see the per-board board.json note on why the
+  // vendor's own "TX"/"RX" aliases, where present, must NOT be trusted
+  // as this board's dedicated serial pins).
+  "connections": ["serial", "ble"],
+
+  // No chip-wide boot-strapping cautions the way ESP32/ESP8266 have
+  // (nRF52840 has no equivalent "must be HIGH/LOW at boot" GPIO set) —
+  // per-pin dedicated-hardware notes live in chipGpios below instead.
+  "pinNotes": {},
+
+  // Pins 11-29 are IDENTICAL in meaning and index across all four XIAO
+  // nRF52840 variants (confirmed by diffing each variant's own variant.h
+  // and variant.cpp g_ADigitalPinMap — see boardsDetails/nrf52/nrf52840/
+  // */notes.txt) — safe to declare once here.  Pins 30+ diverge between
+  // the 33-pin (base/Sense) and 39-pin (Plus/Sense Plus) pin maps and are
+  // declared per-board instead (see each board's own board.json).
+  //
+  // Sources: Seeed's own Seeed_nRF52 BSP variant.h/variant.cpp files
+  // (this repo's Seeed_nRF52/variants/*/variant.{h,cpp} — the vendor's
+  // own inline comments name each pin's peripheral, e.g. "// LSM6DS3TR",
+  // "// MIC", "// BQ25100", "// On-board QSPI Flash"), cross-checked
+  // against the OFFICIAL pinout TABLE (not just the pinout diagram
+  // image) on https://wiki.seeedstudio.com/XIAO_BLE/ — that page's raw
+  // HTML has real <table> markup (P0.xx/P1.xx column, function column)
+  // for all four boards, fetched and parsed directly rather than relying
+  // on an image caption/summary. That table independently confirms every
+  // pin below by name and P0.xx/P1.xx address, confirms the RGB LED is
+  // active-LOW ("replace HIGH with LOW to turn ON the LED" — direct
+  // quote from the page, contradicting variant.h's own misleading
+  // LED_STATE_ON=1 macro), and separately confirms VBAT_ENABLE's read
+  // sequencing requirement. See boardsDetails/nrf52/nrf52840/*/notes.txt
+  // for the full re-verification trail (dated 2026-09-13).
+  "chipGpios": {
+    "11": { "capabilities": ["digital_output", "pwm_output", "led_r_low"],
+             "note": "USER_LED_R (LED_RED/LED_BUILTIN), P0.26 — active-LOW." },
+    "12": { "capabilities": ["digital_output", "pwm_output", "led_b_low"],
+             "note": "USER_LED_B (LED_BLUE), P0.06 — active-LOW." },
+    "13": { "capabilities": ["digital_output", "pwm_output", "led_g_low"],
+             "note": "USER_LED_G (LED_GREEN), P0.30 — active-LOW." },
+    "14": { "capabilities": [],
+             "note": "ADC_BAT/VBAT_ENABLE, P0.14 — LOW to read VBAT, HIGH otherwise" },
+    "15": { "capabilities": [], "note": "6 DOF IMU_PWR, P1.08 — dedicated power-enable line" },
+    "16": { "capabilities": [], "note": "LSM6DS3TR-C IMU I2C bus (Wire1) SCL, P0.27 — for the IMU" },
+    "17": { "capabilities": [], "note": "LSM6DS3TR-C IMU I2C bus (Wire1) SDA, P0.07 — for the IMU" },
+    "18": { "capabilities": [], "note": "6 DOF IMU__INT1, P0.11 — dedicated interrupt line" },
+    "19": { "capabilities": [], "note": "PDM Microphone_PWR, P1.10 — dedicated power-enable line" },
+    "20": { "capabilities": [], "note": "PDM Microphone_CLK, P1.00 — dedicated clock line" },
+    "21": { "capabilities": [], "note": "PDM Microphone_DATA, P0.16 — dedicated data line" },
+    "22": { "capabilities": [], "note": "PIN_CHARGING_CURRENT, P0.13 — high-Z=50mA, LOW=100mA" },
+    "23": { "capabilities": [], "note": "CHARGE_LED (CHG-LED_Red), P0.17 — onboard charge-status LED" },
+    "24": { "capabilities": [], "note": "Onboard QSPI flash SCK — dedicated bus to the onboard 2MB flash" },
+    "25": { "capabilities": [], "note": "Onboard QSPI flash CS — dedicated bus to the onboard 2MB flash" },
+    "26": { "capabilities": [], "note": "Onboard QSPI flash IO0 — dedicated bus to the onboard 2MB flash" },
+    "27": { "capabilities": [], "note": "Onboard QSPI flash IO1 — dedicated bus to the onboard 2MB flash" },
+    "28": { "capabilities": [], "note": "Onboard QSPI flash IO2 — dedicated bus to the onboard 2MB flash" },
+    "29": { "capabilities": [], "note": "Onboard QSPI flash IO3 — dedicated bus to the onboard 2MB flash" }
+  },
+
+  // Default 8-bit analogWrite() PWM range, matching AVR/ESP32 convention.
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  // No hardware DAC on nRF52840.
+  "dac": {},
+
+  // nRF52840's SAADC peripheral: variant.h declares ADC_RESOLUTION(12)
+  // (0-4095), and the Adafruit-derived core's default analogReference()
+  // is AR_INTERNAL (0.6V * gain 6 = 0-3.6V) — see
+  // https://learn.adafruit.com/introducing-the-adafruit-nrf52840-feather/nrf52-adc
+  "adc": { "bits": 12, "max": 4095, "defaultRefVolts": "3.6" }
+}

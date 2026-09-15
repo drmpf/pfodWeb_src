@@ -1,0 +1,83 @@
+Board: Seeed XIAO nRF52840 Sense Plus
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino-derived "Seeed nRF52 Boards" core)
+Variant dir: variants/nrf52/nrf52840/Seeed_XIAO_nRF52840_Sense_Plus/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+Same sources as boardsDetails/nrf52/nrf52840/Seeed_XIAO_nRF52840_Plus/
+notes.txt — see that file for the full list and findings. This notes.txt
+only records what's different about the Sense Plus variant.
+
+Confirmed via `diff` against the vendor's own source
+(Seeed_nRF52/variants/Seeed_XIAO_nRF52840_Plus/variant.h vs .../
+Seeed_XIAO_nRF52840_Sense_Plus/variant.h): byte-for-byte identical
+except for the header include-guard name and one extra
+`#define TARGET_SEEED_XIAO_NRF52840_SENSE_PLUS` line — same relationship
+as base vs. Sense.
+
+DECISION
+========
+Identical board.json chipGpios map to the plain Plus board (same 20
+kept including the 3 LED tags, same 19 excluded) — populated-vs-
+unpopulated IMU/mic doesn't change the keep/exclude decision, same
+reasoning as Sense vs. base. This board's own pins_arduino.h needed the
+SAME deliberate RX/TX-alias-deletion fix as the plain Plus variant (the
+vendor source declares the identical bare RX/TX aliases) — see that
+board's notes.txt for the full parser-collision writeup; applied
+identically here and verified via the same rebuild-and-inspect method
+(D6 -> plain GPIO, D7 -> plain GPIO + spi_ss).
+
+NOT GUESSED: inherits the Plus board's fully-sourced findings verbatim,
+since the underlying pin map and header exposure are provably identical
+(byte-diff confirmed) — no new hardware research was needed.
+
+SUMMARY: identical to Seeed_XIAO_nRF52840_Plus — 39 total Arduino pin
+indices (0-38), 19 excluded (GPIO14-29, GPIO33-35), 20 kept available
+(D0-D10, D11-D13/I2S, D17-D19/SPI1), 3 of which (GPIO11-13) additionally
+carry onboard-LED-channel tags.
+
+POST-REVIEW RE-VERIFICATION (2026-09-13, same day): user asked to check
+pins/functions against the raw https://wiki.seeedstudio.com/XIAO_BLE/
+page (table + body text). This board's own wiki table is identical in
+shape to the plain Plus board's (same D14/D15 "GPIO, UART, ADC" function
+listing for the NFC1/NFC2 pads, same D11-D13/D17-D19 "ADC" mention). See
+the plain Plus board's notes.txt for the full write-up of the
+NFC/UICR-ambiguity investigation and its resolution (checked this repo's
+own boards.txt for the `-DCONFIG_NFCT_PINS_AS_GPIOS` flag, confirmed
+absent, kept the exclusion) and the fixed-SAADC-channel reasoning for
+not adding analog_input to D11-D13/D17-D19 — identical findings and
+identical wording fixes were applied to this board's own board.json.
+
+FOLLOW-UP CHECK (2026-09-13, same day, user-requested IMU/mic table
+check + schematic LED confirmation): spot-checked this board's own wiki
+table for the same IMU/mic rows as the plain Sense board — confirmed the
+identical gap (only "6 DOF IMU_PWR"/"6 DOF IMU__INT1"/"PDM Microphone_
+DATA"/"PDM Microphone_CLK" rows present; no row for the IMU's I2C SCL/
+SDA or for PDM Microphone_PWR). See the plain Sense board's notes.txt
+for the full write-up — same non-conclusion (wiki table incomplete but
+not authoritative for this; vendor's own variant.h/variant.cpp remains
+the correct, complete source; no exclusion decision changes). LED
+polarity/pin-assignment also re-confirmed via the user's direct
+schematic read (P0.06 blue / P0.30 green / P0.26 red, all active-LOW) —
+exact match with this board's own chipGpios entries, same as every
+other board in this family (identical LED wiring across all four).
+
+SECOND RE-CHECK (2026-09-13, same day, user-requested — recheck against
+the actual pinout diagram images): downloaded and visually inspected
+XIAO_nRF52840_Sense_Plus_front_pinout.png and .../back_pinout.png
+directly (files.seeedstudio.com/wiki/XIAO-BLE/). Front image confirmed
+the D0-D10/LED/6-Dof-IMU-I2C/Microphone layout exactly as already
+recorded (identical to the plain Sense board's front image, just on the
+larger Plus-style board render — even reuses "XIAO nRF52840 Plus" as the
+on-board silkscreen text in the image, a cosmetic vendor mislabel, not a
+data error). Back image showed the SAME "Digital GPIO" (green) primary
+coloring for D14/D15 as the plain Plus board's own back image — see that
+board's notes.txt for the full write-up of this finding and the
+UICR-persistence reasoning that resolved it in favor of keeping these
+two pins available. Applied the identical reversal to this board's own
+board.json (GPIO33/34 from excluded to available; GPIO35/VBAT stays
+excluded, same hazard reasoning, unchanged). Verified via rebuild
+(GPIO33/34 report plain digital_input/digital_output/pwm_output) and the
+same full checkpoint (0 errors, 604 boards, 0 new zero-pin/contamination
+issues), redeployed.

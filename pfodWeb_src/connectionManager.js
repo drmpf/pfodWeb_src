@@ -36,10 +36,16 @@ function sleep(ms) {
  * Shows a styled modal dialog positioned lower on the page
  * @param {string} message - The message to display
  * @param {function} onClose - Optional callback when Close button is clicked
+ * @returns {{close: function}} handle — close() removes the alert without
+ *          running onClose, so a caller can take an alert down itself (e.g.
+ *          the http auto-retry in requestQueue.js replaces its "will retry"
+ *          alert rather than stacking a second one on top).  No-op once the
+ *          user has already closed it.
  */
 function pfodAlert(message, onClose = null) {
   // Create modal overlay
   const overlay = document.createElement('div');
+  overlay.className = 'pfod-alert-overlay';
   overlay.style.cssText = `
     position: fixed;
     top: 0;
@@ -115,7 +121,7 @@ function pfodAlert(message, onClose = null) {
       font-family: Arial, sans-serif;
     `;
     const closeAction = () => {
-      document.body.removeChild(overlay);
+      if (overlay.parentNode) document.body.removeChild(overlay);
       onClose();
     };
     closeButton.onclick = closeAction;
@@ -139,6 +145,9 @@ function pfodAlert(message, onClose = null) {
 
   // Add to page
   document.body.appendChild(overlay);
+  return {
+    close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+  };
 }
 
 /**
@@ -177,6 +186,20 @@ function getCurrentDedupChar() {
   const char = dedupChars[dedupCounter];
   dedupCounter = (dedupCounter + 1) % dedupChars.length;
   return char;
+}
+
+/**
+ * Put the dedup sequence back to where a new connection starts it, so the
+ * next send() goes out with the same character a fresh page load would
+ * use.  Used by the http auto-retry (requestQueue.js _scheduleHttpRetry):
+ * when a shared device dropped our message as a duplicate of another
+ * client's, simply taking the next character is not enough — that other
+ * client is on the same refresh cadence, so the two sequences keep pacing
+ * each other — whereas restarting from the connection's own first
+ * character breaks the lockstep.
+ */
+function resetDedupChar() {
+  dedupCounter = 0;
 }
 
 /**
@@ -997,6 +1020,23 @@ class HTTPConnection extends PfodConnectionBase {
   }
 
   /**
+   * The device's "nothing to say" reply.  ESP_PicoW_pfodWebServer.cpp's
+   * handle_pfodWeb() sends a single space when the captured output is
+   * empty (an empty body would look like a dropped connection), so a body
+   * of exactly " " is a placeholder, not data.  It must never reach the
+   * collectors — fed to rawDataCollector it stacks up as one space per
+   * 1 s poll on the Raw Data screen (streaming_2026-09-12T05-47-37 shows
+   * 200-space runs) — and it must not be logged: at two viewer entries per
+   * second the polls alone fill the 500-entry Raw Message viewer in four
+   * minutes and push the real device output out of it.
+   * @param {string} body  the HTTP response body
+   * @returns {string} '' for the placeholder, else the body unchanged
+   */
+  _dropEmptyPlaceholder(body) {
+    return body === ' ' ? '' : body;
+  }
+
+  /**
    * Single HTTP send attempt (no retries).
    * Returns a Promise resolved by processReadBuffer() when a complete pfod {..} command
    * is found in the response text. If no pfod command is present the Promise resolves ''.
@@ -1042,7 +1082,7 @@ class HTTPConnection extends PfodConnectionBase {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const responseText = await response.text();
+        const responseText = this._dropEmptyPlaceholder(await response.text());
 
         if (this.timeoutId) {
           clearTimeout(this.timeoutId);
@@ -1104,6 +1144,7 @@ class HTTPConnection extends PfodConnectionBase {
             + `transport drop or truncation; will retry if budget remains`
           );
           err.code = 'NO_PFOD_IN_RESPONSE';
+          err.responseBytes = responseText.length; // for the user-facing retry message
           const reject = this.responseReject;
           this.responseResolve = null;
           this.responseReject = null;
@@ -1155,9 +1196,10 @@ class HTTPConnection extends PfodConnectionBase {
 
     try {
       console.log(`[HTTP_CONNECTION] dataRefresh: ${endpoint}`);
-      if (ConnectionManager.messageCollector) {
-        ConnectionManager.messageCollector.addMessage('sent', '', this.protocol, '');
-      }
+      // Not logged to the Raw Message viewer: the poll is an empty cmd,
+      // not a message, and one entry per second would crowd the real
+      // traffic out of the viewer's 500-entry buffer.  Whatever the poll
+      // brings back that IS data is logged as 'received' by processIncoming.
       const response = await fetch(endpoint, { ...options, signal: controller.signal });
 
       if (this.timeoutId) {
@@ -1169,11 +1211,12 @@ class HTTPConnection extends PfodConnectionBase {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const responseText = await response.text();
+      const responseText = this._dropEmptyPlaceholder(await response.text());
       console.log(`[HTTP_CONNECTION] dataRefresh response (${responseText.length} bytes)`);
 
       // Feed through shared pipeline: csvCollector, rawDataCollector, processReadBuffer
-      this.processIncoming(responseText);
+      // (nothing to feed for the device's " " placeholder — see _dropEmptyPlaceholder)
+      if (responseText.length > 0) this.processIncoming(responseText);
 
       // Flush any remaining buffer (CSV after pfod command) to messageCollector
       if (this.readBuffer.length > 0 && ConnectionManager.messageCollector) {

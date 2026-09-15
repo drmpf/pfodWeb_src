@@ -234,15 +234,27 @@ Object.assign(DrawingViewer.prototype, {
     // Inserted dwgs keep their entry stamped like any other drawing; it is
     // simply never read, since isRefreshableDrawing() skips them below.
 
-    // Per-item nextDue.  When NOT overdue, fire at lastResp+rate.
-    // When OVERDUE (lastResp+rate already past), fire at now+rate — i.e.
-    // delay one full rate from now, NOT immediately.  This keeps a
-    // minimum gap of `rate` between consecutive fires so missed cycles
-    // don't bundle up into a burst of back-to-back refreshes.
+    // Per-item nextDue.  When NOT overdue, fire at lastResp+rate — an
+    // absolute moment, so the many re-arms between now and then (this is
+    // called on every queue drain, i.e. after every 1 s data poll on http)
+    // all land on the same instant.
+    //
+    // When OVERDUE (lastResp+rate already past) fire promptly, at now+250.
+    // It must NOT be now+rate: that is relative to *now*, and every drain
+    // recomputes it, so once a due moment had been missed — a touch, a
+    // keep-alive or a dialog in flight when the timer fired, fetchRefresh
+    // deferred, and the busy-skip below armed nothing — each data poll
+    // pushed the deadline another full rate ahead of itself.  On a 30 s
+    // dwg with 1 s polling that silenced refresh for good; only a user
+    // action, by re-stamping itemRefreshTimes, could end it (seen in
+    // pfod-messages-2026-09-12T02-36-14.252Z.csv: no refresh for three
+    // minutes until a tap).  There is no burst to fear from firing at
+    // once: fetchRefresh queues each overdue item once, and its response
+    // re-stamps lastResp, so the next due is a full rate later again.
+    const OVERDUE_DELAY_MS = 250;
     const itemNextDue = (lastResp, rate) => {
-      const eff = effectiveRate(rate);
-      const due = lastResp + eff;
-      return due > now ? due : now + eff;
+      const due = lastResp + effectiveRate(rate);
+      return due > now ? due : now + OVERDUE_DELAY_MS;
     };
 
     // Refreshes only apply in menu-mode — that's the only mode where menus
@@ -285,7 +297,7 @@ Object.assign(DrawingViewer.prototype, {
     }
 
     // delay = soonestNextDue - now.  Always > 0 by construction
-    // (itemNextDue returns now+rate when overdue, lastResp+rate otherwise
+    // (itemNextDue returns now+OVERDUE_DELAY_MS when overdue, lastResp+rate otherwise
     // and lastResp+rate > now in that branch).
     const delay = soonestNextDue - now;
     console.log(`[REFRESH] Scheduling next update in ${delay}ms`);
@@ -599,6 +611,10 @@ Object.assign(DrawingViewer.prototype, {
   // Clear all pending requests from queue (keeps sentRequest intact).
   // Called before sending a back/refresh command to discard queued stale requests.
   clearPendingQueue() {
+    // A retry waiting on its 30 s timer is a pending request too — the
+    // user's reload / back / exit must not have the old one reappear
+    // behind it.
+    this._cancelHttpRetry();
     const clearTime = Date.now();
     const queueLength = this.requestQueue.length;
     console.info(`[QUEUE] Clearing queue at ${clearTime}, length=${queueLength}, sentRequest: ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}`);

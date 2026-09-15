@@ -1,0 +1,104 @@
+Board: Particle Xenon
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core — Particle's own
+hardware ported into Adafruit's BSP format)
+Variant dir: variants/adafruit_nrf52/nrf52840/particle_xenon/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/particle_xenon/variant.h —
+   PRIMARY source. This is the most heavily pin-multiplexed board in
+   this family: Serial1 (RX=9/TX=10/CTS=4/RTS=3), Serial2 (RX=5/TX=4/
+   CTS=6/RTS=8), SPI1 (MISO=4/MOSI=3/SCK=2), and Wire1 (SDA=2/SCL=3) all
+   reuse various D0-D20 header pins as OPTIONAL alternate functions —
+   none are treated as dedicated/excluded, matching this repo's
+   established "a pin that can alternately serve a bus role isn't
+   thereby dedicated" policy already applied to D6/D7 across the rest
+   of this family.
+2. WebSearch (Particle's own documentation): confirmed D7's onboard LED
+   is active-high ("Pin D7 is connected to an on-board LED; if you set
+   pin D7 to HIGH, the LED will turn on") — checked independently rather
+   than assuming the Adafruit-hardware LED_STATE_ON spot-check (done on
+   the Feather nRF52840 Express) extends to this Particle-designed
+   board, since Particle Xenon, while ported into Adafruit's BSP
+   format, is a genuinely different company's hardware design.
+3. WebSearch for the discrete RGB status LED (LED_RGB_RED/GREEN/BLUE,
+   GPIO22-24)'s polarity specifically — did NOT find a source
+   confirming active-high vs active-low for these three pins
+   specifically (only confirmed their existence/identity as a real RGB
+   status LED via the BOARD_RGB_BRIGHTNESS macro and the aliased pin
+   names themselves).
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+remaining boards against adafruit website docs"): found and fetched
+github.com/adafruit/Adafruit_nRF52_Bootloader/src/boards/particle_xenon/
+board.h directly — the actual UF2 bootloader's own board definition for
+this exact product (BLEDIS_MANUFACTURER="Particle Industries",
+BLEDIS_MODEL="Xenon", UF2_PRODUCT_NAME="Particle Xenon"). This declares
+`LED_STATE_ON=1` board-wide (the SAME single constant the bootloader
+applies to BOTH `LED_PRIMARY_PIN` and the `LED_RGB_*_PIN` trio) plus
+`LED_RGB_RED_PIN=PINNUM(0,13)`, `GREEN_PIN=PINNUM(0,14)`,
+`BLUE_PIN=PINNUM(0,15)`. Cross-referenced against this board's own
+variant.cpp g_ADigitalPinMap (which uses the identical `_PINNUM(port,
+pin)` macro and explicit per-line comments) and confirmed EXACT matches
+at Arduino indices 22/23/24 (P0.13/P0.14/P0.15 respectively) — the same
+indices this board's own variant.h names LED_RGB_RED/GREEN/BLUE. This
+RESOLVES the previously-unconfirmed RGB polarity: since the identical
+LED_STATE_ON=1 constant that the bootloader already uses for the
+primary LED (independently confirmed active-high via source #2 above)
+ALSO governs these three RGB pins in the same firmware, they are now
+confirmed active-high too. Also independently re-confirmed GPIO7/LED1
+itself: bootloader's LED_PRIMARY_PIN=P1.12 matches variant.cpp's own
+D7=P1.12 exactly. And confirmed the exact identity of GPIO19/20's
+shared button functions: bootloader's BUTTON_DFU_OTA=P0.03 matches
+GPIO19's own physical address exactly (confirms it's specifically the
+OTA-DFU trigger, not just "a" factory-reset button), and BUTTON_DFU=
+P0.11 matches GPIO20 exactly (the "MODE" button, DFU bootloader entry).
+
+DECISIONS
+=========
+TAGGED: GPIO7 (PIN_LED1/LED_BUILTIN) led_high — confirmed independently
+via Particle's own documentation AND the Adafruit bootloader source.
+GPIO22 (LED_RGB_RED) led_r_high, GPIO23 (LED_RGB_GREEN) led_g_high,
+GPIO24 (LED_RGB_BLUE) led_b_high — polarity now confirmed via the
+Adafruit bootloader source (see re-check above); this REVERSES the
+original pass's conservative "excluded, polarity unconfirmed" decision
+now that real evidence exists.
+
+NOT TAGGED/NOT EXCLUDED (kept general per pinNotes, deliberately NOT
+given a restrictive "button"-only capability set): GPIO19 (D19/A0, also
+BUTTON_FRESET) and GPIO20 (D20, also BUTTON_DFU/BUTTON_MODE) — real,
+confirmed onboard button functions layered on top of otherwise-general
+header pins, matching this repo's established "note a shared function,
+don't exclude/restrict a genuinely still-usable general pin" policy
+(the same treatment classic Arduino boards get for a boot-shared D13
+LED). A user could legitimately want either pin for its normal D19/D20
+role; forcing a restricted button-only capability list would remove
+real functionality for uncertain benefit on this lower-mainstream-
+priority board.
+
+KEPT available: D0-D20 (all real header pins, all their Serial1/Serial2/
+SPI1/Wire1 alternate-function overlaps left unexcluded per the general
+policy above), A0-A7 (GPIO29-36, same physical pins as parts of the
+D0-D20 range via aliasing — no separate action needed), AREF (GPIO36),
+VBAT (GPIO35, no confirmed enable-sequencing pin).
+
+NOT EXPOSED: antenna switch (GPIO25/26), NFC1/NFC2 (GPIO27/28), PWR/CHG
+status (GPIO37/38) — all #define-only, never aliased via static const.
+
+NOT GUESSED: D7's polarity confirmed via Particle's own documentation
+AND the Adafruit bootloader source; RGB LED polarity now confirmed via
+the bootloader's board-wide LED_STATE_ON constant, cross-referenced
+against variant.cpp's exact physical-address matches — no longer a
+guess; button-pin dual-purpose confirmed exactly (not just noted) via
+the same bootloader source's BUTTON_DFU/BUTTON_DFU_OTA addresses.
+
+SUMMARY: 39 total Arduino pin indices (0-38); 4 tagged LED (D7 status
+LED + 3-channel RGB, all active-high, all confirmed via the official
+Adafruit bootloader source); 2 pins carry an informational note about a
+dual button function but keep full general capabilities; D0-D20/A0-A7/
+AREF/VBAT kept general-purpose; antenna/NFC/PWR/CHG never appear
+(unaliased #define-only). No longer the lowest-confidence board in this
+family — every tagged pin is now independently confirmed via a genuine,
+board-specific, official source (the Adafruit_nRF52_Bootloader repo),
+not assumption or analogy.

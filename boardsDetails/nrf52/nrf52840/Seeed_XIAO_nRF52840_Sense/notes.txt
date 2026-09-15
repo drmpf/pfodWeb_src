@@ -1,0 +1,118 @@
+Board: Seeed XIAO nRF52840 Sense
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino-derived "Seeed nRF52 Boards" core)
+Variant dir: variants/nrf52/nrf52840/Seeed_XIAO_nRF52840_Sense/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+Same sources as boardsDetails/nrf52/nrf52840/Seeed_XIAO_nRF52840/notes.txt
+(1-5) — see that file for the full list and per-source findings. This
+notes.txt only records what's DIFFERENT about the Sense variant.
+
+Confirmed via `diff` against the vendor's own source
+(Seeed_nRF52/variants/Seeed_XIAO_nRF52840/variant.h vs .../
+Seeed_XIAO_nRF52840_Sense/variant.h): the two files are byte-for-byte
+identical except for the header include-guard name and one extra
+`#define TARGET_SEEED_XIAO_NRF52840_SENSE` line. Every pin index,
+every macro value, is identical between base and Sense.
+
+Source #2 (https://wiki.seeedstudio.com/XIAO_BLE/) explicitly states the
+LSM6DS3TR-C IMU and PDM microphone are populated components ONLY on the
+Sense/Sense Plus variants — the base board (and the plain Plus board)
+ship the identical pin definitions for GPIO15-21 but leave those pads
+unpopulated.
+
+DECISION
+========
+Because the pin map is identical, this board's board.json chipGpios map
+is IDENTICAL to the base board's (same 11 kept, same 3 LED tags, same
+19 exclusions) — the populated-vs-unpopulated IMU/mic distinction does
+NOT change any keep/exclude decision, since both are "internal, no
+header pad, dedicated to an onboard peripheral" either way (populated
+or not, a user has no way to wire anything else to those pins). The
+notes text for GPIO15-21 in this board's own board.json says "populated
+on this Sense variant" instead of the base board's generic "dedicated to
+the onboard IMU/mic", purely for documentation accuracy — no capability
+difference.
+
+NOT GUESSED: no new research was needed for this board — it inherits the
+base board's fully-sourced findings verbatim, since the underlying
+hardware pin map is provably identical (byte-diff confirmed).
+
+SUMMARY: identical to Seeed_XIAO_nRF52840 — 11 kept general-purpose
+GPIO (D0-D10), 3 onboard LED channels tagged, 19 excluded.
+
+POST-REVIEW RE-VERIFICATION (2026-09-13, same day): user asked to check
+pins/functions against the raw https://wiki.seeedstudio.com/XIAO_BLE/
+page (table + body text, not just images/summaries). This board's own
+wiki pinout table additionally lists the "6 DOF IMU_PWR"/"6 DOF
+IMU__INT1"/"PDM Microphone_DATA"/"PDM Microphone_CLK" rows explicitly
+(the base board's table also carries NFC1/NFC2/CHARGE_LED entries
+identically) — full match against this board's existing chipGpios,
+confirming the populated-vs-unpopulated distinction correctly made no
+difference to any exclusion decision. See the base board's notes.txt for
+the full write-up of this re-verification pass (raw-HTML-table method,
+the WebFetch-summary conflict that prompted it, the LED-polarity
+third-source confirmation, and the removed "not on any header pad"
+claim) — identical findings and identical wording fixes were applied to
+this board's own board.json.
+
+FOLLOW-UP CHECK (2026-09-13, same day, user-requested — "check the Sense
+variant's IMU/mic wiki table too"): re-parsed this board's own wiki
+table row-by-row (29 rows total, carefully re-extracted from the raw
+HTML using a tag-boundary-aware parser after the first parse attempt
+silently returned empty cells due to this page's HTML omitting
+`</td>` closing tags — a second parsing gotcha worth remembering for any
+future re-check of this same page).
+
+Found the wiki table is INCOMPLETE for this board's IMU/mic pins: it
+lists only "6 DOF IMU_PWR" (P1.08) and "6 DOF IMU__INT1" (P0.11) for the
+IMU, and "PDM Microphone_DATA" (P0.16) and "PDM Microphone_CLK" (P1.00)
+for the mic — it does NOT have a row for the IMU's I2C bus (Wire1 SCL
+P0.27 / SDA P0.07, GPIO16/17 in this board's chipGpios) or for
+"PDM Microphone_PWR" (P1.10, GPIO19). Both are real, named signals in
+Seeed's own vendor source (`PIN_WIRE1_SCL`/`PIN_WIRE1_SDA` and
+`PIN_PDM_PWR` in `variant.h`, needed for the LSM6DS3TR-C to actually be
+addressable over I2C and for the mic to actually power up) — the wiki
+table's marketing-level pinout summary simply isn't exhaustive here.
+Confirmed the same 3-row gap exists on the Sense Plus board's own table
+too (spot-checked, see that board's notes.txt).
+
+This does NOT change any exclusion decision — GPIO16/17/19 were already
+correctly excluded (dedicated IMU I2C bus / mic power line) based on the
+primary vendor source (`variant.h`/`variant.cpp`), which remains
+authoritative and complete regardless of the wiki table's gaps. Recorded
+here so a future reviewer doesn't mistake the wiki table's silence on
+these 3 pins for evidence they don't exist or aren't dedicated — they
+do, and are, per the vendor's own source code.
+
+Also independently re-confirmed the LED polarity/pin-assignment finding
+via a THIRD method this pass, per the user's own direct schematic read:
+the schematic shows all three RGB LED channels wired active-LOW at
+P0.06 (blue), P0.30 (green), P0.26 (red) — an exact match, pin-for-pin,
+with this repo's own chipGpios entries (GPIO12=LED_BLUE=P0.06,
+GPIO13=LED_GREEN=P0.30, GPIO11=LED_RED=P0.26, all tagged led_*_low).
+Three independent sources (wiki body text, initVariant() boot behavior,
+and now the schematic directly) all agree — no ambiguity remains on
+this point.
+
+SECOND RE-CHECK (2026-09-13, same day, user-requested — recheck against
+the actual pinout diagram images): downloaded and viewed
+XIAO_nRF52840_Sense_front_pinout.png and .../Sense_back_pinout.png
+directly (files.seeedstudio.com/wiki/XIAO-BLE/). The front image is
+where the IMU/mic gap noted above finally gets fully closed by a single
+source: it shows "6-Dof IMU" grouping I2C1_SDA=P0.07(GPIO17)/
+I2C1_SCL=P0.27(GPIO16) plus "I2C Addr. 0x6A" (informational, the IMU's
+bus address — not a pin), and a "Microphone" grouping of
+PWR=P1.10(GPIO19)/PDM_CLK=P1.00(GPIO20)/PDM_DATA=P0.16(GPIO21) — full
+match with this board's existing chipGpios, and (combined with the raw
+table's IMU_PWR/INT1 rows from the first re-verification pass) now every
+one of GPIO15-21 has been confirmed directly from a Seeed-published
+source, not just the vendor's variant.h/variant.cpp. Back image: same
+NFC1/NFC2 "Peripheral"/navy treatment as the base board's back image
+(this board shares the identical 33-pin map) — confirmed the exclusion
+decision is correctly unaffected here, unlike the Plus/Sense Plus pair
+(see that pair's own notes.txt). Also confirmed the SAME "P0.31 / 35
+(VBAT_ADC)" copy-paste artifact as the base board's back image (this
+board's own variant.h defines PIN_VBAT as 32, not 35) — see the base
+board's notes.txt for the full write-up; not acted on, same reasoning.

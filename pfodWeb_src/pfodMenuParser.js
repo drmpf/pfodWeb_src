@@ -132,9 +132,13 @@ function parsePfodCmd(str) {
  * toggle/slider buttons and labels.
  *
  * @param {string} itemStr - Raw item string starting with '|'
+ * @param {boolean} [isUpdate=false] - Item belongs to a {;} update rather than a
+ *        {,} menu.  In an update a label with no text means "text unchanged"
+ *        (pfodMenuDisplay.update merges only non-empty text), so the spacer
+ *        rule below must NOT turn it into ' '.
  * @returns {object|null} Parsed item object, or null if invalid
  */
-function parsePfodMenuItem(itemStr) {
+function parsePfodMenuItem(itemStr, isUpdate) {
     if (!itemStr || !itemStr.startsWith('|')) {
         return null;
     }
@@ -291,7 +295,12 @@ function parsePfodMenuItem(itemStr) {
     // Without any text pfodApp does not show the label at all.
     // Only applied before toggle/slider promotion so toggle-labels and
     // numeric-slider-labels are unaffected.
-    if (itemType === 'label') {
+    //
+    // Never applied to a {;} update: there `|!<cmd>` with no text is the
+    // generated sendMainMenuUpdate()'s way of saying "leave the label as it
+    // is", and normalising it to ' ' would make the merge replace the real
+    // text with a blank.
+    if (itemType === 'label' && !isUpdate) {
         const raw = textFields.length > 0 ? textFields[0] : '';
         const hasVisibleText = raw !== '' && parsePfodFormatCodes(raw).remaining !== '';
         if (!hasVisibleText) {
@@ -489,7 +498,7 @@ function pfodParseMenu(cmdArray) {
             continue;
         }
 
-        const item = parsePfodMenuItem(itemStr);
+        const item = parsePfodMenuItem(itemStr, header.isUpdate);
         if (!item) {
             continue;
         }

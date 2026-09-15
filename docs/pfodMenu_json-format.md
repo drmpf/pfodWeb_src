@@ -183,7 +183,7 @@ and is handled the same way as a schema 11 one.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `promptText` | string | `"Prompt Not Set"` on a fresh menu (saved examples often use `""`) | Title text, shown **below** the menu items (pfodWeb renders the prompt in the bottom strip — `pfodMenuDisplay.js`). `\n` is a real newline. |
+| `promptText` | string | `"Prompt Not Set"` on a fresh menu (saved examples often use `""`) | Title text, shown **below** the menu items (pfodWeb renders the prompt in the bottom strip — `pfodMenuDisplay.js`). `\n` is a real newline. May contain a Markdown link `[text](url)` — see [§5.3](#53-links-in-label-and-prompt-text). |
 | `promptFormat` | object | all-defaults | See [§4](#4-format-object). Applies to the prompt text. |
 | `items` | array | `[]` | Ordered list; **display order == array order**. |
 | `refresh_ms` | number | `0` | Auto re-request interval in **milliseconds**. `0` = no auto-refresh. The designer UI only offers `0, 1000, 5000, 30000, 300000, 900000`; other values load fine but the UI toggle snaps to the nearest listed one. |
@@ -359,6 +359,9 @@ Nothing beyond the common fields.
 ### `label`
 
 Same shape as `button`, with `type: "label"`. Never sends a command. Default text `"Label"`.
+The `text` may contain a Markdown link `[text](url)` — see [§5.3](#53-links-in-label-and-prompt-text).
+The designer's text editor allows 128 characters for a label (64 for other item types)
+so a link fits.
 
 ### `onoff` — two-state output toggle
 
@@ -517,6 +520,54 @@ Two different failures, with very different outcomes — don't confuse them:
 }
 ```
 
+### 5.3 Links in label and prompt text
+
+A `label` item's `text`, and a menu's `promptText`, may contain a Markdown link:
+
+```
+[text](url)
+```
+
+pfodWeb renders `text` as a link that opens `url` in a **new browser tab**; the rest
+of the string is ordinary pfod text, and the inline format tags work around and
+inside the link (`[<+1>manual</+1>](https://…)`). Nothing changes on the wire — it
+is just characters in the text field — so it works on every connection type.
+
+```json
+{ "type": "label", "autoCmd": "label_Help_Cmd",
+  "text": "Read the [manual](https://www.forward.com.au/pfod/) first", "formats": { } }
+```
+
+```json
+"promptText": "<+2>Pool Pump\n<-2>[setup guide](/setup.html)"
+```
+
+Rules, all of which follow from the one match pfodWeb makes
+(`/\[([^\[\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s()]+)\)/`):
+
+* The `url` must begin `http://`, `https://`, or a single `/`. That is what keeps ordinary
+  prose safe — `"Battery [12] (%)"` has brackets and parentheses but `%` is not a url, so it
+  renders as typed — and it is the security boundary: `javascript:` never matches.
+* A `/path` url is a page on the **device's own web root** (the same LittleFS that serves
+  `pfodWeb.html`), resolved against the http connection. It only works on an http
+  connection; over serial or BLE, or in the designer's preview, the words render as plain
+  text with no link. Full `http(s)://` urls work everywhere.
+* The url runs to the closing `)`, so it cannot contain spaces or parentheses — percent-encode
+  them — nor `|`, `~` or `}`, like any pfod text. Its bytes count against the 1024-byte
+  message cap.
+* The link `text` may not itself contain `[` or `]`.
+
+**Only labels and prompts.** Labels and prompts have no cmd, which is the whole reason the
+link is rendered there — a tap can never both open a page and send a cmd. In any other
+item type (`button`, `onoff`, …) the characters are shown **exactly as written**,
+`[..](..)` and all, and nothing is a link.
+
+**pfodApp (Android) does not render links.** It shows the label as written —
+`[manual](https://www.forward.com.au/pfod/)` — readable, with the url visible, but there
+is no copy on that screen, so the user retypes it. For a menu that pfodApp will also see,
+keep such urls short and typeable and let the link text carry the meaning:
+`[setup guide](/setup.html)`, not `[/setup.html](/setup.html)`.
+
 ---
 
 ## 6. Pin object
@@ -669,6 +720,22 @@ Check `autoCmd` against every existing `autoCmd` in the file first.
                "fontColour": "r", "bgColour": null }
 }
 ```
+
+### 9.2a Add a Label with a link to the manual
+
+```json
+{
+  "type": "label",
+  "autoCmd": "label_Manual_Cmd",
+  "text": "Read the [manual](https://www.forward.com.au/pfod/) before changing settings",
+  "formats": { "fontSize": 0, "bold": false, "italic": false, "underline": false,
+               "flash": false, "sound": false, "disabled": false,
+               "fontColour": null, "bgColour": null }
+}
+```
+
+pfodWeb shows "manual" as a link opening in a new tab; pfodApp shows the text as
+written. See [§5.3](#53-links-in-label-and-prompt-text).
 
 ### 9.3 Add an On/Off output on pin D13 that pulses HIGH for 500 ms
 

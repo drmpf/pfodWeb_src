@@ -338,6 +338,39 @@ picture sends the item's cmd like any other menu button, so answering it
 with the menu is a "tap the drawing to refresh the whole screen"
 affordance. That is a deliberate choice, not the default to fall into.
 
+**A link to a web page goes in a `label` or a prompt, as a Markdown link.**
+Write `[text](url)` in the text of a `label` menu item, or in a menu's
+prompt (the bar at the bottom of the menu, or of an input / numeric-input /
+selection screen), and pfodWeb shows `text` as a link that opens in a new
+browser tab. The rest of the text is ordinary pfod text, and the usual
+format tags work around and inside the link:
+
+```
+|!h~Read the [manual](https://www.forward.com.au/pfod/) first
+|!k~<b>Help:</b> [<+1>on this device</+1>](/help.html) or [online](https://www.forward.com.au/pfod/)
+{,<+2>Pool Pump\n<-2>[setup guide](/setup.html)~...
+```
+
+The url must begin `http://`, `https://`, or `/`. A `/path` is a page on
+the device's own web root — the same LittleFS that serves `pfodWeb.html`,
+so drop `help.html` in the sketch's `data/` next to the pfodWeb bundles —
+and only works on an http connection; over serial or BLE (and in the
+designer's preview) it renders as plain text. A url cannot contain spaces
+or parentheses, nor `|`, `~` or `}` like any pfod text, and its bytes
+count against the 1024-byte cap.
+
+**Never in a button.** Labels and prompts have no cmd, which is the whole
+reason they are the two places a link is rendered — a tap can never both
+open a page and send a cmd. Anywhere else — a button, a toggle, a
+selection row, a drawing label — the text is shown exactly as sent,
+`[..](..)` and all.
+
+pfodApp (Android) shows `[manual](https://…)` literally — readable, and the
+URL is visible, but there is no copy (the app's menu is drawn on a canvas
+that takes every touch), so the user retypes it. If a menu will be seen in
+pfodApp, keep such URLs short and typeable, and let the link *text* carry
+the meaning (`[setup guide](/setup.html)`, not `[/setup.html](/setup.html)`).
+
 **One naming decision made at design time drives everything in stage 3:**
 `autoCmd` (menu items), `cmdName` (dwg touch zones / inserted dwgs) and
 `idxName` (dwg indexed items) become **literal C++ identifiers** in the
@@ -1688,6 +1721,28 @@ advice on finding all of them.
 Override the hook the same way as any other (§5.2/§6.3) — subclass
 `pfodMainMenu`, override `chart_Voltage_Plot_readPlotData()`, define
 `get_pfodMainMenu()` — do not edit `chart_Voltage_Plot_sendData()`.
+
+**Raw Data screen, and `~C`.** The designer does not generate this one; a
+sketch answers a button's cmd with it by hand. `{=<title>}` — the chart
+opener with no `|` plot labels — opens pfodWeb's Raw Data screen: a plain
+text view of everything the device sends *outside* `{…}` messages, with
+`<title>` (pfod formatting allowed) in the bar at the bottom. It shows what
+has already been collected in this session, then appends as more arrives.
+
+```cpp
+} else if (parser.cmdEquals(button_Log_Cmd)) {
+  parser.print(F("{=Device log~C}"));   // open the Raw Data screen, starting clean
+}
+```
+
+The optional `~C` after the title clears the text already collected, so
+the screen opens empty and shows only what the device sends from now on.
+It clears **only that text**: the plot data a chart has accumulated is
+untouched, and so is the Raw Message viewer. Without `~C` the screen opens
+on everything collected so far. The clear is applied the instant the
+`{=…~C}` is consumed, before any bytes that follow it in the same reply,
+so raw data sent right after the marker is kept. (The same `~C` on a chart
+opener, `{=title~C|label…}`, clears the chart's plot data instead.)
 
 ### 6.5 Sub-menus / multiple screens
 

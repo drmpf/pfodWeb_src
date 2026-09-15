@@ -269,9 +269,14 @@ directory builds fine before its <code>family.json</code> is added (falling back
 the default (sorts after any family with an explicit value).</td></tr>
 </table>
 
-<p><code>board.json</code>'s <code>family</code> field picks which of four pin-map parsers
+<p><code>board.json</code>'s <code>family</code> field picks which pin-map parser
 <code>build_boards.js</code> uses — this is a different, code-level concept from the <em>directory</em>
-family (which is just where the file happens to live):</p>
+family (which is just where the file happens to live). Several <code>family</code> values map to the
+<strong>same</strong> parser function: <code>esp32</code>, <code>esp8266</code>, <code>rp2040</code>,
+<code>nrf52</code> and <code>adafruit_nrf52</code> are unrelated silicon/vendors, but all declare pins via the
+identical <code>static const uint8_t NAME = value;</code> convention, so they all route through
+<code>buildEsp32Board()</code> — adding a new chip family this way costs zero new parser code, only new data
+files (see section 8).</p>
 
 <table>
 <tr><th><code>family</code> value</th><th>Parser</th><th>Notes</th></tr>
@@ -281,6 +286,23 @@ family (which is just where the file happens to live):</p>
 <tr><td><code>esp32</code></td><td><code>buildEsp32Board()</code></td>
     <td>Reads <code>static const/constexpr uint8_t NAME = value;</code> pin aliases
     (<code>TX</code>, <code>RX</code>, <code>SDA</code>, <code>A0..A19</code>, <code>DAC1</code>, ...).</td></tr>
+<tr><td><code>esp8266</code></td><td><code>buildEsp32Board()</code></td>
+    <td>Same alias convention as <code>esp32</code>, kept as a separate <code>family</code>/directory family
+    so the Designer's target picker lists ESP8266 on its own.</td></tr>
+<tr><td><code>rp2040</code></td><td><code>buildEsp32Board()</code></td>
+    <td>Same alias convention (arduino-pico core), covers both RP2040 and RP2350 chip buckets.</td></tr>
+<tr><td><code>nrf52</code></td><td><code>buildEsp32Board()</code></td>
+    <td>Same alias convention (Adafruit_nRF52_Arduino-derived "Seeed nRF52 Boards" core). Serial is native
+    USB-CDC on every current board in this family, not a UART — see the warning below about a vendor
+    header's own generic <code>TX</code>/<code>RX</code> aliases naming an optional secondary UART instead of
+    the real pfod connection.</td></tr>
+<tr><td><code>adafruit_nrf52</code></td><td><code>buildEsp32Board()</code></td>
+    <td>Adafruit's own upstream Adafruit_nRF52_Arduino core (the core Seeed forked for <code>nrf52</code>
+    above) — deliberately kept as a SEPARATE family/directory tree from <code>nrf52</code> even though most
+    of its boards share the same nRF52840 silicon, so the two vendors' boards list separately in the target
+    picker. Covers nRF52832 (no native USB — Serial is a real dedicated UART on this chip, forced via
+    chipGpios) as well as nRF52833/nRF52840 (native USB, same optional-secondary-UART situation as
+    <code>nrf52</code>).</td></tr>
 <tr><td><code>ccode</code></td><td><code>buildCcodeBoard()</code></td>
     <td>"Minimal C Code" target — no Arduino core, no pins at all.
     <code>pins_arduino.h</code> is a stub whose contents are never parsed; always emits <code>pins: []</code>.
@@ -293,6 +315,17 @@ family (which is just where the file happens to live):</p>
     <code>editMenuItem.js</code>/<code>editChart.js</code>'s <code>canPlaceholder</code> logic) instead of a
     real pin list.</td></tr>
 </table>
+
+<div class="note"><strong>A vendor's generic "TX"/"RX" alias may not name the board's real serial pins.</strong>
+<code>buildEsp32Board()</code> unconditionally treats whatever GPIO a <code>pins_arduino.h</code> aliases as
+bare <code>TX</code>/<code>RX</code> as the board's dedicated primary serial port — correct for ESP32/ESP8266,
+where that alias really is the UART0 pair the <code>Serial</code> object uses. It is NOT automatically correct
+for a chip whose <code>Serial</code> object is native USB-CDC (no GPIO at all) and whose vendor header still
+declares a generic <code>TX</code>/<code>RX</code> alias for some other, optional UART — that alias will
+wrongly get excluded from every other capability. Fix it in your own copy of the file by deleting (not
+commenting out — this parser has no C-comment awareness, see the pin-audit playbook's parser-gotchas section)
+the offending alias declaration; see <code>variants/nrf52/nrf52840/Seeed_XIAO_nRF52840_Plus/pins_arduino.h</code>
+for a worked example.</div>
 </section>
 
 <!-- ============================================================ -->
@@ -342,6 +375,12 @@ used for <code>board.json</code>/<code>family.json</code>:</p>
 (any chip: esp32, esp32s3, esp32c3, ...) — sits at the family root so all of them inherit it.</td></tr>
 <tr><td><code>variants/esp32/tcp.ino</code></td><td>TCP/IP Socket connection, same family-root scope.</td></tr>
 <tr><td><code>variants/esp32/http.ino</code></td><td>HTTP connection, same family-root scope.</td></tr>
+<tr><td><code>variants/nrf52/ble.ino</code></td><td>BLE connection for the nRF52 family, using the
+Adafruit Bluefruit <code>BLEUart</code> class — which already implements the Stream interface directly, unlike
+ESP32's BLE library, so this template needs no custom Stream wrapper class.</td></tr>
+<tr><td><code>variants/adafruit_nrf52/ble.ino</code></td><td>BLE connection for the adafruit_nrf52 family —
+same Bluefruit <code>BLEUart</code> approach as <code>variants/nrf52/ble.ino</code> above (same underlying
+core), duplicated rather than shared since the two are separate family-root directory trees.</td></tr>
 </table>
 
 <p>The filename (minus <code>.ino</code>) is the connection id — it must match one of the strings that can

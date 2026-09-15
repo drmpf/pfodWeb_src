@@ -238,6 +238,28 @@ function decodeEscapes(str) {
 }
 
 /**
+ * Markdown link in pfod text: `[text](url)`.
+ *
+ * Group 1 is the link text — anything between the brackets that contains no
+ * bracket, so inline format tags inside it are fine and nested [ ] is not.
+ * Group 2 is the url, and it MUST begin `http://`, `https://` or a single `/`
+ * (a page on the device's own web root — see pfodLinkHref in
+ * pfodButtonRenderer.js).  That one constraint is what keeps ordinary prose
+ * safe ("Battery [12] (%)" has [..](..) but "%" is not a url) and is the
+ * security boundary (javascript: never matches).  `//host/x` is excluded by
+ * the (?!\/) so a link is either a full url or a device path, never a
+ * scheme-relative third thing.  The url runs to the closing `)` and so
+ * cannot contain spaces or parentheses.
+ *
+ * Only pfodSetFormattedText renders these as links, and only when its caller
+ * allows it (menu labels and the prompt bars).  Everywhere else — buttons,
+ * drawing text — the text is shown exactly as the device sent it, brackets
+ * and all.  Defined here because redraw.js loads before
+ * pfodButtonRenderer.js in the bundle.
+ */
+const PFOD_MD_LINK_RE = /\[([^\[\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s()]+)\)/g;
+
+/**
  * Parse pfod inline format tags from text and return a flat array of styled segments.
  * Segment shape: {text, bold, italic, underline, deltaSize, color}
  * Tags: <b> <i> <u> <+N> <-N> colour-name/hex/index tags; </tag> closes matching open tag.

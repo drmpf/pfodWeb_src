@@ -1,0 +1,86 @@
+Board: Adafruit Metro nRF52840 Express
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/metro_nrf52840_express/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/metro_nrf52840_express/
+   variant.h — PRIMARY and only source needed. Full-size Arduino
+   Uno-shield-compatible form factor with 2 LEDs, 2 buttons, and a
+   single NeoPixel, otherwise structurally identical to the Feather
+   nRF52840 Express layout (same A0-A7/SPI/Wire/QSPI pin numbers).
+   PIN_NFC2 is declared as (51), exceeding this board's own
+   NUM_DIGITAL_PINS=48 — a vendor typo/out-of-range value, harmless
+   here since it's #define-only and never aliased via static const, so
+   it can never be picked up by this parser regardless.
+
+DECISIONS
+=========
+TAGGED: GPIO33 (PIN_LED1) led_high, GPIO34 (PIN_LED2) led_high, GPIO37
+(PIN_BUTTON1) button, GPIO36 (PIN_BUTTON2) button, GPIO35 (PIN_NEOPIXEL)
+led_neopixel.
+
+KEPT available: A0-A7 (GPIO14-21), SPI bus (GPIO5,24-26), Wire bus
+(GPIO22-23), and the full Uno-shield-style digital header (indices
+0-13ish) — this board's variant.h declares no D<n> aliases at all (pins
+referenced by plain number, not "D5"-style), and nothing in the file
+indicates any of these are dedicated to onboard hardware.
+
+NOT EXPOSED: QSPI flash (GPIO27-32), NFC1/NFC2 (GPIO2/51), Serial1
+(GPIO0/1) — all #define-only.
+
+POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested — "recheck
+pins against adafruit website docs"): searched specifically for
+"Metro nRF52840 Express" on Adafruit's own site and Learn system —
+FOUND NO PUBLIC PRODUCT PAGE OR LEARN GUIDE for this exact board,
+despite it having a real, complete `board.json`/`variant.h` entry in
+the vendor BSP under this exact name. At this point every decision
+below still rested only on variant.h — see the SECOND re-check for how
+this was independently confirmed anyway.
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+found a genuinely new, board-specific, official source not surfaced by
+the earlier product-page searches: github.com/adafruit/
+Adafruit_nRF52_Bootloader/src/boards/metro_nrf52840_express/board.h —
+the actual UF2 bootloader's own board definition for this exact
+product (BLEDIS_MODEL="Metro nRF52840 Express", confirming this is a
+real, named, official Adafruit product even without a Learn guide).
+Declares: `LED_PRIMARY_PIN=PINNUM(1,13)`, `LED_SECONDARY_PIN=
+PINNUM(1,15)`, `LED_STATE_ON=1`, `LED_NEOPIXEL=PINNUM(0,13)`,
+`BUTTON_DFU=PINNUM(1,0)`. Cross-referenced against this board's own
+variant.cpp g_ADigitalPinMap (which annotates each Arduino index with
+its physical address and a plain-English label):
+  D33 is P1.13 (LED1)      -> matches LED_PRIMARY_PIN exactly
+  D34 is P1.15 (LED2)      -> matches LED_SECONDARY_PIN exactly
+  D35 is P0.13 (NeoPixel)  -> matches LED_NEOPIXEL exactly
+  D37 is P1.00 (SWO/DFU)   -> matches BUTTON_DFU exactly (confirms
+                              PIN_BUTTON1/GPIO37 is the DFU-entry
+                              button specifically, not just "a" button)
+  D36 is P1.02 (Switch)    -> a separate, general-purpose button
+                              (PIN_BUTTON2/GPIO36) distinct from DFU
+Every LED/button tag in this board's board.json is now CONFIRMED, not
+assumed — no remaining "no documentation" caveat for this board's
+core decisions.
+
+One additional finding, not acted on: variant.cpp's own comments show
+the REAL NFC1/NFC2 physical pins (P0.09/P0.10, the fixed nRF52840
+silicon default across this entire family) sit at Arduino indices 38
+and 39 on the array — but this board's own variant.h separately
+declares `#define PIN_NFC1 (2)` and `#define PIN_NFC2 (51)`, neither
+of which matches. This looks like a genuine vendor inconsistency
+between the header and the array (possibly stale/copy-pasted values),
+but has ZERO effect on this repo's output: none of PIN_NFC1/PIN_NFC2/
+the array's own D38/D39 are ever aliased via `static const uint8_t`
+anywhere, so all of them are already invisible to this parser
+regardless of which value is "correct." Documented for completeness,
+not treated as needing a fix.
+
+NOT GUESSED: every tag now independently confirmed via the official
+Adafruit bootloader source and this board's own variant.cpp, not just
+variant.h alone.
+
+SUMMARY: 48 total Arduino pin indices (0-47); 5 tagged (2 LED, 2
+button, 1 NeoPixel); remainder kept general-purpose with no confirmed
+dedicated consumer.

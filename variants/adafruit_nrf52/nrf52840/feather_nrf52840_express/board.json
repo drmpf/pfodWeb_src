@@ -1,0 +1,59 @@
+{
+  "boardName": "feather_nrf52840_express",
+  "displayName": "Adafruit Feather nRF52840 Express",
+
+  "family": "adafruit_nrf52",
+
+  "inputOnlyGpios": [],
+
+  // nRF52840 has native USB — Serial is native USB-CDC, no GPIO
+  // involved. PIN_SERIAL1_RX/TX (1/0) are an OPTIONAL secondary
+  // hardware UART, never aliased as bare "RX"/"TX" in this file, so the
+  // parser's forced-dedicated-serial-pin behavior never triggers for
+  // them — they stay available as ordinary GPIO (matching the Seeed
+  // XIAO nRF52840 family's identical situation).
+  "connections": ["serial", "ble"],
+
+  "pinNotes": {},
+
+  // Sources: this repo's own Adafruit_nrf52/variants/
+  // feather_nrf52840_express/variant.h (vendor's own BSP). LED polarity
+  // confirmed via WebSearch against Adafruit's own Learn guide
+  // ("Introducing the Adafruit nRF52840 Feather") example code, which
+  // uses `digitalWrite(LED_BUILTIN, HIGH)` to turn the LED ON — matches
+  // variant.h's own LED_STATE_ON=1 exactly, establishing that (unlike
+  // the Seeed XIAO nRF52840 family, whose LED_STATE_ON macro was found
+  // to be wrong) Adafruit's own first-party LED_STATE_ON macro is
+  // reliable and can be trusted directly for the rest of this family.
+  //
+  // Only the confirmed LED/button/NeoPixel pins get an entry below —
+  // every other dedicated-hardware pin in this file (NEOPIXEL_POWER,
+  // QSPI flash, NFC1/NFC2) is declared ONLY via #define, never aliased
+  // via `static const uint8_t`, so it is already invisible to the
+  // parser by default and needs no exclusion entry (matches the
+  // established "un-aliased pins simply don't appear" behavior already
+  // relied on elsewhere in this repo, e.g. ESP32-S3 Feather's identical
+  // NEOPIXEL_POWER situation). A0-A7/SPI/Wire keep their normal default
+  // capabilities — none of them have a confirmed dedicated consumer on
+  // this specific board (A6/VBAT is a plain resistor-divider battery
+  // read with no enable-sequencing pin the way the XIAO family's VBAT
+  // needs, so it's safe to leave as a normal analog_input; A7/AREF is a
+  // user-available external-reference input, also safe to leave
+  // general-purpose).
+  "chipGpios": {
+    "3": { "capabilities": ["digital_output", "pwm_output", "led_high"],
+            "note": "PIN_LED1/LED_BUILTIN/LED_RED — active-high" },
+    "4": { "capabilities": ["digital_output", "pwm_output", "led_high"],
+            "note": "PIN_LED2/LED_CONN/LED_BLUE — active-high" },
+    "7": { "capabilities": ["digital_input", "button"],
+            "note": "PIN_BUTTON1" },
+    "8": { "capabilities": ["digital_output", "pwm_output", "led_neopixel"],
+            "note": "PIN_NEOPIXEL — power gated by GPIO34, drive HIGH first" }
+  },
+
+  "pwm": { "min": 0, "max": 255, "method": "analogWrite" },
+
+  "dac": {},
+
+  "adc": { "bits": 14, "max": 16383, "defaultRefVolts": "3.6" }
+}

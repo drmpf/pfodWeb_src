@@ -153,6 +153,37 @@
         .toolbar-button:disabled svg {
             opacity: 0.35;
         }
+        /* Reload button doubles as the busy indicator: while a cmd is out
+           and the reply is pending (requestQueue.js _showToolbarBusy,
+           driven by the sentRequest setter, held lit for at least 150 ms)
+           the button goes amber with a black spinning icon — the same
+           convention as the red Freeze button.  id+class outranks
+           .toolbar-button:hover/:active, so hovering does not un-light
+           it.  The icon's white is set as SVG presentation attributes,
+           which these rules override.  transform-box keeps the rotation
+           centred on the drawn icon, whose viewBox is offset to make room
+           for the arrow tip. */
+        #btn-reload.pfod-busy {
+            background-color: #E69500;
+        }
+        #btn-reload.pfod-busy svg path    { stroke: black; }
+        #btn-reload.pfod-busy svg polygon { fill: black; }
+        #btn-reload.pfod-busy svg {
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: pfod-busy-spin 0.9s linear infinite;
+        }
+        @keyframes pfod-busy-spin {
+            to { transform: rotate(360deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #btn-reload.pfod-busy svg {
+                animation: pfod-busy-pulse 1s ease-in-out infinite;
+            }
+            @keyframes pfod-busy-pulse {
+                50% { opacity: 0.3; }
+            }
+        }
         /* Freeze button: highlight red when active (frozen) */
         #btn-freeze.freeze-active {
             background-color: #cc0000;
@@ -441,13 +472,16 @@
             font-size: var(--pfod-font-size);
             line-height: var(--pfod-line-height);
         }
-        /* Limit streaming panel to menu width, centred — raw-data msgs use menu layout */
+        /* Streaming panel fills the page width, like the toolbar under it —
+           a log line is wide and the old 500px menu-width cap left most of
+           a desktop window blank while the text scrolled sideways.  The
+           font still scales with the panel (4cqi, container-query units)
+           but is capped at what it was at 500px (20px), so widening the
+           window gives more characters per line, not bigger characters. */
         #streaming-data-display {
-            max-width: 500px;
-            align-self: center;
             width: 100%;
             container-type: inline-size;
-            --pfod-font-size: 4cqi;
+            --pfod-font-size: min(4cqi, 20px);
         }
         /* Streaming content area — uses same base font size as menu items */
         #streaming-data-content {
@@ -1769,6 +1803,16 @@
         .pfod-menu-label.pfod-empty-label {
             padding: 0;
             line-height: 0.3;
+        }
+        /* A [text](url) link in a label or prompt bar (pfodSetFormattedText
+           with allowLinks).  Inherits the surrounding text colour so the
+           <bw> contrast default still holds on any background; the
+           underline is the affordance.  Any inline <+N>/<colour> span
+           sits inside the anchor and styles it as usual. */
+        a.pfod-link {
+            color: inherit;
+            text-decoration: underline;
+            cursor: pointer;
         }
         /* pfod Toggle Button (interactive, has text and/or switch) */
         .pfod-toggle-button {

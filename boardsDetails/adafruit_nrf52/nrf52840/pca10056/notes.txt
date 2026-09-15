@@ -1,0 +1,62 @@
+Board: Nordic nRF52840 DK (PCA10056)
+Chip: Nordic nRF52840 (Adafruit_nRF52_Arduino core)
+Variant dir: variants/adafruit_nrf52/nrf52840/pca10056/
+Date: 2026-09-13
+
+SOURCES CONSULTED
+=================
+1. This repo's own Adafruit_nrf52/variants/pca10056/variant.h — PRIMARY
+   source. 4 LEDs, 4 buttons, dual-UART setup (Arduino-header D0/D1 plus
+   a separate J-Link-CDC virtual COM port, both optional/secondary since
+   this chip has native USB).
+2. LED polarity (LED_STATE_ON=0, active-low) trusted directly — this is
+   the well-known, standard Nordic DK LED wiring convention (all Nordic
+   reference dev kits, including the nRF52832/nRF52833/nRF5340 DKs,
+   wire their 4 LEDs active-low), not independently re-verified via a
+   fresh web search this pass.
+
+PARSER-LEVEL FINDING — REQUIRED A SOURCE EDIT
+==============================================
+Same hex-sentinel bug as itsybitsy_nrf52840_express (see that board's
+notes.txt for the full mechanism write-up): this board's variant.h
+declares BOTH `PIN_A6` and `PIN_A7` as `(0xff)`, each aliased via a bare
+`static const uint8_t A6/A7 = ...` line. build_boards.js's regex
+misreads "0xff" as decimal "0" for both, which would have created a
+phantom "A6/A7 (GPIO0)" pin (both colliding on the same wrong number).
+FIX: deleted both alias lines outright from this repo's copy.
+
+DECISIONS
+=========
+TAGGED: GPIO13-16 (PIN_LED1-4) led_low. GPIO11/12/24/25 (PIN_BUTTON1-4)
+button.
+
+KEPT available: A0-A5 (GPIO3,4,28-31), AREF (GPIO2), Serial1 (Arduino
+header D0/D1, GPIO33/34), Serial2 (J-Link CDC, GPIO6/8), SPI bus
+(GPIO44-47), Wire bus (GPIO26/27) — none have a confirmed dedicated
+onboard consumer; this is a bare reference dev kit with a full
+breakout header, not a product with fixed onboard sensors.
+
+NOT EXPOSED: QSPI flash (GPIO17,19-23), NFC1/NFC2 (GPIO9/10) —
+#define-only.
+
+SECOND POST-REVIEW RE-CHECK (2026-09-13, same day, user-requested
+again — "recheck remaining boards against adafruit website docs"):
+found and fetched github.com/adafruit/Adafruit_nRF52_Bootloader/src/
+boards/pca10056/board.h directly (BLEDIS_MANUFACTURER="Nordic",
+BLEDIS_MODEL="PCA10056"). Declares `LED_PRIMARY_PIN=13`,
+`LED_SECONDARY_PIN=14`, `LED_STATE_ON=0`, `BUTTON_DFU=11`,
+`BUTTON_DFU_OTA=12` — matching this board's own PIN_LED1=13/LED2=14/
+LED_STATE_ON=0/PIN_BUTTON1=11/PIN_BUTTON2=12 EXACTLY, with zero
+translation needed (nRF52840 DK's bootloader also uses flat/direct pin
+numbering matching this repo's own Arduino indices directly). This
+independently confirms the "standard Nordic DK active-low LED"
+assumption for this specific board via a genuine, board-specific,
+official source — no longer relying on general convention alone.
+
+NOT GUESSED: LED/button identity trace to unambiguous vendor macros,
+independently confirmed via the official Adafruit bootloader source
+(not just general Nordic DK convention).
+
+SUMMARY: 48 total Arduino pin indices (0-47, A6/A7 GPIO0-phantom bug
+fixed at the source); 8 tagged (4 LED, 4 button); remainder (A0-A5/
+AREF/Serial1/Serial2/SPI/Wire) kept general-purpose.
