@@ -35,6 +35,9 @@ class MessageCollector {
     this.pendingRawText = '';     // characters received but not shown yet
     this.pendingRawProtocol = null; // protocol the pending characters came from
     this.pendingRawTimer = null;  // setTimeout id for the partial-line flush
+    // msgType of the most recently sent request, consumed by the next
+    // 'received' entry -- see addMessage()'s doc comment.
+    this._pendingResponseType = null;
     // console.log('[MESSAGE_COLLECTOR Created with max messages:', maxMessages);
   }
 
@@ -73,7 +76,7 @@ class MessageCollector {
     if (lastNewline !== -1) {
       const completeLines = this.pendingRawText.substring(0, lastNewline + 1);
       this.pendingRawText = this.pendingRawText.substring(lastNewline + 1);
-      this.addEntry('received', completeLines, protocol, null);
+      this.addEntry('received', completeLines, protocol, null, 'raw');
     }
 
     // Whatever is left is a partial line - wait a little for the rest of it.
@@ -99,7 +102,7 @@ class MessageCollector {
     }
     const text = this.pendingRawText;
     this.pendingRawText = '';
-    this.addEntry('received', text, this.pendingRawProtocol, null);
+    this.addEntry('received', text, this.pendingRawProtocol, null, 'raw');
   }
 
   /**
@@ -113,7 +116,32 @@ class MessageCollector {
   }
 
   /**
+   * Classify an entry for the Raw Message Viewer's Messages filter, once, at
+   * creation time -- 'pfod' (a {...} command), 'keepAlive' (the exact {  }
+   * no-op ping, sent-only), 'raw' (non-pfod text, tagged directly by the
+   * addRawText()/flushRawText() callers instead of going through here), or
+   * the two pre-existing non-pfod direction values passed straight through.
+   * @param {string} direction
+   * @param {string} cmd - clean, unprefixed cmd (see addMessage() doc) or null
+   */
+  _classifyMsgType(direction, cmd) {
+    if (direction === 'timeout') return 'timeout';
+    if (direction === 'excess >1024') return 'excess';
+    if (cmd && cmd.trim() === '{ }') return 'keepAlive';
+    return 'pfod';
+  }
+
+  /**
    * Add a message to the collector
+   *
+   * A 'received' entry has no cmd of its own to classify by (cmd is only
+   * ever passed for 'sent') -- pfod is strictly one-request-at-a-time
+   * request/response, `{ }` is never a valid device-initiated cmd, so a
+   * 'received' entry is always the reply to whatever was most recently
+   * sent, and inherits that entry's msgType (_pendingResponseType) instead
+   * of falling through to a bare 'pfod'.  This is what lets "pfod -
+   * keepAlive" hide a keepAlive's own reply, not just the ping itself.
+   *
    * @param {string} direction - 'sent' or 'received'
    * @param {string} message - The raw message text
    * @param {string} protocol - 'http', 'serial', or 'ble'
@@ -125,7 +153,18 @@ class MessageCollector {
     }
     // Buffered OUTSIDE text was received before this message - show it first.
     this.flushRawText();
-    this.addEntry(direction, message, protocol, cmd);
+    let msgType;
+    if (direction === 'received' && this._pendingResponseType !== null) {
+      msgType = this._pendingResponseType;
+    } else {
+      msgType = this._classifyMsgType(direction, cmd);
+    }
+    // The request/response cycle ends here one way or another (a normal
+    // reply, a timeout, or an oversized/truncated blob) -- clear the
+    // pending marker so it can never leak onto some later, unrelated
+    // 'received' entry.  A fresh 'sent' immediately repopulates it below.
+    this._pendingResponseType = (direction === 'sent') ? msgType : null;
+    this.addEntry(direction, message, protocol, cmd, msgType);
   }
 
   /**
@@ -135,15 +174,17 @@ class MessageCollector {
    * @param {string} message - The raw message text
    * @param {string} protocol - 'http', 'serial', 'tcp' or 'ble'
    * @param {string} cmd - Optional command that was sent (for reference)
+   * @param {string} msgType - 'pfod', 'raw', 'keepAlive', 'timeout' or 'excess'
    */
-  addEntry(direction, message, protocol, cmd) {
+  addEntry(direction, message, protocol, cmd, msgType) {
     const entry = {
       timestamp: new Date().toISOString(),
       direction: direction,
       protocol: protocol,
       message: message,
       cmd: cmd,
-      size: message ? message.length : 0
+      size: message ? message.length : 0,
+      msgType: msgType
     };
 
     this.messages.push(entry);
@@ -236,10 +277,12 @@ class MessageCollector {
    * Export messages as JSON, with ms field (ms since first message timestamp)
    * and bytes field (raw uint8_t wire-byte count — pfod is a text protocol
    * with one wire byte per character, so this is the JS string length).
+   * @param {object[]} [messages] - defaults to every collected message; the
+   *        Raw Message Viewer passes its currently filtered/displayed list.
    */
-  exportAsJSON() {
-    const t0 = this.messages.length > 0 ? new Date(this.messages[0].timestamp).getTime() : 0;
-    const withMs = this.messages.map(msg => {
+  exportAsJSON(messages = this.messages) {
+    const t0 = messages.length > 0 ? new Date(messages[0].timestamp).getTime() : 0;
+    const withMs = messages.map(msg => {
       const ms = new Date(msg.timestamp).getTime() - t0;
       const bytes = msg.message ? msg.message.length : 0;
       return { timestamp: msg.timestamp, ms, direction: msg.direction, bytes, message: msg.message };
@@ -251,15 +294,17 @@ class MessageCollector {
    * Export messages as CSV, with ms column (ms since first message timestamp)
    * and bytes column (raw uint8_t wire-byte count — pfod is a text protocol
    * with one wire byte per character, so this is the JS string length).
+   * @param {object[]} [messages] - defaults to every collected message; the
+   *        Raw Message Viewer passes its currently filtered/displayed list.
    */
-  exportAsCSV() {
-    if (this.messages.length === 0) {
+  exportAsCSV(messages = this.messages) {
+    if (messages.length === 0) {
       return 'timestamp,ms,direction,bytes,message\n';
     }
 
-    const t0 = new Date(this.messages[0].timestamp).getTime();
+    const t0 = new Date(messages[0].timestamp).getTime();
     const header = 'timestamp,ms,direction,bytes,message\n';
-    const rows = this.messages.map(msg => {
+    const rows = messages.map(msg => {
       const ms = new Date(msg.timestamp).getTime() - t0;
       const bytes = msg.message ? msg.message.length : 0;
       const message = msg.message.replace(/"/g, '""').replace(/\n/g, '\\n'); // Escape quotes; represent newlines as \n
@@ -278,7 +323,7 @@ class RawMessageViewer {
     this.collector = messageCollector;
     this.containerId = containerId;
     this.isVisible = false;
-    this.filterDirection = 'all'; // 'all', 'sent', 'received', 'timeout'
+    this.filterMessages = 'all'; // 'all', 'pfod', 'raw', 'pfod-no-keepalive'
     this.autoScroll = true;
     this.messageViews = []; // Store references to message view elements for scrolling
 
@@ -323,11 +368,11 @@ class RawMessageViewer {
           </div>
           <div class="raw-message-toolbar">
             <div class="raw-message-filters">
-              <select id="raw-msg-filter-direction" class="raw-message-filter">
-                <option value="all">Direction: All</option>
-                <option value="sent">Direction: Sent</option>
-                <option value="received">Direction: Received</option>
-                <option value="timeout">Direction: Timeout</option>
+              <select id="raw-msg-filter-messages" class="raw-message-filter">
+                <option value="all">Messages: All</option>
+                <option value="pfod">Messages: pfod</option>
+                <option value="raw">Messages: raw</option>
+                <option value="pfod-no-keepalive">Messages: pfod - keepAlive</option>
               </select>
             </div>
             <div class="raw-message-buttons">
@@ -574,10 +619,10 @@ class RawMessageViewer {
     if (!closeBtn) throw new Error('[messageViewer] attachEventListeners: #raw-message-close-btn not found');
     closeBtn.addEventListener('click', () => this.hide());
 
-    const filterDir = document.getElementById('raw-msg-filter-direction');
-    if (!filterDir) throw new Error('[messageViewer] attachEventListeners: #raw-msg-filter-direction not found');
-    filterDir.addEventListener('change', (e) => {
-      this.filterDirection = e.target.value;
+    const filterMsg = document.getElementById('raw-msg-filter-messages');
+    if (!filterMsg) throw new Error('[messageViewer] attachEventListeners: #raw-msg-filter-messages not found');
+    filterMsg.addEventListener('change', (e) => {
+      this.filterMessages = e.target.value;
       this.updateMessageDisplay();
     });
 
@@ -698,10 +743,12 @@ class RawMessageViewer {
    * Check if message should be displayed based on current filters
    */
   shouldDisplayMessage(entry) {
-    if (this.filterDirection !== 'all' && entry.direction !== this.filterDirection) {
-      return false;
+    switch (this.filterMessages) {
+      case 'pfod':              return entry.msgType === 'pfod' || entry.msgType === 'keepAlive';
+      case 'raw':               return entry.msgType === 'raw';
+      case 'pfod-no-keepalive': return entry.msgType === 'pfod';
+      default:                  return true; // 'all'
     }
-    return true;
   }
 
   /**
@@ -887,10 +934,12 @@ class RawMessageViewer {
   }
 
   /**
-   * Export messages as JSON file
+   * Export messages as JSON file. Exports the currently filtered/displayed
+   * list (same predicate updateMessageDisplay() uses), not the full log.
    */
   exportJSON() {
-    const json = this.collector.exportAsJSON();
+    const filtered = this.collector.getMessages().filter(msg => this.shouldDisplayMessage(msg));
+    const json = this.collector.exportAsJSON(filtered);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -902,10 +951,12 @@ class RawMessageViewer {
   }
 
   /**
-   * Export messages as CSV file
+   * Export messages as CSV file. Exports the currently filtered/displayed
+   * list (same predicate updateMessageDisplay() uses), not the full log.
    */
   exportCSV() {
-    const csv = this.collector.exportAsCSV();
+    const filtered = this.collector.getMessages().filter(msg => this.shouldDisplayMessage(msg));
+    const csv = this.collector.exportAsCSV(filtered);
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

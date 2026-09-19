@@ -70,14 +70,52 @@ const DesignerEditMenuItems = (() => {
     return parseInt(s, 10);
   }
 
+  /// Truncate `text` to at most `maxVisible` non-tag characters,
+  /// copying every inline <...> format tag encountered up to that
+  /// point straight through untouched (a tag is never split — met
+  /// mid-scan, its whole `<...>` span is copied for free, uncounted)
+  /// so truncated text keeps its own formatting.  A tag still open at
+  /// the cut point auto-terminates at end of string (pfod's own rule,
+  /// see pfodButtonRenderer.js), so nothing needs closing here.
+  /// Appends an ellipsis only when something was actually cut.
+  function _truncateKeepingFormat(text, maxVisible) {
+    let visible = 0;
+    let i = 0;
+    let out = '';
+    while (i < text.length) {
+      if (text[i] === '<') {
+        const close = text.indexOf('>', i + 1);
+        if (close !== -1) {
+          out += text.substring(i, close + 1);
+          i = close + 1;
+          continue;
+        }
+      }
+      if (visible >= maxVisible) break;
+      out += text[i];
+      visible++;
+      i++;
+    }
+    return i < text.length ? out + '…' : out;
+  }
+
   /// `\n`→space + trim + single-space fallback.  Mirrors Java
   /// V2_MenuItem.getLeadingTextNoFormat (java/pfodAppBase/MenuItems/
   /// V2_MenuItem.java line 192-199).  Same helper shape as
   /// moveMenuItems / deleteMenuItems.
+  ///
+  /// Button/label text can run long, making for an unusably wide row
+  /// in this list — cut to 15 visible characters via
+  /// _truncateKeepingFormat, which keeps the item's own formatting
+  /// tags intact rather than stripping them.
   function _leadingText(item) {
     const raw     = item.text || '';
     const trimmed = raw.replace(/\n/g, ' ').trim();
-    return trimmed.length > 0 ? trimmed : ' ';
+    const display = trimmed.length > 0 ? trimmed : ' ';
+    if (item.type === 'button' || item.type === 'label') {
+      return _truncateKeepingFormat(display, 15);
+    }
+    return display;
   }
 
   /// Type-tag suffix appended beneath the leading text on each row

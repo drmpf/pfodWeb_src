@@ -487,12 +487,26 @@ function _freshDataDisplayItem(autoCmd, adcMax, adcRefVolts) {
 const PULSE_TYPES = Object.freeze(['none', 'low', 'high']);
 
 /// Derive a unique autoCmd string for a new item.  Base form is
-/// `type + '_' + text` with spaces replaced by underscores (minimal
-/// sanitisation — only spaces change).  When the base collides with
-/// an existing autoCmd in the same menu, a `_2`, `_3`, … suffix is
-/// appended until the result is unique.
+/// `type + '_' + text + '_Cmd'`.  `text` is first sanitised: any
+/// inline <b>/<+1>/<r>-style format tag is stripped out whole (not
+/// just its punctuation — the tag's own letters/digits, e.g. the 'b'
+/// in <b>, never become part of the name), then any run of remaining
+/// non-alphanumeric characters (spaces, newlines) collapses to a
+/// single '_', then the result is capped at 15 characters, so a long
+/// or heavily-formatted button/label doesn't produce an unusably long
+/// generated name (this is the single source _cppId/_pinConstName/
+/// generateCode's own C++ output and every "Cmd:"-style display all
+/// build on, so a short name here is short everywhere).  When the
+/// base collides with an existing autoCmd in the same menu, a `_2`,
+/// `_3`, … suffix is appended until the result is unique.
 function _makeAutoCmd(type, text, existingItems) {
-  const base = type + '_' + (text || '').trim().replace(/ /g, '_').replace(/_+$/, '') + '_Cmd';
+  const cleaned = (text || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .substring(0, 15)
+    .replace(/_+$/, '');
+  const base = type + '_' + cleaned + '_Cmd';
   const used = new Set((existingItems || []).map((it) => it && it.autoCmd).filter(Boolean));
   if (!used.has(base)) return base;
   for (let n = 2; ; n++) {

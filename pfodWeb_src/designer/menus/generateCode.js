@@ -62,18 +62,27 @@ const DesignerGenerateCode = (() => {
     return id;
   }
 
-  /// PascalCase an item's label text for a per-item hook method name —
-  /// split on any run of non-alphanumeric chars, capitalize the first
-  /// letter of each word and lowercase the rest, join with no separator.
-  /// "Output is" -> "OutputIs", "PWM Setting" -> "PwmSetting",
-  /// "Button sub" -> "ButtonSub" — matches Menu_ex_4's own hook names
-  /// (onOutputIsChanged / onPwmSettingChanged / onButtonSubPressed).
+  /// PascalCase an item's label text for a per-item hook method name.
+  /// Inline <b>/<+1>/<r>-style format tags are stripped out whole first
+  /// (their own letters/digits, e.g. the 'r' in <r>, never become part
+  /// of the name), then the remainder is split on any run of
+  /// non-alphanumeric chars, each word capitalised (first letter up,
+  /// rest down) and joined with no separator, then capped at 20
+  /// characters so a long or heavily-formatted label can't blow out
+  /// the generated hook name — the 'on'/'Changed'/'Pressed' affixes in
+  /// _computeHookNames are added on top of this and don't count
+  /// against the cap.  "Output is" -> "OutputIs", "PWM Setting" ->
+  /// "PwmSetting", "Button sub" -> "ButtonSub" — matches Menu_ex_4's
+  /// own hook names (onOutputIsChanged / onPwmSettingChanged /
+  /// onButtonSubPressed).
   function _pascalCase(s) {
     return (s || '')
+      .replace(/<[^>]*>/g, '')
       .split(/[^A-Za-z0-9]+/)
       .filter(Boolean)
       .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join('');
+      .join('')
+      .substring(0, 20);
   }
 
   /// Sanitize `base` (already a valid-ish identifier fragment, e.g. from
@@ -946,6 +955,7 @@ const DesignerGenerateCode = (() => {
     }
     out += 'static Print* debugPtr = NULL;  // local to this file\n';
     out += 'static const unsigned long refresh_ms = ' + menu.refresh_ms + '; // main menu refresh\n';
+    out += 'const char* mainMenuPromptText_var = "' + _cppStr(menu.promptText || '') + '"; // current prompt text -- change this + call sendMainMenu() or sendMainMenuUpdate() to update the prompt\n';
     if (_needsSwap01(items)) {
       out += 'static int swap01(int in);\n';
     }
@@ -954,9 +964,13 @@ const DesignerGenerateCode = (() => {
     }
     out += '\n';
 
-    // Int variable declarations for stateful items (onoff / pwm).
+    // Variable declarations for stateful items (onoff / pwm / label text).
     for (const item of items) {
-      if (item.type === 'onoff') {
+      if (item.type === 'label') {
+        const textVar = _intVarName(item.autoCmd);
+        const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'Label');
+        out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenuUpdate() to update the label\n';
+      } else if (item.type === 'onoff') {
         const intVar  = _intVarName(item.autoCmd);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'output');
         const initVar = (item.pin && item.pin.invertOutput) ? (item.current === 0 ? 1 : 0) : item.current;
@@ -1251,14 +1265,14 @@ const DesignerGenerateCode = (() => {
 
     // sendMainMenu
     const promptFmtStr = DesignerEditPrompt.buildPromptScreenFormat(menu.promptFormat);
-    const promptText   = _cppStr(menu.promptText || '');
 
     out += 'void pfodMainMenu::sendMainMenu(pfodParser& parser) {\n';
     out += '  // !! Remember to change the parser version string OR Clear the cache\n';
     out += '  //    every time you edit this method\n';
     out += '  parser.menu();  // start a Menu screen pfod message.  Send {,\n';
     out += '  // send menu background, format, prompt, refresh and version\n';
-    out += '  parser.print(F("' + _cppStr(promptFmtStr) + '~' + promptText + '"));' + _fmtComment(menu.promptFormat) + '\n';
+    out += '  parser.print(F("' + _cppStr(promptFmtStr) + '~"));' + _fmtComment(menu.promptFormat) + '\n';
+    out += '  parser.print(mainMenuPromptText_var); // output the current prompt text\n';
     out += '  parser.sendRefreshAndVersion(refresh_ms); // send the menu version \n';
     out += '  // send menu items\n';
 
@@ -1317,10 +1331,11 @@ const DesignerGenerateCode = (() => {
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(F("~' + textEsc + '"));\n';
       } else if (item.type === 'label') {
-        const textEsc = _cppStr(item.text || '');
+        const textVar = _intVarName(item.autoCmd);
         out += '  parser.label(' + _cmdVarName(item.autoCmd) + '); // start Label\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
-        out += '  parser.print(F("~' + textEsc + '"));\n';
+        out += '  parser.print(F("~"));\n';
+        out += '  parser.print(' + textVar + '); // output the current text\n';
       } else if (item.type === 'onoffdisplay') {
         const intVar     = _intVarName(item.autoCmd);
         const fmtChar    = item.displayFormat === 'text' ? 't' : item.displayFormat === 'slider' ? 's' : '';
@@ -1371,10 +1386,17 @@ const DesignerGenerateCode = (() => {
     out += '}\n';
     out += '\n';
 
-    // sendMainMenuUpdate
+    // sendMainMenuUpdate -- buttons/labels/charts/submenus/the prompt rarely
+    // change, so they are left out of the update by default to keep it small
+    // (only the pin-connectable onoff/pwm/onoffdisplay/datadisplay values and
+    // drawings, whose own content can change, are resent). A device that DOES
+    // need one of those pushed via the lightweight {;} path can override this
+    // virtual method in its own subclass and add the relevant
+    // parser.label(...)/parser.button(...)/prompt-header lines itself --
+    // sendMainMenu() (the full {,} resend) always carries their current value.
     out += 'void pfodMainMenu::sendMainMenuUpdate(pfodParser& parser) {\n';
     out += '  parser.menuUpdate();  // start an Update Menu pfod message. Send {;\n';
-    out += '  // send menu items\n';
+    out += '  // send menu items that should be updated\n';
 
     for (const item of items) {
       if (item.type === 'onoff') {
@@ -1395,16 +1417,6 @@ const DesignerGenerateCode = (() => {
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         out += '  parser.print(\'`\');\n';
         out += '  parser.print(' + intVar + '); // output the current value \n';
-      } else if (item.type === 'button') {
-        const disabledFlag = item.formats.disabled ? '!' : '';
-        out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button\n';
-        if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
-      } else if (item.type === 'chart') {
-        const disabledFlag = item.formats.disabled ? '!' : '';
-        out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button (chart)\n';
-        if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
-      } else if (item.type === 'label') {
-        out += '  parser.label(' + _cmdVarName(item.autoCmd) + '); // start Label\n';
       } else if (item.type === 'onoffdisplay') {
         const intVar = _intVarName(item.autoCmd);
         out += '  parser.onOffDisplay(' + _cmdVarName(item.autoCmd) + '); // start On/Off Display (outputs |!cmd)\n';
@@ -1415,8 +1427,6 @@ const DesignerGenerateCode = (() => {
         out += '  parser.onOffDisplay(' + _cmdVarName(item.autoCmd) + '); // start Data Display (outputs |!cmd)\n';
         out += '  parser.print(\'`\');\n';
         out += '  parser.print(' + intVar + '); // output the current value\n';
-      } else if (item.type === 'submenu') {
-        out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button (sub-menu)\n';
       } else if (item.type === 'drawing') {
         const disabledFlag = item.formats.disabled ? '!' : '';
         out += '  parser.print(F("|+")); // drawing menu item update\n';
@@ -1647,18 +1657,22 @@ const DesignerGenerateCode = (() => {
     }
 
     cpp += 'static const unsigned long refresh_ms = ' + subMenu.refresh_ms + ';\n';
+    cpp += 'const char* ' + className + '_promptText_var = "' + _cppStr(subMenu.promptText || '') + '"; // current prompt text -- change this + call sendMenu() or sendMenuUpdate() to update the prompt\n';
     if (_needsSwap01(items)) {
       cpp += 'static int swap01(int in);\n';
     }
     cpp += '\n';
 
-    // int variable declarations for this level's own stateful items —
-    // the pfodAutoCmd for each item is now a class member instead (see
-    // the .h section above).  An onoff on an inverting pin stores the
-    // SWAPPED initial value, matching _generateCpp's own initVar.
+    // variable declarations for this level's own stateful items (onoff /
+    // pwm / label text) — the pfodAutoCmd for each item is now a class
+    // member instead (see the .h section above).  An onoff on an inverting
+    // pin stores the SWAPPED initial value, matching _generateCpp's own
+    // initVar.
     for (const sItem of items) {
       const sLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
-      if (sItem.type === 'onoff') {
+      if (sItem.type === 'label') {
+        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenuUpdate() to update the label\n';
+      } else if (sItem.type === 'onoff') {
         const initVar = (sItem.pin && sItem.pin.invertOutput)
           ? (sItem.current === 0 ? 1 : 0) : sItem.current;
         cpp += 'int ' + _intVarName(sItem.autoCmd) + ' = ' + initVar + '; // \'' + sLabel + '\'\n';
@@ -1788,10 +1802,10 @@ const DesignerGenerateCode = (() => {
 
     // sendMenu -- full {, menu, format strings included.
     const promptFmtStr = DesignerEditPrompt.buildPromptScreenFormat(subMenu.promptFormat);
-    const promptText   = _cppStr(subMenu.promptText || '');
     cpp += 'void ' + className + '::sendMenu(pfodParser& parser) {\n';
     cpp += '  parser.menu();  // start a Menu screen pfod message.  Send {,\n';
-    cpp += '  parser.print(F("' + _cppStr(promptFmtStr) + '~' + promptText + '"));' + _fmtComment(subMenu.promptFormat) + '\n';
+    cpp += '  parser.print(F("' + _cppStr(promptFmtStr) + '~"));' + _fmtComment(subMenu.promptFormat) + '\n';
+    cpp += '  parser.print(' + className + '_promptText_var); // output the current prompt text\n';
     cpp += '  parser.sendRefreshAndVersion(refresh_ms);\n';
     for (const sItem of items) {
       const sLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
@@ -1808,10 +1822,11 @@ const DesignerGenerateCode = (() => {
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(F("~' + sTextEsc + '"));\n';
       } else if (sItem.type === 'label') {
-        const sTextEsc = _cppStr(sItem.text || '');
+        const sTextVar = _intVarName(sItem.autoCmd);
         cpp += '  parser.label(' + _cmdVarName(sItem.autoCmd) + '); // start Label -- \'' + sLabel + '\'\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
-        cpp += '  parser.print(F("~' + sTextEsc + '"));\n';
+        cpp += '  parser.print(F("~"));\n';
+        cpp += '  parser.print(' + sTextVar + '); // output the current text\n';
       } else if (sItem.type === 'onoff') {
         const sIntVar  = _intVarName(sItem.autoCmd);
         const sFmtChar = sItem.displayFormat === 'text' ? 't' : sItem.displayFormat === 'slider' ? 's' : '';
@@ -1864,9 +1879,16 @@ const DesignerGenerateCode = (() => {
     cpp += '  parser.endOfMsg();\n';
     cpp += '}\n\n';
 
-    // sendMenuUpdate -- {; current values only, no format strings.
+    // sendMenuUpdate -- buttons/labels/charts/submenus/the prompt rarely
+    // change, so they are left out of the update by default to keep it small
+    // (only the pin-connectable onoff/pwm values and drawings, whose own
+    // content can change, are resent). A device that DOES need one of those
+    // pushed via the lightweight {;} path can override this virtual method in
+    // its own subclass and add the relevant lines itself -- sendMenu() (the
+    // full {,} resend) always carries their current value.
     cpp += 'void ' + className + '::sendMenuUpdate(pfodParser& parser) {\n';
     cpp += '  parser.menuUpdate();  // start an Update Menu pfod message. Send {;\n';
+    cpp += '  // send menu items that should be updated\n';
     for (const sItem of items) {
       if (sItem.type === 'onoff') {
         cpp += '  parser.slider(' + _cmdVarName(sItem.autoCmd) + '); // start Slider\n';
@@ -1876,14 +1898,6 @@ const DesignerGenerateCode = (() => {
         cpp += '  parser.slider(' + _cmdVarName(sItem.autoCmd) + '); // start Slider\n';
         cpp += '  parser.print(\'`\');\n';
         cpp += '  parser.print(' + _intVarName(sItem.autoCmd) + '); // output the current value\n';
-      } else if (sItem.type === 'button') {
-        cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button\n';
-      } else if (sItem.type === 'chart') {
-        cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button (chart)\n';
-      } else if (sItem.type === 'label') {
-        cpp += '  parser.label(' + _cmdVarName(sItem.autoCmd) + '); // start Label\n';
-      } else if (sItem.type === 'submenu') {
-        cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button (nested sub-menu)\n';
       } else if (sItem.type === 'drawing') {
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
         cpp += '  parser.print(F("|+")); // drawing menu item update\n';

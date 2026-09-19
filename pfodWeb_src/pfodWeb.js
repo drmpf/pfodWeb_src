@@ -235,6 +235,16 @@ class DrawingViewer {
       }
 
       this.connectionManager = new ConnectionManager(cmConfig);
+      // Publish the same global the connectWithPrompt path sets after connect()
+      // resolves (pfodCommon.html) -- pfodButtonRenderer.js's pfodLinkHref()
+      // reads window.pfodConnectionManager to resolve a relative [text](/path)
+      // link against the connected device, and navigationAndQueue.js reads it
+      // for the per-connection cache key. Without this, the URL ?targetIP=
+      // auto-connect path (the common case: a device serving pfodWeb.html to
+      // itself) left the global unset for the whole session, so every relative
+      // link rendered as plain unlinked text and menu caching fell back to a
+      // shared 'unknown' key.
+      window.pfodConnectionManager = this.connectionManager;
     }
     console.log('[PFODWEB_DEBUG] ConnectionManager initialized with protocol:', this.protocol);
 
@@ -247,9 +257,9 @@ class DrawingViewer {
     this.isUpdating = false; // Start with updates disabled until first load completes
     this.js_ver = window.JS_VERSION; // Client JavaScript version
 
-    // KeepAlive polling — TCP/IP Socket only.  Interval is set from the
-    // user's connection-prompt dropdown by startKeepAlivePolling().  0
-    // here is just an inert default — nothing is armed until the start
+    // KeepAlive polling — TCP/IP Socket, Serial and BLE.  Interval is set
+    // from the user's connection-prompt dropdown by startKeepAlivePolling().
+    // 0 here is just an inert default — nothing is armed until the start
     // function configures it from getKeepAliveSec().
     this.keepAliveTimer = null;
     this.keepAliveActive = false;

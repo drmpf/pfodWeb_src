@@ -199,16 +199,20 @@ function parsePfodMenuItem(itemStr, isUpdate) {
 
     // Parse pre-~ format slot: bare flags and <bg ...> go into slot fmt;
     // ALL other angle-bracket codes (font size, text color, bold/italic/underline)
-    // are accumulated as inlineFmtPrefix so they are prepended to the first
-    // text field.  This matches pfodApp behaviour: <fmt> before ~ applies to
-    // the text content, not the element container.  Only <bg ...> stays as a
-    // slot attribute because pfodSetFormattedText does not handle it inline.
+    // are accumulated into fmt.inlineFmtPrefix, a sticky field (like bgColor)
+    // rather than being folded into the text field itself — a {;} update that
+    // resends the text but omits these tags must not be read as "clear the
+    // formatting" (see the sticky-merge rule in pfodMenuDisplay.js's update()).
+    // Renderers prepend inlineFmtPrefix to the first text field themselves, so
+    // it still takes effect via pfodSetFormattedText on the text content, not
+    // the element container — matching pfodApp behaviour, where <fmt> before ~
+    // applies to the text. Only <bg ...> stays a slot attribute because
+    // pfodSetFormattedText does not handle it inline.
     const fmt = {
         bgColor: null, textColor: null, bold: false, italic: false,
-        underline: false, fontSize: 0,
+        underline: false, fontSize: 0, inlineFmtPrefix: '',
         disabled: false, hidden: false, flash: false, sound: false
     };
-    let inlineFmtPrefix = '';
     while (str.length > 0) {
         if (str[0] === '!') { fmt.disabled = true; str = str.substring(1); }
         else if (str[0] === '-') { fmt.hidden  = true; str = str.substring(1); }
@@ -223,7 +227,7 @@ function parsePfodMenuItem(itemStr, isUpdate) {
             if (tag.startsWith('bg ')) {
                 fmt.bgColor = pfodColorTagToHex(tag.substring(3).trim());
             } else {
-                inlineFmtPrefix += fullTag;
+                fmt.inlineFmtPrefix += fullTag;
             }
         } else {
             break;
@@ -269,19 +273,6 @@ function parsePfodMenuItem(itemStr, isUpdate) {
         if (isInt) intFields.push(field.trim());
         else       textFields.push(field);
         str = str.substring(fieldEnd);
-    }
-
-    // Prepend any pre-~ inline format codes (non-background) to the first text
-    // field so they take effect in pfodSetFormattedText, not via CSS on the
-    // container element.  For items with no text field yet (no ~ in the item
-    // string) the prefix alone becomes the first field; the spacer rule below
-    // will then append a space if needed.
-    if (inlineFmtPrefix) {
-        if (textFields.length > 0) {
-            textFields[0] = inlineFmtPrefix + textFields[0];
-        } else {
-            textFields.push(inlineFmtPrefix);
-        }
     }
 
     // Spacer rule (spacerChanges.txt): a label item with no visible text —
@@ -371,6 +362,7 @@ function parsePfodMenuItem(itemStr, isUpdate) {
             italic: fmt.italic,
             underline: fmt.underline,
             fontSize: fmt.fontSize,
+            inlineFmtPrefix: fmt.inlineFmtPrefix,
             disabled: fmt.disabled,
             hidden: fmt.hidden,
             flash: fmt.flash,

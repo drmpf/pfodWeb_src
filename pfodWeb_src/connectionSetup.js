@@ -518,12 +518,14 @@ function continueInitialization(connectionSettings) {
 
     // The drawing name will be extracted and drawing loaded via the request queue
 
-    // TCP/IP Socket: arm the keepAlive timer so `{ }` pings fire when
-    // the connection is idle (NAT pinhole + device-session keepalive).
-    // The function self-gates on protocol and on keepAliveSec=0 so
-    // calling it unconditionally for TCP is safe.  Other protocols
-    // don't need it.
-    if (connectionSettings && connectionSettings.protocol === 'tcp'
+    // TCP/IP Socket, Serial and BLE: arm the keepAlive timer so `{ }` pings
+    // fire when the connection is idle (NAT pinhole + device-session
+    // keepalive). The function self-gates on protocol and on
+    // keepAliveSec=0 so calling it unconditionally for these three is
+    // safe.  HTTP (has its own dataRefresh poll) and Designer (no wire
+    // connection) don't need it.
+    if (connectionSettings
+        && (connectionSettings.protocol === 'tcp' || connectionSettings.protocol === 'serial' || connectionSettings.protocol === 'ble')
         && typeof drawingViewer.startKeepAlivePolling === 'function') {
       drawingViewer.startKeepAlivePolling();
     }
@@ -816,6 +818,30 @@ async function initializeApp() {
 
 // Make continueInitialization available globally so connection prompt can call it
 window.continueInitialization = continueInitialization;
+
+// ==== BEGIN FEATURE: refresh-on-tab-visible ================================
+// Re-clicks the toolbar's own "reload" button whenever this browser tab
+// regains visibility (user switches back to it), so a device state change
+// made while the tab was backgrounded shows up immediately instead of
+// waiting for the next auto-refresh timer. Reuses btn-reload's existing
+// click handler (toolbarAndMenu.js's setupToolbarButtons) rather than
+// duplicating its menu/drawing/chart branching logic.
+//
+// TO DISABLE: set PFOD_REFRESH_ON_TAB_VISIBLE to false below, or delete this
+// whole block (from this line to "END FEATURE" below) -- it is fully
+// self-contained, registered once at script load, and nothing else in the
+// app depends on it.
+window.PFOD_REFRESH_ON_TAB_VISIBLE = true;
+document.addEventListener('visibilitychange', function() {
+  if (!window.PFOD_REFRESH_ON_TAB_VISIBLE) return;
+  if (document.visibilityState !== 'visible') return;
+  const btnReload = document.getElementById('btn-reload');
+  if (btnReload && !btnReload.disabled) {
+    console.log('[TOOLBAR] Tab became visible - triggering reload button');
+    btnReload.click();
+  }
+});
+// ==== END FEATURE: refresh-on-tab-visible ===================================
 
 // Export the fully-patched DrawingViewer class for browser use.
 // Must be the last statement so all Object.assign patches from every module

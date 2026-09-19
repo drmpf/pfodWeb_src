@@ -486,11 +486,12 @@
                 </div>
 
                 <!-- Response Timeout: HTTP default 10s, Serial/BLE default 3s.
-                     KeepAlive only shown when TCP/IP Socket is active — sends
-                     `{ }` every N seconds idle to keep the TCP connection
-                     (and any NAT pinhole on the way) alive.  0 disables it.
-                     Whole row hidden for Designer (in-browser device, nothing
-                     to time out against). -->
+                     KeepAlive shown for TCP/IP, Serial and BLE (not HTTP --
+                     it has its own dataRefresh poll) — sends `{ }` every N
+                     seconds idle to keep the connection (and, for TCP, any
+                     NAT pinhole on the way) alive.  0 disables it; default is
+                     5 for TCP, 0 for Serial/BLE.  Whole row hidden for
+                     Designer (in-browser device, nothing to time out against). -->
                 <div id="prompt-timeout-row" style="margin: 5px 0; display: flex; gap: 14px; align-items: center; justify-content: center;">
                     <div>
                         <label for="prompt-timeout">Timeout (s):</label>
@@ -839,6 +840,15 @@
             return '10';
         }
 
+        // Per-protocol default for the KeepAlive dropdown.  TCP/IP keeps its
+        // historical default of 5s (NAT pinholes expire); Serial/BLE default
+        // to 0 (disabled) -- their continuous byte stream usually makes a
+        // protocol-level keepAlive unnecessary, but the control is offered so
+        // it can be turned on where a proxy/OS idle timeout needs it anyway.
+        function _defaultKeepAliveFor(protocol) {
+            return (protocol === 'tcp') ? '5' : '0';
+        }
+
         // ────────────────────────────────────────────────────────────
         // Connection-prompt settings persistence (browser localStorage).
         //
@@ -849,8 +859,8 @@
         //     lastProtocol: 'http',
         //     protocols: {
         //       http:     { targetIP, timeout },
-        //       serial:   { baud, proxyHost, timeout },
-        //       ble:      { proxyHost, timeout },
+        //       serial:   { baud, proxyHost, timeout, keepAlive },
+        //       ble:      { proxyHost, timeout, keepAlive },
         //       tcp:      { tcpIP, keepAlive, proxyHost, timeout },
         //       designer: { targetId }
         //     }
@@ -1083,6 +1093,7 @@
                 stored.protocols.serial = Object.assign({}, prevSerial, {
                     baud:      document.getElementById('prompt-baud').value,
                     timeout,
+                    keepAlive: document.getElementById('prompt-keepalive').value,
                     // "Connect via" choice — remembered so the next fresh open
                     // starts on the transport the user last used.
                     via:      _serialTransport(),
@@ -1105,6 +1116,7 @@
             } else if (protocol === 'ble') {
                 stored.protocols.ble = Object.assign({}, stored.protocols.ble, {
                     timeout,
+                    keepAlive: document.getElementById('prompt-keepalive').value,
                     via: _bleTransport(),
                 });
                 // Same reason as the serial block above: only the pfodProxy
@@ -1140,8 +1152,19 @@
         }
 
         // Connection prompt functions
+        // Tracks the protocol as of the last updatePromptUI() call, so the
+        // Timeout/KeepAlive defaults below are only reset when the protocol
+        // actually changes, not on every call. Without this, re-rendering
+        // the SAME protocol — e.g. re-checking its radio after a failed
+        // connection attempt (see the pfodAlert Close handler), or toggling
+        // Serial/BLE "Connect via" — would silently wipe out a value the
+        // user had already customised.
+        let _lastPromptProtocol = null;
+
         function updatePromptUI() {
             const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
+            const protocolChanged = (protocol !== _lastPromptProtocol);
+            _lastPromptProtocol = protocol;
             document.getElementById('http-settings').classList.toggle('visible', protocol === 'http');
             document.getElementById('serial-settings').classList.toggle('visible', protocol === 'serial');
             document.getElementById('ble-settings').classList.toggle('visible', protocol === 'ble');
@@ -1163,18 +1186,29 @@
             const clearCacheBtn = document.getElementById('clear-cache-button');
             if (clearCacheBtn) clearCacheBtn.style.display = (protocol === 'designer') ? 'none' : '';
 
-            // KeepAlive dropdown only meaningful for TCP/IP Socket — show
-            // alongside the timeout when TCP is selected, hide otherwise.
+            // KeepAlive dropdown meaningful for TCP/IP, Serial and BLE — show
+            // alongside the timeout for those, hide for HTTP (has its own
+            // dataRefresh poll) and Designer (no wire connection).
+            const keepAliveApplicable = (protocol === 'tcp' || protocol === 'serial' || protocol === 'ble');
             const keepAliveRow = document.getElementById('prompt-keepalive-row');
-            if (keepAliveRow) keepAliveRow.style.display = (protocol === 'tcp') ? '' : 'none';
+            if (keepAliveRow) keepAliveRow.style.display = keepAliveApplicable ? '' : 'none';
+            // Per-protocol default, same pattern as timeout below — restored
+            // to a URL/stored value (if any) after updatePromptUI() runs, see
+            // prefillFormFromURL(). Only applied when the protocol actually
+            // changed (see _lastPromptProtocol above) so a same-protocol
+            // re-render doesn't clobber a value the user already picked.
+            const keepAliveSelect = document.getElementById('prompt-keepalive');
+            if (keepAliveSelect && protocolChanged) keepAliveSelect.value = _defaultKeepAliveFor(protocol);
 
             // Timeout dropdown — per-protocol default.  HTTP / TCP need
             // headroom for slow servers / TCP-over-NAT round trips;
             // Serial / BLE talk to a local proxy and respond fast.
             // Single source of truth lives in _defaultTimeoutFor() so
             // updateURLFromForm() can omit the param when it matches.
+            // Only applied when the protocol actually changed (see
+            // _lastPromptProtocol above) — same reasoning as KeepAlive.
             const timeoutSelect = document.getElementById('prompt-timeout');
-            timeoutSelect.value = _defaultTimeoutFor(protocol);
+            if (protocolChanged) timeoutSelect.value = _defaultTimeoutFor(protocol);
 
             // Reveal / hide the "Connect via" rows and their native-transport
             // hints — the row only exists for protocols whose native browser
@@ -1322,11 +1356,8 @@
                 if (radio) radio.checked = true;
                 const tcpIp = urlParams.get('tcpIP');
                 if (tcpIp) document.getElementById('prompt-tcp-ip').value = tcpIp;
-                const keepAlive = urlParams.get('keepAlive');
-                if (keepAlive !== null) {
-                    const ka = document.getElementById('prompt-keepalive');
-                    if (ka) ka.value = keepAlive;
-                }
+                // ?keepAlive= restore is generic now (applies to tcp/serial/ble
+                // alike) — see the block after updatePromptUI() runs, below.
             } else if (stored.lastProtocol) {
                 // No protocol param in the URL — restore whichever
                 // protocol the user last used.  Skip Designer if the
@@ -1377,10 +1408,8 @@
             if (!urlParams.has('tcpIP') && stored.protocols && stored.protocols.tcp) {
                 const ip = stored.protocols.tcp.tcpIP;
                 if (ip) document.getElementById('prompt-tcp-ip').value = ip;
-                const ka = stored.protocols.tcp.keepAlive;
-                if (ka && document.getElementById('prompt-keepalive')) {
-                    document.getElementById('prompt-keepalive').value = ka;
-                }
+                // keepAlive restore is generic now (applies to tcp/serial/ble
+                // alike) — see the block after updatePromptUI() runs, below.
             }
             // Designer target fallback — URL ?designer=<id> wins, else
             // stored target, else boardSelector.js's built-in default.
@@ -1493,9 +1522,9 @@
             // updatePromptUI resets the timeout dropdown to the protocol's
             // default (HTTP/TCP=10, Serial/BLE=3) on every call, so any
             // ?timeout= in the URL has to be applied last or it'd be
-            // clobbered.  No restore-needed branch for keepAlive: the TCP
-            // restore block already runs before updatePromptUI and
-            // updatePromptUI doesn't touch the keepAlive dropdown.
+            // clobbered.  KeepAlive needs the same treatment now that
+            // updatePromptUI() also resets IT to a per-protocol default —
+            // see the block right after this one.
             const timeoutParam = urlParams.get('timeout');
             if (timeoutParam !== null) {
                 const timeoutSelect = document.getElementById('prompt-timeout');
@@ -1511,6 +1540,21 @@
                 if (storedTimeout !== undefined && storedTimeout !== null && storedTimeout !== '') {
                     const timeoutSelect = document.getElementById('prompt-timeout');
                     if (timeoutSelect) timeoutSelect.value = storedTimeout;
+                }
+            }
+            // Restore the user's KeepAlive choice — same reasoning and shape
+            // as timeout above (tcp/serial/ble all apply; http/designer never
+            // show the row so this is a harmless no-op for them).
+            const keepAliveParam = urlParams.get('keepAlive');
+            if (keepAliveParam !== null) {
+                const keepAliveSelect = document.getElementById('prompt-keepalive');
+                if (keepAliveSelect) keepAliveSelect.value = keepAliveParam;
+            } else {
+                const activeProtocolKA = document.querySelector('input[name="prompt-protocol"]:checked').value;
+                const storedKeepAlive  = _getStored(activeProtocolKA, 'keepAlive');
+                if (storedKeepAlive !== undefined && storedKeepAlive !== null && storedKeepAlive !== '') {
+                    const keepAliveSelect = document.getElementById('prompt-keepalive');
+                    if (keepAliveSelect) keepAliveSelect.value = storedKeepAlive;
                 }
             }
             validateConnectButton();
@@ -1781,17 +1825,15 @@
             const bleBtn = document.getElementById('select-ble-device-btn');
             if (bleBtn) bleBtn.disabled = bleDisabled;
             // TCP/IP has no native alternative — always proxy-gated.
-            ['prompt-tcp-ip', 'prompt-keepalive'].forEach(function(id) {
-                const el = document.getElementById(id);
-                if (el) el.disabled = disabled;
-            });
-            // Timeout is shared across HTTP and wire protocols (hidden only for
-            // Designer).  Only disable it when a protocol that needs the
-            // proxy is active — HTTP (and a native-transport Serial / BLE)
-            // timeout stays interactive even when proxy is stopped.
-            const protocol = document.querySelector('input[name="prompt-protocol"]:checked').value;
-            const timeoutEl = document.getElementById('prompt-timeout');
-            if (timeoutEl) timeoutEl.disabled = disabled && _protocolUsesProxy(protocol);
+            const tcpIpEl = document.getElementById('prompt-tcp-ip');
+            if (tcpIpEl) tcpIpEl.disabled = disabled;
+            // Timeout and KeepAlive are just pre-connection settings, not
+            // something that needs a live proxy, or a port/IP/BLE device
+            // already selected, to configure — never gate either of them on
+            // proxy availability, regardless of protocol. (Previously
+            // KeepAlive was lumped in with prompt-tcp-ip above, and Timeout
+            // was gated via _protocolUsesProxy() below; both left the
+            // dropdown disabled whenever the proxy wasn't reachable yet.)
             // Port/device label spans cannot carry the HTML disabled attribute.
             // Apply grey text directly.  When re-enabling, restore the color
             // that _updateSerialPortDisplay / _updateBleDeviceDisplay would set:
@@ -1945,6 +1987,9 @@
                 } else if (_serialPortState.path) {
                     params.set('com', _serialPortState.path);
                 }
+                // Always persist keepAlive (same reasoning as TCP below).
+                const serialKeepAlive = document.getElementById('prompt-keepalive').value;
+                if (serialKeepAlive !== '' && serialKeepAlive !== null) params.set('keepAlive', serialKeepAlive);
             } else if (protocol === 'ble') {
                 // Bare ?ble= (empty) is what marks BLE as the selected
                 // protocol on reload; the address fills it in when there is
@@ -1956,6 +2001,9 @@
                 } else if (_bleDeviceState.name) {
                     params.set('bleName', _bleDeviceState.name);
                 }
+                // Always persist keepAlive (same reasoning as TCP below).
+                const bleKeepAlive = document.getElementById('prompt-keepalive').value;
+                if (bleKeepAlive !== '' && bleKeepAlive !== null) params.set('keepAlive', bleKeepAlive);
             } else if (protocol === 'tcp') {
                 const tcpIp = document.getElementById('prompt-tcp-ip').value.trim();
                 if (tcpIp) params.set('tcpIP', tcpIp);
@@ -2765,6 +2813,11 @@
                     // Connect directly to the pre-selected port (chosen via Select COM Port button)
                     connectionSettings.serialPath = _serialPortState.path;
                 }
+                // KeepAlive — see keepAlive.js startKeepAlivePolling. 0 disables;
+                // non-zero = seconds between idle `{ }` pings. Applies the same
+                // whether native Web Serial or pfodProxy is in the path.
+                const serialKeepAliveSec = parseInt(document.getElementById('prompt-keepalive').value, 10);
+                connectionSettings.keepAliveSec = isNaN(serialKeepAliveSec) ? 0 : serialKeepAliveSec;
             } else if (protocol === 'ble') {
                 if (_bleTransport() === 'browser') {
                     // Native Web Bluetooth — same split as serial above.
@@ -2789,6 +2842,11 @@
                     connectionSettings.bleAddress = _bleDeviceState.address;
                     connectionSettings.bleName    = _bleDeviceState.name || null;
                 }
+                // KeepAlive — see keepAlive.js startKeepAlivePolling. 0 disables;
+                // non-zero = seconds between idle `{ }` pings. Applies the same
+                // whether native Web Bluetooth or pfodProxy is in the path.
+                const bleKeepAliveSec = parseInt(document.getElementById('prompt-keepalive').value, 10);
+                connectionSettings.keepAliveSec = isNaN(bleKeepAliveSec) ? 0 : bleKeepAliveSec;
             } else if (protocol === 'tcp') {
                 // TCP/IP Socket — always via pfodProxy (browsers can't open
                 // raw TCP). Port is fixed at 4989 — pfodProxy always
@@ -2812,7 +2870,7 @@
                 const proxyHostPort = '127.0.0.1:' + proxyPort;
                 connectionSettings.targetIP      = deviceIp;
                 connectionSettings.proxyHostPort = proxyHostPort;
-                // TCP-only keepAlive — see keepAlive.js startKeepAlivePolling.
+                // KeepAlive — see keepAlive.js startKeepAlivePolling.
                 // 0 disables; non-zero = seconds between idle `{ }` pings.
                 const keepAliveSec = parseInt(
                     document.getElementById('prompt-keepalive').value, 10);

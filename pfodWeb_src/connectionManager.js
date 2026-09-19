@@ -273,13 +273,13 @@ class ConnectionManager {
     this.responseTimeoutMs = validatedTimeout * 1000;
     console.log(`[CONNECTION_MANAGER] Response timeout set to ${validatedTimeout === 0 ? 'never' : validatedTimeout + ' seconds'}`);
 
-    // KeepAlive interval (TCP/IP Socket only).  Connection-prompt
+    // KeepAlive interval (TCP/IP Socket, Serial and BLE).  Connection-prompt
     // dropdown offers 0/5/10/20/30 — 0 means disabled.  60 s is the
     // hard upper bound (no use-case beyond it; clamp guards against
-    // bogus URL params).  Other transports ignore this field.
+    // bogus URL params).  HTTP/Designer ignore this field.
     const keepAliveRaw = config.keepAliveSec !== undefined ? config.keepAliveSec : 0;
     this.keepAliveSec = Math.max(0, Math.min(60, parseInt(keepAliveRaw, 10) || 0));
-    if (this.protocol === 'tcp') {
+    if (this.protocol === 'tcp' || this.protocol === 'serial' || this.protocol === 'ble') {
       console.log(`[CONNECTION_MANAGER] keepAliveSec=${this.keepAliveSec}`);
     }
 
@@ -487,11 +487,12 @@ class ConnectionManager {
   }
 
   /**
-   * Get the configured keepAlive interval, in seconds, for TCP/IP
-   * connections.  0 means keepAlive is disabled.  Other transports may
+   * Get the configured keepAlive interval, in seconds, for TCP/IP, Serial
+   * and BLE connections.  0 means keepAlive is disabled.  HTTP/Designer may
    * call this safely but are expected to ignore the value (only the
-   * keepAlive scheduler in keepAlive.js consults it, and it is gated
-   * on protocol === 'tcp' in startKeepAlivePolling()).
+   * keepAlive scheduler in keepAlive.js consults it, gated on protocol in
+   * startKeepAlivePolling() and, before that, in connectionSetup.js's
+   * continueInitialization()).
    * @returns {number} - keepAlive interval in seconds (0 = disabled)
    */
   getKeepAliveSec() {
@@ -1634,7 +1635,7 @@ class ProxyStreamConnection extends PfodConnectionBase {
 
       // Probe with 5 s timeout.
       try {
-        const json = await this._proxySendOnce(cmdWithPrefix, url, 5000, tag, 'probe');
+        const json = await this._proxySendOnce(cmdWithPrefix, url, 5000, tag, 'probe', cmd);
         return json;
       } catch (e) {
         if (!`${e.message}`.includes('timeout') && !`${e.message}`.includes('cmd write failed')) {
@@ -1643,14 +1644,14 @@ class ProxyStreamConnection extends PfodConnectionBase {
         console.warn(`[SERIAL_PROXY] First cmd timed out at 5 s — resending with full ${fullTimeoutMs} ms timeout`);
       }
       // Resend with full timeout — same dedup char.
-      return await this._proxySendOnce(cmdWithPrefix, url, fullTimeoutMs, tag, 'resend');
+      return await this._proxySendOnce(cmdWithPrefix, url, fullTimeoutMs, tag, 'resend', cmd);
     }
 
     let lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       console.log(`[${tag}_PROXY] Send attempt ${attempt + 1}/${maxRetries + 1}: ${cmdWithPrefix}`);
       try {
-        const json = await this._proxySendOnce(cmdWithPrefix, url, fullTimeoutMs, tag, `attempt ${attempt + 1}/${maxRetries + 1}`);
+        const json = await this._proxySendOnce(cmdWithPrefix, url, fullTimeoutMs, tag, `attempt ${attempt + 1}/${maxRetries + 1}`, cmd);
         return json;
       } catch (e) {
         lastError = e;
@@ -1668,10 +1669,13 @@ class ProxyStreamConnection extends PfodConnectionBase {
   /// Returns the JSON response string; throws on fetch/proxy error
   /// or response timeout.  Always pushes a SENT entry to the message
   /// panel so the raw-msg view shows every wire attempt.
+  /// @param cmd - original, unprefixed cmd (for message-log classification,
+  ///   e.g. detecting a keepAlive `{ }` ping) -- mirrors the `originalCmd`
+  ///   param HTTPConnection/SerialConnection/BLEConnection already pass.
   /// @private
-  async _proxySendOnce(cmdWithPrefix, url, timeoutMs, tag, label) {
+  async _proxySendOnce(cmdWithPrefix, url, timeoutMs, tag, label, cmd) {
     if (ConnectionManager.messageCollector) {
-      ConnectionManager.messageCollector.addMessage('sent', cmdWithPrefix, this.protocol);
+      ConnectionManager.messageCollector.addMessage('sent', cmdWithPrefix, this.protocol, cmd);
     }
     const responsePromise = new Promise((resolve, reject) => {
       this.responseResolve = resolve;

@@ -94,6 +94,29 @@ function pfodLinkHref(url) {
 }
 
 /**
+ * Preview-only message for a relative link inside the Designer, when
+ * pfodLinkHref() above returned null because there's no real device web
+ * root to resolve it against. The Designer is always isolated on its own
+ * virtual connection (protocol 'designer', see designer/adapter.js) even
+ * when the design's own target connection is HTTP, so a relative link can
+ * never actually resolve while designing — but the designer still wants to
+ * SEE it as a live-looking link rather than plain text, since it will be
+ * a real clickable link once deployed to the device. Returns null (render
+ * plain, exactly as before) unless the design's chosen target connection
+ * is HTTP.
+ *
+ * @param {string} url  as written in the text (already matched by PFOD_MD_LINK_RE)
+ * @returns {string|null}
+ */
+function pfodDesignerPreviewLinkMessage(url) {
+    const conn = window.pfodConnectionManager && window.pfodConnectionManager.adapter;
+    if (!conn || conn.protocol !== 'designer') return null;
+    const device = conn.device;
+    if (!device || !device.state || device.state.connection !== 'http') return null;
+    return url + ' needs to be served from the connected pfodDevice';
+}
+
+/**
  * Populate a container element with pfod inline-formatted text.
  * Parses <b>, <i>, <u>, <+N>, <-N>, <colorCode>, </tag> tags within the text string.
  * Closing tags terminate their matching open tag and all tags enclosed within it (stack-based).
@@ -104,7 +127,11 @@ function pfodLinkHref(url) {
  * Markdown links `[text](url)` (PFOD_MD_LINK_RE, redraw.js) render as a native
  *   <a target="_blank"> only when `allowLinks` is true — menu labels and the
  *   prompt bars, none of which has a click handler of its own, so a tap on a
- *   link can never send a cmd.  Everywhere else the text shows as sent.
+ *   link can never send a cmd.  Everywhere else the text shows as sent.  In
+ *   the Designer, a relative link that can't resolve to a real page still
+ *   renders as a live-looking link when the design's target connection is
+ *   HTTP — tapping it opens a new tab explaining the path needs a real
+ *   device to serve it, rather than showing plain text (pfodDesignerPreviewLinkMessage).
  *
  * @param {HTMLElement} container - Element to populate (existing children are cleared first)
  * @param {string} text - Raw text potentially containing inline format tags and escape sequences
@@ -186,13 +213,24 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowL
     // Normalise line endings to LF so newline handling is uniform throughout
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-    // Markdown links: where allowed, rewrite to the internal link tag so the
-    // scanner below handles them as one more entry on the style stack.  A
-    // url never sits between < and >, so the rewrite cannot land inside a
-    // tag.  Where not allowed the text is left exactly as the device sent
-    // it — `[..](..)` shows as written.
+    // Markdown links: where allowed AND the link is actually operational —
+    // either resolvable now (pfodLinkHref) or a Designer preview standing in
+    // for a real one (pfodDesignerPreviewLinkMessage) — rewrite to the
+    // internal link tag so the scanner below handles it as one more entry
+    // on the style stack.  A url never sits between < and >, so the rewrite
+    // cannot land inside a tag.  Everywhere else — links disallowed, or a
+    // relative link with no device web root and no HTTP-targeted Designer
+    // preview to stand in for one (e.g. the Designer's target connection is
+    // Serial/BLE/TCP) — the match is left exactly as the device sent it:
+    // `[..](..)` shows as written, since a link that can't do anything here
+    // is more useful shown as-is than silently reduced to its bare text.
     if (allowLinks) {
-        text = text.replace(PFOD_MD_LINK_RE, '<' + PFOD_LINK_TAG + '$2>$1</' + PFOD_LINK_TAG + '>');
+        text = text.replace(PFOD_MD_LINK_RE, function(match, linkText, url) {
+            const href = pfodLinkHref(url);
+            const previewMsg = href ? null : pfodDesignerPreviewLinkMessage(url);
+            if (!href && !previewMsg) return match;
+            return '<' + PFOD_LINK_TAG + url + '>' + linkText + '</' + PFOD_LINK_TAG + '>';
+        });
     }
 
     // decodeEscapes() is shared with redraw.js's parsePfodInlineSegments
@@ -215,7 +253,7 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowL
 
     // Compute cumulative style from all active stack entries.
     function getCurrentStyle() {
-        let bold = false, italic = false, underline = false, fontSize = 0, textColor = null, href = null;
+        let bold = false, italic = false, underline = false, fontSize = 0, textColor = null, href = null, previewMsg = null;
         for (const e of stack) {
             if (e.bold)                    bold      = true;
             if (e.italic)                  italic    = true;
@@ -223,8 +261,9 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowL
             if (e.deltaSize !== undefined) fontSize += e.deltaSize;
             if (e.textColor !== undefined) textColor = e.textColor;
             if (e.href !== undefined)      href      = e.href;
+            if (e.previewMsg !== undefined) previewMsg = e.previewMsg;
         }
-        return { bold, italic, underline, fontSize, textColor, href };
+        return { bold, italic, underline, fontSize, textColor, href, previewMsg };
     }
 
     // Append a text segment to the target, wrapping in a styled span
@@ -278,6 +317,30 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowL
                 a.rel = 'noopener noreferrer';
                 a.appendChild(node);
                 node = a;
+            } else if (style.previewMsg) {
+                // Designer preview, target connection HTTP, relative link:
+                // there's genuinely nothing to navigate to yet (see
+                // pfodDesignerPreviewLinkMessage above), so this is the one
+                // link case that DOES need its own click handler — a bare
+                // href would either 404 against pfodWeb's own origin or
+                // reload/drop the session. preventDefault + a fresh blank
+                // tab keeps that off this tab entirely.
+                const a = document.createElement('a');
+                a.className = 'pfod-link';
+                a.href = '#';
+                const msg = style.previewMsg;
+                a.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const w = window.open('', '_blank');
+                    if (w) {
+                        const p = w.document.createElement('pre');
+                        p.style.cssText = 'font:14px sans-serif;padding:16px;white-space:pre-wrap;';
+                        p.textContent = msg;
+                        w.document.body.appendChild(p);
+                    }
+                });
+                a.appendChild(node);
+                node = a;
             }
             target.appendChild(node);
         }
@@ -307,10 +370,20 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowL
         // The internal link tag from the Markdown pre-pass above.  The
         // stack entry is named PFOD_LINK_TAG (not the full content) so the
         // pre-pass's </\u0001> closes it.  href is null when there is no
-        // device web root to resolve a /path against — the entry then adds
-        // no style at all and the link text renders plain.
+        // device web root to resolve a /path against; in the Designer, with
+        // the design's own target connection set to HTTP, that still gets a
+        // live-looking (but click-intercepted) link via previewMsg — see
+        // pfodDesignerPreviewLinkMessage above. Everywhere else previewMsg
+        // is also null and the entry adds no style at all: link text
+        // renders plain, exactly as the device sent it.
         if (tagContent.charCodeAt(0) === 1) {
-            return { tag: PFOD_LINK_TAG, href: pfodLinkHref(tagContent.substring(1)) };
+            const rawUrl = tagContent.substring(1);
+            const href = pfodLinkHref(rawUrl);
+            return {
+                tag: PFOD_LINK_TAG,
+                href: href,
+                previewMsg: href ? null : pfodDesignerPreviewLinkMessage(rawUrl)
+            };
         }
         if (tagContent === 'b')  return { bold: true };
         if (tagContent === 'i')  return { italic: true };
@@ -398,7 +471,7 @@ function renderPfodButton(item, onClick, menuBgColor) {
     // leaving the button border and background permanently visible.
     const textSpan = document.createElement('span');
     textSpan.className = 'pfod-button-text';
-    pfodSetFormattedText(textSpan, item.text, contrastHex);
+    pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + item.text, contrastHex);
     btn.appendChild(textSpan);
     applyPfodFormats(btn, item.formats);
 
@@ -450,7 +523,7 @@ function renderPfodLabel(item, menuBgColor) {
     textSpan.className = 'pfod-button-text';
     // Labels have no click handler, so a [text](url) link in one can be a
     // real link — nothing a tap can send.
-    const allFontSized = pfodSetFormattedText(textSpan, item.text, contrastHex, undefined, true);
+    const allFontSized = pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + item.text, contrastHex, undefined, true);
     // When every rendered segment is in an explicit font-size span (no bare text
     // nodes), collapse the block container's strut to 0 so line spacing is
     // governed by each span's own font-size rather than the div's default.
@@ -620,7 +693,7 @@ function renderPfodToggleButton(item, onClick, menuBgColor) {
     if (showText) {
         textSpan = document.createElement('span');
         textSpan.className = 'pfod-button-text pfod-toggle-text';
-        pfodSetFormattedText(textSpan, td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
+        pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
         // Apply text formats (color, bold, italic, underline, fontSize) only to this span
         applyPfodFormats(textSpan, item.formats);
         textSpan.style.backgroundColor = ''; // bgColor belongs to outer div only
@@ -648,7 +721,7 @@ function renderPfodToggleButton(item, onClick, menuBgColor) {
                         if (newHoveredIdx !== hoveredIdx) {
                             hoveredIdx = newHoveredIdx;
                             if (textSpan) {
-                                pfodSetFormattedText(textSpan, td.leading + (td.options[hoveredIdx] || '') + td.trailing, contrastHex);
+                                pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + td.leading + (td.options[hoveredIdx] || '') + td.trailing, contrastHex);
                             }
                         }
                     }
@@ -681,7 +754,7 @@ function renderPfodToggleButton(item, onClick, menuBgColor) {
             const newIdx = td.idx === 0 ? 1 : 0;
             td.idx = newIdx;
             if (textSpan) {
-                pfodSetFormattedText(textSpan, td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
+                pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
             }
             if (thumb) {
                 if (newIdx !== 0) {
@@ -704,7 +777,7 @@ function renderPfodToggleButton(item, onClick, menuBgColor) {
             const newIdx = (td.idx + 1) % td.options.length;
             td.idx = newIdx;
             if (textSpan) {
-                pfodSetFormattedText(textSpan, td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
+                pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
             }
             onClick(item.cmd + '`' + newIdx);
         });
@@ -743,7 +816,7 @@ function renderPfodToggleLabel(item, menuBgColor) {
     if (showText) {
         const textSpan = document.createElement('span');
         textSpan.className = 'pfod-button-text pfod-toggle-text';
-        pfodSetFormattedText(textSpan, td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
+        pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + td.leading + (td.options[td.idx] || '') + td.trailing, contrastHex);
         // Apply text formats only to this span, not the outer div
         applyPfodFormats(textSpan, item.formats);
         textSpan.style.backgroundColor = '';
@@ -834,7 +907,7 @@ function renderPfodNavButtons(navItems, onClick, menuBgColor) {
         lbl.className = 'pfod-menu-nav-label';
         if (item) {
             const contrastHex = xtermColorToHex(getBlackWhite(item.formats.bgColor || menuBgColor));
-            pfodSetFormattedText(lbl, text, contrastHex);
+            pfodSetFormattedText(lbl, item.formats.inlineFmtPrefix + text, contrastHex);
             applyPfodFormats(lbl, item.formats);
             lbl.style.backgroundColor = '';
             if (!item.formats.textColor) lbl.style.color = menuContrastHex;
@@ -894,7 +967,7 @@ function renderPfodNavButtons(navItems, onClick, menuBgColor) {
         btn.style.gridRow = String(buttonRow);
         btn.style.gridColumn = '2';
         _styleBtn(btn, item);
-        pfodSetFormattedText(btn, item.text,
+        pfodSetFormattedText(btn, item.formats.inlineFmtPrefix + item.text,
             xtermColorToHex(getBlackWhite(item.formats.bgColor || menuBgColor)));
         btn.addEventListener('click', function() { onClick(item.cmd); });
         container.appendChild(btn);
@@ -1089,7 +1162,7 @@ function renderPfodNumericSlider(item, onClick, menuBgColor) {
     if (showText) {
         textSpan = document.createElement('span');
         textSpan.className = 'pfod-button-text pfod-toggle-text';
-        pfodSetFormattedText(textSpan, nsd.leading + computeNumericDisplayText(nsd) + nsd.trailing, contrastHex);
+        pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + nsd.leading + computeNumericDisplayText(nsd) + nsd.trailing, contrastHex);
         applyPfodFormats(textSpan, item.formats);
         textSpan.style.backgroundColor = '';
         if (!item.formats.textColor) textSpan.style.color = contrastHex;
@@ -1114,7 +1187,7 @@ function renderPfodNumericSlider(item, onClick, menuBgColor) {
                              Math.round(nsd.minValue + pct * range)));
             if (newValue !== nsd.currentValue) {
                 nsd.currentValue = newValue;
-                if (textSpan) pfodSetFormattedText(textSpan, nsd.leading + computeNumericDisplayText(nsd) + nsd.trailing, contrastHex);
+                if (textSpan) pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + nsd.leading + computeNumericDisplayText(nsd) + nsd.trailing, contrastHex);
             }
         }
 
@@ -1171,7 +1244,7 @@ function renderPfodNumericSliderLabel(item, menuBgColor) {
     if (showText) {
         const textSpan = document.createElement('span');
         textSpan.className = 'pfod-button-text pfod-toggle-text';
-        pfodSetFormattedText(textSpan, nsd.leading + computeNumericDisplayText(nsd) + nsd.trailing, contrastHex);
+        pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + nsd.leading + computeNumericDisplayText(nsd) + nsd.trailing, contrastHex);
         applyPfodFormats(textSpan, item.formats);
         textSpan.style.backgroundColor = '';
         if (!item.formats.textColor) textSpan.style.color = contrastHex;

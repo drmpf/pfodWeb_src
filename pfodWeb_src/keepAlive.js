@@ -9,7 +9,8 @@
 
 // KeepAlive polling methods for the DrawingViewer class.
 // Assigned to DrawingViewer.prototype after the class is defined in pfodWeb.js.
-// Sends periodic { } commands on Serial/BLE connections to collect rawData.
+// Sends periodic { } no-op commands on TCP/IP, Serial and BLE connections to
+// keep the connection alive (and collect any rawData in the reply).
 //
 // State read:    csvLoaded, connectionManager.protocol, keepAliveActive, keepAliveTimer,
 //                keepAliveInterval, requestQueue, sentRequest
@@ -22,7 +23,7 @@
 Object.assign(DrawingViewer.prototype, {
 
   /**
-   * Start keepAlive polling for TCP/IP Socket connections.
+   * Start keepAlive polling for TCP/IP Socket, Serial and BLE connections.
    *
    * Sends `{ }` (open brace, space, close brace) every N seconds while
    * the connection is idle, where N is the value the user picked from
@@ -37,8 +38,11 @@ Object.assign(DrawingViewer.prototype, {
    * dataRefresh branch in requestQueue early-returns before the
    * keepAlive reset call).
    *
-   * Only fires for TCP/IP — HTTP has dataRefresh, Serial/BLE have a
-   * continuous byte stream so a protocol-level keepAlive is redundant.
+   * Not offered for HTTP (has its own dataRefresh poll) or Designer
+   * (no wire connection). Serial/BLE default the dropdown to 0
+   * (disabled) — their continuous byte stream usually makes a
+   * protocol-level keepAlive unnecessary — but it can be turned on
+   * where a proxy/OS idle timeout needs it anyway.
    */
   startKeepAlivePolling() {
     // Never start keepAlive when CSV was loaded - no server connection exists
@@ -47,9 +51,10 @@ Object.assign(DrawingViewer.prototype, {
       return;
     }
 
-    // KeepAlive is TCP/IP-Socket-only — see method docstring for rationale.
-    if (this.connectionManager.protocol !== 'tcp') {
-      console.log(`[KEEPALIVE] Not starting - protocol is "${this.connectionManager.protocol}", keepAlive is TCP-only`);
+    // KeepAlive is TCP/Serial/BLE only — see method docstring for rationale.
+    const protocol = this.connectionManager.protocol;
+    if (protocol !== 'tcp' && protocol !== 'serial' && protocol !== 'ble') {
+      console.log(`[KEEPALIVE] Not starting - protocol is "${protocol}", keepAlive is TCP/Serial/BLE-only`);
       return;
     }
 
@@ -96,8 +101,11 @@ Object.assign(DrawingViewer.prototype, {
    * ever firing while datapolling is active).
    */
   scheduleNextKeepAlive() {
-    // Only TCP/IP arms this timer (mirrors startKeepAlivePolling's gate).
-    if (this.connectionManager && this.connectionManager.protocol !== 'tcp') {
+    // Only TCP/Serial/BLE arm this timer (mirrors startKeepAlivePolling's gate).
+    if (this.connectionManager
+     && this.connectionManager.protocol !== 'tcp'
+     && this.connectionManager.protocol !== 'serial'
+     && this.connectionManager.protocol !== 'ble') {
       return;
     }
     if (!this.keepAliveActive) {

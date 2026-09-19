@@ -691,6 +691,11 @@ class PfodMenuDisplay {
             if (updatedItem.formats.italic)             item.formats.italic    = true;
             if (updatedItem.formats.underline)          item.formats.underline = true;
             if (updatedItem.formats.fontSize !== 0)     item.formats.fontSize  = updatedItem.formats.fontSize;
+            // inlineFmtPrefix (the <b>/<+N>/etc. tags a label/button carries before its
+            // ~text) is sticky too, same as bgColor/textColor above -- a {;} update that
+            // resends the text but omits these tags means "text changed, formatting
+            // didn't", not "clear the formatting". Matches pfodApp.
+            if (updatedItem.formats.inlineFmtPrefix !== '') item.formats.inlineFmtPrefix = updatedItem.formats.inlineFmtPrefix;
 
             // Text/intFields/toggleData/numericSliderData merges don't apply to dwg items
             // (they have no text content — only loadCmd and a canvas).
