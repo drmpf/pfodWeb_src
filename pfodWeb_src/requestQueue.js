@@ -762,7 +762,13 @@ Object.assign(DrawingViewer.prototype, {
         const totalAttempts = maxRetries + 1;
         const isSerialTimeout = /serial response timeout/i.test(error.message);
 
-        pfodAlert(
+        // Tracked via _httpRetryAlert (despite the name, this is now the
+        // general "current connection-problem alert" slot -- see its own
+        // doc comment) so _closeHttpRetryAlert() takes it down automatically
+        // on the next successful response, same as the http-retry alert.
+        // Close any prior one first so only one is ever on screen.
+        this._closeHttpRetryAlert();
+        this._httpRetryAlert = pfodAlert(
           `Connection failed after ${totalAttempts} attempts.\n\n` +
           `${error.message}\n` +
           (isSerialTimeout ? `Check Baud Rates match.\n` : ``) +
@@ -782,7 +788,10 @@ Object.assign(DrawingViewer.prototype, {
         // JSON parsing error - only show once across retries; reset on next successful response
         if (!this.jsonErrorAlertShown) {
           this.jsonErrorAlertShown = true;
-          pfodAlert(
+          // See the isRetryExhausted branch above for why this is tracked
+          // via _httpRetryAlert.
+          this._closeHttpRetryAlert();
+          this._httpRetryAlert = pfodAlert(
           `Invalid response format - failed to parse data.\n\n` +
           `${error.message}\n\n` +
           `You can:\n` +
@@ -820,7 +829,10 @@ Object.assign(DrawingViewer.prototype, {
         } else {
           deviceHint = '• Check the pfodProxy port setting is correct';
         }
-        pfodAlert(
+        // See the isRetryExhausted branch above for why this is tracked
+        // via _httpRetryAlert.
+        this._closeHttpRetryAlert();
+        this._httpRetryAlert = pfodAlert(
           `Connection issue detected.\n\n` +
           `${cleanMsg}\n\n` +
           `You can:\n` +
@@ -863,10 +875,15 @@ Object.assign(DrawingViewer.prototype, {
   HTTP_RETRY_DELAY_MS: 30000,
 
   /**
-   * Take down the alert put up by _scheduleHttpRetry (or the http
-   * dataRefresh failure), if it is still showing.  Safe to call when there
-   * is none.  Used on every successful reply and before showing a new one,
-   * so at most one connection alert is ever on screen.
+   * Take down the current connection-problem alert, if one is showing —
+   * despite the name, `_httpRetryAlert` is the tracked slot for ANY of
+   * them: _scheduleHttpRetry's own "will retry" alert, the http dataRefresh
+   * failure, a retry-exhausted "Connection failed" alert, a JSON parse
+   * error, or the generic "Connection issue detected" alert (all in the
+   * catch block of processRequestQueue). Safe to call when there is none.
+   * Called on every successful reply (so a stale alert never survives a
+   * recovered connection) and before showing a new one, so at most one
+   * connection alert is ever on screen.
    */
   _closeHttpRetryAlert() {
     if (this._httpRetryAlert) {

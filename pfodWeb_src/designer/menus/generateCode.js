@@ -506,7 +506,10 @@ const DesignerGenerateCode = (() => {
     for (const item of items) {
       if (item.type !== 'submenu' || !item.subMenu) continue;
       const label = (item.text || '').replace(/\n/g, ' ').trim();
-      const ident = _uniqueIdent(_cppId(label), usedIdents, 'SubMenu');
+      // Capped at 20 chars, same limit _pascalCase() applies to hook names —
+      // a long submenu label would otherwise blow out both the class name
+      // and the file name (SubMenu_<ident>.h/.cpp).
+      const ident = _uniqueIdent(_cppId(label).substring(0, 20), usedIdents, 'SubMenu');
       out.set(item, { className: 'SubMenu_' + ident, varName: 'subMenu_' + ident });
       _assignSubMenuNames(item.subMenu.items, usedIdents, out);
     }
@@ -964,12 +967,21 @@ const DesignerGenerateCode = (() => {
     }
     out += '\n';
 
-    // Variable declarations for stateful items (onoff / pwm / label text).
+    // Variable declarations for stateful items (onoff / pwm / label / button /
+    // sub-menu text).
     for (const item of items) {
       if (item.type === 'label') {
         const textVar = _intVarName(item.autoCmd);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'Label');
-        out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenuUpdate() to update the label\n';
+        out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenu() to update the label (see docs/pfodAI-guide.md §6.3a to also push it via sendMainMenuUpdate())\n';
+      } else if (item.type === 'button') {
+        const textVar = _intVarName(item.autoCmd);
+        const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'Button');
+        out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenu() to update the button\n';
+      } else if (item.type === 'submenu') {
+        const textVar = _intVarName(item.autoCmd);
+        const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'Sub-menu');
+        out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenu() to update the sub-menu button\n';
       } else if (item.type === 'onoff') {
         const intVar  = _intVarName(item.autoCmd);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'output');
@@ -1318,11 +1330,12 @@ const DesignerGenerateCode = (() => {
         out += '  parser.print(F("~' + textEsc + '~' + trailEsc + '`' + item.maxValue + '`' + item.minValue + '~' + maxScaleEsc + '~' + minScaleEsc + '~' + fmtChar + '"));\n';
       } else if (item.type === 'button') {
         const disabledFlag = item.formats.disabled ? '!' : '';
-        const textEsc      = _cppStr(item.text || '');
+        const textVar      = _intVarName(item.autoCmd);
         out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
-        out += '  parser.print(F("~' + textEsc + '"));\n';
+        out += '  parser.print(F("~"));\n';
+        out += '  parser.print(' + textVar + '); // output the current text\n';
       } else if (item.type === 'chart') {
         const disabledFlag = item.formats.disabled ? '!' : '';
         const textEsc      = _cppStr(item.text || '');
@@ -1362,10 +1375,11 @@ const DesignerGenerateCode = (() => {
         out += '  parser.print(' + intVar + '); // output the current value\n';
         out += '  parser.print(F("~' + textEsc + '~' + unitsEsc + '`' + item.maxValue + '`' + item.minValue + '~' + maxScaleEsc + '~' + minScaleEsc + '~' + fmtChar + '"));\n';
       } else if (item.type === 'submenu') {
-        const textEsc = _cppStr(item.text || '');
+        const textVar = _intVarName(item.autoCmd);
         out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button (opens sub-menu)\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
-        out += '  parser.print(F("~' + textEsc + '"));\n';
+        out += '  parser.print(F("~"));\n';
+        out += '  parser.print(' + textVar + '); // output the current text\n';
       } else if (item.type === 'drawing') {
         const disabledFlag = item.formats.disabled ? '!' : '';
         out += '  parser.print(F("|+")); // start Drawing\n';
@@ -1671,7 +1685,11 @@ const DesignerGenerateCode = (() => {
     for (const sItem of items) {
       const sLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
       if (sItem.type === 'label') {
-        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenuUpdate() to update the label\n';
+        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the label (see docs/pfodAI-guide.md §6.3a to also push it via sendMenuUpdate())\n';
+      } else if (sItem.type === 'button') {
+        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the button\n';
+      } else if (sItem.type === 'submenu') {
+        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the sub-menu button\n';
       } else if (sItem.type === 'onoff') {
         const initVar = (sItem.pin && sItem.pin.invertOutput)
           ? (sItem.current === 0 ? 1 : 0) : sItem.current;
@@ -1816,11 +1834,12 @@ const DesignerGenerateCode = (() => {
       const sFmtCmt  = _fmtComment(sEff);
       if (sItem.type === 'button') {
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
-        const sTextEsc = _cppStr(sItem.text || '');
+        const sTextVar = _intVarName(sItem.autoCmd);
         cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button -- \'' + sLabel + '\'\n';
         if (sDisabledFlag) cpp += '  parser.print(F("!")); // disable this menu item\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
-        cpp += '  parser.print(F("~' + sTextEsc + '"));\n';
+        cpp += '  parser.print(F("~"));\n';
+        cpp += '  parser.print(' + sTextVar + '); // output the current text\n';
       } else if (sItem.type === 'label') {
         const sTextVar = _intVarName(sItem.autoCmd);
         cpp += '  parser.label(' + _cmdVarName(sItem.autoCmd) + '); // start Label -- \'' + sLabel + '\'\n';
@@ -1855,10 +1874,11 @@ const DesignerGenerateCode = (() => {
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(F("~' + sTextEsc + '"));\n';
       } else if (sItem.type === 'submenu') {
-        const sTextEsc = _cppStr(sItem.text || '');
+        const sTextVar = _intVarName(sItem.autoCmd);
         cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button (opens nested sub-menu) -- \'' + sLabel + '\'\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
-        cpp += '  parser.print(F("~' + sTextEsc + '"));\n';
+        cpp += '  parser.print(F("~"));\n';
+        cpp += '  parser.print(' + sTextVar + '); // output the current text\n';
       } else if (sItem.type === 'drawing') {
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
         cpp += '  parser.print(F("|+")); // start Drawing -- \'' + sLabel + '\'\n';

@@ -14,15 +14,25 @@
 //             chartAndRawData.js reads data via window.rawDataCollector;
 //             responseHandlers.js reads data via window.rawDataCollector.getRawDataWithoutClearing()
 
+// Ring-buffer cap for the raw data screen, in complete lines (not bytes) —
+// matches the Raw Message Viewer's own 500-entry cap in spirit. Oldest
+// lines are dropped once exceeded; see RawDataCollector._enforceLineLimit().
+const RAW_DATA_MAX_LINES = 500;
+
 /**
  * RawDataCollector - Processes raw character stream to collect ALL data outside {...}
  * Operates independently from message fragmentation
  *
  * Raw Data Collection:
- * - Collects ALL characters outside {} (pfod commands)
+ * - Collects characters outside {} (pfod commands), capped at the most
+ *   recent RAW_DATA_MAX_LINES complete lines
  * - Preserves all data including newlines, spaces, etc.
  * - Accumulates continuously as device sends data
- * - Resets when new raw data display session starts
+ * - Persists across navigating away from and back to the raw data screen
+ *   within the same connection (nothing here is cleared by exiting the
+ *   display) -- only a device-sent `~C` (see responseHandlers.js
+ *   applyClearOption()) or a fresh connection (queueInitialRequest()) resets
+ *   it. See clear().
  */
 class RawDataCollector {
   constructor() {
@@ -55,6 +65,28 @@ class RawDataCollector {
     // bytes, so just accumulate every char verbatim (newlines, spaces, the
     // CSV/raw stream as the device sent it).
     this.rawData += char;
+    // The line count can only ever increase on a newline, so that's the
+    // only point worth checking the cap.
+    if (char === '\n') this._enforceLineLimit();
+  }
+
+  /**
+   * Drop the oldest complete line(s) once the buffer holds more than
+   * RAW_DATA_MAX_LINES — only ever called right after appending a '\n', so
+   * rawData always ends in '\n' here. Keeps lastReturnedLength (an absolute
+   * offset into rawData used by getNewData()) in sync with whatever gets
+   * trimmed off the front, so a display mid-poll doesn't desync.
+   */
+  _enforceLineLimit() {
+    const lines = this.rawData.split('\n');
+    // split() on a string ending in '\n' yields one trailing '' element for
+    // the not-yet-started next line — that's not a line, don't count it.
+    const lineCount = lines.length - 1;
+    if (lineCount <= RAW_DATA_MAX_LINES) return;
+    const dropCount = lineCount - RAW_DATA_MAX_LINES;
+    const removedChars = lines.slice(0, dropCount).join('\n').length + dropCount; // + one '\n' per dropped line
+    this.rawData = lines.slice(dropCount).join('\n');
+    this.lastReturnedLength = Math.max(0, this.lastReturnedLength - removedChars);
   }
 
   /**

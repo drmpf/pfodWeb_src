@@ -381,7 +381,7 @@ generated code:
 | dwg `name: "LedOn"` | class `Dwg_LedOn`, global instance `dwg_LedOn`, files `Dwg_LedOn.h/.cpp` |
 | dwg item `idxName: "idx_1"` | member `pfodAutoIdx idx_1;` in the `Dwg_<Name>` class |
 | dwg `touchZone.cmdName: "cmd_c1"` | member `pfodAutoCmd cmd_c1;` **and** a virtual hook `bool Dwg_<Name>_cmd_c1(...)` you override in a stage-3 subclass |
-| menu item `autoCmd: "button_Start_Cmd"` | the cmd variable stem `button_Start_Cmd` — no `_var`/`_pin` (a `button` carries no value), but it does still get a dedicated hook: `on<Text>Pressed(pfodParser&)` (confirmed generated shape in §6.5) |
+| menu item `autoCmd: "button_Start_Cmd"` | cmd stem `button_Start_Cmd`; no `_pin` (a `button` has no I/O value), but its displayed text is a variable, `button_Start_var` (same for a sub-menu-opening button — confirmed generated shape in §6.3a), and it still gets a dedicated hook for the press itself: `on<Text>Pressed(pfodParser&)` (confirmed generated shape in §6.5) |
 | menu item `autoCmd: "onoff_LED_is_Cmd"` | cmd stem `onoff_LED_is_Cmd`; because this type carries a value and (optionally) a pin, also `onoff_LED_is_var` and, if a `pin` was set, `onoff_LED_is_Cmd_pin` (menu format §5.1; confirmed generated shape in §6.3) |
 | menu item `autoCmd: "label_Status_Cmd"` | cmd stem `label_Status_Cmd`; no hook, but its displayed text is a variable, `label_Status_var` (and a menu/sub-menu's own `promptText` likewise gets `mainMenuPromptText_var` / `SubMenu_<ident>_promptText_var`) — confirmed generated shape in §6.3a |
 
@@ -1653,37 +1653,43 @@ so they are predictable, but the exact hook method name (`onLedIsChanged`,
 `onPwmSettingChanged`, ...) should be read from the generated header, not
 guessed.
 
-### 6.3a `label` items and the menu prompt — runtime-updateable text
+### 6.3a `label`/`button`/sub-menu-button items and the menu prompt — runtime-updateable text
 
-A `label` item and a menu's `promptText` (the title line) are text, not a value,
-but they follow the same `_var` shape as §6.3 — no hook, since (same as
-`onoffdisplay`/`datadisplay`) there's nothing to decide, only text to print:
+A `label`, a `button`, a sub-menu-opening button, and a menu's `promptText`
+(the title line) are all text, not a value, but they all follow the same
+`_var` shape as §6.3 — no hook, since (same as `onoffdisplay`/`datadisplay`)
+there's nothing to decide, only text to print:
 
 ```cpp
 // generated in pfodMainMenu.cpp, next to the onoff/pwm _var block -- for
 // autoCmd "label_Status_Cmd" the var is named "label_Status_var", same
-// <autoCmd minus _Cmd>_var stem as any other item (§5.1):
+// <autoCmd minus _Cmd>_var stem as any other item (§5.1). button and
+// submenu items get the identical treatment, e.g. button_Start_Cmd ->
+// button_Start_var:
 const char* label_Status_var = "some status text";
+const char* button_Start_var = "Start";
 // generated next to refresh_ms -- the menu's own prompt/title:
 const char* mainMenuPromptText_var = "Arduino Data";
 ```
 
-Change either variable (assign a new string literal, or point it at your own
-buffer) and it takes effect on the next `sendMainMenu()`/`sendMenu()` — the full
-`{,}` resend. **By default `sendMainMenuUpdate()`/`sendMenuUpdate()` (the
-lightweight `{;}` update) does NOT resend it** — labels, plain buttons, charts,
-sub-menu buttons, and the prompt/refresh header are all left out of the
-generated update by default, on the basis that they rarely change, keeping the
-update small (only `onoff`/`pwm`/`onoffdisplay`/`datadisplay` values and
-drawings, whose content genuinely can change at runtime, are resent — see the
-comment above `sendMainMenuUpdate()`/`sendMenuUpdate()` in the generated file).
+Change any of these variables (assign a new string literal, or point it at
+your own buffer) and it takes effect on the next `sendMainMenu()`/`sendMenu()`
+— the full `{,}` resend. **By default `sendMainMenuUpdate()`/`sendMenuUpdate()`
+(the lightweight `{;}` update) does NOT resend any of them** — labels, plain
+buttons, charts, sub-menu buttons, and the prompt/refresh header are all left
+out of the generated update by default, on the basis that they rarely change,
+keeping the update small (only `onoff`/`pwm`/`onoffdisplay`/`datadisplay`
+values and drawings, whose content genuinely can change at runtime, are
+resent — see the comment above `sendMainMenuUpdate()`/`sendMenuUpdate()` in
+the generated file).
 
-If your device DOES need a label or prompt change to reach the client without a
-full resend, override the virtual `sendMainMenuUpdate()`/`sendMenuUpdate()` in
-your own subclass and write the whole body yourself, adding the extra
-`parser.label(...); parser.print(F("~")); parser.print(<var>);` (or prompt
-header) line(s) before its own `parser.endOfMsg()`. Unlike most hooks in this
-guide, you can't chain to the base class version here (`pfodMainMenu::sendMainMenuUpdate(parser)`)
+If your device DOES need one of these text changes to reach the client
+without a full resend, override the virtual `sendMainMenuUpdate()`/
+`sendMenuUpdate()` in your own subclass and write the whole body yourself,
+adding the extra `parser.label(...)`/`parser.button(...)` +
+`parser.print(F("~")); parser.print(<var>);` (or prompt header) line(s)
+before its own `parser.endOfMsg()`. Unlike most hooks in this guide, you
+can't chain to the base class version here (`pfodMainMenu::sendMainMenuUpdate(parser)`)
 and then add more — the base version already calls `parser.endOfMsg()`, so
 anything appended after it would corrupt the message.
 

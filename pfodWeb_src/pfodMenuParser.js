@@ -316,8 +316,14 @@ function parsePfodMenuItem(itemStr, isUpdate) {
         const rawMinValue  = intFields.length >= 3 ? parseInt(intFields[2], 10) : 0;
         const computedMaxValue = isNaN(maxValue)    ? 100 : maxValue;
         const computedMinValue = isNaN(rawMinValue) ? 0   : rawMinValue;
+        // Clamp to [min, max] -- a device value outside its own declared
+        // range (e.g. an uninitialised 0 with range 10-100) must be limited
+        // to the range before display, not shown as-is. Matches the same
+        // clamp pfodMenuDisplay.js's update() merge already applies when
+        // just the value changes via a {;} update.
+        const rawCurrentValue = isNaN(currentValue) ? 0 : currentValue;
         numericSliderData = {
-            currentValue: isNaN(currentValue) ? 0 : currentValue,
+            currentValue: Math.max(computedMinValue, Math.min(rawCurrentValue, computedMaxValue)),
             maxValue:     computedMaxValue,
             minValue:     computedMinValue,
             leading:      textFields[0] !== undefined ? textFields[0] : '',

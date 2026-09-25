@@ -114,6 +114,14 @@ Object.assign(DrawingViewer.prototype, {
   // Resets navigation state and seeds menuCmdSet from the menu cache for this connection.
   // In chart-only mode, opens the chart directly instead.
   queueInitialRequest() {
+    // New connection: clear the raw-data screen's buffer here (not on mere
+    // navigation away from/back to the screen within the same connection —
+    // exitStreamingData()/exitRawDataDisplay() deliberately never clear it,
+    // see rawDataCollector.js).  A device-sent `~C` also clears it
+    // (applyClearOption() in responseHandlers.js) — both are independent of
+    // this one.
+    if (window.rawDataCollector) window.rawDataCollector.clear();
+
     // If in chart-only mode, skip the main menu request and open chart display directly
     if (this.chartOnlyMode) {
       console.log('[CHART_MODE] CHART ONLY MODE - Skipping main menu request, opening chart display');
