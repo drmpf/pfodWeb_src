@@ -11,6 +11,20 @@
 
 </p>
 
+## What you need to download from here
+
+**You don't need this entire repository.**
+
+For a quick start download the raw [pfodWeb.html](https://github.com/drmpf/pfodWeb_src/tree/main/pfodWeb/pfodWeb.html) and open it in your web browser.
+
+For a full working copy of pfodWeb with docs and extras download pfodParser library, either from Arduino Library manager or from 
+[pfodParser.zip](https://www.forward.com.au/pfod/pfodParserLibraries/pfodParser.zip) 
+or from the pfodParser's latest release on [github](https://github.com/drmpf/pfodParser/releases). 
+
+Then go to the pfodParser/pfodWeb directory and open pfodWeb.html in your web browser.
+
+## pfodWeb
+
 pfodWeb.html V4.1.8+ is optimized for use by AI to design user interfaces. See AI Coding below.
 
 pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) designer, code generator and client for controlling and monitoring Arduino and other embedded devices from a browser — 
