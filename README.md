@@ -15,13 +15,17 @@
 
 **You don't need this entire repository.**
 
-For a quick start download the raw [pfodWeb.html](https://github.com/drmpf/pfodWeb_src/tree/main/pfodWeb/pfodWeb.html) and open it in your web browser.
+For a quick start download the raw [pfodWeb.html](https://github.com/drmpf/pfodWeb_src/tree/main/pfodWeb/pfodWeb.html) and open it in your web browser. 
+That will let you run the Designer and chart streaming csv data or an existing csv data file.
 
-For a full working copy of pfodWeb with docs and extras download pfodParser library, either from Arduino Library manager or from 
+To control/monitor your microprocessor you need to use the pfodParser librery on the micro side. The pfodParser library includes 
+a full working copy of pfodWeb with docs and extras. Download the pfodParser library, either from Arduino Library manager or from 
 [pfodParser.zip](https://www.forward.com.au/pfod/pfodParserLibraries/pfodParser.zip) 
 or from the pfodParser's latest release on [github](https://github.com/drmpf/pfodParser/releases). 
-
 Then go to the pfodParser/pfodWeb directory and open pfodWeb.html in your web browser.
+
+For non-Arduino based microprocessors there is [pfodParserC Library](https://www.forward.com.au/pfod/PIC/index.html) 
+and a **Minimal C code - Serial** pfodWeb Designer target that generates the appropiate code.
 
 ## pfodWeb
 
