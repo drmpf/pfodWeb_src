@@ -14,8 +14,8 @@
 //             chartAndRawData.js reads data via window.rawDataCollector;
 //             responseHandlers.js reads data via window.rawDataCollector.getRawDataWithoutClearing()
 
-// Ring-buffer cap for the raw data screen, in complete lines (not bytes) —
-// matches the Raw Message Viewer's own 500-entry cap in spirit. Oldest
+// Ring-buffer cap for the raw data screen, in complete lines (not bytes),
+// separate from the Raw Message Viewer's own 5000-entry cap. Oldest
 // lines are dropped once exceeded; see RawDataCollector._enforceLineLimit().
 const RAW_DATA_MAX_LINES = 500;
 

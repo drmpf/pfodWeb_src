@@ -142,7 +142,7 @@ const REQUIRED_BOARD_FIELDS = [
 /// parses (as esp8266, rp2040 and nrf52 all do despite being unrelated
 /// silicon) — then just add the family id here and to the dispatch list
 /// in main(), no new parser function needed.
-const SUPPORTED_FAMILIES = new Set(['unlistedBoard', 'ccode', 'avr', 'esp32', 'esp8266', 'rp2040', 'nrf52', 'adafruit_nrf52']);
+const SUPPORTED_FAMILIES = new Set(['unlistedBoard', 'ccode', 'nonArduinoCpp', 'avr', 'esp32', 'esp8266', 'rp2040', 'nrf52', 'adafruit_nrf52']);
 
 /// Strip JSONC-style `//` line comments and `/* ... */` block comments
 /// from a text payload so the result is plain JSON ready for JSON.parse.
@@ -952,11 +952,13 @@ function _lookupAllBoardsTxt(boardsTxtPath, variantDirName) {
 ///   `boards` — one entry per board, each a shallow clone of the parsed
 ///   board.json with an additional `variantPath` (absolute path to the
 ///   matching pins_arduino.h).
-///   `inoTemplates` — every distinct `<connectionId>.ino` file discovered,
-///   keyed by its path relative to variants/ (e.g. "serial.ino",
-///   "esp32/ble.ino").  Each board's `inoTemplateIds` field (see below)
-///   references into this map by key rather than embedding the file
-///   text, so a template shared by hundreds of boards is stored once.
+///   `inoTemplates` — every distinct `<connectionId>.ino` (or, for the
+///   'nonArduinoCpp' family, `.tpl`) file discovered, keyed by its path
+///   relative to variants/ (e.g. "serial.ino", "esp32/ble.ino",
+///   "nonArduinoCpp/serial.tpl").  Each board's `inoTemplateIds` field
+///   (see below) references into this map by key rather than embedding
+///   the file text, so a template shared by hundreds of boards is stored
+///   once.
 function discoverVariants() {
   const variantsRoot = path.resolve(__dirname, '..', 'variants');
   const out = [];
@@ -1037,15 +1039,20 @@ function discoverVariants() {
     }
   };
 
-  // Resolve the nearest `<connectionId>.ino` template for a variant
+  // Resolve the nearest `<connectionId>.<ext>` template for a variant
   // directory (same nearest-ancestor rule as board.json/family.json) and
   // register its content in the `inoTemplates` registry keyed by its
   // path relative to variants/ — so a template shared by many boards
   // (e.g. the root-level serial.ino) is read and stored exactly once,
-  // no matter how many variants resolve to it.  Returns the relative
-  // key, or null if no template of that connection type was found.
-  const registerInoTemplate = (dir, connectionId) => {
-    const inoPath = nearestAncestorFile(dir, connectionId + '.ino');
+  // no matter how many variants resolve to it.  ext is 'ino' for every
+  // Arduino family and 'tpl' for 'nonArduinoCpp' (see tplExtFor below) —
+  // the file is never an actual Arduino sketch for that family, so the
+  // .ino extension would be misleading; .tpl is just a generic "source
+  // template, not really this extension" marker, nothing parses it as such.
+  // Returns the relative key, or null if no template of that connection
+  // type was found.
+  const registerInoTemplate = (dir, connectionId, ext) => {
+    const inoPath = nearestAncestorFile(dir, connectionId + '.' + ext);
     if (inoPath === null) return null;
     const relKey = path.relative(variantsRoot, inoPath).split(path.sep).join('/');
     if (!(relKey in inoTemplates)) {
@@ -1053,6 +1060,10 @@ function discoverVariants() {
     }
     return relKey;
   };
+
+  // The one family whose connection templates are not real Arduino
+  // sketches -- see registerInoTemplate above.
+  const tplExtFor = (family) => family === 'nonArduinoCpp' ? 'tpl' : 'ino';
 
   // When a variant has no board.json in its ancestry, follow any
   // `#include "relative/pins_arduino.h"` directive in the variant's own
@@ -1110,18 +1121,20 @@ function discoverVariants() {
 
         const { familyDisplayName, familySortOrder, familyConnectionTypes } = loadFamilyConfig(dir, cfg.family);
 
-        // Resolve each supported connection's .ino template, nearest
-        // ancestor wins (variant dir overrides chip overrides family
-        // overrides the variants/ root).  'serial' must always resolve —
-        // every board declares it and variants/serial.ino covers the
-        // fallback — so a miss here is a real configuration problem.
+        // Resolve each supported connection's template, nearest ancestor
+        // wins (variant dir overrides chip overrides family overrides the
+        // variants/ root).  'serial' must always resolve — every board
+        // declares it and variants/serial.ino (variants/nonArduinoCpp/
+        // serial.tpl for that one family) covers the fallback — so a miss
+        // here is a real configuration problem.
+        const tplExt = tplExtFor(cfg.family);
         const inoTemplateIds = {};
         for (const proto of cfg.connections) {
-          const relKey = registerInoTemplate(dir, proto);
+          const relKey = registerInoTemplate(dir, proto, tplExt);
           if (relKey !== null) inoTemplateIds[proto] = relKey;
         }
         if (cfg.connections.includes('serial') && !inoTemplateIds.serial) {
-          _reportConfigIssues(dir, ['no serial.ino found in this directory or any ancestor up to variants/ (expected variants/serial.ino)']);
+          _reportConfigIssues(dir, ['no serial.' + tplExt + ' found in this directory or any ancestor up to variants/ (expected variants/serial.' + tplExt + ')']);
           continue;
         }
 
@@ -1164,9 +1177,10 @@ function discoverVariants() {
 
 /// Write the shared INO_TEMPLATES registry consumed at runtime by
 /// generateCode.js's _generateIno().  One entry per distinct
-/// `<connectionId>.ino` file discovered under variants/, keyed by its
-/// path relative to variants/ (e.g. "serial.ino", "esp32/ble.ino") —
-/// the same key each board's connections[proto].inoTemplateId carries.
+/// `<connectionId>.ino` (or `.tpl`, for 'nonArduinoCpp') file discovered
+/// under variants/, keyed by its path relative to variants/ (e.g.
+/// "serial.ino", "esp32/ble.ino", "nonArduinoCpp/serial.tpl") — the same
+/// key each board's connections[proto].inoTemplateId carries.
 /// Lives under designer/boards/shared/ so build-bundle.js's
 /// discoverBoardJsonFiles() (which skips that directory) never mistakes
 /// it for a per-board data file.
@@ -1185,6 +1199,39 @@ function writeInoTemplates(scriptDir, inoTemplates) {
     'const INO_TEMPLATES = Object.freeze({\n' + body + '\n});\n';
   fs.writeFileSync(outPath, content, 'utf8');
   console.log('Wrote ' + path.relative(scriptDir, outPath) + '  (' + keys.length + ' template' + (keys.length === 1 ? '' : 's') + ')');
+}
+
+/// Write the shared NON_ARDUINO_CPP_FILES registry consumed at runtime by
+/// generateCode.js's _triggerDownload() for the 'nonArduinoCpp' family
+/// only: a fixed set of static files (no per-design substitution) that
+/// ship alongside every generated 'nonArduinoCpp' sketch -- the
+/// target_Stream pfodStream skeleton the user completes for their board's
+/// UART (used by variants/nonArduinoCpp/serial.ino), target_pfodClock.cpp
+/// (supplies micros()), and readme.txt explaining both. Read directly from
+/// variants/nonArduinoCpp/ (not discovered -- there is exactly one family
+/// that needs this, so a generic multi-family mechanism would be
+/// speculative). Lives under designer/boards/shared/, like inoTemplates.js,
+/// for the same reason: build-bundle.js's discoverBoardJsonFiles() skips
+/// that directory so it is never mistaken for a per-board data file.
+const NON_ARDUINO_CPP_FILENAMES = ['target_Stream.h', 'target_Stream.cpp', 'target_pfodClock.cpp', 'readme.txt'];
+
+function writeNonArduinoCppFiles(scriptDir) {
+  const srcDir = path.join(scriptDir, '..', 'variants', 'nonArduinoCpp');
+  const outDir  = path.join(scriptDir, 'designer', 'boards', 'shared');
+  const outPath = path.join(outDir, 'nonArduinoCppFiles.js');
+  fs.mkdirSync(outDir, { recursive: true });
+  const body = NON_ARDUINO_CPP_FILENAMES
+    .map((f) => '  ' + JSON.stringify(f) + ': ' + JSON.stringify(fs.readFileSync(path.join(srcDir, f), 'utf8')))
+    .join(',\n');
+  const content =
+    '/*\n' +
+    ' * designer/boards/shared/nonArduinoCppFiles.js\n' +
+    ' * AUTO-GENERATED by build_boards.js from the files under variants/nonArduinoCpp/ — do not edit by hand.\n' +
+    ' * Edit the source file under variants/nonArduinoCpp/ and re-run build_boards.js instead.\n' +
+    ' */\n' +
+    'const NON_ARDUINO_CPP_FILES = Object.freeze({\n' + body + '\n});\n';
+  fs.writeFileSync(outPath, content, 'utf8');
+  console.log('Wrote ' + path.relative(scriptDir, outPath) + '  (' + NON_ARDUINO_CPP_FILENAMES.length + ' file' + (NON_ARDUINO_CPP_FILENAMES.length === 1 ? '' : 's') + ')');
 }
 
 function main() {
@@ -1207,7 +1254,8 @@ function main() {
                    cfg.family === 'nrf52' ||
                    cfg.family === 'adafruit_nrf52')  ? buildEsp32Board(src, cfg)
                 : (cfg.family === 'ccode'  ||
-                   cfg.family === 'unlistedBoard') ? buildCcodeBoard(src, cfg)
+                   cfg.family === 'unlistedBoard' ||
+                   cfg.family === 'nonArduinoCpp') ? buildCcodeBoard(src, cfg)
                 : buildAvrBoard(src, cfg);
 
     // Embed family, chip and the family's display name so build-bundle.js
@@ -1235,6 +1283,7 @@ function main() {
   }
 
   writeInoTemplates(scriptDir, inoTemplates);
+  writeNonArduinoCppFiles(scriptDir);
 
   // Any board.json that failed validation already printed its issues —
   // surface the failure to the shell wrapper so build_boards.{bat,sh}

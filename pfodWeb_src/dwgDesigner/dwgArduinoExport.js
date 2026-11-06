@@ -544,7 +544,7 @@ const DwgArduinoExport = (() => {
       '#include "Dwg_' + name + '.h"\n' +
       '#include <pfodDebugPtr.h>\n\n' +
       '//#define DEBUG\n' +
-      'static Print* debugPtr = NULL;  // local to this file\n\n' +
+      'static pfodPrint* debugPtr = NULL;  // local to this file\n\n' +
       'Dwg_' + name + ' dwg_' + name + ';\n' +
       '// weak: defining this function in any other .cpp replaces it, which is\n' +
       '// how a subclass takes over without editing this file -- see Dwg_' + name + '.h\n' +

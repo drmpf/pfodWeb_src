@@ -133,23 +133,11 @@ const DesignerEditConnection = (() => {
   //   return { pfod: _renderBaudPicker(state), skipSave: true };
   // }
 
-  /// Compute the human-readable summary shown on editMenu's Connection
-  /// row.  Serial shows the baud; the other transports just show the
-  /// transport name (per-transport config will land later).
-  function summaryForEditMenu(state) {
-    console.error('[CONN_DBG] summaryForEditMenu connection=', state.connection, 'baud=', state.baud);
-    if (state.connection === 'serial') {
-      return 'Serial @ ' + state.baud + ' baud';
-    }
-    return CONNECTION_LABELS[state.connection] || state.connection;
-  }
-
   return Object.freeze({
     sendConnection,
     // sendBaud no longer registered — Serial is always 115200
     supportedConnections: _supportedConnections,
     connectionLabels:     CONNECTION_LABELS,
-    summaryForEditMenu,
   });
 })();
 

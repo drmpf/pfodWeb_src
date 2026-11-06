@@ -85,6 +85,7 @@ const AllowedResponseShapes = {
   refresh:            ['dwg-start', 'dwg-update', 'empty'],
   'refresh-insertDwg':['dwg-start', 'dwg-update', 'empty'],
   insertDwg:          ['dwg-start', 'dwg-update', 'empty'],
+  moreData:           ['dwg-start', 'dwg-update', 'empty'],
 
   // keepAlive / dataRefresh: empty ack only.
   keepAlive:          ['empty'],
@@ -204,6 +205,20 @@ Object.assign(DrawingViewer.prototype, {
     return m && m[1] ? m[1] : '';
   },
 
+  /**
+   * Build the cmd for the first request of a drawing, {<loadCmd>`0}, or
+   * {<version>:<loadCmd>`0} when there is a cached version to verify.  The `0 is
+   * the part offset, as pfodApp always sends; following parts are requested with
+   * offsets 1, 2, ... and no version, see _collectMoreData.
+   *
+   * @param {string} drawingName - the drawing's load cmd
+   * @param {?string} version - its cached version, if any
+   * @returns {string} the cmd to send
+   */
+  _dwgLoadCmd(drawingName, version) {
+    return '{' + (version ? version + ':' : '') + drawingName + '`0}';
+  },
+
   // Resolve the dwg loadCmd from a request's cmd by parsing the leading
   // identifier (the menuItemCmd) and looking up the matching dwg/dwg-label
   // menu item in _currentMenu.items.  Returns null if the cmd has no
@@ -227,6 +242,154 @@ Object.assign(DrawingViewer.prototype, {
   // legacy direct-to-merged write.
   _touchSourceDwg(request) {
     return (request && request.touchZoneInfo && request.touchZoneInfo.sourceDwgName) || null;
+  },
+
+  /**
+   * Collect the parts of a drawing the device sends over several messages.  A
+   * reply whose header has ~m has more to come, and this queues a 'moreData'
+   * request for the next part, {<loadCmd>`<offset>}, offset 1, 2, ..., never with
+   * a version, as in pfodApp.  Nothing is applied until the last part has
+   * arrived, then all the parts are returned as one message, under the first
+   * part's header.  The last part is any one of:
+   *   - an update without ~m, e.g. {+|...}, whose items are kept
+   *   - an empty reply {}
+   *   - an update with ~m but no items, {+~m}
+   *
+   * Other requests and replies can come between the parts, because of timers or
+   * user actions.  So the parts are held per drawing, and a reply only counts as
+   * the next part if its request asks for the offset this drawing is waiting for.
+   * A menu slider cmd such as {s`12} looks the same but no load is waiting on s.
+   *
+   * Only a start replying to a drawing load can begin a collection.  A start with
+   * ~m and no items still has more to come, as in pfodApp.  The device errors below
+   * are also handled as in pfodApp:
+   *   - A part request answered by a start is logged, no more is requested, and the
+   *     drawing finishes with the parts held plus that start's items.
+   *   - An update with ~m replying to a load is logged, no more is requested, and
+   *     its items are applied as an ordinary update.
+   *
+   * While parts are held, addToRequestQueue refuses new loads of the drawing, as
+   * pfodApp's canSendImageRequest does.
+   *
+   * @param {Object} data - the parsed reply, {cmd: [header, ...items, '}']}
+   * @param {Object} request - the request this reply answers
+   * @returns {?{data: Object, request: Object}} the reply to process and the
+   *   request to process it for, which for a completed collection is the
+   *   drawing's original load request, since that is what names the drawing and
+   *   gives its request type.  null if this reply was only stored.
+   */
+  _collectMoreData(data, request) {
+    const shape = classifyResponseShape(data);
+    const name = this._extractCmdToken(request.cmd);
+    const collection = this.moreDataCollections.get(name);
+    const offset = request.cmd.match(/^\{[^:~`]+`(\d+)\}$/);
+    const isDwg = shape === 'dwg-start' || shape === 'dwg-update';
+    const parsed = isDwg ? window.translateDwgResponse([data.cmd[0]]) : null;
+    const isUpdate = isDwg && parsed.pfodDrawing === 'update';
+    const items = isDwg ? data.cmd.slice(1, data.cmd.lastIndexOf('}')) : [];
+
+    if (collection && offset && parseInt(offset[1], 10) === collection.nextOffset) {
+      if (shape === 'empty' || isUpdate) {
+        collection.items.push(...items);
+        if (isUpdate && parsed.more && items.length > 0) {
+          collection.nextOffset++;
+          console.log(`[MORE_DATA] "${name}": stored part ${offset[1]}, ${collection.items.length} items so far`);
+          this.addToRequestQueue('{' + name + '`' + collection.nextOffset + '}', null, null, 'moreData');
+          return null;
+        }
+        return this._finishMoreData(name, collection);
+      }
+      if (isDwg && parsed.pfodDrawing === 'start') {
+        console.error(`[MORE_DATA] "${name}": Expected Dwg Update '{+|..' response for cmd: ${request.cmd}`);
+        collection.items.push(...items);
+        return this._finishMoreData(name, collection);
+      }
+      console.error(`[MORE_DATA] "${name}": expected the next part but got "${data.cmd[0]}", dropping ${collection.items.length} items`);
+      this.moreDataCollections.delete(name);
+    }
+
+    // The reply to a part request nothing is waiting for any more, because the
+    // queue was cleared while the request was on its way.
+    if (request.requestType === 'moreData') {
+      console.log(`[MORE_DATA] "${name}": ignoring the reply to "${request.cmd}", no longer waiting for it`);
+      return null;
+    }
+
+    if (DwgLoadRequestTypes.has(request.requestType) && isDwg && parsed.more) {
+      if (isUpdate) {
+        console.error(`[MORE_DATA] "${name}": Refresh Dwg Update cannot have ~m. Last cmd: ${request.cmd}`);
+        data.cmd[0] = '{+';
+      } else {
+        console.log(`[MORE_DATA] "${name}": first part has ${items.length} items, more to come`);
+        this.moreDataCollections.set(name, { request, head: data.cmd[0], items, nextOffset: 1 });
+        // A load of this drawing queued before the device said this was a ~m
+        // drawing must not go out in the middle of it.
+        this.requestQueue = this.requestQueue.filter(r =>
+          !(DwgLoadRequestTypes.has(r.requestType) && this._extractCmdToken(r.cmd) === name));
+        this.addToRequestQueue('{' + name + '`1}', null, null, 'moreData');
+        return null;
+      }
+    }
+    return { data, request };
+  },
+
+  /**
+   * Forget the parts held for a drawing when the request for its next part has
+   * failed with nothing left to retry it.  No more parts will come, and new loads
+   * of the drawing are refused while parts are held, so holding on to them would
+   * leave the drawing blank for good.  The next load starts it again.
+   *
+   * @param {Object} request - the request that failed, of any type
+   */
+  _abandonMoreData(request) {
+    if (request.requestType !== 'moreData') return;
+    const name = this._extractCmdToken(request.cmd);
+    console.error(`[MORE_DATA] "${name}": "${request.cmd}" failed, dropping the parts held`);
+    this.moreDataCollections.delete(name);
+  },
+
+  /**
+   * Build the single message from a completed collection and forget the
+   * collection.  The ~m comes off the header, so the message reads as complete
+   * to everything downstream, including the cache.
+   *
+   * @param {string} name - the drawing's load cmd
+   * @param {{request: Object, head: string, items: string[]}} collection - its parts
+   * @returns {{data: Object, request: Object}} the message and its load request
+   */
+  _finishMoreData(name, collection) {
+    this.moreDataCollections.delete(name);
+    const head = collection.head.replace(/^(\{\+[0-9A-Fa-f]*`\d+`\d+~)m/, '$1');
+    console.log(`[MORE_DATA] "${name}": complete, ${collection.items.length} items under "${head}"`);
+    return { data: { cmd: [head, ...collection.items, '}'] }, request: collection.request };
+  },
+
+  /**
+   * Check a recording for a ~m drawing whose following parts were not recorded.
+   * Such a recording is corrupt, so the replay reports this and stops.  Called for
+   * each recorded cmd before it is sent, and with null at the end of the recording.
+   * Other cmds can come between the parts, so it takes a request for the same
+   * drawing to show the problem: anything but the next part, or the next part
+   * answered by starting the drawing again.  At the end of the recording, any
+   * drawing still waiting shows it too.
+   *
+   * @param {?string} recordedCmd - the cmd about to be sent, or null at the end
+   * @param {?string} recordedReply - its recorded {..} reply, if any
+   * @returns {?string} the error message, or null if the recording is fine so far
+   */
+  replayMoreDataError(recordedCmd, recordedReply) {
+    const report = (name, collection) => `ERROR: this recording is corrupt.\n"${name}" replied with ~m (more data) but its next part, {${name}\`${collection.nextOffset}}, was not recorded.`;
+    if (recordedCmd === null) {
+      const [open] = this.moreDataCollections;
+      return open ? report(open[0], open[1]) : null;
+    }
+    if (!/^\{(?:[^:~`]+:)?[^:~`]+(?:`\d+)?\}$/.test(recordedCmd)) return null; // a touch or input
+    const name = this._extractCmdToken(recordedCmd);
+    const collection = this.moreDataCollections.get(name);
+    if (!collection) return null;
+    const isNextPart = recordedCmd === '{' + name + '`' + collection.nextOffset + '}';
+    const isStart = recordedReply !== null && /^\{\+[0-9A-Fa-f]*`\d+`\d+/.test(recordedReply);
+    return (isNextPart && !isStart) ? null : report(name, collection);
   },
 
   // Handle an empty {} response.  Empty replies carry no payload but DO
@@ -399,9 +562,7 @@ Object.assign(DrawingViewer.prototype, {
               this.redraw.redrawDrawingManager.loadDrawingDataFromStorage(drawingName, connectionId);
             }
             const storedVersion = this.redraw.redrawDrawingManager.getStoredVersion(drawingName, connectionId);
-            const drawingCmd = storedVersion
-              ? '{' + storedVersion + ':' + drawingName + '}'
-              : '{' + drawingName + '}';
+            const drawingCmd = this._dwgLoadCmd(drawingName, storedVersion);
             if (!this.redraw.redrawDrawingManager.drawings.includes(drawingName)) {
               this.redraw.redrawDrawingManager.drawings.push(drawingName);
             }
@@ -623,9 +784,7 @@ Object.assign(DrawingViewer.prototype, {
         }
 
         const storedVersion = this.redraw.redrawDrawingManager.getStoredVersion(drawingName, connectionId);
-        const drawingCmd = storedVersion
-          ? '{' + storedVersion + ':' + drawingName + '}'
-          : '{' + drawingName + '}';
+        const drawingCmd = this._dwgLoadCmd(drawingName, storedVersion);
         if (!this.redraw.redrawDrawingManager.drawings.includes(drawingName)) {
           this.redraw.redrawDrawingManager.drawings.push(drawingName);
         }

@@ -483,6 +483,20 @@ This is **approach A** — see "Two ways to work" above for what it needs
 before you start, and for what to do instead when the browser is not
 yours to drive.
 
+> **Re-confirm a button's position immediately before every click — never
+> reuse a coordinate from an earlier screenshot.** This screen scrolls and
+> re-renders between actions (a status label appears, a list grows by a
+> row, a dialog opens on top of another), so a coordinate that was correct
+> one screenshot ago can land on the wrong element the next. A miss is not
+> always silent: clicking a few pixels off a real "Load Design from File"
+> or "Generate Code" button can land on something else on the page
+> entirely, and if that happens to be a file input or a download, it can
+> trigger the native dialog this section exists to avoid — after which the
+> session is stuck until a human dismisses it (§4.1.2/§4.1.3). Re-locate
+> the element (by ref/selector, not a remembered x/y pair) right before
+> each click, and take a fresh screenshot after any action that can change
+> layout — a load, a generate, a dialog open/close — before clicking again.
+
 Node earns its place twice over. **Write the json with a script, not by
 hand:** a drawing is a long list of items whose coordinates are usually
 computed from each other (a gauge's ticks, a bar's segments), and a
@@ -723,6 +737,86 @@ Every file picker in the app is covered, because the hook wraps the shared
 | Dwg Controls Panel | Load Dwg (`.pfodDwg_json` or `.zip`) |
 | Dwg Controls Panel, missing-insertDwg prompt | Load File… |
 | Select Dwg for a menu item | Load Dwg from File |
+| Connection prompt, page loaded with `?replay` | Replay Raw Msg File (`pfod-messages-<date>.json`, or a pfodApp debug log `.txt`) — see below |
+
+> **If `pfodWebFileHook` is `undefined` from your JavaScript tool, you are
+> in an isolated world, not the page.** Some browser-automation tools
+> (Claude in Chrome's `javascript_tool` among them) run your code beside
+> the page: the DOM is shared, the page's globals are not, so
+> `pfodWebFileHook`, `ConnectionManager`, `messageCollector` and every
+> other pfodWeb global all read as `undefined` — and a click you then make
+> opens the native dialog, because nothing was armed in the page itself.
+> Run the call in the page by injecting it as a `<script>` element, and
+> pass anything you need back through the DOM:
+>
+> ```js
+> const s = document.createElement('script');
+> s.textContent = `pfodWebFileHook.armFromUrls('/my-recording.json')
+>   .then(n => { document.body.dataset.armed = n; });`;
+> document.documentElement.appendChild(s);
+> // later: document.body.dataset.armed  → '1'
+> ```
+
+**Replaying a Raw Message recording.** The connection prompt's **Replay
+Raw Msg File** button loads a `.json` exported from the Raw Message
+viewer and runs the client against it as if it were a live device — no
+board, no pfodProxy. **The button is hidden unless the page's URL has
+`replay` in it**, so open `http://127.0.0.1:8137/pfodWeb.html?replay`. Arm
+the recording, then press the button:
+
+```js
+// The page must be served over http (as above) and the .json beside it.
+await pfodWebFileHook.armFromUrls('/pfod-messages-2026-11-02T09-28-24.020Z.json');
+// or, with the content in hand:
+pfodWebFileHook.arm({ name: 'pfod-messages-….json', text: '…the JSON…' });
+// then press Replay Raw Msg File
+```
+
+The file alone drives the replay. Each entry plays at its recorded `ms`:
+recorded cmds are sent, and recorded replies and raw data arrive, with the
+same gaps between them as the live session, through the ordinary receive
+path, so menus, drawings, charts and raw data behave as they did live. The
+client's refresh timers are off and its own requests are never sent, so
+nothing you press changes what plays. Replaying a five minute session takes
+five minutes. When the last entry has played, a "Replay finished" alert (a
+pfodAlert, so readable — §4.1.2) gives the file's counts of messages sent,
+messages received and raw data lines. A `{!}` in the file ends the replay
+there: it is not sent, later entries are not played, and the alert adds
+"Client Exited {!}". Every entry needs a numeric `ms`.
+
+The button also takes a pfodApp debug log (`.txt`). Only the log's **last
+connection** is played. pfodApp appends each connection to the log, and a
+connection that starts from pfodApp's cached menu has no full `{,` menu in it,
+so it fails to replay. Raw data lines have no time of their own in the log, so
+each run of them arrives together, straight after the entry before it.
+
+You can read what happened without screenshots from
+`messageCollector.getMessages()` (in the page — see the isolated-world
+note above).
+
+**Capturing the displayed menu.** The three-dots menu's **Export PNG** (menu
+screens only) downloads `pfod-menu-<date>.png`. Scripts call the same code,
+which also returns the image:
+
+```js
+const { fileName, width, height, dataUrl } = await pfodMenuDisplay.exportPng();
+```
+
+It captures only the current view, at the current scroll position, so scroll
+first to capture another part of a long menu. The scrollbar is left out, but
+the strip reserved for it stays. If no menu is displayed it rejects rather than
+raising a native alert. This is separate from the Dwg Controls Panel's Export
+PNG, which captures the previewed drawing's canvas.
+
+> **Record from a cleared cache, or the replay has nothing to draw.** A
+> recording made while the browser already had the device's menu cached
+> starts with a versioned request (`0{X01:.}`) answered by a `{;` menu
+> *update*, not the full `{,` menu — the full menu lived in that browser's
+> cache, never in the file. Replay stops there with an error in the *Replay
+> finished* dialog, as it does for a `~m` drawing missing a following part.
+> To make a replayable recording, press **Clear Menu Cache**, connect, then
+> export from the Raw Message viewer: the file then begins with plain `{.}`
+> and the full menu and drawings.
 
 Saving a drawing back out is the Dwg Controls Panel's **Save Dwg**. A
 drawing that inserts nothing comes out as `<name>.pfodDwg_json`; one that
@@ -831,6 +925,22 @@ loading.
 > DOM, so click its button and carry on; just do not mistake it for the
 > page having hung. Bare `.pfodMenu_json` / `.pfodDwg_json` downloads skip
 > it, as does the `deleteAllDwgs()` snapshot.
+
+> **Chrome can silently block a download after several in a row.**
+> Repeated Generate Code / Save Design / Save Dwg presses in one automation
+> run look to Chrome like a site auto-triggering multiple downloads
+> without a fresh user gesture between them, and after a few it throttles:
+> a "this site has triggered multiple automatic downloads — Allow/Block"
+> prompt appears **in the browser chrome** (near the address bar), not in
+> the page. It is invisible to a tab screenshot and to `read_console_messages`
+> — the page's own JS still runs `a.click()` without error and still shows
+> its normal "`<Name>.zip` downloaded" message, so the only symptom is that
+> the file never actually appears in the download folder. Confirm the file
+> landed (list the folder, check the name and a recent mtime) after every
+> download before trusting an in-page "downloaded" message, especially
+> several downloads into a run. If it is missing, ask the person driving
+> the browser to click **Allow** on that prompt, then repeat the
+> Generate/Save press that was lost.
 
 What happens next depends on what else you can do:
 

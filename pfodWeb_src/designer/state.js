@@ -494,11 +494,20 @@ const PULSE_TYPES = Object.freeze(['none', 'low', 'high']);
 /// non-alphanumeric characters (spaces, newlines) collapses to a
 /// single '_', then the result is capped at 15 characters, so a long
 /// or heavily-formatted button/label doesn't produce an unusably long
-/// generated name (this is the single source _cppId/_pinConstName/
-/// generateCode's own C++ output and every "Cmd:"-style display all
-/// build on, so a short name here is short everywhere).  When the
-/// base collides with an existing autoCmd in the same menu, a `_2`,
-/// `_3`, … suffix is appended until the result is unique.
+/// autoCmd.  When the base collides with an existing autoCmd in the
+/// same menu, a `_2`, `_3`, … suffix is appended until the result is
+/// unique.
+///
+/// NOTE: generateCode.js's own generated C++ var/method names no
+/// longer derive from this at all (see its _collectBaseNames) --
+/// labelChanges.txt's whole point was that editing an item's text
+/// must not change its generated name, and autoCmd is regenerated
+/// from `text` on every edit (see editMenuItem.js's _applyTextField /
+/// selectDwgForItem.js), so it can't be that source any more.
+/// generateCcode.js ("Minimal C Code") still derives ITS OWN var/
+/// function names from autoCmd and was not touched here -- out of
+/// scope for labelChanges.txt, but the same underlying bug (a text
+/// edit renaming generated code) likely still applies there too.
 function _makeAutoCmd(type, text, existingItems) {
   const cleaned = (text || '')
     .replace(/<[^>]*>/g, '')
@@ -686,6 +695,19 @@ function _parseItemTolerant(input, path, warnings) {
     out.ccodeCmd = input.ccodeCmd;
   } else if ('ccodeCmd' in input) {
     warnings.push(path + '.ccodeCmd: not a single A-Z/a-z letter — dropped, will be reassigned');
+  }
+
+  // codeVarNo is optional and lazily assigned (see
+  // DesignerState.assignCodeVarNos) -- it's the per-type dedup number
+  // generateCode.js's generated var/method names are built from (1 ==
+  // no suffix, e.g. plain "button"; 2, 3, ... == "_2", "_3", ...; 0 is
+  // NOT valid -- only exactly 1 means "no suffix"), only present once a
+  // design has been through "Generate Code". Missing OR not a valid
+  // integer >= 1 both just mean "not assigned yet" -- neither is a
+  // failure, so neither warns.
+  used.add('codeVarNo');
+  if (Number.isInteger(input.codeVarNo) && input.codeVarNo >= 1) {
+    out.codeVarNo = input.codeVarNo;
   }
 
   used.add('formats');
@@ -1316,6 +1338,71 @@ class DesignerState {
         it.ccodeCmd = letter;
         used.add(letter);
         changed = true;
+      }
+    }
+    if (changed) this.save();
+  }
+
+  /// Lazily assign a stable per-TYPE dedup number `codeVarNo` to every
+  /// item in the whole design tree that doesn't have a valid one yet,
+  /// then de-duplicate any collision a hand-edited/merged design loaded
+  /// with two items of the same type already sharing one -- generateCode.js's
+  /// generated var/method names are built from (item.type, item.codeVarNo)
+  /// instead of the item's own label text, so neither editing a label NOR
+  /// moving/reordering items changes already-generated code (see its
+  /// _collectBaseNames). Called only by that generator, on "Generate Code"
+  /// -- never from a preview path, so merely looking at an item never
+  /// assigns/persists anything (see generateCode.js's _previewBaseName for
+  /// the non-mutating preview used by the "no I/O pins defined" placeholder
+  /// toggle).
+  ///
+  /// Three passes, in order:
+  ///   1. Scan the whole tree once per TYPE for the highest valid codeVarNo
+  ///      already in use. Only a positive integer (>= 1) is valid -- 0 is
+  ///      NOT, so only exactly 1 means "no suffix" (e.g. plain "button");
+  ///      2, 3, ... mean "_2", "_3", ... suffixed.
+  ///   2. For each item still missing a valid codeVarNo, in tree order,
+  ///      hand out (that type's current max + 1) and bump the max -- a
+  ///      pure forward advance that never reuses a number freed by a
+  ///      deleted item.
+  ///   3. Final dedup pass: walk the tree once more per TYPE: the first
+  ///      item seen with a given codeVarNo keeps it; any LATER item with
+  ///      an already-seen value (two items of the same type loaded from
+  ///      JSON, hand-edited or merged, already sharing one) gets bumped
+  ///      to a fresh max + 1, same as pass 2 -- so a collision is caught
+  ///      here even though each item's OWN codeVarNo was individually
+  ///      valid.
+  /// Persists via save() if any item was actually assigned/changed.
+  assignCodeVarNos() {
+    const items = this.getAllItems();
+    const maxByType = new Map();
+    const validNo = (it) => (Number.isInteger(it.codeVarNo) && it.codeVarNo >= 1) ? it.codeVarNo : null;
+    for (const it of items) {
+      const n = validNo(it);
+      if (n === null) continue;
+      if (!maxByType.has(it.type) || n > maxByType.get(it.type)) maxByType.set(it.type, n);
+    }
+    let changed = false;
+    for (const it of items) {
+      if (validNo(it) === null) {
+        const next = (maxByType.get(it.type) || 0) + 1;
+        it.codeVarNo = next;
+        maxByType.set(it.type, next);
+        changed = true;
+      }
+    }
+    const seenByType = new Map();
+    for (const it of items) {
+      let seen = seenByType.get(it.type);
+      if (!seen) { seen = new Set(); seenByType.set(it.type, seen); }
+      if (seen.has(it.codeVarNo)) {
+        const next = (maxByType.get(it.type) || 0) + 1;
+        it.codeVarNo = next;
+        maxByType.set(it.type, next);
+        seen.add(next);
+        changed = true;
+      } else {
+        seen.add(it.codeVarNo);
       }
     }
     if (changed) this.save();

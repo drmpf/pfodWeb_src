@@ -27,7 +27,7 @@ Object.assign(DrawingViewer.prototype, {
     try {
       // Create message collector if not already created
       if (!window.messageCollector) {
-        window.messageCollector = new MessageCollector(500);
+        window.messageCollector = new MessageCollector(5000);
         ConnectionManager.setMessageCollector(window.messageCollector);
         console.log('[PFODWEB_DEBUG] Message collector created and set on ConnectionManager');
       }
@@ -207,9 +207,7 @@ Object.assign(DrawingViewer.prototype, {
       const connectionId = (typeof getConnectionIdentifier === 'function')
         ? getConnectionIdentifier(this.connectionManager) : null;
       const storedVersion = this.redraw.redrawDrawingManager.getStoredVersion(drawingName, connectionId);
-      const cmd = storedVersion
-        ? '{' + storedVersion + ':' + drawingName + '}'
-        : '{' + drawingName + '}';
+      const cmd = this._dwgLoadCmd(drawingName, storedVersion);
       if (storedVersion) {
         console.log(`[QUEUE_DWG] Using stored version "${storedVersion}" for "${drawingName}"`);
       } else {

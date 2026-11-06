@@ -339,7 +339,7 @@ const DesignerEditMenuItem = (() => {
       } else if (canPlaceholder) {
         pinFmt = fmt1;
         if (isPlaceholder) {
-          pinLabel = DesignerGenerateCode.pinConstName(item.autoCmd) + ' = ?';
+          pinLabel = DesignerGenerateCode.pinConstName(item, state) + ' = ?';
           hint     = EM_HINT_COLOUR + '<i>Click here to remove placeholder';
         } else {
           pinLabel = 'No I/O pins defined';
@@ -347,7 +347,7 @@ const DesignerEditMenuItem = (() => {
           // the actual generated variable name reads clearly against the
           // yellow-italic instructional text around it.
           hint = EM_HINT_COLOUR + '<i>Click here to add</i></y>\n' +
-                 DesignerGenerateCode.pinConstName(item.autoCmd) + ' = ?\n' +
+                 DesignerGenerateCode.pinConstName(item, state) + ' = ?\n' +
                  EM_HINT_COLOUR + '<i>placeholder in generated code';
         }
       } else {

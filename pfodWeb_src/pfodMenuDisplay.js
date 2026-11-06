@@ -285,7 +285,8 @@ class PfodMenuDisplay {
         // Apply <bw> contrast default for prompt text when not explicitly specified.
         if (header.title) {
             const promptContrastHex = xtermColorToHex(getBlackWhite(menuBgColor));
-            pfodSetFormattedText(this._promptEl, header.title, promptContrastHex, undefined, true); // prompt bar: links allowed
+            pfodSetFormattedText(this._promptEl, header.title, promptContrastHex);
+            pfodApplyMarkdownLinks(this._promptEl); // prompt bar: links allowed
             applyPfodFormats(this._promptEl, header.promptFormat);
             if (!header.promptFormat.textColor) {
                 this._promptEl.style.color = promptContrastHex;
@@ -805,6 +806,207 @@ class PfodMenuDisplay {
         if (this._onItemClick) {
             this._onItemClick(cmd);
         }
+    }
+
+    /**
+     * Save the menu currently displayed as a PNG, the menu counterpart of the
+     * Dwg Controls Panel's Export PNG (dwgControlsPanelUI.js _exportPreviewPng).
+     *
+     * A drawing is already a canvas, so that export just reads its pixels.  A
+     * menu is ordinary DOM with a canvas per dwg item, and a browser has no call
+     * that paints DOM to a canvas.  The one route that needs no library is to
+     * copy the DOM into an SVG <foreignObject> and draw that SVG as an image.
+     *
+     * Only the current view is captured, at its current scroll position, so
+     * anything scrolled out of view is not in the image.  The scrollbar is left
+     * out, but the strip reserved for it stays.
+     *
+     * A failure rejects rather than calling alert(), so a script calling this
+     * is never stuck behind a native dialog.  The toolbar item reports the
+     * rejection with pfodAlert.
+     *
+     * Limits: Roboto is embedded but on-demand fonts (extraFonts/) are not, so
+     * other scripts use a system font.  Safari may refuse to read the finished
+     * canvas, which rejects with its SecurityError.
+     *
+     * @returns {Promise<{fileName: string, width: number, height: number, dataUrl: string}>}
+     *          the file offered for download, its size in pixels, and its
+     *          contents, which lets a script check the image without the file
+     * @throws (rejects) if no menu is displayed, or the image can't be built
+     */
+    async exportPng() {
+        if (!document.body.classList.contains('menu-mode')) {
+            throw new Error('No menu is being displayed, so there is nothing to export.');
+        }
+        const pseudoRules = [];
+        const clone = this._cloneForPng(this._menuContainer, pseudoRules);
+
+        // Fix the scroll area and prompt at their on-screen sizes, clipped, with
+        // their content moved up by the distance it is scrolled.  A copy has no
+        // scroll position of its own, and setting scrollTop wouldn't work as the
+        // copy is never laid out in the page.
+        let cssHeight = 0;
+        for (const el of [this._scrollArea, this._promptEl]) {
+            if (getComputedStyle(el).display === 'none') continue; // see .no-items, .no-prompt
+            const copy = clone.querySelector('#' + el.id);
+            copy.style.boxSizing = 'border-box';
+            copy.style.width = copy.style.inlineSize = el.offsetWidth + 'px'; // the copied width excludes padding
+            copy.style.flex = '0 0 auto';
+            copy.style.height = copy.style.blockSize = el.offsetHeight + 'px';
+            copy.style.maxHeight = copy.style.maxBlockSize = 'none';
+            copy.style.overflow = 'hidden';
+            if (el.scrollTop > 0) {
+                const shifted = document.createElement('div');
+                shifted.style.position = 'relative';
+                shifted.style.top = -el.scrollTop + 'px';
+                shifted.style.flex = '0 0 auto'; // #menu-prompt is a flex column
+                shifted.append(...copy.childNodes);
+                copy.appendChild(shifted);
+            }
+            cssHeight += el.offsetHeight;
+        }
+        const cssWidth = this._menuContainer.offsetWidth;
+        clone.style.height = clone.style.blockSize = cssHeight + 'px';
+
+        // Same sharpness as the screen, even on a high-DPI display.
+        const scale = Math.max(1, window.devicePixelRatio);
+        const width = Math.round(cssWidth * scale);
+        const height = Math.round(cssHeight * scale);
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', width);
+        svg.setAttribute('height', height);
+        svg.setAttribute('viewBox', '0 0 ' + cssWidth + ' ' + cssHeight);
+        const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+        style.textContent = PfodMenuDisplay._embeddedFontCss() + pseudoRules.join('');
+        svg.appendChild(style);
+        const foreignObject = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+        foreignObject.setAttribute('width', cssWidth);
+        foreignObject.setAttribute('height', cssHeight);
+        foreignObject.appendChild(clone);
+        svg.appendChild(foreignObject);
+
+        // A data: URL, not a blob: one, because Chrome treats a foreignObject
+        // SVG from a blob: URL as cross-origin and then refuses toDataURL.
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error('The browser could not render the menu as an image.'));
+            img.src = 'data:image/svg+xml;charset=utf-8,' +
+                encodeURIComponent(new XMLSerializer().serializeToString(svg));
+        });
+        await img.decode();
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/png');
+
+        // Same download idiom and date stamp as the Raw Message viewer's exports.
+        const fileName = `pfod-menu-${new Date().toISOString().replace(/:/g, '-')}.png`;
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        console.log('[pfodMenuDisplay] Exported menu PNG: ' + fileName + ' (' + width + 'x' + height + ')');
+        return { fileName, width, height, dataUrl };
+    }
+
+    /**
+     * Copy a DOM node for exportPng, with its computed style written inline,
+     * since the page's stylesheets don't apply inside an SVG image.
+     *
+     * - A canvas becomes an <img> of its pixels, as a cloned canvas is blank.
+     * - display:none elements and the hand-drawn scrollbar are left out.
+     * - ::before and ::after can't be styled inline, so they are added to
+     *   pseudoRules against a generated class.  #menu-prompt needs this: its
+     *   ::before is what bottom-aligns the text.
+     * - Animations are removed.  A flashing item's computed visibility may be
+     *   caught in the hidden part of its cycle, so it is forced visible.
+     * - Border widths are rounded up to whole CSS pixels.  At a fractional
+     *   display scale the browser reports a 2px border as eg 1.76px, snapped to
+     *   device pixels, and inside the image that would snap down to 1px.
+     *
+     * @param {Node} node - the node to copy
+     * @param {string[]} pseudoRules - CSS rules for pseudo-elements, appended to
+     * @returns {Node|null} the copy, or null if the node is not to be exported
+     */
+    _cloneForPng(node, pseudoRules) {
+        if (node.nodeType === Node.TEXT_NODE) return node.cloneNode(false);
+        if (node.nodeType !== Node.ELEMENT_NODE) return null;
+        if (node === this._scrollTrack || node === this._scrollThumb) return null;
+        const computed = getComputedStyle(node);
+        if (computed.display === 'none') return null;
+
+        let clone;
+        if (node.tagName === 'CANVAS') {
+            clone = document.createElement('img');
+            clone.src = node.toDataURL('image/png');
+        } else {
+            clone = node.cloneNode(false);
+        }
+        for (const name of computed) {
+            clone.style.setProperty(name, computed.getPropertyValue(name));
+        }
+        if (computed.animationName !== 'none') {
+            clone.style.visibility = 'visible';
+        }
+        clone.style.animation = 'none';
+        clone.style.transition = 'none';
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+            const name = 'border-' + side + '-width';
+            clone.style.setProperty(name, Math.ceil(parseFloat(computed.getPropertyValue(name))) + 'px');
+        }
+
+        for (const pseudo of ['::before', '::after']) {
+            const pseudoStyle = getComputedStyle(node, pseudo);
+            if (pseudoStyle.content === 'none') continue;
+            const className = 'pfod-png-' + pseudoRules.length;
+            clone.classList.add(className);
+            let declarations = '';
+            for (const name of pseudoStyle) {
+                declarations += name + ':' + pseudoStyle.getPropertyValue(name) + ';';
+            }
+            pseudoRules.push('.' + className + pseudo + '{' + declarations + '}');
+        }
+
+        for (const child of node.childNodes) {
+            const childClone = this._cloneForPng(child, pseudoRules);
+            if (childClone) clone.appendChild(childClone);
+        }
+        return clone;
+    }
+
+    /**
+     * The page's @font-face rules whose font data is inside the rule itself.
+     * An SVG drawn as an image can't use the page's fonts or fetch any, so
+     * without these the export would fall back from Roboto to a system font.
+     *
+     * @returns {string} CSS text, empty if there are no such rules
+     */
+    static _embeddedFontCss() {
+        let css = '';
+        for (const sheet of document.styleSheets) {
+            let rules;
+            try {
+                rules = sheet.cssRules;
+            } catch (e) {
+                // extraFonts/pfodweb-extra-fonts.css can be unreadable (see
+                // _rewriteExtraFontsViaProxy in pfodCommon.html).  Its fonts are
+                // separate files that couldn't be used here anyway.
+                console.log('[pfodMenuDisplay] Export PNG skipping stylesheet ' + sheet.href + ': ' + e.message);
+                continue;
+            }
+            for (const rule of rules) {
+                if (rule.type === CSSRule.FONT_FACE_RULE && rule.cssText.includes('data:')) {
+                    css += rule.cssText;
+                }
+            }
+        }
+        return css;
     }
 }
 

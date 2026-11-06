@@ -410,7 +410,8 @@ const DesignerPreviewMenu = (() => {
   /// @param {number}        depth — index of the '_' in rawCmd
   /// @returns {{pfod: string, skipSave: boolean}}
   function handleDwgPreviewFetch(rawCmd, state, depth) {
-    const bareCmd = rawCmd.substring(depth, rawCmd.length - 1);
+    // Without the `0 part offset a dwg's first request carries.
+    const bareCmd = rawCmd.substring(depth, rawCmd.length - 1).replace(/`0$/, '');
     // An unrecognised '_' cmd is not an error — it is simply not one of
     // ours. Only cmds dwgPreviewKey has handed out resolve to a dwg.
     const dwgName = window.dwgPreviewName(bareCmd);

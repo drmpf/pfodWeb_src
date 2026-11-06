@@ -115,7 +115,8 @@ class PfodInputDisplay {
     if (container) container.style.backgroundColor = bgColor;
     promptEl.style.backgroundColor = bgColor;
     const contrastHex = xtermColorToHex(getBlackWhite(bgColor));
-    pfodSetFormattedText(promptEl, promptText, contrastHex, undefined, true); // prompt bar: links allowed
+    pfodSetFormattedText(promptEl, promptText, contrastHex);
+    pfodApplyMarkdownLinks(promptEl); // prompt bar: links allowed
     promptEl.style.color = contrastHex;
 
     // Show transient byte-limit popup if maxLen was explicitly provided (not default)

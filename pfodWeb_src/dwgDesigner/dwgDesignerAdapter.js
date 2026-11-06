@@ -459,9 +459,10 @@ class DwgDesignerVirtualDevice {
 
     // Strip any <version>: prefix (parseVersion expects/returns indices
     // into the ORIGINAL rawCmd — designer/dispatch.js:97-104) then the
-    // trailing '}' to get the bare cmd content.
+    // trailing '}' to get the bare cmd content, and the `0 part offset a dwg's
+    // first request carries, since this device sends every dwg as one message.
     const parsed = parseVersion(rawCmd);
-    const bareCmd = rawCmd.substring(parsed.cmdStart).replace(/\}$/, '');
+    const bareCmd = rawCmd.substring(parsed.cmdStart).replace(/\}$/, '').replace(/`0$/, '');
     const requestedVersion = parsed.version;
     // TEMP DEBUG: every cmd this device receives, and its own current
     // selection state — to see whether processCmd is even being reached,

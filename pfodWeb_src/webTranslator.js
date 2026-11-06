@@ -1342,7 +1342,12 @@ function translateDwgResponse(cmd) {
     // colours and dwgWireEncoder.js's _colour() emits for BLACK_WHITE.
     // Falls through to the same `colorNo ? ... : 0` default an entirely
     // absent header group gets, below.
-    const regex = /^\{\+(?:([0-9A-Fa-f]*)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~(.*))?$/;
+    // The version is one ~field, the one after the more-data field; any further
+    // ~fields are ignored, as in pfodApp (pfodParser.java passes imageTexts[2]
+    // as the version).  So "~~~X01" has an EMPTY version, and that dwg is
+    // re-requested as plain {cmd}, the same as pfodApp does, rather than with a
+    // "~X01" version the device doesn't recognise.
+    const regex = /^\{\+(?:([0-9A-Fa-f]*)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~([^~]*)(?:~.*)?)?$/;
     const match = cmdString.match(regex);
 
     if (!match) {

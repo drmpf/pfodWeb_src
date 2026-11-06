@@ -477,7 +477,24 @@ Object.assign(DrawingViewer.prototype, {
 
     menu.appendChild(secondItem);
 
-    // Blank spacer item between the two mode-dependent items and Exit
+    // Menu screens only: save the displayed menu as a PNG
+    if (document.body.className === 'menu-mode') {
+      const exportPngItem = document.createElement('div');
+      exportPngItem.style.cssText = secondItem.style.cssText;
+      exportPngItem.textContent = 'Export PNG';
+      exportPngItem.addEventListener('mouseover', () => { exportPngItem.style.backgroundColor = '#e8e8e8'; });
+      exportPngItem.addEventListener('mouseout',  () => { exportPngItem.style.backgroundColor = 'transparent'; });
+      exportPngItem.addEventListener('click', () => {
+        menu.remove();
+        window.pfodMenuDisplay.exportPng().catch((e) => {
+          console.error('[TOOLBAR_MENU] Export PNG failed:', e);
+          pfodAlert('Export PNG failed: ' + e.message);
+        });
+      });
+      menu.appendChild(exportPngItem);
+    }
+
+    // Blank spacer item between the mode-dependent items and Exit
     const spacerItem = document.createElement('div');
     spacerItem.style.cssText = `
       padding: 15px 24px;

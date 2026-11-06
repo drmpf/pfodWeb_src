@@ -358,7 +358,7 @@ Object.assign(DrawingViewer.prototype, {
     }
 
     const version = dm.drawingsData[drawingName]?.data?.version || null;
-    const cmd = version ? `{${version}:${drawingName}}` : `{${drawingName}}`;
+    const cmd = this._dwgLoadCmd(drawingName, version);
 
     // If the request that triggered this insertDwg was itself a refresh,
     // tag the child fetch as refresh-insertDwg so refresh-batch logic in the

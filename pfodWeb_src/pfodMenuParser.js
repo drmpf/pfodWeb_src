@@ -18,6 +18,11 @@
  * Parse pfod format codes from the start of a string.
  * Handles angle-bracket tags: <bg color>, <b>, <i>, <u>, <+N>, <-N>, <colorCode>
  * Also handles bare non-sticky flags after cmd: ! (disable), - (hide), + (flash), @ (sound)
+ * Stops at the first '<' that isn't one of these (whether unrecognised, or a
+ * syntactically-present-but-invalid <bg ...>) -- it and everything after it
+ * stay in `remaining` untouched, never silently deleted, since every caller
+ * hands `remaining` to pfodSetFormattedText (the real renderer), which shows
+ * an unrecognised tag as literal text.
  *
  * @param {string} str - Input string potentially starting with format codes
  * @returns {{bgColor: string|null, textColor: string|null, bold: boolean, italic: boolean,
@@ -44,37 +49,52 @@ function parsePfodFormatCodes(str) {
         changed = false;
 
         if (s.startsWith('<')) {
-            // Angle-bracket format code
-            const close = s.indexOf('>');
-            if (close === -1) break;
-            const tag = s.substring(1, close);
-            s = s.substring(close + 1);
-            changed = true;
+            // Angle-bracket format code. pfodFindTag() (redraw.js) is the
+            // ONE shared tokenizer every pfod tag-scanning loop in this
+            // codebase uses -- it finds the candidate AND classifies its
+            // `kind`; this function's own job is just deciding which kinds
+            // it translates into a `result.X` field, per explicit
+            // instruction ("the tokenizer should know what a valid token
+            // is... consumers emit either the plain text if that consumer
+            // does not use/need that token or the translated token").
+            //
+            // This function resolves tags immediately into concrete
+            // `result.X` fields with no deferral mechanism (unlike
+            // parsePfodMenuItem()'s own loop, which defers any kind it
+            // doesn't resolve itself to inlineFmtPrefix for later
+            // re-parsing, where e.g. <bw> resolves correctly against a
+            // real background) -- so a kind it has nothing to translate
+            // (`'bw'` or `null`/unrecognised -- the internal Markdown-link
+            // marker is never seen here at all, since this function only
+            // ever parses raw device text, not pfodButtonRenderer.js's own
+            // post-pre-pass output), and any closing tag (there's no
+            // closing-tag concept in a sticky prefix at all), stop the
+            // scan here rather than being silently consumed-and-dropped,
+            // the same class of bug the 2026-10-15 cross-check found and
+            // fixed here.
+            const m = pfodFindTag(s, 0);
+            if (m === null || m.isClosing) break;
 
-            if (tag === 'b') {
+            if (m.kind === 'bold') {
                 result.bold = true;
-            } else if (tag === 'i') {
+            } else if (m.kind === 'italic') {
                 result.italic = true;
-            } else if (tag === 'u') {
+            } else if (m.kind === 'underline') {
                 result.underline = true;
-            } else if (tag.startsWith('bg ')) {
-                // Background color tag: <bg colorCode>
-                const colorStr = tag.substring(3).trim();
-                result.bgColor = pfodColorTagToHex(colorStr);
-            } else if (/^\+\d+$/.test(tag)) {
-                // Font size increase: <+N>
-                result.fontSize += parseInt(tag.substring(1), 10);
-            } else if (/^-\d+$/.test(tag)) {
-                // Font size decrease: <-N>
-                result.fontSize -= parseInt(tag.substring(1), 10);
+            } else if (m.kind === 'bg') {
+                result.bgColor = m.value;
+            } else if (m.kind === 'fontSize') {
+                // Font size delta, already signed: <+N> increases, <-N>
+                // decreases (both capped at 3 digits, NNN max)
+                result.fontSize += m.value;
+            } else if (m.kind === 'color') {
+                result.textColor = m.value;
             } else {
-                // Try as text color code (named, hex, or palette number)
-                const hex = pfodColorTagToHex(tag);
-                if (hex) {
-                    result.textColor = hex;
-                }
-                // Unknown tags are silently skipped
+                break; // 'bw' or null -- nothing this function translates it to
             }
+
+            s = s.substring(m.end);
+            changed = true;
         } else if (s.startsWith('!')) {
             // Bare ! after cmd = disabled (non-sticky flag)
             result.disabled = true;
@@ -219,13 +239,31 @@ function parsePfodMenuItem(itemStr, isUpdate) {
         else if (str[0] === '+') { fmt.flash   = true; str = str.substring(1); }
         else if (str[0] === '@') { fmt.sound   = true; str = str.substring(1); }
         else if (str[0] === '<') {
-            const close = str.indexOf('>');
-            if (close === -1) break;
-            const tag     = str.substring(1, close);
-            const fullTag = str.substring(0, close + 1);
-            str = str.substring(close + 1);
-            if (tag.startsWith('bg ')) {
-                fmt.bgColor = pfodColorTagToHex(tag.substring(3).trim());
+            // pfodFindTag() (redraw.js) is the ONE shared tokenizer every
+            // pfod tag-scanning loop in this codebase uses -- it finds the
+            // candidate AND classifies its `kind`; this loop decides for
+            // itself what to do with each kind. UNLIKE
+            // parsePfodFormatCodes()'s own call above, this loop defers ANY
+            // token it doesn't resolve itself -- recognised kind or not,
+            // including `null` (unrecognised content, e.g. `<xyz>`) -- to
+            // `inlineFmtPrefix` for the real renderer to judge later; it
+            // never resolves b/i/u/+N/-N/colour itself, only `<bg ...>`
+            // (`kind === 'bg'`). This blanket deferral is load-bearing, not
+            // just permissive: the field-collection loop just below this
+            // one requires `str` to start with a backtick/tilde delimiter
+            // immediately after this loop ends, so an unrecognised
+            // candidate must still be CONSUMED (deferred), not left
+            // unconsumed by breaking -- breaking here on anything other
+            // than "no candidate at all" or "a closing-tag shape" (neither
+            // of which this sticky prefix has a concept of) would leave
+            // that candidate's text sitting where a delimiter is expected,
+            // corrupting every field after it.
+            const m = pfodFindTag(str, 0);
+            if (m === null || m.isClosing) break;
+            const fullTag = str.substring(0, m.end);
+            str = str.substring(m.end);
+            if (m.kind === 'bg') {
+                fmt.bgColor = m.value;
             } else {
                 fmt.inlineFmtPrefix += fullTag;
             }

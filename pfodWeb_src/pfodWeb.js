@@ -391,6 +391,10 @@ class DrawingViewer {
     // Queue for holding responses while mouse is down (to prevent flashing)
     this.pendingResponseQueue = [];
 
+    // Drawings part way through arriving over several ~m messages, by load cmd.
+    // See _collectMoreData in responseHandlers.js.
+    this.moreDataCollections = new Map();
+
     // Text input dialog state
     this.textInputDialog = null;
 

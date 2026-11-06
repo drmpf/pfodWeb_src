@@ -121,7 +121,8 @@ class PfodSelectionDisplay {
 
     const promptEl = document.getElementById('selection-prompt');
     if (promptEl) {
-      pfodSetFormattedText(promptEl, promptText, this._contrastHex, undefined, true); // prompt bar: links allowed
+      pfodSetFormattedText(promptEl, promptText, this._contrastHex);
+      pfodApplyMarkdownLinks(promptEl); // prompt bar: links allowed
       promptEl.style.color = this._contrastHex;
     }
 

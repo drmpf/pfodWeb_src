@@ -15,6 +15,11 @@
  *   designer/menus/selectDwgForItem.js        Load Dwg from file… for an item
  *   dwgDesigner/dwgControlsPanelUI.js         Load Dwg, Load Several Dwgs,
  *                                             and the missing-insertDwg prompt
+ *   pfodCommon.html loadRawMsgReplay()        Replay Raw Msg File (connection
+ *                                             prompt, shown only with ?replay
+ *                                             in the page URL) — a Raw Message
+ *                                             viewer .json export or pfodApp
+ *                                             debug log .txt to replay
  *
  * That click opens a NATIVE dialog. Browser automation drives the page's
  * DOM; it cannot reach a native dialog, so every one of those buttons is a

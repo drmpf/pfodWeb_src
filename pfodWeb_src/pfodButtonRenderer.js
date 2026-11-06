@@ -12,8 +12,10 @@
 // Exports:    window.applyPfodFormats, window.pfodSetFormattedText,
 //             window.renderPfodButton, window.renderPfodLabel,
 //             window.renderPfodNavButtons (and other renderPfod* functions)
-// Depends on: getActualFontSize(), pfodColorTagToHex() from redraw.js (must load first),
-//             parsePfodFormatCodes() from pfodMenuParser.js (must load first)
+// Depends on: getActualFontSize(), parsePfodInlineSegments() from redraw.js
+//             (must load first; parsePfodInlineSegments() is the shared tag
+//             scanner -- see its own comment, redraw.js), parsePfodFormatCodes()
+//             from pfodMenuParser.js (must load first)
 // Called by:  pfodMenuDisplay.js (uses all renderPfod* functions to build menu DOM)
 
 // Scale factor converting pfod font size units (from getActualFontSize) to
@@ -60,13 +62,33 @@ function applyPfodFormats(el, formats) {
 }
 
 /**
- * Internal tag name a Markdown link is rewritten to before the tag scanner
- * runs: `[text](url)` becomes `<\u0001url>text</\u0001>`, which then opens and
- * closes on the style stack like <b> does.  A control character, so nothing a
- * sketch or the designer can type produces it — and pfod's own <a> (aqua)
- * is never involved.
+ * Markdown link in pfod text: `[text](url)`.
+ *
+ * Group 1 is the link text — anything between the brackets that contains no
+ * bracket, so nested [ ] is not allowed; a tag like `<b>` inside it is just
+ * ordinary text as far as this regex is concerned (link detection runs as
+ * its own separate pass over already-rendered DOM text, see
+ * pfodApplyMarkdownLinks() below — it never interacts with pfod's own
+ * `<...>` tag recognition at all). Group 2 is the url, and it MUST begin
+ * `http://`, `https://` or a single `/` (a page on the device's own web
+ * root — see pfodLinkHref() below). That one constraint is what keeps
+ * ordinary prose safe ("Battery [12] (%)" has [..](..) but "%" is not a
+ * url) and is the security boundary (javascript: never matches). `//host/x`
+ * is excluded by the (?!\/) so a link is either a full url or a device
+ * path, never a scheme-relative third thing. The url runs to the closing
+ * `)` and so cannot contain spaces or parentheses.
+ *
+ * Markdown links are NOT a pfod `<...>` tag and no other file in this
+ * codebase knows this syntax exists — only pfodApplyMarkdownLinks() below,
+ * called from renderPfodLabel() (menu labels) and every prompt-bar
+ * renderer (pfodMenuDisplay.js, pfodInputDisplay.js,
+ * pfodNumericInputDisplay.js, pfodSelectionDisplay.js, chartAndRawData.js)
+ * — none of which has a click handler of its own on the text itself, so a
+ * tap on a link can never send a cmd. Buttons and drawing text — the
+ * remaining callers of pfodSetFormattedText() — never call this, so they
+ * show `[text](url)` exactly as the device sent it, brackets and all.
  */
-const PFOD_LINK_TAG = '\u0001';
+const PFOD_MD_LINK_RE = /\[([^\[\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s()]+)\)/g;
 
 /**
  * Turn a link url from a label/prompt into the href the anchor gets, or null
@@ -118,20 +140,20 @@ function pfodDesignerPreviewLinkMessage(url) {
 
 /**
  * Populate a container element with pfod inline-formatted text.
- * Parses <b>, <i>, <u>, <+N>, <-N>, <colorCode>, </tag> tags within the text string.
- * Closing tags terminate their matching open tag and all tags enclosed within it (stack-based).
- * Unrecognised tags (including <bg ...>) are rendered as literal text.
- * All open tags auto-terminate at end of string.
- * Decodes pfod escape sequences in output text: &#96; &#123; &#124; &#125; &#126;
- *   &lt; &#92; &amp; (decoded in that order so &amp;lt; renders as &lt; not <).
- * Markdown links `[text](url)` (PFOD_MD_LINK_RE, redraw.js) render as a native
- *   <a target="_blank"> only when `allowLinks` is true — menu labels and the
- *   prompt bars, none of which has a click handler of its own, so a tap on a
- *   link can never send a cmd.  Everywhere else the text shows as sent.  In
- *   the Designer, a relative link that can't resolve to a real page still
- *   renders as a live-looking link when the design's target connection is
- *   HTTP — tapping it opens a new tab explaining the path needs a real
- *   device to serve it, rather than showing plain text (pfodDesignerPreviewLinkMessage).
+ * Tag recognition itself — <b> <i> <u> <bw> <+N> <-N> <colorCode> </tag>,
+ * stack-based closing (a close terminates its matching open tag and every
+ * tag nested inside it), unrecognised tags (including <bg ...>) left as
+ * literal text, open tags auto-terminating at end of string, pfod escape
+ * decoding — all lives in the ONE shared scanner, parsePfodInlineSegments()
+ * (redraw.js), also used by this file's own dwg-canvas-text rendering;
+ * unified 2026-10-15, per explicit instruction ("use the same tag
+ * recognition code for both and just handle the output differently"). This
+ * function's own job, from there, is purely OUTPUT: turn the returned flat
+ * segment array into actual DOM (spans/text nodes) — see appendSegment()
+ * below. Has NO concept of Markdown links at all — that's renderPfodLabel()'s
+ * own, separate, label-only post-process (pfodApplyMarkdownLinks(), below),
+ * applied to the DOM this function builds, never part of recognition here;
+ * every other caller's rendered DOM is simply never passed through it.
  *
  * @param {HTMLElement} container - Element to populate (existing children are cleared first)
  * @param {string} text - Raw text potentially containing inline format tags and escape sequences
@@ -142,10 +164,8 @@ function pfodDesignerPreviewLinkMessage(url) {
  *        falls back to viewport sizing when no container-type ancestor is present.
  *        Dialogs override this to use getActualFontSizeForDialog (base 14 px) so inline
  *        sizes match the dialog's fixed-pixel layout.
- * @param {boolean} [allowLinks=false] - Render `[text](url)` as a link.  Pass true only
- *        from a site with no click handler (labels, prompt bars).
  */
-function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowLinks) {
+function pfodSetFormattedText(container, text, contrastHex, fontResolver) {
     // Default font size resolver: container-query inline-size scaling.  Inside
     // #menu-container this resolves against the menu width (capped 500px); elsewhere
     // it falls back to viewport sizing, matching the previous vw behaviour.
@@ -213,149 +233,69 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowL
     // Normalise line endings to LF so newline handling is uniform throughout
     text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-    // Markdown links: where allowed AND the link is actually operational —
-    // either resolvable now (pfodLinkHref) or a Designer preview standing in
-    // for a real one (pfodDesignerPreviewLinkMessage) — rewrite to the
-    // internal link tag so the scanner below handles it as one more entry
-    // on the style stack.  A url never sits between < and >, so the rewrite
-    // cannot land inside a tag.  Everywhere else — links disallowed, or a
-    // relative link with no device web root and no HTTP-targeted Designer
-    // preview to stand in for one (e.g. the Designer's target connection is
-    // Serial/BLE/TCP) — the match is left exactly as the device sent it:
-    // `[..](..)` shows as written, since a link that can't do anything here
-    // is more useful shown as-is than silently reduced to its bare text.
-    if (allowLinks) {
-        text = text.replace(PFOD_MD_LINK_RE, function(match, linkText, url) {
-            const href = pfodLinkHref(url);
-            const previewMsg = href ? null : pfodDesignerPreviewLinkMessage(url);
-            if (!href && !previewMsg) return match;
-            return '<' + PFOD_LINK_TAG + url + '>' + linkText + '</' + PFOD_LINK_TAG + '>';
-        });
-    }
-
-    // decodeEscapes() is shared with redraw.js's parsePfodInlineSegments
-    // (dwg canvas text) — defined once in redraw.js, which loads first.
-
-    // Stack of active open tags — each entry describes the style delta that tag contributes.
-    // {tag: string, bold: bool, italic: bool, underline: bool, deltaSize: number, textColor: string, href: string}
-    const stack = [];
-
     // Used to detect whether ALL rendered content ended up in font-size-changed spans,
     // with no segment left at the base (unsized) font size.  When true, renderPfodLabel
     // collapses the block container's line-height strut so line spacing scales with the
-    // small font.  hasUnsizedText tracks font-size only (not bold/italic/colour) — a
+    // small font.  hasUnsizedText tracks font-size only (not bold/italic/colour) -- a
     // segment can be fully styled (e.g. coloured/bold) and still be "unsized", and a
     // multi-line label can have some lines at the base size and others font-sized (e.g.
     // `<g><b>Title</b>\n<y><-1>subtitle`); collapsing the strut in that mixed case would
-    // zero out line spacing for the base-size lines too, making them overlap.
+    // zero out line spacing for the base-size lines too, making them overlap. Tracked per
+    // sub-run (after the U+0080 split below), same granularity as before unification --
+    // a segment consisting ONLY of U+0080 spacer chars contributes to neither flag, same
+    // as it always did, since every one of its sub-runs is then empty.
     let hasFontSizeSpan = false;
     let hasUnsizedText  = false;
 
-    // Compute cumulative style from all active stack entries.
-    function getCurrentStyle() {
-        let bold = false, italic = false, underline = false, fontSize = 0, textColor = null, href = null, previewMsg = null;
-        for (const e of stack) {
-            if (e.bold)                    bold      = true;
-            if (e.italic)                  italic    = true;
-            if (e.underline)               underline = true;
-            if (e.deltaSize !== undefined) fontSize += e.deltaSize;
-            if (e.textColor !== undefined) textColor = e.textColor;
-            if (e.href !== undefined)      href      = e.href;
-            if (e.previewMsg !== undefined) previewMsg = e.previewMsg;
-        }
-        return { bold, italic, underline, fontSize, textColor, href, previewMsg };
-    }
-
-    // Append a text segment to the target, wrapping in a styled span
-    // when any style is active.  `\n` characters in `txt` are
-    // preserved verbatim in the text node; the target's
-    // `white-space: pre-wrap` (set above) renders them as visible
-    // line breaks \u2014 including trailing `\n`s, which belong to the
-    // styled span that was open over this segment (so the trailing
-    // blank line inherits the current font-size / colour / b/i/u).
-    // No <br> emission.  U+0080 (pfod spacer) is still rendered as
-    // a visibility:hidden space that occupies width and scales with
-    // the current font size, so sized empty-label spacers keep
-    // working.
-    function appendSegment(txt) {
-        if (!txt) return;
-        const style = getCurrentStyle();
-        const hasStyle = style.bold || style.italic || style.underline
-                      || style.fontSize !== 0 || style.textColor;
+    // Append one ALREADY-RECOGNISED-AND-STYLED segment (from
+    // parsePfodInlineSegments(), redraw.js -- text already escape-decoded)
+    // to the target, wrapping in a styled span when any style is active.
+    // `\n` characters in `seg.text` are preserved verbatim in the text
+    // node; the target's `white-space: pre-wrap` (set above) renders them
+    // as visible line breaks -- including trailing `\n`s, which belong to
+    // the styled span that was open over this segment (so the trailing
+    // blank line inherits the current font-size / colour / b/i/u). No <br>
+    // emission. U+0080 (pfod spacer) is still rendered as a
+    // visibility:hidden space that occupies width and scales with the
+    // current font size, so sized empty-label spacers keep working.
+    function appendSegment(seg) {
+        const hasStyle = seg.bold || seg.italic || seg.underline
+                      || seg.deltaSize !== 0 || seg.color;
 
         function appendRun(run) {
             if (!run) return;
-            if (style.fontSize === 0) hasUnsizedText = true;
+            if (seg.deltaSize === 0) hasUnsizedText = true;
             let node;
             if (!hasStyle) {
-                node = document.createTextNode(decodeEscapes(run));
+                node = document.createTextNode(run);
             } else {
                 const span = document.createElement('span');
-                span.textContent = decodeEscapes(run);
-                if (style.bold)      span.style.fontWeight     = 'bold';
-                if (style.italic)    span.style.fontStyle      = 'italic';
-                if (style.underline) span.style.textDecoration = 'underline';
-                if (style.fontSize !== 0) {
-                    span.style.fontSize   = resolveFontSize(style.fontSize);
+                span.textContent = run;
+                if (seg.bold)      span.style.fontWeight     = 'bold';
+                if (seg.italic)    span.style.fontStyle      = 'italic';
+                if (seg.underline) span.style.textDecoration = 'underline';
+                if (seg.deltaSize !== 0) {
+                    span.style.fontSize   = resolveFontSize(seg.deltaSize);
                     span.style.lineHeight = 'normal'; // proportional to span's own font-size
                     hasFontSizeSpan = true;
                 }
-                if (style.textColor) span.style.color = style.textColor;
+                if (seg.color) span.style.color = seg.color;
                 node = span;
-            }
-            // Inside a link: a native anchor around the run.  New tab, never
-            // this one — navigating pfodWeb's own tab away fires {!} on
-            // unload and drops the session.  No click listener: the anchor
-            // does the work, and the containers that allow links have no
-            // handler of their own for it to fall through to.  Styled by the
-            // one a.pfod-link rule in pfodCommon.css.
-            if (style.href) {
-                const a = document.createElement('a');
-                a.className = 'pfod-link';
-                a.href = style.href;
-                a.target = '_blank';
-                a.rel = 'noopener noreferrer';
-                a.appendChild(node);
-                node = a;
-            } else if (style.previewMsg) {
-                // Designer preview, target connection HTTP, relative link:
-                // there's genuinely nothing to navigate to yet (see
-                // pfodDesignerPreviewLinkMessage above), so this is the one
-                // link case that DOES need its own click handler — a bare
-                // href would either 404 against pfodWeb's own origin or
-                // reload/drop the session. preventDefault + a fresh blank
-                // tab keeps that off this tab entirely.
-                const a = document.createElement('a');
-                a.className = 'pfod-link';
-                a.href = '#';
-                const msg = style.previewMsg;
-                a.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const w = window.open('', '_blank');
-                    if (w) {
-                        const p = w.document.createElement('pre');
-                        p.style.cssText = 'font:14px sans-serif;padding:16px;white-space:pre-wrap;';
-                        p.textContent = msg;
-                        w.document.body.appendChild(p);
-                    }
-                });
-                a.appendChild(node);
-                node = a;
             }
             target.appendChild(node);
         }
 
-        // Split only on the U+0080 sized-spacer character \u2014 newlines
-        // are left in the run text and rendered by pre-wrap.
-        const parts = txt.split('\u0080');
+        // Split only on the U+0080 sized-spacer character -- newlines are
+        // left in the run text and rendered by pre-wrap.
+        const parts = seg.text.split('\u0080');
         for (let pi = 0; pi < parts.length; pi++) {
             if (pi > 0) {
                 const spacer = document.createElement('span');
                 spacer.style.visibility = 'hidden';
-                if (style.bold)   spacer.style.fontWeight = 'bold';
-                if (style.italic) spacer.style.fontStyle  = 'italic';
-                if (style.fontSize !== 0) {
-                    spacer.style.fontSize = resolveFontSize(style.fontSize);
+                if (seg.bold)   spacer.style.fontWeight = 'bold';
+                if (seg.italic) spacer.style.fontStyle  = 'italic';
+                if (seg.deltaSize !== 0) {
+                    spacer.style.fontSize = resolveFontSize(seg.deltaSize);
                 }
                 spacer.textContent = ' ';
                 target.appendChild(spacer);
@@ -364,84 +304,137 @@ function pfodSetFormattedText(container, text, contrastHex, fontResolver, allowL
         }
     }
 
-    // Parse an opening tag's content (without angle brackets).
-    // Returns a style-delta object for recognised inline format tags, null for unrecognised ones.
-    function parseOpenTag(tagContent) {
-        // The internal link tag from the Markdown pre-pass above.  The
-        // stack entry is named PFOD_LINK_TAG (not the full content) so the
-        // pre-pass's </\u0001> closes it.  href is null when there is no
-        // device web root to resolve a /path against; in the Designer, with
-        // the design's own target connection set to HTTP, that still gets a
-        // live-looking (but click-intercepted) link via previewMsg — see
-        // pfodDesignerPreviewLinkMessage above. Everywhere else previewMsg
-        // is also null and the entry adds no style at all: link text
-        // renders plain, exactly as the device sent it.
-        if (tagContent.charCodeAt(0) === 1) {
-            const rawUrl = tagContent.substring(1);
-            const href = pfodLinkHref(rawUrl);
-            return {
-                tag: PFOD_LINK_TAG,
-                href: href,
-                previewMsg: href ? null : pfodDesignerPreviewLinkMessage(rawUrl)
-            };
-        }
-        if (tagContent === 'b')  return { bold: true };
-        if (tagContent === 'i')  return { italic: true };
-        if (tagContent === 'u')  return { underline: true };
-        if (/^\+\d+$/.test(tagContent)) return { deltaSize:  parseInt(tagContent.substring(1), 10) };
-        if (/^-\d+$/.test(tagContent))  return { deltaSize: -parseInt(tagContent.substring(1), 10) };
-        if (tagContent.startsWith('bg ')) return null; // background colour only valid before ~
-        if (tagContent === 'bw') return { textColor: contrastHex };
-        const hex = pfodColorTagToHex(tagContent);
-        if (hex) return { textColor: hex };
-        return null;
+    // THE shared tag scanner (parsePfodInlineSegments(), redraw.js) does
+    // all tag recognition -- identical rules/behaviour to redraw.js's own
+    // dwg-canvas-text rendering, unified 2026-10-15 per explicit
+    // instruction ("use the same tag recognition code for both and just
+    // handle the output differently"). It has no concept of Markdown links
+    // at all -- see pfodApplyMarkdownLinks() below, applied only by
+    // renderPfodLabel(), entirely separately from this function.
+    const segments = parsePfodInlineSegments(text, undefined, contrastHex);
+    for (const seg of segments) {
+        appendSegment(seg);
     }
-
-    let i = 0;
-    let segStart = 0;
-
-    while (i < text.length) {
-        if (text[i] !== '<') { i++; continue; }
-
-        const closeIdx = text.indexOf('>', i + 1);
-        if (closeIdx === -1) { i++; continue; } // unclosed '<' — treat as literal
-
-        const tagContent = text.substring(i + 1, closeIdx);
-
-        if (tagContent.startsWith('/')) {
-            // Closing tag: find the innermost matching open tag and pop it plus everything after it
-            const closingName = tagContent.substring(1).trim();
-            let foundIdx = -1;
-            for (let j = stack.length - 1; j >= 0; j--) {
-                if (stack[j].tag === closingName) { foundIdx = j; break; }
-            }
-            if (foundIdx !== -1) {
-                appendSegment(text.substring(segStart, i));
-                segStart = closeIdx + 1;
-                stack.splice(foundIdx);
-            }
-            // no matching open tag: leave the closing tag text in the current literal segment
-            i = closeIdx + 1;
-        } else {
-            // Opening tag
-            const parsed = parseOpenTag(tagContent);
-            if (parsed !== null) {
-                appendSegment(text.substring(segStart, i));
-                segStart = closeIdx + 1;
-                if (parsed.tag === undefined) parsed.tag = tagContent;
-                stack.push(parsed);
-            }
-            // unrecognised tag: leave it in the current literal segment
-            i = closeIdx + 1;
-        }
-    }
-
-    // Flush any remaining text after the last recognised tag boundary
-    appendSegment(text.substring(segStart));
     // Return true when all rendered content is in font-size-changed spans (no segment
     // left at the base font size), so renderPfodLabel can collapse the container's
     // line-height strut.
     return hasFontSizeSpan && !hasUnsizedText;
+}
+
+/**
+ * Find Markdown links (`[text](url)`, PFOD_MD_LINK_RE above) in `root`'s
+ * already-rendered text and turn each one into a real `<a>`, in place --
+ * a separate post-process over the DOM pfodSetFormattedText() just built.
+ * Called by renderPfodLabel() (menu labels) and every prompt-bar renderer
+ * (pfodMenuDisplay.js's own prompt, pfodInputDisplay.js,
+ * pfodNumericInputDisplay.js, pfodSelectionDisplay.js, chartAndRawData.js)
+ * -- none of which has a click handler of its own on the text itself.
+ * Buttons and drawing text -- the remaining callers of
+ * pfodSetFormattedText() -- never call this, and this is the ONLY place
+ * in the whole codebase that knows Markdown-link syntax exists at all --
+ * per explicit correction ("the [ ]( ) should not be parsed with < >
+ * tags, instead only the label should reparse for those, no-one else
+ * handles that", later reversed for prompt bars specifically: "re-enable
+ * links for the prompt text in menu input raw data screens etc"): pfod's
+ * own `<...>` tag recognition
+ * (parsePfodInlineSegments(), redraw.js, shared with dwg-canvas-text and
+ * every other DOM renderer) has zero awareness of this syntax, so a
+ * Markdown link's own text portion is just ordinary text as far as THAT
+ * recognition is concerned -- any real `<b>`/etc tag around a link (e.g.
+ * `<b>Click [here](url) now</b>`) is still recognised normally by
+ * pfodSetFormattedText() first, producing one plain-text run containing
+ * the literal `[here](url)`; THIS function then only has to search
+ * existing text nodes for that pattern and splice in an anchor, so
+ * whatever styled `<span>` a match's text node already sits inside (bold,
+ * colour, font-size) carries over to the inserted link for free -- no
+ * separate style bookkeeping needed here at all.
+ *
+ * Recurses into element children (so a link inside a `<b>`/colour/etc
+ * span is still found) but not into an `<a>` this function just inserted
+ * (nothing to find twice; the snapshot below is taken before any
+ * insertion, so freshly-created nodes are never visited in the same
+ * call). The spacer spans appendSegment() builds for the U+0080 sized
+ * spacer have no real text-node children (just a bare `textContent`), so
+ * recursing into them finds nothing to match -- harmless.
+ *
+ * @param {Node} root
+ */
+function pfodApplyMarkdownLinks(root) {
+    const children = Array.prototype.slice.call(root.childNodes || []);
+    for (const node of children) {
+        if (node.nodeType === 3) {
+            pfodSplitLinkTextNode(node);
+        } else {
+            pfodApplyMarkdownLinks(node);
+        }
+    }
+}
+
+// Splits one text node's own content on PFOD_MD_LINK_RE matches that
+// actually resolve to something (a real href, or a Designer preview
+// standing in for one -- see pfodLinkHref()/pfodDesignerPreviewLinkMessage()
+// above), replacing it in its parent with a run of [text, <a>, text, ...]
+// nodes. A match that resolves to neither is left exactly as the device
+// sent it: `[..](..)` shows as written, since a link that can't do
+// anything here is more useful shown as-is than silently reduced to its
+// bare text -- so that match is simply not split out at all.
+function pfodSplitLinkTextNode(textNode) {
+    const text = textNode.textContent;
+    const parent = textNode.parentNode;
+    if (!parent) return;
+    PFOD_MD_LINK_RE.lastIndex = 0;
+    let match;
+    let lastIndex = 0;
+    const replacements = [];
+    while ((match = PFOD_MD_LINK_RE.exec(text)) !== null) {
+        const linkText = match[1], url = match[2];
+        const href = pfodLinkHref(url);
+        const previewMsg = href ? null : pfodDesignerPreviewLinkMessage(url);
+        if (!href && !previewMsg) continue;
+        if (match.index > lastIndex) {
+            replacements.push(document.createTextNode(text.substring(lastIndex, match.index)));
+        }
+        // New tab, never this one -- navigating pfodWeb's own tab away
+        // fires {!} on unload and drops the session. No click listener on
+        // the href case: the anchor does the work, and labels have no
+        // handler of their own for it to fall through to. Styled by the
+        // one a.pfod-link rule in pfodCommon.css.
+        const a = document.createElement('a');
+        a.className = 'pfod-link';
+        if (href) {
+            a.href = href;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+        } else {
+            // Designer preview, target connection HTTP, relative link:
+            // there's genuinely nothing to navigate to yet, so this is the
+            // one link case that DOES need its own click handler -- a bare
+            // href would either 404 against pfodWeb's own origin or
+            // reload/drop the session. preventDefault + a fresh blank tab
+            // keeps that off this tab entirely.
+            a.href = '#';
+            const msg = previewMsg;
+            a.addEventListener('click', function(e) {
+                e.preventDefault();
+                const w = window.open('', '_blank');
+                if (w) {
+                    const p = w.document.createElement('pre');
+                    p.style.cssText = 'font:14px sans-serif;padding:16px;white-space:pre-wrap;';
+                    p.textContent = msg;
+                    w.document.body.appendChild(p);
+                }
+            });
+        }
+        a.appendChild(document.createTextNode(linkText));
+        replacements.push(a);
+        lastIndex = match.index + match[0].length;
+    }
+    if (replacements.length === 0) return;
+    if (lastIndex < text.length) {
+        replacements.push(document.createTextNode(text.substring(lastIndex)));
+    }
+    for (const r of replacements) parent.insertBefore(r, textNode);
+    parent.removeChild(textNode);
 }
 
 /**
@@ -521,15 +514,23 @@ function renderPfodLabel(item, menuBgColor) {
 
     const textSpan = document.createElement('span');
     textSpan.className = 'pfod-button-text';
+    const allFontSized = pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + item.text, contrastHex);
     // Labels have no click handler, so a [text](url) link in one can be a
-    // real link — nothing a tap can send.
-    const allFontSized = pfodSetFormattedText(textSpan, item.formats.inlineFmtPrefix + item.text, contrastHex, undefined, true);
+    // real link — nothing a tap can send. The ONLY call site in this whole
+    // codebase that looks for Markdown-link syntax at all (see
+    // pfodApplyMarkdownLinks()'s own comment).
+    pfodApplyMarkdownLinks(textSpan);
     // When every rendered segment is in an explicit font-size span (no bare text
     // nodes), collapse the block container's strut to 0 so line spacing is
     // governed by each span's own font-size rather than the div's default.
     // Without this, `<-5>line1\nline2` renders with the div's full strut
     // (1.2 × default-font) between lines instead of the small font's spacing.
-    if (allFontSized) div.style.lineHeight = '0';
+    // The font-size goes to 0 as well: a zero-height strut at the default font still
+    // sits above the baseline and stretches the line, making a 4px <-17> line 8px high.
+    if (allFontSized) {
+        div.style.lineHeight = '0';
+        div.style.fontSize = '0';
+    }
     div.appendChild(textSpan);
     applyPfodFormats(div, item.formats);
 

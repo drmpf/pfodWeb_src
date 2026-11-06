@@ -366,6 +366,14 @@ class ConnectionManager {
         console.log('[CONNECTION_MANAGER] Initialized DesignerVirtualAdapter (in-browser virtual device)');
         break;
 
+      case 'replay':
+        // Replays a Raw Message viewer JSON export (see ReplayAdapter
+        // below).  config.replayEntries is the parsed file,
+        // config.replayFileName its name.
+        this.adapter = new ReplayAdapter(this.config, this);
+        console.log(`[CONNECTION_MANAGER] Initialized ReplayAdapter for ${this.config.replayFileName} (${this.config.replayEntries.length} entries)`);
+        break;
+
       default:
         throw new Error(`Unknown protocol: ${this.protocol}`);
     }
@@ -462,6 +470,10 @@ class ConnectionManager {
         // DesignerVirtualAdapter / DesignerVirtualDevice / DesignerState
         // constructors — no fallback path.
         return 'designer_' + this.adapter.device.state.name;
+      case 'replay':
+        // Keyed by the replayed file so its menu cache never mixes with a
+        // live device's.
+        return 'replay_' + this.config.replayFileName;
       default:
         return 'unknown';
     }
@@ -1028,7 +1040,7 @@ class HTTPConnection extends PfodConnectionBase {
    * collectors — fed to rawDataCollector it stacks up as one space per
    * 1 s poll on the Raw Data screen (streaming_2026-09-12T05-47-37 shows
    * 200-space runs) — and it must not be logged: at two viewer entries per
-   * second the polls alone fill the 500-entry Raw Message viewer in four
+   * second the polls alone fill the 5000-entry Raw Message viewer in forty
    * minutes and push the real device output out of it.
    * @param {string} body  the HTTP response body
    * @returns {string} '' for the placeholder, else the body unchanged
@@ -1199,7 +1211,7 @@ class HTTPConnection extends PfodConnectionBase {
       console.log(`[HTTP_CONNECTION] dataRefresh: ${endpoint}`);
       // Not logged to the Raw Message viewer: the poll is an empty cmd,
       // not a message, and one entry per second would crowd the real
-      // traffic out of the viewer's 500-entry buffer.  Whatever the poll
+      // traffic out of the viewer's 5000-entry buffer.  Whatever the poll
       // brings back that IS data is logged as 'received' by processIncoming.
       const response = await fetch(endpoint, { ...options, signal: controller.signal });
 
@@ -2752,6 +2764,388 @@ class BLEConnection extends PfodConnectionBase {
   }
 }
 
+/**
+ * ReplayAdapter - replays a Raw Message viewer JSON export
+ * (pfod-messages-<date>.json, written by MessageCollector.exportAsJSON).
+ *
+ * File format: an array of { timestamp, ms, direction, bytes, message },
+ * where direction is 'sent', 'received', 'timeout' or 'excess >1024'.
+ *
+ * The file alone drives the replay.  startReplay() walks the entries in order,
+ * waiting the difference between consecutive recorded `ms` values before each:
+ *   - 'sent': handed to the request queue (DrawingViewer.replaySendRecorded()),
+ *     which sends it back through send() here.  The client's refresh timers
+ *     are off in this mode (scheduleNextUpdate()) and requests it queues itself
+ *     are held and never sent, see processRequestQueue().
+ *   - everything else: fed through the shared processIncoming() pipeline at its
+ *     recorded time, as a live stream would be, so raw/CSV text reaches the
+ *     collectors as it arrived and a {..} resolves the pending request.
+ * When the last entry has played a summary is shown.  A recorded {!} ends the
+ * replay early: it is not sent, and the summary says the client exited.
+ *
+ * A recorded 'timeout', or a new 'sent' while the previous one still has no
+ * reply, fails the pending request with a timeout error, as the live link did.
+ *
+ * The wait before the first entry is 0.  Time spent processing a reply is added
+ * to the recorded delays rather than made up, and the next entry after a 'sent'
+ * is timed from when the queue actually sent it, so a reply can never arrive
+ * ahead of its request.
+ */
+class ReplayAdapter extends PfodConnectionBase {
+  /**
+   * @param {object} config - connection config; must carry replayEntries
+   *        (parsed JSON array, validated by the loader) and replayFileName
+   * @param {ConnectionManager} connectionManager - owning manager
+   */
+  constructor(config, connectionManager) {
+    super();
+    this.protocol = 'replay';
+    this.connectionManager = connectionManager;
+    this.entries = config.replayEntries;
+    this.nextIdx = 0;               // index of the next unreplayed entry
+    this.viewer = null;             // DrawingViewer, set by startReplay()
+    this.timer = null;              // pending wait for the next entry
+    this.awaitingSend = null;       // 'sent' entry handed to the queue, not yet sent
+    this.checkedFirstMenu = false;  // true once _firstMenuError has seen the first {.}
+    // Shared parser state used by PfodConnectionBase.processReadBuffer()
+    this.readBuffer = '';
+    this.responseResolve = null;
+    this.responseReject = null;
+    this._respCallbacks = null;
+    this.sendTime = null;
+    this.timeoutId = null;
+  }
+
+  /**
+   * Convert a pfodApp debug log (.txt) into the entries a Raw Message viewer
+   * JSON export holds, so it replays the same way.  See addMsgReadToDebugFile,
+   * addMsgWriteToDebugFile and addMillisToDebugFile in pfodApp's
+   * pfodAppConnectionData.java for how the log is written:
+   *
+   *   < 1782195571376  0.204sec {V1:.}       cmd sent ("<<" if resent)
+   *   > 1782195574314  0.188sec {=Title...}  reply received
+   *   170440048,1019.10,21.30                raw data, with no time of its own
+   *   !!!  1782196456664  0.033sec Sending Close Connection {!} to: 10.1.1.100:4989 !!!
+   *
+   * Only the LAST connection in the file is returned.  pfodApp appends to the
+   * log, so one file can hold several connections with days between them, and
+   * the earlier ones would otherwise have to be waited out.  A connection
+   * starts at a "Connecting to " line.
+   *
+   * The delta after the time is ignored, as is the "dataRate:n bytes/sec" text
+   * pfodApp adds after a burst of raw data.  Raw data has no time, so each run
+   * of lines arrives together, at the time of the entry before it.  Any other
+   * text line is taken to be raw data, apart from pfodApp's own error reports.
+   * A reply with a line break in it continues until a line ending in '}'.
+   *
+   * @param {string} text - the contents of the debug log
+   * @returns {Array<{ms: number, direction: string, message: string}>} entries,
+   *          with ms counted from the connection's first entry
+   * @throws {Error} if the last connection has no cmds or replies in it
+   */
+  static parsePfodAppDebugLog(text) {
+    const lines = text.split('\n').map((line) => line.replace(/\r$/, ''));
+    const connectionStart = lines.reduce((last, line, i) => (line.startsWith('Connecting to ') ? i : last), 0);
+
+    const traffic = /^(<<?|>) (\d+)(?: +[\d.]+sec)? (?:dataRate:\d+ K?bytes\/sec)?(.*)$/;
+    const closing = /^!!! +(\d+)(?: +[\d.]+sec)? Sending Close Connection \{!\}/;
+    const pfodAppReport = /^(!!!|ERROR|StackTrace:|\tat |Ignoring response to cmd)/;
+
+    const entries = [];
+    let startTime = null;
+    let rawLines = [];
+    let replyOpen = false; // the last entry is a reply still waiting for its '}'
+
+    const addEntry = (time, direction, message) => {
+      if (startTime === null) startTime = time;
+      entries.push({ ms: time - startTime, direction, message });
+    };
+    const flushRaw = () => {
+      if (rawLines.length === 0) return;
+      addEntry(startTime + entries[entries.length - 1].ms, 'received', rawLines.join('\n') + '\n');
+      rawLines = [];
+    };
+
+    for (const line of lines.slice(connectionStart)) {
+      const message = line.match(traffic);
+      const close = line.match(closing);
+      if (message) {
+        flushRaw();
+        const direction = message[1] === '>' ? 'received' : 'sent';
+        addEntry(Number(message[2]), direction, message[3]);
+        replyOpen = direction === 'received' && !message[3].endsWith('}');
+      } else if (close) {
+        flushRaw();
+        addEntry(Number(close[1]), 'sent', '{!}');
+        replyOpen = false;
+      } else if (startTime === null || line === '' || pfodAppReport.test(line)) {
+        continue; // the connection's opening lines, spacing, or a pfodApp report
+      } else if (replyOpen) {
+        const reply = entries[entries.length - 1];
+        reply.message += '\n' + line;
+        replyOpen = !line.endsWith('}');
+      } else {
+        rawLines.push(line);
+      }
+    }
+    if (entries.length === 0) {
+      throw new Error('no pfodApp debug log messages found in the last connection');
+    }
+    flushRaw();
+    return entries;
+  }
+
+  /**
+   * Start playing the file.  Called once the DrawingViewer exists.
+   * @param {DrawingViewer} viewer - the viewer whose queue sends the recorded cmds
+   */
+  startReplay(viewer) {
+    this.viewer = viewer;
+    this._scheduleNext();
+  }
+
+  /**
+   * Wait the recorded gap before the next entry, or finish if there are none.
+   */
+  _scheduleNext() {
+    if (this.nextIdx >= this.entries.length) {
+      this.timer = setTimeout(() => this._finish(), 0);
+      return;
+    }
+    const delay = (this.nextIdx === 0) ? 0
+      : Math.max(0, this.entries[this.nextIdx].ms - this.entries[this.nextIdx - 1].ms);
+    this.timer = setTimeout(() => this._playNext(), delay);
+  }
+
+  /**
+   * Play the next entry.  A 'sent' entry continues from send(), once the queue
+   * has actually sent it; anything else moves straight on to the next entry.
+   * A recorded {!} ends the replay there: it is not sent, and entries after it
+   * are not played.  {!<message>} is an ordinary device reply, not an exit here.
+   * A 'sent' entry that is the file's last has no reply because the recording
+   * stopped, not because the link failed, so it is logged without going through
+   * the queue, which would report a connection failure.  A recording that can't
+   * be replayed ends the replay at that point, see _firstMenuError and
+   * replayMoreDataError.
+   */
+  _playNext() {
+    const entry = this.entries[this.nextIdx];
+    if (this._withoutDedup(entry.message) === '{!}') {
+      this._finish('Client Exited {!}');
+      return;
+    }
+    this.nextIdx++;
+    if (entry.direction === 'sent' && this.nextIdx >= this.entries.length) {
+      if (ConnectionManager.messageCollector) {
+        ConnectionManager.messageCollector.addMessage('sent', entry.message, this.protocol, this._withoutDedup(entry.message));
+      }
+      this._finish();
+      return;
+    }
+    if (entry.direction === 'sent') {
+      // The previous cmd never got a reply; the live link timed out here.
+      this._rejectPending('Replay response timeout - no valid response recorded');
+      const cmd = this._withoutDedup(entry.message);
+      const reply = this._recordedReply();
+      const recordingError = this._firstMenuError(cmd, reply) || this.viewer.replayMoreDataError(cmd, reply);
+      if (recordingError) {
+        this.nextIdx--; // this cmd was not sent, so it is not counted
+        this._finish(recordingError);
+        return;
+      }
+      this.awaitingSend = entry;
+      this.viewer.replaySendRecorded(cmd, reply);
+      return;
+    }
+    this._replayEntry(entry);
+    this._scheduleNext();
+  }
+
+  /**
+   * Check the recording's first main menu request, {.} or {<version>:.}, has a
+   * full menu {,..} as its reply.  With anything else the menu is not in the file,
+   * e.g. a {;..} update to a menu the recording browser had cached, so there is
+   * nothing to display.  Only the first request is checked: later ones can be
+   * answered by updates to that menu.
+   * @param {string} cmd - the recorded cmd about to be sent
+   * @param {?string} reply - its recorded {..} reply, if any
+   * @returns {?string} the error message, or null if this cmd is fine
+   */
+  _firstMenuError(cmd, reply) {
+    if (this.checkedFirstMenu || !/^\{(?:[^:]*:)?\.\}$/.test(cmd)) return null;
+    this.checkedFirstMenu = true;
+    if (reply !== null && reply.startsWith('{,')) return null;
+    return `ERROR: this recording can't be replayed.\nThe first main menu request, ${cmd}, was not answered with a full menu {,...}.\nReply: ${reply === null ? 'none' : reply.slice(0, 40)}`;
+  }
+
+  /**
+   * Strip the dedup prefix a recorded 'sent' message carries ("0{X01:.}").
+   * @param {string} recorded - the recorded message
+   * @returns {string} the cmd from its '{' on, or the message if it has none
+   */
+  _withoutDedup(recorded) {
+    const braceIdx = recorded.indexOf('{');
+    return braceIdx >= 0 ? recorded.substring(braceIdx) : recorded;
+  }
+
+  /**
+   * The {..} reply recorded for the 'sent' entry just taken, if any.
+   * @returns {string|null} the first {..} before the next 'sent', or null
+   */
+  _recordedReply() {
+    for (let i = this.nextIdx; i < this.entries.length; i++) {
+      const entry = this.entries[i];
+      if (entry.direction === 'sent') return null;
+      if (entry.direction === 'received' && entry.message.startsWith('{')) return entry.message;
+    }
+    return null;
+  }
+
+  /**
+   * Feed one recorded non-'sent' entry into the receive pipeline.
+   * @param {object} entry - a recorded entry whose direction is not 'sent'
+   */
+  _replayEntry(entry) {
+    switch (entry.direction) {
+      case 'received':
+        this.processIncoming(entry.message);
+        break;
+      case 'timeout':
+        // The live link gave up on the partial data shown in this entry.
+        // Log it, discard any partial cmd, and fail the pending request.
+        if (ConnectionManager.messageCollector) {
+          ConnectionManager.messageCollector.addMessage('timeout', entry.message, this.protocol);
+        }
+        this.readBuffer = '';
+        this._rejectPending('Replay response timeout - recorded timeout');
+        break;
+      case 'excess >1024':
+        // Tail of an over-long cmd; the truncated cmd itself was recorded as
+        // 'received'.  Raw data only, never a response.
+        if (ConnectionManager.messageCollector) {
+          ConnectionManager.messageCollector.addMessage('excess >1024', entry.message, this.protocol);
+        }
+        this._emitRaw(entry.message, { viewer: false });
+        break;
+      case 'comment':
+        // Annotation in a file exported from an earlier version of replay.
+        break;
+      default:
+        throw new Error(`Replay file entry ${this.nextIdx - 1} has unknown direction "${entry.direction}"`);
+    }
+  }
+
+  /**
+   * Reject the pending send(), if one is still waiting.
+   * @param {string} message - error message; contains 'timeout' so the request
+   *        queue treats it like a live response timeout
+   */
+  _rejectPending(message) {
+    if (!this.responseReject) return;
+    const reject = this.responseReject;
+    this.responseResolve = null;
+    this.responseReject = null;
+    this._respCallbacks = null;
+    reject(new Error(message));
+  }
+
+  /**
+   * Build the message shown when the replay ends: how many messages were
+   * played and how many lines of raw data.
+   *
+   * Counted from the file, not the Raw Message viewer, whose 5000-entry limit
+   * could have dropped the start of a long replay, and only up to the entry
+   * reached, so a recorded {!} and anything after it are not included. Raw text
+   * is counted in lines rather than entries, the same way
+   * MessageCollector.exportRawAsCSV() makes its rows: joined across entries,
+   * split on \r\n, \r or \n, blank lines skipped, and a pfod command ending any
+   * partial line.
+   *
+   * @param {string} [note] - shown above the counts, e.g. why the replay ended
+   * @returns {string} the summary text
+   */
+  _buildFinishedSummary(note) {
+    let sent = 0;
+    let received = 0;
+    let rawLines = 0;
+    let pending = '';
+    const countLine = (line) => { if (line.trim().length > 0) rawLines++; };
+
+    this.entries.slice(0, this.nextIdx).forEach((entry) => {
+      if (entry.direction === 'sent') {
+        sent++;
+      } else if (entry.direction === 'received') {
+        if (entry.message.startsWith('{')) {
+          received++;
+          countLine(pending);
+          pending = '';
+        } else {
+          const parts = (pending + entry.message).split(/\r\n|\r|\n/);
+          pending = parts.pop();
+          parts.forEach(countLine);
+        }
+      }
+    });
+    countLine(pending);
+
+    const noteText = note ? `${note}\n\n` : '';
+    return `Replay finished\n\n${noteText}Messages sent: ${sent}\nMessages received: ${received}\nRaw data lines: ${rawLines}`;
+  }
+
+  /**
+   * The replay is over: fail a cmd left without a reply and show the summary.  A
+   * ~m drawing still waiting for its next part takes over the note, since the
+   * recording is corrupt however it ended.
+   * @param {string} [note] - shown above the counts, e.g. why the replay ended
+   */
+  _finish(note) {
+    this._rejectPending('Replay response timeout - no valid response recorded');
+    console.log('[REPLAY] Finished');
+    const moreDataError = this.viewer.replayMoreDataError(null, null);
+    // On a later task so it lands on top of whatever that rejection shows.
+    this.timer = setTimeout(() => pfodAlert(this._buildFinishedSummary(moreDataError || note), () => {}), 0);
+  }
+
+  /**
+   * Called by the request queue with the recorded cmd handed over by
+   * _playNext(): log the recorded message as sent and carry on from there.
+   * @param {string} cmd - the recorded cmd, used only in the error below
+   * @returns {Promise<string>} JSON from pfodToJson() for the accepted reply
+   */
+  send(cmd) {
+    const entry = this.awaitingSend;
+    if (!entry) {
+      throw new Error(`Replay: send("${cmd}") with no recorded cmd waiting`);
+    }
+    this.awaitingSend = null;
+    return new Promise((resolve, reject) => {
+      this.responseResolve = resolve;
+      this.responseReject = reject;
+      this.sendTime = Date.now();
+      this.readBuffer = '';
+      if (ConnectionManager.messageCollector) {
+        ConnectionManager.messageCollector.addMessage('sent', entry.message, this.protocol, this._withoutDedup(entry.message));
+      }
+      this._scheduleNext();
+    });
+  }
+
+  /** No connect phase — the recording is always available. */
+  async connect() { /* no-op */ }
+
+  /** Stop playing; nothing else to release. */
+  async disconnect() {
+    clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  /** {!} is not replayed; there is no device to reset. */
+  async sendAbort() { /* no-op */ }
+
+  /** Always "connected" while the page is replaying. */
+  isConnected() { return true; }
+}
+
 // DesignerVirtualAdapter lives under designer/adapter.js — the entire
 // designer subsystem stays self-contained.  The 'designer' case in
 // initializeAdapter() above references it as a runtime global, which
@@ -2767,3 +3161,4 @@ window.SerialProxyConnection = SerialProxyConnection;
 window.TCPProxyConnection    = TCPProxyConnection;
 window.BLEProxyConnection    = BLEProxyConnection;
 window.BLEConnection         = BLEConnection;         // native Web Bluetooth (useProxy === false)
+window.ReplayAdapter         = ReplayAdapter;         // Replay Raw Msg File

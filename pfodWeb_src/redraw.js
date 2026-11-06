@@ -159,21 +159,145 @@ const PFOD_COLOR_NAME_TO_INDEX = {
  *   - Named colours: bk m g o n p t s gy r l y bl f a w
  *   - 6-char hex strings: RRGGBB
  *   - 256-palette numbers: 0-255 (via xtermColorToHex)
- * Returns null for unrecognised input.
+ * Returns null for unrecognised input. Exact match only, not trimmed --
+ * e.g. " m" (a leading space) does NOT match "m".
  *
  * @param {string} s - colour string from inside a pfod <tag>, e.g. "bl", "FF0000", "12"
  * @returns {string|null} CSS hex colour or null
  */
 function pfodColorTagToHex(s) {
   if (!s) return null;
-  s = s.trim();
+  // NOT trimmed -- exact match only, same rule as every other tag check
+  // (b/i/u, +N/-N): "< m>" (content " m", a leading space) must NOT match
+  // "m", per explicit instruction. Trimming here was an inconsistency
+  // against the rest of this file's own "exact shape or reject" rule.
   if (Object.prototype.hasOwnProperty.call(PFOD_COLOR_NAME_TO_INDEX, s)) {
     return xtermColorToHex(PFOD_COLOR_NAME_TO_INDEX[s]);
   }
   if (/^[0-9A-Fa-f]{6}$/.test(s)) return '#' + s.toUpperCase();
-  const n = parseInt(s, 10);
-  if (!isNaN(n) && n >= 0 && n <= 255) return xtermColorToHex(n);
+  // Anchored (^...$), matching the +N/-N tag checks elsewhere in this file --
+  // bare parseInt(s, 10) only parses s's LEADING digits and silently ignores
+  // anything after them (parseInt("10kWh)...") === 10, not NaN), so an
+  // unrelated '<' accidentally left in plain display text, followed much
+  // later by some unrelated '>', could get misread as a valid palette-colour
+  // tag instead of being rejected as unrecognised -- confirmed on a real
+  // device (BatterySolarMonitor's menuLabel.jpg, 2026-10-14): "<10kWh)"
+  // followed later by an unrelated "<i>" tag's own '>' misparsed as colour
+  // 10 (lime/green), silently recolouring the rest of the label and eating
+  // the real <i> tag along with it.
+  if (/^\d{1,3}$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (n <= 255) return xtermColorToHex(n);
+  }
   return null;
+}
+
+/**
+ * THE single shared tag tokenizer — every pfod `<...>`-tag scanning loop in
+ * this codebase calls this to find AND classify the next tag-shaped
+ * candidate at or after position `i`. This is the one place that knows
+ * what a valid pfod tag looks like; each caller's own loop just processes
+ * the token this hands back — applying it (translating a `kind` it cares
+ * about into real styling/state), or passing it through as plain text (a
+ * `kind` it has no use for, or no `kind` at all because nothing matched) —
+ * never re-deriving the recognition rules themselves (reworked 2026-10-14,
+ * per explicit correction: "each of the consumers needs to know what a
+ * valid token is. The tokenizer should do that. The consumers process the
+ * valid tokens and emit either the plain text if that consumer does not
+ * use/need that token or the translated token as appropriate").
+ *
+ * Returns `null` only when there's no tag-shaped candidate at all here —
+ * caller should treat `<` as a literal character, advance by 1. Two
+ * boundary defences gate this, the same for every caller (confirmed
+ * necessary on a real device, BatterySolarMonitor's menuLabel.jpg, and by
+ * a Designer cross-check finding — see pfod_tag_shapes.md's own
+ * "Consistency cross-check"):
+ *   1. Its closing `>` must be found WITHOUT crossing another `<` first —
+ *      a genuine tag's content never contains a literal `<`.
+ *   2. Its content must be no longer than the longest tag shape in the
+ *      WHOLE pfod spec (9 chars — `"bg "` plus a 6-digit hex colour) —
+ *      a real correctness bound, not just a style preference: without it,
+ *      a stray `<` with no intervening `<` before a distant `>` could
+ *      swallow a huge, unrelated span as "one candidate" — harmless for a
+ *      caller that just shows an unmatched candidate literally in place,
+ *      but `parsePfodMenuItem()`'s own loop (pfodMenuParser.js) DEFERS
+ *      every candidate it doesn't resolve itself into `inlineFmtPrefix`,
+ *      so an oversized candidate there could swallow real `~`/`` ` ``
+ *      field delimiters that were never meant to be part of it, corrupting
+ *      the rest of that item's parsing.
+ *
+ * Once a candidate is bounded, its content is classified into a `kind` —
+ * `'bold'|'italic'|'underline'|'bw'|'fontSize'|'color'|'bg'` — the EXACT,
+ * singular recognition logic for what each REAL pfod tag shape in
+ * pfod_tag_shapes.md means, structurally the same whether the tag is an
+ * opening or closing one (so e.g `shapeContent` `'b'` is classified
+ * `'bold'` whether `content` is `"b"` or `"/b"` — a caller tracking an
+ * open-tag stack, like `parsePfodInlineSegments()`, still separately
+ * confirms a closing candidate's name is actually open before treating it
+ * as a real close). `kind` is `null` when nothing matched — still a found,
+ * bounded candidate (caller may still want to do something uniform with
+ * "a tag-shaped span I don't translate", e.g. defer it or show it
+ * literally), just not one with a translatable meaning.
+ *
+ * `value` carries whatever a `kind` needs to be applied without the
+ * caller re-deriving it: the font-size delta (already signed) for
+ * `'fontSize'`, the resolved hex for `'color'`/`'bg'`.
+ *
+ * `<bg colorCode>` only classifies as `'bg'` when `colorCode` itself
+ * resolves to a real colour (`pfodColorTagToHex()`) and the tag isn't a
+ * closing one (`<bg ...>` is never closed) — an invalid `<bg xyz>` gets
+ * `kind: null`, same as any other unrecognised candidate; it's still a
+ * tag-shaped candidate structurally, so a caller that defers everything
+ * uniform (`parsePfodMenuItem()`) still defers it rather than treating it
+ * specially as a failure.
+ *
+ * Markdown links (`[text](url)`) are NOT a `<...>` tag at all and this
+ * function has no concept of them — they're pfodButtonRenderer.js's own,
+ * label-only concern, handled entirely separately (see
+ * pfodApplyMarkdownLinks() there), never routed through this tokenizer.
+ *
+ * @param {string} text
+ * @param {number} i - index of the `<` to test
+ * @returns {{end:number, content:string, isClosing:boolean, shapeContent:string,
+ *            kind:(string|null), value:*}|null}
+ *          end = index just past the tag's own `>`; content = raw text
+ *          between `<` and `>`; shapeContent = content with a closing
+ *          tag's leading `/` stripped; null if no tag-shaped candidate
+ *          starts here at all.
+ */
+function pfodFindTag(text, i) {
+  const MAX_TAG_CONTENT_LEN = 9; // "bg " + 6-digit hex -- the longest shape in the whole spec
+  const close = text.indexOf('>', i + 1);
+  const nextOpen = text.indexOf('<', i + 1);
+  if (close === -1 || (nextOpen !== -1 && nextOpen < close)) return null;
+  if ((close - i - 1) > MAX_TAG_CONTENT_LEN) return null;
+  const content = text.substring(i + 1, close);
+  const isClosing = content.startsWith('/');
+  const shapeContent = isClosing ? content.substring(1) : content;
+
+  let kind = null, value;
+  if (shapeContent === 'b') {
+    kind = 'bold';
+  } else if (shapeContent === 'i') {
+    kind = 'italic';
+  } else if (shapeContent === 'u') {
+    kind = 'underline';
+  } else if (shapeContent === 'bw') {
+    kind = 'bw';
+  } else if (/^\+\d{1,3}$/.test(shapeContent)) {
+    kind = 'fontSize';
+    value = parseInt(shapeContent.substring(1), 10);
+  } else if (/^-\d{1,3}$/.test(shapeContent)) {
+    kind = 'fontSize';
+    value = -parseInt(shapeContent.substring(1), 10);
+  } else if (!isClosing && shapeContent.startsWith('bg ')) {
+    const hex = pfodColorTagToHex(shapeContent.substring(3));
+    if (hex !== null) { kind = 'bg'; value = hex; }
+  } else {
+    const hex = pfodColorTagToHex(shapeContent);
+    if (hex !== null) { kind = 'color'; value = hex; }
+  }
+  return { end: close + 1, content, isClosing, shapeContent, kind, value };
 }
 
 // Convert color value to hex - supports integers (0-255) and RRGGBB hex strings
@@ -238,41 +362,46 @@ function decodeEscapes(str) {
 }
 
 /**
- * Markdown link in pfod text: `[text](url)`.
+ * THE single shared pfod inline-tag scanner — used by both this file's own
+ * dwg-canvas-text drawing (directly) and pfodButtonRenderer.js's DOM
+ * rendering (pfodSetFormattedText(), which calls this instead of keeping
+ * its own separate copy — unified 2026-10-15, per explicit instruction:
+ * "use the same tag recognition code for both and just handle the output
+ * differently"). Recognition is identical either way; only what a CALLER
+ * does with the returned segments differs (canvas draw calls here, DOM
+ * spans/anchors there — see pfodSetFormattedText()'s own comment for its
+ * own output step).
  *
- * Group 1 is the link text — anything between the brackets that contains no
- * bracket, so inline format tags inside it are fine and nested [ ] is not.
- * Group 2 is the url, and it MUST begin `http://`, `https://` or a single `/`
- * (a page on the device's own web root — see pfodLinkHref in
- * pfodButtonRenderer.js).  That one constraint is what keeps ordinary prose
- * safe ("Battery [12] (%)" has [..](..) but "%" is not a url) and is the
- * security boundary (javascript: never matches).  `//host/x` is excluded by
- * the (?!\/) so a link is either a full url or a device path, never a
- * scheme-relative third thing.  The url runs to the closing `)` and so
- * cannot contain spaces or parentheses.
+ * Parses pfod inline format tags from text and returns a flat array of
+ * styled segments. Segment shape:
+ *   {text, bold, italic, underline, deltaSize, color}
+ * Tags: <b> <i> <u> <bw> <+N> <-N> colour-name/hex/index tags; </tag> closes
+ * matching open tag (and everything nested inside it). Unrecognised tags
+ * (including <bg ...>) are left as literal text. Open tags auto-terminate
+ * at end of string. Text within each segment has pfod escape sequences
+ * (&#96; &#123; &#124; &#125; &#126; &lt; &#92; &amp;) decoded.
  *
- * Only pfodSetFormattedText renders these as links, and only when its caller
- * allows it (menu labels and the prompt bars).  Everywhere else — buttons,
- * drawing text — the text is shown exactly as the device sent it, brackets
- * and all.  Defined here because redraw.js loads before
- * pfodButtonRenderer.js in the bundle.
- */
-const PFOD_MD_LINK_RE = /\[([^\[\]]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s()]+)\)/g;
-
-/**
- * Parse pfod inline format tags from text and return a flat array of styled segments.
- * Segment shape: {text, bold, italic, underline, deltaSize, color}
- * Tags: <b> <i> <u> <+N> <-N> colour-name/hex/index tags; </tag> closes matching open tag.
- * Unrecognised tags are left as literal text.  Open tags auto-terminate at end of string.
- * Text within each segment has pfod escape sequences (&#96; &#123; &#124; &#125;
- * &#126; &lt; &#92; &amp;) decoded — dwg labels/text-displays are automatically
- * escaped by the pfodDevice, so this must be reversed before drawing on the canvas.
+ * Markdown links (`[text](url)`) are NOT a pfod tag and this function has
+ * no concept of them at all — that's pfodButtonRenderer.js's own,
+ * label-only concern (see its own pfodApplyMarkdownLinks()), applied as a
+ * separate post-process on top of whatever DOM this function's segments
+ * end up building there, never part of recognition here.
  *
  * @param {string} rawText
  * @param {{bold?:boolean, italic?:boolean, underline?:boolean}} [baseStyle]
+ * @param {string} [contrastHex] - auto black/white colour for an inline <bw>
+ *        tag, computed by the caller from ITS OWN notion of "background":
+ *        a button/label's own background in pfodButtonRenderer.js, or a
+ *        CANVAS's own background in redraw.js's dwg-text drawing methods
+ *        (every canvas has one — pfodDwg_json-format.md §2's top-level
+ *        `color` field, defaulting to Black when absent — unlike a dwg
+ *        label/value ITEM, which has no backgroundColor field of its own;
+ *        wired up 2026-10-15, per explicit correction. Both compute it via
+ *        getBlackWhite()/xtermColorToHex(), the same pair
+ *        convertColorToHex() already uses for a -1/BLACK_WHITE item colour).
  * @returns {{text:string, bold:boolean, italic:boolean, underline:boolean, deltaSize:number, color:string|null}[]}
  */
-function parsePfodInlineSegments(rawText, baseStyle) {
+function parsePfodInlineSegments(rawText, baseStyle, contrastHex) {
     const base  = baseStyle || {};
     const stack = [];
 
@@ -280,38 +409,62 @@ function parsePfodInlineSegments(rawText, baseStyle) {
         let bold = !!base.bold, italic = !!base.italic, underline = !!base.underline;
         let deltaSize = 0, color = null;
         for (const e of stack) {
-            if (e.bold)                    bold      = true;
-            if (e.italic)                  italic    = true;
-            if (e.underline)               underline = true;
-            if (e.deltaSize !== undefined) deltaSize += e.deltaSize;
-            if (e.color      !== undefined) color    = e.color;
+            if (e.bold)                     bold       = true;
+            if (e.italic)                   italic     = true;
+            if (e.underline)                underline  = true;
+            if (e.deltaSize !== undefined)  deltaSize += e.deltaSize;
+            if (e.color      !== undefined) color      = e.color;
         }
         return { bold, italic, underline, deltaSize, color };
     }
 
-    function parseTag(inner) {
-        if (inner === 'b')  return { bold: true };
-        if (inner === 'i')  return { italic: true };
-        if (inner === 'u')  return { underline: true };
-        if (/^\+\d+$/.test(inner)) return { deltaSize:  parseInt(inner.substring(1), 10) };
-        if (/^-\d+$/.test(inner))  return { deltaSize: -parseInt(inner.substring(1), 10) };
-        if (inner.startsWith('bg ')) return null;
-        const hex = pfodColorTagToHex(inner);
-        if (hex) return { color: hex };
-        return null;
+    // Translates a token pfodFindTag() already found+classified into this
+    // renderer's own style-delta shape, or null if this renderer has no use
+    // for that `kind` (shown as literal text instead) -- this function
+    // never re-derives what a tag's content MEANS, only what applying its
+    // already-known `kind` should do to the running style.
+    function parseTag(t) {
+        if (t.kind === 'bold')      return { bold: true };
+        if (t.kind === 'italic')   return { italic: true };
+        if (t.kind === 'underline') return { underline: true };
+        // Every canvas has a background colour (pfodDwg_json-format.md §2,
+        // defaulting to Black when absent), so <bw> is meaningful for dwg
+        // text too, not just buttons/labels -- wired up 2026-10-15, per
+        // explicit correction ("All canvases have a background color").
+        // Guarded on contrastHex actually being passed -- a caller that
+        // doesn't have one falls through to "unrecognised", never guessing
+        // a colour.
+        if (t.kind === 'bw') return contrastHex ? { color: contrastHex } : null;
+        if (t.kind === 'fontSize') return { deltaSize: t.value };
+        if (t.kind === 'color') return { color: t.value };
+        return null; // kind === 'bg' (never valid inline styling) or null (unrecognised)
     }
 
     const segs = [];
     let i = 0, segStart = 0;
 
+    // Finding AND classifying a candidate (is there a tag-shaped span here,
+    // and if so what kind of tag is it) is pfodFindTag()'s job -- shared
+    // with every other pfod tag-scanning loop in this codebase. Deciding
+    // whether this renderer actually APPLIES that kind is entirely this
+    // loop's own job: parseTag() below translates a kind it uses into a
+    // style delta (returning null for a kind it doesn't apply, e.g. 'bg',
+    // or no kind at all); the stack search just below does the equivalent
+    // for a closing tag. Either way, once pfodFindTag() finds a bounded
+    // candidate, scanning always resumes at m.end -- applied or not, its
+    // whole span is already fully accounted for (as styling, or as literal
+    // text).
     while (i < rawText.length) {
         if (rawText[i] !== '<') { i++; continue; }
-        const close = rawText.indexOf('>', i + 1);
-        if (close === -1) { i++; continue; }
-        const inner = rawText.substring(i + 1, close);
+        const m = pfodFindTag(rawText, i);
+        if (m === null) { i++; continue; }
 
-        if (inner.startsWith('/')) {
-            const name = inner.substring(1).trim();
+        if (m.isClosing) {
+            // Closing tag: find the innermost matching open tag (by name)
+            // and pop it plus everything after it. Nothing is ever pushed
+            // onto the stack under a name parseTag() wouldn't also apply
+            // (see below), so a name match here IS a real close.
+            const name = m.shapeContent;
             let found = -1;
             for (let j = stack.length - 1; j >= 0; j--) {
                 if (stack[j].tag === name) { found = j; break; }
@@ -319,20 +472,23 @@ function parsePfodInlineSegments(rawText, baseStyle) {
             if (found !== -1) {
                 const txt = decodeEscapes(rawText.substring(segStart, i));
                 if (txt) segs.push(Object.assign({ text: txt }, currentStyle()));
-                segStart = close + 1;
+                segStart = m.end;
                 stack.splice(found);
             }
+            // no matching open tag: leave the closing tag text in the current literal segment
         } else {
-            const parsed = parseTag(inner);
+            const parsed = parseTag(m);
             if (parsed !== null) {
                 const txt = decodeEscapes(rawText.substring(segStart, i));
                 if (txt) segs.push(Object.assign({ text: txt }, currentStyle()));
-                segStart = close + 1;
-                parsed.tag = inner;
+                segStart = m.end;
+                parsed.tag = m.shapeContent;
                 stack.push(parsed);
             }
+            // not applied (unrecognised, or a kind this renderer doesn't
+            // use, e.g. <bg ...>): leave it in the current literal segment
         }
-        i = close + 1;
+        i = m.end;
     }
 
     const tail = decodeEscapes(rawText.substring(segStart));
@@ -982,7 +1138,12 @@ class Redraw {
             italic:    item.italic    === 'true' || item.italic    === true,
             underline: item.underline === 'true' || item.underline === true,
         };
-        const lines = _splitSegmentsToLines(parsePfodInlineSegments(rawText, baseStyle));
+        // Auto black/white for an inline <bw> tag, against THIS canvas's own
+        // background (this.currentBackgroundColor -- every canvas has one,
+        // see parsePfodInlineSegments()'s own @param comment) -- same
+        // getBlackWhite() the -1/BLACK_WHITE item-colour default already uses.
+        const contrastHex = xtermColorToHex(getBlackWhite(this.currentBackgroundColor));
+        const lines = _splitSegmentsToLines(parsePfodInlineSegments(rawText, baseStyle, contrastHex));
 
         this.ctx.textBaseline = 'middle';
 
@@ -1084,7 +1245,9 @@ class Redraw {
             italic:    item.italic    === 'true' || item.italic    === true,
             underline: item.underline === 'true' || item.underline === true,
         };
-        const lines = _splitSegmentsToLines(parsePfodInlineSegments(displayText, baseStyle));
+        // Same contrastHex reasoning as the label-drawing method above.
+        const contrastHex = xtermColorToHex(getBlackWhite(this.currentBackgroundColor));
+        const lines = _splitSegmentsToLines(parsePfodInlineSegments(displayText, baseStyle, contrastHex));
 
         this.ctx.textBaseline = 'middle';
 

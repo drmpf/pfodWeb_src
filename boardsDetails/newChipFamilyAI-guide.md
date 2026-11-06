@@ -1,12 +1,14 @@
----
-name: newChipFamilyAI-guide
-description: "Step-by-step AI-session runbook for adding a WHOLE NEW chip family/vendor BSP to pfodWeb's Designer (variants/, build_boards.js, docs/pfodWeb-variants-guide.html) — distinct from project_board_variant_pin_audit_playbook.md, which assumes the family/parser already exists and only re-audits pin-by-pin data quality within it. First applied 2026-09-13 adding the Seeed XIAO nRF52840 family (4 boards: base/Sense/Plus/Sense Plus); applied again the same day for Adafruit's own separate 'Adafruit nRF52' family (13 boards across nRF52832/833/840) to a repo that previously only had avr/esp32/esp8266/rp2040."
-metadata:
-  node_type: memory
-  type: project
----
+# New Chip Family AI Guide
 
-This is the companion guide to [[project_board_variant_pin_audit_playbook]] for the OTHER kind of board-support
+Step-by-step AI-session runbook for adding a WHOLE NEW chip family/vendor BSP to pfodWeb's Designer (variants/,
+build_boards.js, docs/pfodWeb-variants-guide.html) — distinct from `project_board_variant_pin_audit_playbook.md`,
+which assumes the family/parser already exists and only re-audits pin-by-pin data quality within it.
+
+First applied 2026-09-13 adding the Seeed XIAO nRF52840 family (4 boards: base/Sense/Plus/Sense Plus); applied
+again the same day for Adafruit's own separate "Adafruit nRF52" family (13 boards across nRF52832/833/840) to a
+repo that previously only had avr/esp32/esp8266/rp2040.
+
+This is the companion guide to `project_board_variant_pin_audit_playbook.md` for the OTHER kind of board-support
 task: bringing in a chip family that has never been in `variants/` before, rather than re-auditing pin data
 within a family that's already there. Read `docs/pfodWeb-variants-guide.html` first (sections 1-9) for the
 mechanical how-it-works reference — this file is about the judgment calls and gotchas that guide doesn't (and

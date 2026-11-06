@@ -39,10 +39,12 @@
  *
  * Command flow (cmd byte 'm'):
  *   {mS}  → Load Several Dwgs — one multi-file pick (one folder; a file
- *           chooser cannot multi-select across folders), matching on each
- *           drawing's own name and saving only what is actually missing.
- *           Answers {;}, reporting what it did on the summary label.
- *           See _loadSeveralDwgs.
+ *           chooser cannot multi-select across folders) of .pfodDwg_json
+ *           files and/or .zip bundles (a Save Design bundle, or a
+ *           generated sketch's own menujson/ zip -- see _readDwgsFromZip),
+ *           matching on each drawing's own name and saving only what is
+ *           actually missing. Answers {;}, reporting what it did on the
+ *           summary label. See _loadSeveralDwgs.
  *   {mN}  → Load next dwg — a single-file picker aimed at the head of the
  *           remaining list, so one button walks a whole insertDwg chain.
  *           Answers {;}.
@@ -57,6 +59,14 @@ const DesignerMissingDwgPrompt = (() => {
   // Every one of these is declared HIDDEN on the {b} screen by
   // renderHiddenItems(), then revealed by a {;} update — an update can only
   // change items the screen already carries, never introduce one.
+
+  // Biggest {;} this screen will build. The protocol cap is 1024 bytes and
+  // connectionManager enforces it by cutting mid-message, so the margin is
+  // there to be sure the closing brace (and the buttons after the missing
+  // list) are never the thing that gets cut. Same number, for the same
+  // reason, as loadFromFile.js's own LABEL_MAX_BYTES / editMenu.js's
+  // EM_STATUS_MAX_BYTES.
+  const MDP_LABEL_MAX_BYTES = 1000;
 
   // A non-clickable label listing the dwgs still to load.
   const MDP_STATUS_CMD = 'I';
@@ -120,6 +130,93 @@ const DesignerMissingDwgPrompt = (() => {
     return String(s || '').replace(/[|~`{}]/g, '_');
   }
 
+  /// Join `names` (already _sanitize()d) with `sep`, trimmed to fit `room`
+  /// BYTES — dropping names off the end and reporting how many, rather
+  /// than letting an unbounded list push the WHOLE {;} message over the
+  /// 1024-byte protocol cap. connectionManager's reader cuts mid-message
+  /// on overflow, not per-item, so an untrimmed list here would silently
+  /// drop whatever comes after it in the message too (the buttons below
+  /// "Still to load:") — not just show a long label. Same technique as
+  /// loadFromFile.js's own _fitNotes.
+  ///
+  /// Measured in bytes, not characters: a dwg name (or error message) can
+  /// carry non-ASCII text, and a UTF-8 multi-byte character is more than
+  /// one byte.
+  /// @param {string[]} names
+  /// @param {number} room — bytes available for the joined list
+  /// @param {string} [sep] — defaults to ", "; _loadMissingDwg's own
+  ///        repair-error list instead joins with "\n", one per line
+  /// @returns {string}
+  function _fitNameList(names, room, sep) {
+    sep = sep === undefined ? ', ' : sep;
+    const enc = new TextEncoder();
+    const all = names.join(sep);
+    if (enc.encode(all).length <= room) return all;
+    let out = '';
+    let dropped = 0;
+    for (const n of names) {
+      if (dropped > 0) { dropped++; continue; }
+      const next = out ? out + sep + n : n;
+      // Leave room for the "...and N more" suffix the drop is reported on.
+      if (enc.encode(next).length > room - 20) { dropped++; continue; }
+      out = next;
+    }
+    if (dropped === 0) return out;
+    const more = (out ? out + sep : '') + 'and ' + dropped + ' more';
+    // Only if IT fits — the list is free text, and a long enough run of
+    // entries can leave no room even for this; saying nothing is then
+    // right, because the alternative is a note that itself overflows the
+    // message.
+    return enc.encode(more).length <= room ? more : out;
+  }
+
+  // Per name-list budget WITHIN one summary line (e.g. "N already loaded,
+  // so left unchanged: <names>") -- generous enough to show a reasonable
+  // number of real names before falling back to "...and N more", small
+  // enough that even all of _loadSeveralDwgs's name-bearing lines being
+  // long simultaneously stays well inside MDP_SUMMARY_MAX_BYTES below.
+  const MDP_SUMMARY_LIST_MAX_BYTES = 150;
+
+  // Hard cap on _summaryItem()'s own rendered output -- a backstop
+  // independent of the per-list trimming above: _loadSeveralDwgs can
+  // report several name-bearing lines at once (repaired/already-loaded/
+  // not-needed), and even with each list individually capped, enough of
+  // them together could still add up past this. _capLines (see
+  // _summaryItem) drops whole lines off the end rather than let that
+  // happen, same "truncate safely, report what was lost" rule as
+  // _fitNameList. Sized to leave comfortable room, within
+  // MDP_LABEL_MAX_BYTES, for the status label/missing-list and the three
+  // buttons that share the same {;} message.
+  const MDP_SUMMARY_MAX_BYTES = 500;
+
+  /// Drop whole lines off the end of `lines` until the \n-joined result
+  /// fits `maxBytes`, appending a count of what was dropped (logged in
+  /// full to the console, since the message itself has no room left to
+  /// say more). Returns `lines` unchanged when it already fits.
+  /// @param {string[]} lines
+  /// @param {number} maxBytes
+  /// @returns {string[]}
+  function _capLines(lines, maxBytes) {
+    const enc = new TextEncoder();
+    if (enc.encode(lines.join('\n')).length <= maxBytes) return lines;
+    const out = [];
+    let used = 0;
+    for (const line of lines) {
+      const lineBytes = enc.encode((out.length ? '\n' : '') + line).length;
+      // Leave room for the "N more line(s) omitted" line itself.
+      if (used + lineBytes > maxBytes - 40) break;
+      out.push(line);
+      used += lineBytes;
+    }
+    const dropped = lines.length - out.length;
+    if (dropped > 0) {
+      console.warn('[DesignerMissingDwgPrompt] summary too long for the {;} message, ' +
+        dropped + ' line(s) omitted from the screen:', lines);
+      out.push('(' + dropped + ' more line(s) omitted — see the console)');
+    }
+    return out;
+  }
+
   /// Every dwg name directly referenced by some Drawing menu item
   /// anywhere in the design (any menu/sub-menu, unlimited depth — same
   /// state.getAllItems() walk selectDwgForItem.js's own _usedDwgNames
@@ -169,14 +266,22 @@ const DesignerMissingDwgPrompt = (() => {
   /// load did exactly what was asked, yellow when something was skipped or
   /// unreadable — which is the case where WHY matters and the detail below
   /// is worth the user's attention.
+  ///
+  /// _lastSummary's own lines are already individually name-list-capped
+  /// at MDP_SUMMARY_LIST_MAX_BYTES where they're built (_loadSeveralDwgs/
+  /// _loadMissingDwg), but several long lines together could still push
+  /// the total past MDP_SUMMARY_MAX_BYTES -- _capLines is the backstop
+  /// that guarantees this item's own contribution to the {;} message
+  /// stays bounded regardless, same rationale as _fitNameList.
   /// @returns {string}
   function _summaryItem() {
     if (!_lastSummary || _lastSummary.length === 0) {
       return '|!m' + MDP_SUMMARY_CMD + '-~';
     }
-    const colour = _lastSummary.length > 1 ? '<y>' : '<g>';
+    const lines = _capLines(_lastSummary, MDP_SUMMARY_MAX_BYTES);
+    const colour = lines.length > 1 ? '<y>' : '<g>';
     return '|!m' + MDP_SUMMARY_CMD + DESIGNER_MENU_FMT + '~' + colour +
-           _lastSummary.join('\n');
+           lines.join('\n');
   }
 
   /// The {;} update {b0} answers with when the design it just switched to
@@ -242,31 +347,45 @@ const DesignerMissingDwgPrompt = (() => {
       // longer exists.
       out += '|m' + MDP_SKIP_CMD + '-~';
     } else {
+      // Everything AFTER the missing-list label in this message, built
+      // first so the list can be budgeted against what it shares the
+      // message with — see _fitNameList.
+      const afterList =
+        // Directly under the list it qualifies: that label says what is
+        // left, this one says what the last press did about it.
+        _summaryItem() +
+        '|m' + MDP_LOAD_SEVERAL_CMD + DESIGNER_MENU_FMT +
+          '~Load Several Dwgs\n<-1>from one folder, or\n<-1>from xxx_menuJson.zip' +
+        // Retargeted at the head of the list every press, so one button
+        // walks the whole chain however deep the insertDwg nesting goes.
+        '|m' + MDP_LOAD_NEXT_CMD + DESIGNER_MENU_FMT +
+          '~Load next dwg\n<r>' + _sanitize(stillMissing[0]) + '</r>\nfrom  .pfodDwg_json file' +
+        '|m' + MDP_DONE_CMD + '-~' +
+        // Last, under the buttons that ask for the files: the way on for a
+        // user who does not have them. It says what it costs, so it is a
+        // choice rather than the easy button — a drawing that is not
+        // there cannot be drawn, and the menu it belongs to says so where
+        // it sits.
+        '|m' + MDP_SKIP_CMD + DESIGNER_MENU_FMT +
+          '~Open Menu Anyway\n<-1><y>' + stillMissing.length +
+          ' drawing(s) will show as <b>not loaded</b>';
       // The label carries the list and nothing else. A count would not do:
       // loading one dwg can change WHICH dwgs are missing, not just how
       // many — load LedOnOff and its two insertDwg children, LedOn and
       // LedOff, become missing for the first time, invisible until their
       // parent was in the library. "1 loaded, 2 still missing" then reads
       // as no progress at all.
-      out += '|!m' + MDP_STATUS_CMD + DESIGNER_MENU_FMT +
-             '~<y>Still to load: ' + stillMissing.map(_sanitize).join(', ');
-      // Directly under the list it qualifies: that label says what is left,
-      // this one says what the last press did about it.
-      out += _summaryItem();
-      out += '|m' + MDP_LOAD_SEVERAL_CMD + DESIGNER_MENU_FMT +
-             '~Load Several Dwgs\n<-1>from one folder';
-      // Retargeted at the head of the list every press, so one button walks
-      // the whole chain however deep the insertDwg nesting goes.
-      out += '|m' + MDP_LOAD_NEXT_CMD + DESIGNER_MENU_FMT +
-             '~Load next dwg\n<r>' + _sanitize(stillMissing[0]) + '</r>';
-      out += '|m' + MDP_DONE_CMD + '-~';
-      // Last, under the buttons that ask for the files: the way on for a
-      // user who does not have them. It says what it costs, so it is a
-      // choice rather than the easy button — a drawing that is not there
-      // cannot be drawn, and the menu it belongs to says so where it sits.
-      out += '|m' + MDP_SKIP_CMD + DESIGNER_MENU_FMT +
-             '~Open Menu Anyway\n<-1><y>' + stillMissing.length +
-             ' drawing(s) will show as <b>not loaded</b>';
+      //
+      // Byte-budgeted against everything else already built above: an
+      // unbounded list here, with enough missing dwgs, would push the
+      // WHOLE {;} message over the protocol's 1024-byte cap, and
+      // connectionManager's reader cuts mid-message on overflow — losing
+      // the buttons below the list, not just truncating it (see
+      // _fitNameList).
+      const statusHead = '|!m' + MDP_STATUS_CMD + DESIGNER_MENU_FMT + '~<y>Still to load: ';
+      const enc = new TextEncoder();
+      const room = MDP_LABEL_MAX_BYTES - enc.encode(out + statusHead + afterList + '}').length;
+      out += statusHead + _fitNameList(stillMissing.map(_sanitize), Math.max(room, 0)) + afterList;
     }
     out += '}';
     return out;
@@ -352,7 +471,7 @@ const DesignerMissingDwgPrompt = (() => {
           _lastSummary = ['Loaded ' + _sanitize(dwg.name) + '.'];
           if (errors && errors.length > 0) {
             _lastSummary.push('It had problems that were auto-fixed:\n' +
-              errors.map((e) => _sanitize(e.message)).join('\n'));
+              _fitNameList(errors.map((e) => _sanitize(e.message)), MDP_SUMMARY_LIST_MAX_BYTES, '\n'));
           }
           settle(stay());
         };
@@ -408,12 +527,68 @@ const DesignerMissingDwgPrompt = (() => {
     });
   }
 
+  /// Read every `.pfodDwg_json` entry out of a picked .zip -- a Save
+  /// Design bundle, or a generated sketch's own menujson/ zip -- so a
+  /// missing drawing can be supplied from either without the user having
+  /// to unzip it by hand first and hunt out the individual dwg files.
+  ///
+  /// The zip's own `.pfodMenu_json` entry (if any) is deliberately
+  /// IGNORED: this screen is filling in drawings for the menu the user
+  /// already has open, never replacing it -- that is what "Load Design"
+  /// (loadFromFile.js) is for, and importing the zip's menu here would
+  /// silently overwrite whatever changes the user has made since the
+  /// zip was produced.
+  ///
+  /// Never throws: a corrupt/non-zip pick, or an unreadable/invalid dwg
+  /// entry inside an otherwise-good zip, each resolve to it simply
+  /// contributing nothing, matching _readOneDwgFile's own "skip silently"
+  /// contract for a stray file in a multi-pick.
+  /// @param {File} file
+  /// @returns {Promise<{dwg: object, errors: Array}[]>}
+  function _readDwgsFromZip(file) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onerror = () => resolve([]);
+      reader.onload = () => {
+        DesignerZipBuilder.readBundle(new Uint8Array(reader.result))
+          .then((entries) => {
+            const results = [];
+            entries.filter((e) => /\.pfodDwg_json$/i.test(e.path)).forEach((e) => {
+              let parsed;
+              try {
+                parsed = JSON.parse(new TextDecoder().decode(e.data));
+              } catch (err) {
+                return;
+              }
+              if (dwgFileRejectReason(parsed)) return;
+              // isLoad=true, same reason as _readOneDwgFile -- this is
+              // untrusted file content either way.
+              results.push(validateAndRepairDwg(parsed, e.path.split('/').pop(), true));
+            });
+            resolve(results);
+          })
+          .catch(() => resolve([]));
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
   /// "Load Several Dwgs" — one multi-file pick that fills as many of the
   /// missing rows as the chosen folder can supply, instead of one picker
   /// per row. A file chooser cannot multi-select across folders (an OS
   /// limit, not a choice here), so this is one folder per press; pressing
   /// it again picks up another folder, and the screen re-renders with
   /// whatever is still missing.
+  ///
+  /// Also accepts one or more .zip files in the SAME pick — a Save Design
+  /// bundle, or a generated sketch's own menujson/ zip, either one holding
+  /// however many dwgs it was saved with. Each zip's own `.pfodDwg_json`
+  /// entries are unpacked (see _readDwgsFromZip) and folded into the exact
+  /// same byName pool a loose file picked alongside it would be, so "only
+  /// save what's actually missing" and the multi-pass insertDwg handling
+  /// below apply identically regardless of where a dwg came from. The
+  /// zip's own menu json (if any) is never read here — see
+  /// _readDwgsFromZip for why.
   ///
   /// Only dwgs that are actually MISSING are saved. That matters twice
   /// over: a folder sweep would otherwise pull in unrelated drawings, and
@@ -445,7 +620,7 @@ const DesignerMissingDwgPrompt = (() => {
     return new Promise((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.pfodDwg_json';
+      input.accept = '.pfodDwg_json,.zip';
       input.multiple = true;
       input.style.display = 'none';
 
@@ -466,11 +641,19 @@ const DesignerMissingDwgPrompt = (() => {
         const files = input.files ? Array.from(input.files) : [];
         // `accept` filters the dialog, but a user can switch it to "All
         // files", so the name test still runs — same as everywhere else.
-        const picked = files.filter((f) => /\.pfodDwg_json$/i.test(f.name));
-        if (picked.length === 0) { settle(stay()); return; }
+        const dwgFiles = files.filter((f) => /\.pfodDwg_json$/i.test(f.name));
+        const zipFiles = files.filter((f) => /\.zip$/i.test(f.name));
+        if (dwgFiles.length + zipFiles.length === 0) { settle(stay()); return; }
         picking = true;
 
-        Promise.all(picked.map(_readOneDwgFile)).then((results) => {
+        Promise.all([
+          Promise.all(dwgFiles.map(_readOneDwgFile)),
+          Promise.all(zipFiles.map(_readDwgsFromZip)),
+        ]).then(([dwgResults, zipResultLists]) => {
+          // Each zip resolves to an ARRAY of dwg results (zero or more --
+          // see _readDwgsFromZip), so flatten those in alongside the loose
+          // files' one-result-each before pooling by name.
+          const results = dwgResults.concat(zipResultLists.flat());
           // Last file wins on a duplicate name within one pick — arbitrary,
           // but the alternative (refusing the whole pick) is worse, and two
           // files claiming the same drawing is already a mistake upstream.
@@ -494,11 +677,14 @@ const DesignerMissingDwgPrompt = (() => {
             if (errors && errors.length > 0) repairedNames.push(next);
           }
 
-          const lines = [savedNames.length + ' of ' + picked.length +
-            ' picked file(s) matched a missing drawing and were loaded.'];
+          // Counted against dwg ENTRIES considered, not top-level files
+          // picked — a single zip can expand into several, so "files" would
+          // undercount what was actually offered.
+          const lines = [savedNames.length + ' of ' + results.length +
+            ' drawing(s) found in your pick matched a missing one and were loaded.'];
           if (repairedNames.length > 0) {
             lines.push(repairedNames.length + ' had problems that were auto-fixed: ' +
-              repairedNames.map(_sanitize).join(', '));
+              _fitNameList(repairedNames.map(_sanitize), MDP_SUMMARY_LIST_MAX_BYTES));
           }
           // "Didn't match" lumped together two quite different things and
           // told the user neither. Split them: a drawing ALREADY in the
@@ -515,12 +701,14 @@ const DesignerMissingDwgPrompt = (() => {
           });
           if (alreadyLoaded.length > 0) {
             lines.push(alreadyLoaded.length + ' already loaded, so left unchanged: ' +
-              alreadyLoaded.map(_sanitize).join(', ') + '.\nRe-loading would overwrite ' +
+              _fitNameList(alreadyLoaded.map(_sanitize), MDP_SUMMARY_LIST_MAX_BYTES) +
+              '.\nRe-loading would overwrite ' +
               'the copy in the Dwg Library, including any edits made this session.');
           }
           if (notNeeded.length > 0) {
             lines.push(notNeeded.length + ' not needed by this menu, so not loaded: ' +
-              notNeeded.map(_sanitize).join(', ') + '.\nA file is matched on the drawing ' +
+              _fitNameList(notNeeded.map(_sanitize), MDP_SUMMARY_LIST_MAX_BYTES) +
+              '.\nA file is matched on the drawing ' +
               'name INSIDE it, not on its file name.');
           }
           if (unreadable > 0) {

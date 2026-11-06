@@ -78,16 +78,29 @@ const DesignerEditMenuItems = (() => {
   /// the cut point auto-terminates at end of string (pfod's own rule,
   /// see pfodButtonRenderer.js), so nothing needs closing here.
   /// Appends an ellipsis only when something was actually cut.
+  ///
+  /// pfodFindTag() (redraw.js) is the ONE shared tokenizer every pfod
+  /// tag-scanning loop in this codebase uses -- it finds the candidate AND
+  /// classifies its `kind`; this function decides for itself which kinds
+  /// count as a real, zero-width tag here: any kind the real renderer
+  /// (parsePfodInlineSegments(), the one this truncated text is eventually
+  /// shown through) would also apply as styling -- everything except `bg`
+  /// (never valid inline -- see pfodFindTag()'s own doc comment) and
+  /// `null` (unrecognised content). Real-device repro and the Designer
+  /// cross-check finding this check was added to fix: this file used to
+  /// treat ANY bounded `<...>` span as a real tag regardless of content,
+  /// so e.g. "Title <xy> more" counted `<xy>` as zero visible characters,
+  /// when the real renderer shows all 4 of its characters literally.
   function _truncateKeepingFormat(text, maxVisible) {
     let visible = 0;
     let i = 0;
     let out = '';
     while (i < text.length) {
       if (text[i] === '<') {
-        const close = text.indexOf('>', i + 1);
-        if (close !== -1) {
-          out += text.substring(i, close + 1);
-          i = close + 1;
+        const m = pfodFindTag(text, i);
+        if (m !== null && m.kind !== null && m.kind !== 'bg') {
+          out += text.substring(i, m.end);
+          i = m.end;
           continue;
         }
       }

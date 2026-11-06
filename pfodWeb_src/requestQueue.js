@@ -212,7 +212,15 @@ Object.assign(DrawingViewer.prototype, {
     // On drain (no sentRequest, queue empty), arm the next refresh timer
     // directly — no setTimeout race.  Mirrors Java pfodAppState.java's pattern
     // of having the receive path restart the refresh timer.
-    if (this.sentRequest || this.requestQueue.length === 0) {
+    //
+    // Replay: only cmds from the recording are ever sent (replaySendRecorded(),
+    // which puts them at the front), so anything the client queued itself
+    // waits here as if the queue were empty.  Exit still goes through.
+    const replayHolding = this.connectionManager.protocol === 'replay'
+      && this.requestQueue.length > 0
+      && !this.requestQueue[0]._replayRecorded
+      && this.requestQueue[0].requestType !== 'exitAbort';
+    if (this.sentRequest || this.requestQueue.length === 0 || replayHolding) {
       if (this.sentRequest) {
         this.setProcessingQueue(true);
       } else {
@@ -231,7 +239,7 @@ Object.assign(DrawingViewer.prototype, {
 
  //    this.setProcessingQueue(true); // have non-zero queue length
     // Remove the request from queue and move it to sentRequest
-    const request = this.requestQueue.shift();
+    let request = this.requestQueue.shift();
     console.info(`[QUEUE] PROCESSING: "${request.cmd}" (${request.requestType})#${request._id} - moved from queue to sentRequest`);
     console.info(`[QUEUE] after shift, remaining queue length=${this.requestQueue.length}, contents:`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})#${r._id}`)));
     this.sentRequest = request;
@@ -470,12 +478,27 @@ Object.assign(DrawingViewer.prototype, {
       // processing, which would otherwise corrupt state (e.g.
       // setDrawingData(null, ...) → drawings[null] → '{null}' refresh loop).
       if (!this.validateResponseAgainstRequest(data, request)) {
+        this._abandonMoreData(request);
         console.log(`[SENTREQUEST] CLEARED: "${request.cmd}" (${request.requestType}) - response validation failed at ${new Date().toISOString()}`);
         this.sentRequest = null;
         this.scheduleNextKeepAlive();
         this.processRequestQueue();
         return;
       }
+
+      // A drawing sent over several messages (~m) is held until its last part
+      // has arrived, then carries on from here as one message for the drawing's
+      // load request.  See _collectMoreData.
+      const collected = this._collectMoreData(data, request);
+      if (!collected) {
+        console.log(`[SENTREQUEST] CLEARED: "${request.cmd}" (${request.requestType}) - stored part of a drawing at ${new Date().toISOString()}`);
+        this.sentRequest = null;
+        this.scheduleNextKeepAlive();
+        this.processRequestQueue();
+        return;
+      }
+      data = collected.data;
+      request = collected.request;
 
       // Cache response if it has a version.  PfodMenuCache scopes
       // entries by connectionId, so designer-vs-real-device entries
@@ -848,6 +871,7 @@ Object.assign(DrawingViewer.prototype, {
       }
 
       // Clear the failed request
+      this._abandonMoreData(request);
       console.log(`[SENTREQUEST] CLEARED: "${request.cmd}" (${request.requestType}) at ${new Date().toISOString()}`);
       this.sentRequest = null;
 

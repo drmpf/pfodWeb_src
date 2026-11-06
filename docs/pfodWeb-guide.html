@@ -246,7 +246,7 @@ pfod menus, live charting of CSV data, and offline plotting of saved CSV
 <table>
     <tr><th>Button</th><th>Description</th></tr>
     <tr><td><span class="btn-label">Connect</span> or <span class="btn-label">Connect by pfodProxy</span></td><td>Connects to the device using the selected protocol and settings.</td></tr>
-    <tr><td><strong>Clear Dwg Cache</strong></td><td>Clears any cached pfod menu/drawing definitions stored
+    <tr><td><strong>Clear Menu Cache</strong></td><td>Clears any cached pfod menu/drawing definitions stored
     in the browser.
     Use this if restarting/reprogramming the pfodDevice or if the menu or dwgs appear stale or corrupted.</td></tr>
     <tr><td><strong>Load CSV to Plot</strong></td><td>Opens a file picker to load a previously saved pfod CSV data file and display it as a chart — no device connection needed. See <a href="#csv">Section 6</a>.</td></tr>
@@ -324,7 +324,7 @@ When using a Serial connection, any debug print statements from your sketch are 
         <td><span class="btn-label black">⋮</span></td>
         <td>
             Opens a context menu. Options depend on the current display mode:<br>
-            <strong>Menu mode:</strong> Open Raw Message viewer, or switch to chart display.<br>
+            <strong>Menu mode:</strong> Open Raw Message viewer, switch to chart display, or Export PNG.<br>
             <strong>Chart mode:</strong> Open Raw Message viewer or Chart Configuration panel.
         </td>
     </tr>
@@ -338,6 +338,14 @@ When using a Serial connection, any debug print statements from your sketch are 
         <td>Resends the last pfod command to refresh the current menu.</td>
     </tr>
 </table>
+
+<h3>Exporting a Menu as a PNG</h3>
+<p>To save the current menu as an image, choose <strong>Export PNG</strong> from the three-dot <span class="btn-label black">⋮</span> menu. The file is saved as <code>pfod-menu-&lt;timestamp&gt;.png</code>.</p>
+<ul>
+    <li>Only the current view is saved, so scroll first to save another part of a long menu. The scrollbar is left out, but the strip reserved for it still shows down the right side.</li>
+    <li>Text in scripts other than those covered by Roboto may use a different font in the image than on screen.</li>
+    <li>Tested in Chrome. If the browser cannot create the image, which may happen in Safari, a dialog shows the reason and no file is saved.</li>
+</ul>
 
 <h3>Chart Mode Only</h3>
 <table>
@@ -430,9 +438,61 @@ See the <a href="pfodWeb-chart-mode-guide.html">Chart Mode Guide</a> for full de
     <tr><td>⏮</td><td>Chart (frozen)</td><td>Step back 40% of Display Points</td></tr>
     <tr><td>Freeze</td><td>Chart</td><td>Lock / unlock display window</td></tr>
     <tr><td>⏭</td><td>Chart (frozen)</td><td>Step forward 40% of Display Points</td></tr>
-    <tr><td>⋮</td><td>Menu</td><td>Open Raw Message viewer or switch to chart display</td></tr>
+    <tr><td>⋮</td><td>Menu</td><td>Open Raw Message viewer, switch to chart display, or Export PNG</td></tr>
     <tr><td>⋮</td><td>Chart</td><td>Open Raw Message viewer or Chart Configuration</td></tr>
 </table>
+
+</section>
+
+<!-- ============================================================ -->
+<section id="replay">
+<h2>9. Replay Raw Msg File</h2>
+
+<p>pfodWeb.html can replay a session saved from the Raw Message Viewer or a pfodApp debug log, showing the same menus, charts and data at the same pace as the original session.
+No device connection is required and pfodProxy does not need to be running. This is useful for looking into a problem reported from another site, without needing their device.</p>
+
+<h3>Showing the Replay Button</h3>
+<p>The <strong>Replay Raw Msg File</strong> button is normally hidden. To show it, add <code>replay</code> to the end of the page's URL and reload, for example:</p>
+<p><code>pfodWeb.html?replay</code></p>
+<p>If the URL already has settings in it, add <code>&amp;replay</code> instead. The button then appears on the Connection Setup screen, below <strong>Load CSV to Plot</strong>.
+It is hidden while Designer is selected, so select another protocol if you don't see it.</p>
+
+<h3>Saving a Session to Replay</h3>
+<ol>
+    <li>On the Connection Setup screen, click <strong>Clear Menu Cache</strong>.</li>
+    <li>Connect to the device and open the <strong>Raw Message Viewer</strong> from the three-dot <span class="btn-label black">⋮</span> menu.</li>
+    <li>Use the device as needed. Leave the viewer's message selector showing all messages.</li>
+    <li>Click <strong>Export JSON</strong>. The file is saved as <code>pfod-messages-&lt;timestamp&gt;.json</code>.</li>
+</ol>
+
+<div class="note">
+    <strong>Note:</strong> A session recorded without clearing the cache first may not replay. The device only sends updates for a menu the browser has already cached, so the full menu is not in the file and the replay stops with an error.
+    The viewer also keeps only the latest 5000 messages, so export before a long session loses its start.
+</div>
+
+<h3>Replaying a File</h3>
+<ol>
+    <li>On the Connection Setup screen, click <strong>Replay Raw Msg File</strong>.</li>
+    <li>Choose the <code>.json</code> file, or a pfodApp debug log <code>.txt</code> file. The replay starts straight away.</li>
+    <li>When the replay ends, a <strong>Replay finished</strong> dialog shows the number of messages sent and received and the number of raw data lines.</li>
+</ol>
+
+<h3>Replaying a pfodApp Debug Log</h3>
+<ul>
+    <li>Only the last connection in the log is played. pfodApp adds each new connection to the end of the same log.</li>
+    <li>That connection needs to include the full menu. If pfodApp connected using its cached menu, the menu is not in the log and the replay stops with an error.</li>
+    <li>Raw data lines have no time of their own in the log, so each group of lines arrives together.</li>
+</ul>
+
+<h3>What Replay Does</h3>
+<ul>
+    <li>The file alone drives the replay. Each recorded command and reply is played at its recorded time, so a five minute session takes five minutes to replay.</li>
+    <li>The recorded commands are not sent to any device. pfodWeb's own refresh timing is switched off and it sends nothing of its own.</li>
+    <li>Recorded raw data arrives at its recorded time, so charts fill in as they did in the original session.</li>
+    <li>Pressing buttons during a replay does not change what is played. The toolbar back button can clear the display until the next recorded reply redraws it.</li>
+    <li>If the file contains <code>{!}</code> the replay stops there. It is not played, nothing after it is played, and the dialog also shows <strong>Client Exited {!}</strong>.</li>
+    <li>The replay stops with an error in the dialog if the first main menu request (<code>{.}</code> or <code>{&lt;version&gt;:.}</code>) is not answered with a full menu <code>{,...}</code>, or if a drawing sent over several <code>~m</code> messages is missing a following part. This includes a part request answered by starting the drawing again, and the drawing being requested again before all its parts have arrived.</li>
+</ul>
 
 </section>
 

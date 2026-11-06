@@ -26,7 +26,7 @@ const RAW_TEXT_FLUSH_MS = 100;
  * Stores messages with metadata (timestamp, direction, connection type, size)
  */
 class MessageCollector {
-  constructor(maxMessages = 500) {
+  constructor(maxMessages = 5000) {
     this.messages = [];
     this.maxMessages = maxMessages;
     this.subscribers = []; // Callback functions to notify of new messages
@@ -312,6 +312,66 @@ class MessageCollector {
     });
 
     return header + rows.join('\n');
+  }
+
+  /**
+   * Export the raw (non-pfod) device text as CSV that a spreadsheet can split
+   * into fields for plotting: one row per line of device output, with the
+   * line written UNQUOTED after the usual columns, so each of its own
+   * comma-separated values lands in its own column.
+   *
+   * Works on lines rather than entries because a raw entry is only a chunk of
+   * the stream: it can hold several lines, or part of one (a 'sent' entry
+   * flushes the buffered text mid-line, see addRawText()). So raw text is
+   * joined across entries and split on \r\n, \r or \n. Blank lines are
+   * skipped. A received pfod command ends any partial line, matching
+   * CSVCollector, which discards a partial line at a command boundary.
+   *
+   * The device's text is written exactly as received, so a line containing a
+   * quote keeps it. Rows can have different numbers of columns if the device
+   * prints lines with different numbers of fields.
+   *
+   * @param {object[]} [messages] - entries to scan, defaults to the full log
+   * @returns {string} CSV text; timestamp is when the line's first character
+   *          was logged, ms is relative to the first line, bytes is the
+   *          line's length
+   */
+  exportRawAsCSV(messages = this.messages) {
+    const rows = [];
+    let t0 = null;
+    let pending = '';          // text of the line not yet terminated
+    let pendingTimestamp = null; // timestamp of that line's first character
+
+    const addRow = (line, timestamp) => {
+      if (line.trim().length === 0) return;
+      const timeMs = new Date(timestamp).getTime();
+      if (t0 === null) t0 = timeMs;
+      rows.push(`"${timestamp}",${timeMs - t0},"received",${line.length},${line}`);
+    };
+
+    messages.forEach((msg) => {
+      if (msg.msgType !== 'raw') {
+        if (msg.direction === 'received') {
+          addRow(pending, pendingTimestamp);
+          pending = '';
+        }
+        return;
+      }
+      const parts = msg.message.split(/\r\n|\r|\n/);
+      // The last part has no terminator after it, so it is carried forward.
+      const last = parts.pop();
+      parts.forEach((part) => {
+        addRow(pending + part, pending.length > 0 ? pendingTimestamp : msg.timestamp);
+        pending = '';
+      });
+      if (last.length > 0) {
+        if (pending.length === 0) pendingTimestamp = msg.timestamp;
+        pending += last;
+      }
+    });
+    addRow(pending, pendingTimestamp);
+
+    return 'timestamp,ms,direction,bytes,message\n' + rows.join('\n') + (rows.length > 0 ? '\n' : '');
   }
 }
 
@@ -718,7 +778,7 @@ class RawMessageViewer {
     messageList.appendChild(fragment);
 
     // Limit number of visible elements to prevent memory issues
-    const maxVisibleMessages = 1000;
+    const maxVisibleMessages = 5000;
     while (this.messageViews.length > maxVisibleMessages) {
       const removed = this.messageViews.shift();
       removed.remove();
@@ -810,7 +870,7 @@ class RawMessageViewer {
     this.messageViews.push(messageEl);
 
     // Limit number of visible elements to prevent memory issues
-    const maxVisibleMessages = 1000;
+    const maxVisibleMessages = 5000;
     if (this.messageViews.length > maxVisibleMessages) {
       const removed = this.messageViews.shift();
       removed.remove();
@@ -953,10 +1013,17 @@ class RawMessageViewer {
   /**
    * Export messages as CSV file. Exports the currently filtered/displayed
    * list (same predicate updateMessageDisplay() uses), not the full log.
+   * The Messages: raw filter gets a spreadsheet-ready file instead, see
+   * MessageCollector.exportRawAsCSV().
    */
   exportCSV() {
-    const filtered = this.collector.getMessages().filter(msg => this.shouldDisplayMessage(msg));
-    const csv = this.collector.exportAsCSV(filtered);
+    let csv;
+    if (this.filterMessages === 'raw') {
+      csv = this.collector.exportRawAsCSV();
+    } else {
+      const filtered = this.collector.getMessages().filter(msg => this.shouldDisplayMessage(msg));
+      csv = this.collector.exportAsCSV(filtered);
+    }
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

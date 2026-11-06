@@ -40,6 +40,8 @@
 //   insertDwg         A child drawing referenced by an insertDwg primitive
 //                     inside another drawing's item list.  Discovered during
 //                     processDrawingData scan of a parent drawing's response.
+//   moreData          The next part of a drawing being sent over several ~m
+//                     messages, {<loadCmd>`<offset>}.  See _collectMoreData.
 //   refresh           Timer auto-refresh of a previously fetched menuItemDwg.
 //   refresh-insertDwg Timer auto-refresh of a previously fetched insertDwg.
 //   menuRefresh       Timer auto-refresh of the current menu (NOT a drawing).
@@ -53,7 +55,8 @@ const RequestOrdinal = {
   menuItemDwg:         2,
   touch:               3,
   insertDwg:           4,
-  drag:                5,
+  moreData:            4,
+  drag:               5,
   partialSlider:       6,
   'refresh-insertDwg': 7,
   menuRefresh:         8,
@@ -70,6 +73,14 @@ const RequestOverridable = new Set([
   'refresh',
   'dataRefresh',
   'keepAlive',
+]);
+
+// The request types that ask for a whole drawing, {<loadCmd>`0}.
+const DwgLoadRequestTypes = new Set([
+  'menuItemDwg',
+  'insertDwg',
+  'refresh',
+  'refresh-insertDwg',
 ]);
 
 function ordinalOf(t)     { return RequestOrdinal[t] ?? 999; }
@@ -213,6 +224,9 @@ Object.assign(DrawingViewer.prototype, {
   // excluded — see isRefreshableDrawing), using itemRefreshTimes for
   // last-response timestamps.
   scheduleNextUpdate() {
+    // Replay: the recording's own timing drives every cmd (ReplayAdapter).
+    if (this.connectionManager.protocol === 'replay') return;
+
     if (this.updateTimer) {
       clearTimeout(this.updateTimer);
       this.updateTimer = null;
@@ -429,6 +443,13 @@ Object.assign(DrawingViewer.prototype, {
       return;
     }
 
+    // A drawing still arriving over several ~m messages is not requested again,
+    // as in pfodApp.  See _collectMoreData.
+    if (DwgLoadRequestTypes.has(requestType) && this.moreDataCollections.has(this._extractCmdToken(cmd))) {
+      console.info(`[QUEUE] Dropping ${requestType} "${cmd}" — this drawing is still loading`);
+      return;
+    }
+
     // Block menu auto-refresh while the user has the pointer down on the menu.
     // menuMouseDown is set by pfodMenuDisplay's pointerdown/pointerup listeners on
     // the scroll area, covering HTML buttons, sliders, toggles, and dwg canvases.
@@ -487,6 +508,60 @@ Object.assign(DrawingViewer.prototype, {
     console.log(`[REQ_ID] #${_reqId} = ${requestType} cmd="${cmd}"`);
     console.log(`[QUEUE_MUTATION] After add, queue (length=${this.requestQueue.length}):`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})#${r._id}`)));
 
+    this.processRequestQueue();
+  },
+
+  /**
+   * Send the next recorded cmd from a replay (called by ReplayAdapter at the
+   * cmd's recorded time).  Goes to the front of the queue so it is the next
+   * thing sent once any reply still being processed has finished.
+   *
+   * The response handlers treat a reply according to its request's type, and
+   * the client didn't ask for this cmd, so a type has to be chosen for it:
+   *   - If the client has queued the same cmd (ignoring version), e.g. the
+   *     initial {.} or a drawing a menu asked for, that request takes its place
+   *     and keeps its type, provided that type accepts the recorded reply.
+   *   - Otherwise a plain {+..} drawing fetch is a 'refresh'; anything else is
+   *     a 'touch', the type a menu press uses, which accepts any reply.
+   *
+   * @param {string} recordedCmd - the cmd without its dedup prefix, e.g. "{c7}"
+   * @param {string|null} recordedReply - its recorded {..} reply, if any
+   */
+  replaySendRecorded(recordedCmd, recordedReply) {
+    if (this.exitPending) return;
+    const replyData = recordedReply === null ? null
+      : JSON.parse(this.connectionManager.adapter.pfodToJson(recordedReply));
+    // Compared without the `0 part offset of a drawing's first request, so older
+    // recordings of {c2} still match the {c2`0} the client now queues.  A touch
+    // cmd can also end in `0 but has a ~ in it, so it is left as is.
+    const withoutOffset = (cmd) => pfodStripMenuCmdVersion(cmd).replace(/^(\{[^~`]*)`0\}$/, '$1}');
+    const strippedCmd = withoutOffset(recordedCmd);
+
+    let requestType = 'touch';
+    let isInitial = false;
+    let touchZoneInfo = null;
+    const queuedIdx = this.requestQueue.findIndex(r => withoutOffset(r.cmd) === strippedCmd);
+    const queued = queuedIdx >= 0 ? this.requestQueue[queuedIdx] : null;
+    if (queued && (replyData === null || isResponseShapeValidFor(queued, replyData).ok)) {
+      this.requestQueue.splice(queuedIdx, 1);
+      requestType = queued.requestType;
+      isInitial = queued.isInitial;
+      touchZoneInfo = queued.touchZoneInfo;
+    } else if (recordedReply !== null && recordedReply.startsWith('{+')
+            && strippedCmd === '{' + this._extractCmdToken(recordedCmd) + '}') {
+      requestType = 'refresh';
+    }
+
+    console.log(`[REPLAY] Sending recorded "${recordedCmd}" as ${requestType}`);
+    this.setProcessingQueue(true);
+    this.requestQueue.unshift({
+      cmd: recordedCmd,
+      touchZoneInfo: touchZoneInfo,
+      requestType: requestType,
+      isInitial: isInitial,
+      _id: ++this._nextRequestId,
+      _replayRecorded: true
+    });
     this.processRequestQueue();
   },
 
@@ -628,6 +703,9 @@ Object.assign(DrawingViewer.prototype, {
     console.info(`[QUEUE] Clearing queue at ${clearTime}, length=${queueLength}, sentRequest: ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}`);
     console.log(`[QUEUE_MUTATION] clearPendingQueue contents before clear (length=${queueLength}):`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})#${r._id}`)));
     this.requestQueue = [];
+    // Any request for a drawing's next part has just gone with the queue, so those
+    // drawings have to be loaded again from their start.
+    this.moreDataCollections.clear();
     console.info(`[QUEUE] Cleared ${queueLength} pending requests at ${Date.now()}, elapsed: ${Date.now() - clearTime}ms`);
   }
 

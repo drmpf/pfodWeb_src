@@ -433,7 +433,7 @@ const DesignerEditChart = (() => {
     } else if (canPlaceholder) {
       pinFmt = DESIGNER_MENU_FMT;
       if (isPlaceholder) {
-        pinText = DesignerGenerateCode.chartPlotPinName(item.autoCmd, plotNum) + ' = ?';
+        pinText = DesignerGenerateCode.chartPlotPinName(item, plotNum, state) + ' = ?';
         pinHint = '<b><y>Click here to remove placeholder';
       } else {
         pinText = 'No I/O pins defined';
@@ -441,7 +441,7 @@ const DesignerEditChart = (() => {
         // the actual generated variable name reads clearly against the
         // yellow-italic instructional text around it.
         pinHint = '<y><i>Click here to add</i></y>\n' +
-                  DesignerGenerateCode.chartPlotPinName(item.autoCmd, plotNum) + ' = ?\n' +
+                  DesignerGenerateCode.chartPlotPinName(item, plotNum, state) + ' = ?\n' +
                   '<y><i>placeholder in generated code';
       }
     } else {

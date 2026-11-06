@@ -62,40 +62,86 @@ const DesignerGenerateCode = (() => {
     return id;
   }
 
-  /// PascalCase an item's label text for a per-item hook method name.
-  /// Inline <b>/<+1>/<r>-style format tags are stripped out whole first
-  /// (their own letters/digits, e.g. the 'r' in <r>, never become part
-  /// of the name), then the remainder is split on any run of
-  /// non-alphanumeric chars, each word capitalised (first letter up,
-  /// rest down) and joined with no separator, then capped at 20
-  /// characters so a long or heavily-formatted label can't blow out
-  /// the generated hook name — the 'on'/'Changed'/'Pressed' affixes in
-  /// _computeHookNames are added on top of this and don't count
-  /// against the cap.  "Output is" -> "OutputIs", "PWM Setting" ->
-  /// "PwmSetting", "Button sub" -> "ButtonSub" — matches Menu_ex_4's
-  /// own hook names (onOutputIsChanged / onPwmSettingChanged /
-  /// onButtonSubPressed).
-  function _pascalCase(s) {
-    return (s || '')
-      .replace(/<[^>]*>/g, '')
-      .split(/[^A-Za-z0-9]+/)
-      .filter(Boolean)
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join('')
-      .substring(0, 20);
+  // ── Stable, type-based code identifiers ──────────────────────────
+  // Every generated var/method name used to be derived from the item's
+  // own TEXT (via autoCmd -- see state.js's _makeAutoCmd), so editing a
+  // label changed the generated name and silently orphaned any code the
+  // user had written against the old one. Names are now derived only
+  // from the item's TYPE plus its persisted `codeVarNo` (1 == no suffix,
+  // e.g. plain "button"; 2, 3, ... == "_2", "_3", ...; 0 is never valid)
+  // -- a dedup number assigned ONCE, the first time "Generate Code" runs on
+  // that item, and stuck to it from then on via state.save()/the design
+  // JSON (see state.js's DesignerState.assignCodeVarNos). That's what
+  // makes this stable against BOTH a label edit AND the item being
+  // moved/reordered -- a per-generation tree-walk assignment (the first
+  // version of this fix) was stable against the former but not the
+  // latter, since reordering changed traversal order and so which
+  // number each item landed on. The current label text is preserved as
+  // a trailing comment on each declaration instead (see the call
+  // sites), which updates every regeneration without touching the name.
+  const _TYPE_BASE_PREFIX = Object.freeze({
+    onoff:        'onOffOut',
+    onoffdisplay: 'onOffIn',
+    pwm:          'sliderIO',
+    datadisplay:  'sliderDisplay',
+    chart:        'chart',
+    button:       'button',
+    label:        'label',
+    drawing:      'dwg',
+    submenu:      'submenu',
+  });
+
+  /// @param {string} type
+  /// @param {number}  codeVarNo  1 == no suffix; 0 is never valid (see
+  ///        state.js's DesignerState.assignCodeVarNos/_parseItemTolerant)
+  /// @returns {string} e.g. ('button', 1) -> 'button', ('button', 3) -> 'button_3'
+  function _baseNameFor(type, codeVarNo) {
+    const prefix = _TYPE_BASE_PREFIX[type] || _cppId(type) || 'item';
+    return codeVarNo === 1 ? prefix : prefix + '_' + codeVarNo;
   }
 
-  /// Sanitize `base` (already a valid-ish identifier fragment, e.g. from
-  /// _cppId or _pascalCase) into one that's unique against `usedSet`,
-  /// appending _2/_3/... on collision. Records the chosen ident in
-  /// usedSet before returning it. Falls back to `fallback` when base is
-  /// empty (e.g. an item with no label text).
-  function _uniqueIdent(base, usedSet, fallback) {
-    let ident = base || fallback;
-    let n = 2;
-    while (usedSet.has(ident)) { ident = (base || fallback) + '_' + n; n++; }
-    usedSet.add(ident);
-    return ident;
+  /// Ensures every item in the whole design tree has a persisted
+  /// codeVarNo (assigning+saving any missing ones), then reads it back
+  /// off each item -- the ACTUAL "Generate Code" path, so this is the
+  /// only place a codeVarNo gets assigned/persisted. See _previewBaseName
+  /// for the non-mutating version used by edit-screen previews.
+  /// @param {object} state
+  /// @returns {Map<object, string>} item -> base identifier
+  function _collectBaseNames(state) {
+    state.assignCodeVarNos();
+    const out = new Map();
+    for (const item of state.getAllItems()) {
+      out.set(item, _baseNameFor(item.type, item.codeVarNo));
+    }
+    return out;
+  }
+
+  /// Non-mutating preview of an item's base identifier, for editMenuItem.js/
+  /// editChart.js's "no I/O pins defined" placeholder toggle -- never calls
+  /// state.assignCodeVarNos(), so merely viewing an edit screen never
+  /// assigns/persists a codeVarNo (only "Generate Code" does, via
+  /// _collectBaseNames above). If `item` doesn't have one yet, shows what
+  /// WOULD be assigned next time Generate Code runs -- which can turn out
+  /// different if some OTHER item of the same type gets Generate-Code'd
+  /// first in the meantime.
+  /// @param {object} item
+  /// @param {object} state
+  function _previewBaseName(item, state) {
+    if (Number.isInteger(item.codeVarNo) && item.codeVarNo >= 1) {
+      return _baseNameFor(item.type, item.codeVarNo);
+    }
+    let max = 0;
+    for (const it of state.getAllItems()) {
+      if (it.type !== item.type || !(Number.isInteger(it.codeVarNo) && it.codeVarNo >= 1)) continue;
+      if (it.codeVarNo > max) max = it.codeVarNo;
+    }
+    return _baseNameFor(item.type, max + 1);
+  }
+
+  /// @param {object} item
+  /// @param {Map} baseNames  _collectBaseNames(state) result
+  function _itemBase(item, baseNames) {
+    return baseNames.get(item) || _cppId(item.type || 'item');
   }
 
   // ── Per-item action hooks ────────────────────────────────────────
@@ -103,43 +149,67 @@ const DesignerGenerateCode = (() => {
   // class (pfodMainMenu, or a SubMenu_<ident>) gets its own virtual hook
   // method — the mechanical dispatch calls it, its default body holds
   // exactly what today's flat generator already inlines there (pin
-  // writes / placeholder response / plot-var assignment). Deduplicated
-  // per class (a fresh Set each call) since two items at the SAME level
-  // could share identical label text.
+  // writes / placeholder response / plot-var assignment). Named from the
+  // item's own stable base identifier (see _collectBaseNames), never
+  // from its label text, so it survives label edits unchanged.
   //
   // @param {object[]} items  this level's own items (not descendants)
+  // @param {Map} baseNames  _collectBaseNames(state) result
   // @returns {Map<object, string>} item -> hook method name, for every
   //          onoff/pwm/button/chart item in `items`
-  function _computeHookNames(items) {
-    const used  = new Set();
+  function _computeHookNames(items, baseNames) {
     const names = new Map();
     for (const item of items) {
-      const label = (item.text || '').replace(/\n/g, ' ').trim();
       if (item.type === 'onoff' || item.type === 'pwm') {
-        names.set(item, 'on' + _uniqueIdent(_pascalCase(label), used, 'Value') + 'Changed');
+        names.set(item, _itemBase(item, baseNames) + '_Changed');
       } else if (item.type === 'button') {
-        names.set(item, 'on' + _uniqueIdent(_pascalCase(label), used, 'Button') + 'Pressed');
+        names.set(item, _itemBase(item, baseNames) + '_Pressed');
       } else if (item.type === 'chart') {
-        names.set(item, _chartPrefix(item.autoCmd) + '_readPlotData');
+        names.set(item, _chartPrefix(item, baseNames) + '_readPlotData');
       }
     }
     return names;
   }
 
+  /// Shortened current label text for a declaration's trailing comment --
+  /// capped so one long label can't blow out a single-line comment.
+  /// @param {object} item
+  /// @param {string} [fallback]  used when item.text is blank
+  function _labelComment(item, fallback) {
+    const label = (item.text || '').replace(/\n/g, ' ').trim() || fallback || item.type;
+    return _cppStr(label.substring(0, 40));
+  }
+
+  /// Comment prefix identifying which sub-menu a declaration belongs to --
+  /// blank at the main-menu level. Passed down through _generateSubMenuFiles
+  /// so a user scanning a flat list of type+number identifiers (e.g.
+  /// button_3_Cmd) in pfodMainMenu.h/SubMenu_*.h can still tell which menu
+  /// screen it's on.
+  /// @param {string} [subMenuLabel]  the owning sub-menu's own (shortened)
+  ///        prompt text, or '' at the main-menu level
+  function _subMenuNote(subMenuLabel) {
+    return subMenuLabel ? 'sub-menu \'' + subMenuLabel + '\' -- ' : '';
+  }
+
   /// Protected virtual-hook declaration lines for a class's .h — one per
   /// entry in `hookNames` (computed via _computeHookNames on the SAME
-  /// `items` array, so every item that needs a hook has one).
-  function _declareHookLines(items, hookNames) {
+  /// `items` array, so every item that needs a hook has one). Each line
+  /// carries the item's current label text as a trailing comment -- the
+  /// method name itself no longer does, now that it's type+number based.
+  /// @param {string} [subMenuLabel]  see _subMenuNote
+  function _declareHookLines(items, hookNames, subMenuLabel) {
+    const note = _subMenuNote(subMenuLabel);
     let out = '';
     for (const item of items) {
       const name = hookNames.get(item);
       if (!name) continue;
+      const label = _labelComment(item);
       if (item.type === 'onoff' || item.type === 'pwm') {
-        out += '    virtual void ' + name + '(int value);\n';
+        out += '    virtual void ' + name + '(int value); // ' + note + item.type + ' -- \'' + label + '\'\n';
       } else if (item.type === 'button') {
-        out += '    virtual void ' + name + '(pfodParser &parser); // must send a pfod response\n';
+        out += '    virtual void ' + name + '(pfodParser &parser); // must send a pfod response -- ' + note + 'button -- \'' + label + '\'\n';
       } else if (item.type === 'chart') {
-        out += '    virtual void ' + name + '();\n';
+        out += '    virtual void ' + name + '(); // ' + note + 'chart -- \'' + label + '\'\n';
       }
     }
     return out;
@@ -152,9 +222,14 @@ const DesignerGenerateCode = (() => {
   // below stay in sync.
 
   function _connectionStr(state) {
-    return state.connection === 'serial'
-      ? 'Serial @ ' + state.baud + ' baud'
-      : (state.connection || 'serial');
+    // "Non-Arduino CPP code" never calls Serial.begin()/equivalent itself
+    // (see variants/nonArduinoCpp/target_Stream.{h,cpp} — the user's own
+    // UART setup happens inside target_Stream::begin()), so stating a baud
+    // rate here would claim a fact the generated code doesn't establish.
+    if (state.connection === 'serial' && state.board.family !== 'nonArduinoCpp') {
+      return 'Serial @ ' + state.baud + ' baud';
+    }
+    return state.connection === 'serial' ? 'Serial' : (state.connection || 'serial');
   }
 
   function _fileHeader(state) {
@@ -171,24 +246,27 @@ const DesignerGenerateCode = (() => {
   }
 
   // ── C++ variable name helpers ────────────────────────────────────
+  // All five take the ITEM (never its autoCmd/text) plus the
+  // _collectBaseNames(state) Map, so the name is purely type+number
+  // based -- see the "Stable, type-based code identifiers" section above.
 
-  function _cmdVarName(autoCmd) {
-    return _cppId(autoCmd);
+  function _cmdVarName(item, baseNames) {
+    return _itemBase(item, baseNames) + '_Cmd';
   }
 
-  function _intVarName(autoCmd) {
-    return _cppId(autoCmd).replace(/_Cmd$/, '') + '_var';
+  function _intVarName(item, baseNames) {
+    return _itemBase(item, baseNames) + '_var';
   }
 
-  function _pinConstName(autoCmd) {
-    return _cppId(autoCmd) + '_pin';
+  function _pinConstName(item, baseNames) {
+    return _itemBase(item, baseNames) + '_pin';
   }
 
   /// C++ name prefix for a chart's plotting variables/functions —
-  /// strips the trailing _Cmd so e.g. autoCmd 'chart_Chart_Cmd' yields
-  /// 'chart_Chart' (vars chart_Chart_plot_1_var, fn chart_Chart_sendData).
-  function _chartPrefix(autoCmd) {
-    return _cppId(autoCmd).replace(/_Cmd$/, '');
+  /// e.g. base 'chart_2' yields plot vars chart_2_plot_1_var, fn
+  /// chart_2_sendData.
+  function _chartPrefix(item, baseNames) {
+    return _itemBase(item, baseNames);
   }
 
   /// Render a plot display max/min string as a C++ float literal —
@@ -224,10 +302,11 @@ const DesignerGenerateCode = (() => {
   /// @param {string} comment  trailing comment for the else-if line
   /// @param {string} context  second comment line (menu location), or ''
   /// @param {string} ind      indent of the "} else if" line (see _branchIndent)
-  function _chartDispatchBranch(item, comment, context, ind) {
+  /// @param {Map}    baseNames  _collectBaseNames(state) result
+  function _chartDispatchBranch(item, comment, context, ind, baseNames) {
     const msg = DesignerEditChart.buildChartMsgForCode(item);
     const b = ind + '  ';  // branch body
-    let out = ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { ' + comment + '\n';
+    let out = ind + '} else if(parser.cmdEquals(' + _cmdVarName(item, baseNames) + ')) { ' + comment + '\n';
     if (context) out += b + context + '\n';
     out += b + '// return plotting msg.\n';
     out += b + 'parser.print(F("' + _cppStr(msg.head) + '"));\n';
@@ -251,9 +330,10 @@ const DesignerGenerateCode = (() => {
   //
   // @param {object} item
   // @param {object} ctx  { indent, longRtnAddr, longRtnDeref, sendUpdateCall,
-  //                        returnTrue, hookNames, chartContext }
+  //                        returnTrue, hookNames, chartContext, baseNames }
   // @param {Map} submenuNames  _collectSubMenuNames(state) result
   function _itemDispatchBranch(item, ctx, submenuNames) {
+    const baseNames = ctx.baseNames;
     const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
     // Where the chain sits in its function decides the indent, and the two
     // callers sit at different depths: handle()'s chain is nested inside
@@ -273,9 +353,9 @@ const DesignerGenerateCode = (() => {
     const endBranch = returnTrue ? b + returnTrue : '\n';
     let out = '';
     if (item.type === 'onoff') {
-      const intVar = _intVarName(item.autoCmd);
+      const intVar = _intVarName(item, baseNames);
       const hookName = ctx.hookNames.get(item);
-      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user moved slider -- \'' + label + '\'\n';
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item, baseNames) + ')) { // user moved slider -- \'' + label + '\'\n';
       out += b + 'parser.parseLong(pfodFirstArg,' + ctx.longRtnAddr + '); // parse first arg as a long\n';
       if (item.pin && item.pin.invertOutput) {
         out += b + intVar + ' = swap01((int)' + ctx.longRtnDeref + '); // set variable\n';
@@ -286,9 +366,9 @@ const DesignerGenerateCode = (() => {
       out += b + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
       out += endBranch;
     } else if (item.type === 'pwm') {
-      const intVar = _intVarName(item.autoCmd);
+      const intVar = _intVarName(item, baseNames);
       const hookName = ctx.hookNames.get(item);
-      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user moved slider -- \'' + label + '\'\n';
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item, baseNames) + ')) { // user moved slider -- \'' + label + '\'\n';
       out += b + 'parser.parseLong(pfodFirstArg,' + ctx.longRtnAddr + '); // parse first arg as a long\n';
       out += b + intVar + ' = (int)' + ctx.longRtnDeref + '; // set variable\n';
       out += b + hookName + '(' + intVar + '); // virtual hook -- hardware/action handling\n';
@@ -296,26 +376,27 @@ const DesignerGenerateCode = (() => {
       out += endBranch;
     } else if (item.type === 'button') {
       const hookName = ctx.hookNames.get(item);
-      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user pressed -- \'' + label + '\'\n';
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item, baseNames) + ')) { // user pressed -- \'' + label + '\'\n';
       out += b + hookName + '(parser); // virtual hook -- must send a pfod response\n';
       out += endBranch;
     } else if (item.type === 'chart') {
-      out += _chartDispatchBranch(item, '// user pressed -- \'' + label + '\'', ctx.chartContext || '', ind);
+      out += _chartDispatchBranch(item, '// user pressed -- \'' + label + '\'', ctx.chartContext || '', ind, baseNames);
       out += endBranch;
     } else if (item.type === 'label' || item.type === 'onoffdisplay' || item.type === 'datadisplay') {
-      out += '//' + ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // pfodApp NEVER sends this cmd -- \'' + label + '\'\n';
+      out += '//' + ind + '} else if(parser.cmdEquals(' + _cmdVarName(item, baseNames) + ')) { // pfodApp NEVER sends this cmd -- \'' + label + '\'\n';
       out += '\n';
     } else if (item.type === 'submenu' && item.subMenu) {
       const info = submenuNames.get(item);
-      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item.autoCmd) + ')) { // user pressed sub-menu button -- \'' + label + '\'\n';
+      const subPrompt = _cppStr((item.subMenu.promptText || '').replace(/\n/g, ' ').trim() || label);
+      out += ind + '} else if(parser.cmdEquals(' + _cmdVarName(item, baseNames) + ')) { // user pressed sub-menu button -- \'' + label + '\'\n';
       out += b + 'if (!parser.isRefresh()) {\n';
-      out += b + '  ' + _subMenuAccessor(info) + '.sendMenu(parser); // send the sub-menu\n';
+      out += b + '  ' + _subMenuAccessor(info) + '.sendMenu(parser); // send the sub-menu -- \'' + subPrompt + '\'\n';
       out += b + '} else {\n';
-      out += b + '  ' + _subMenuAccessor(info) + '.sendMenuUpdate(parser); // refresh the sub-menu\n';
+      out += b + '  ' + _subMenuAccessor(info) + '.sendMenuUpdate(parser); // refresh the sub-menu -- \'' + subPrompt + '\'\n';
       out += b + '}\n';
       out += endBranch;
     } else if (item.type === 'drawing') {
-      out += ind + '} else if(parser.cmdEquals(' + _dwgCmdVarName(item.autoCmd) + ')) { // user touch not handled by dwg, handle it here\n';
+      out += ind + '} else if(parser.cmdEquals(' + _dwgCmdVarName(item, baseNames) + ')) { // user touch not handled by dwg -- \'' + label + '\', handle it here\n';
       out += b + '// drawing loadCmd handled internally by get_dwg_xxx().init()\n';
       out += b + '// add touchZone handling here and return response for inputs that return false from processDwgCmds()\n';
       out += b + ctx.sendUpdateCall + '; // always send back a pfod msg otherwise pfodApp will disconnect.\n';
@@ -330,14 +411,15 @@ const DesignerGenerateCode = (() => {
   /// side effects live only here, matching generated-code-structure.md's
   /// "where hardware/pin code actually lives" rule -- collapsed into
   /// this one class instead of a separate thin override).
-  function _onoffHookBody(item, className, hookName) {
-    let out = 'void ' + className + '::' + hookName + '(int value) {\n';
+  function _onoffHookBody(item, className, hookName, baseNames) {
+    const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+    let out = 'void ' + className + '::' + hookName + '(int value) { // \'' + label + '\'\n';
     out += '  (void)value;\n';
     if (item.pin && item.pin.name) {
-      out += '  ' + _pinWriteFn(item.pin.type) + '(' + _pinConstName(item.autoCmd) + ', value); // set output\n';
+      out += '  ' + _pinWriteFn(item.pin.type) + '(' + _pinConstName(item, baseNames) + ', value); // set output\n';
     }
     if (item.pulse && item.pulse !== 'none') {
-      const cmdVar = _cmdVarName(item.autoCmd);
+      const cmdVar = _cmdVarName(item, baseNames);
       const triggerVal = item.pulse === 'low' ? 0 : 1;
       out += '  if (value == ' + triggerVal + ') {\n';
       out += '    ' + cmdVar + '_pulseStartTime = millis();\n';
@@ -350,18 +432,20 @@ const DesignerGenerateCode = (() => {
     return out;
   }
 
-  function _pwmHookBody(item, className, hookName) {
-    let out = 'void ' + className + '::' + hookName + '(int value) {\n';
+  function _pwmHookBody(item, className, hookName, baseNames) {
+    const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+    let out = 'void ' + className + '::' + hookName + '(int value) { // \'' + label + '\'\n';
     out += '  (void)value;\n';
     if (item.pin && item.pin.name) {
-      out += '  ' + _pinWriteFn(item.pin.type) + '(' + _pinConstName(item.autoCmd) + ', value); // set output\n';
+      out += '  ' + _pinWriteFn(item.pin.type) + '(' + _pinConstName(item, baseNames) + ', value); // set output\n';
     }
     out += '}\n\n';
     return out;
   }
 
-  function _buttonHookBody(className, hookName) {
-    let out = 'void ' + className + '::' + hookName + '(pfodParser &parser) {\n';
+  function _buttonHookBody(item, className, hookName) {
+    const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+    let out = 'void ' + className + '::' + hookName + '(pfodParser &parser) { // \'' + label + '\'\n';
     out += '  // << add your action code here for this button\n';
     out += '  parser.print(F("{}")); // change this return as needed.\n';
     out += '}\n\n';
@@ -375,17 +459,20 @@ const DesignerGenerateCode = (() => {
   /// got the "replace this Min value" placeholder even when the user had
   /// connected it to an ADC pin.  Plots with no pin keep the placeholder:
   /// their data comes from the user's own loop variables.
-  function _chartReadPlotDataHookBody(item, className, hookName) {
-    const prefix = _chartPrefix(item.autoCmd);
-    let out = 'void ' + className + '::' + hookName + '() {\n';
+  function _chartReadPlotDataHookBody(item, className, hookName, baseNames) {
+    const prefix = _chartPrefix(item, baseNames);
+    const chartLabel = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'chart');
+    let out = 'void ' + className + '::' + hookName + '() { // \'' + chartLabel + '\'\n';
     out += '  // assign values to plot variables from your loop variables or read ADC inputs\n';
     for (let n = 1; n <= 3; n++) {
       const p       = item.plots[n - 1];
       const plotVar = prefix + '_plot_' + n + '_var';
+      const plotLabel = _cppStr((p.plotLabel || '').replace(/\n/g, ' ').trim() || ('plot ' + n));
+      const plotNote = ' // chart \'' + chartLabel + '\' -- plot \'' + plotLabel + '\'';
       if (p.pin && p.pin.name) {
-        out += '  ' + plotVar + ' = ' + _pinReadFn(p.pin.type) + '(' + prefix + '_plot_' + n + '_pin);  // read ADC input\n';
+        out += '  ' + plotVar + ' = ' + _pinReadFn(p.pin.type) + '(' + prefix + '_plot_' + n + '_pin);' + plotNote + '\n';
       } else {
-        out += '  ' + plotVar + ' = ' + prefix + '_plot_' + n + '_varMin; //<<< replace this Min value with your actual data\n';
+        out += '  ' + plotVar + ' = ' + prefix + '_plot_' + n + '_varMin; //<<< replace this Min value with your actual data -- chart \'' + chartLabel + '\' plot \'' + plotLabel + '\'\n';
       }
     }
     out += '}\n\n';
@@ -396,8 +483,8 @@ const DesignerGenerateCode = (() => {
   /// hook (own class, unqualified) then streams the CSV plot record.
   /// PUBLIC (unlike the hook) because a parent level's own tickCharts()
   /// calls a descendant sub-menu's own <prefix>_sendData directly.
-  function _chartSendDataMethod(item, className, hookName) {
-    const prefix = _chartPrefix(item.autoCmd);
+  function _chartSendDataMethod(item, className, hookName, baseNames) {
+    const prefix = _chartPrefix(item, baseNames);
     let out = 'void ' + className + '::' + prefix + '_sendData(pfodParser &parser) {\n';
     out += '  if (' + prefix + '_plotDataTimer.justFinished()) {\n';
     out += '    ' + prefix + '_plotDataTimer.repeat(); // restart plot data timer, without drift\n';
@@ -416,33 +503,18 @@ const DesignerGenerateCode = (() => {
   }
 
   // pfodAutoCmd variable name for a drawing item's tap-cmd — the menu
-  // item's own row-touch identity, based on the ITEM's autoCmd and
-  // independent of which dwg happens to be linked to it. Never the dwg
-  // class/instance name, which comes from the LINKED DWG's own name
-  // instead (see _dwgClassName/_dwgVarName).
+  // item's own row-touch identity, independent of which dwg happens to be
+  // linked to it. Never the dwg class/instance name, which comes from the
+  // LINKED DWG's own name instead (see _dwgClassName/_dwgVarName).
   //
-  // The rule itself lives in dwgArduinoExport.js, which declares this same
-  // member for its own single-dwg wrapper menu. It is shared rather than
-  // repeated because the two copies had already drifted: this one derived
-  // a name per item while that one hard-coded "dwgMenuItem_Cmd", so the
-  // same design produced different member names depending on which
-  // Generate button was pressed.
-  //
-  // The rule strips the leading TYPE word only — "drawing_Home_Cmd" →
-  // "dwgMenuItem_Home_Cmd" — so the rest of the autoCmd survives, and
-  // since state.js's _makeAutoCmd already makes that unique within its
-  // menu, so is the member.
-  //
-  // It used to cut from "_Cmd" rather than the first "_", which threw the
-  // item's name away and returned a bare "Cmd" for EVERY drawing. With one
-  // drawing that was invisible; with two it declared the same pfodAutoCmd
-  // member twice and would not compile — and had it compiled, both menu
-  // rows would have shared one wire cmd and been indistinguishable to the
-  // device. The only thing that ever varied was the `_2` collision suffix,
-  // so it disambiguated the case that did not need it (two items with the
-  // SAME text) and collapsed the case that did.
-  function _dwgCmdVarName(autoCmd) {
-    return DwgArduinoExport.dwgMenuItemCmdVar(autoCmd);
+  // Uses the same type+number base as every other item type (see
+  // _collectBaseNames) -- NOT dwgArduinoExport.js's own
+  // dwgMenuItemCmdVar()/"dwgMenuItem_..." rule, which is a separate,
+  // unrelated naming scheme for that file's own single-dwg wrapper-menu
+  // generator (its "Generate Code"/"Generate Serial" buttons on the dwg
+  // designer screen), not touched by labelChanges.txt.
+  function _dwgCmdVarName(item, baseNames) {
+    return _itemBase(item, baseNames) + '_Cmd';
   }
 
   // The generated dwg class/instance name is based on the LINKED DWG's
@@ -497,30 +569,29 @@ const DesignerGenerateCode = (() => {
   // ── Sub-menu class naming ────────────────────────────────────────
   // Every 'submenu' item anywhere in the tree (main-level sub-menus and
   // their own nested sub-sub-menus) gets its own generated class. Names
-  // are assigned ONCE, up front, in a single global-uniqueness pass —
-  // both the outer delegation code (main menu / a parent sub-menu calling
-  // into a child) and the child's own generated file need to agree on
-  // the exact same className/varName.
+  // are derived from the item's own stable base identifier (see
+  // _collectBaseNames -- already globally deduped there, so no separate
+  // dedup pass is needed here), assigned ONCE up front: both the outer
+  // delegation code (main menu / a parent sub-menu calling into a child)
+  // and the child's own generated file need to agree on the exact same
+  // className/varName.
 
-  function _assignSubMenuNames(items, usedIdents, out) {
+  function _assignSubMenuNames(items, baseNames, out) {
     for (const item of items) {
       if (item.type !== 'submenu' || !item.subMenu) continue;
-      const label = (item.text || '').replace(/\n/g, ' ').trim();
-      // Capped at 20 chars, same limit _pascalCase() applies to hook names —
-      // a long submenu label would otherwise blow out both the class name
-      // and the file name (SubMenu_<ident>.h/.cpp).
-      const ident = _uniqueIdent(_cppId(label).substring(0, 20), usedIdents, 'SubMenu');
+      const ident = _itemBase(item, baseNames);
       out.set(item, { className: 'SubMenu_' + ident, varName: 'subMenu_' + ident });
-      _assignSubMenuNames(item.subMenu.items, usedIdents, out);
+      _assignSubMenuNames(item.subMenu.items, baseNames, out);
     }
   }
 
   /// @param {object} state
+  /// @param {Map} baseNames  _collectBaseNames(state) result
   /// @returns {Map<object, {className: string, varName: string}>} every
   ///          submenu item anywhere in the tree -> its assigned class name
-  function _collectSubMenuNames(state) {
+  function _collectSubMenuNames(state, baseNames) {
     const out = new Map();
-    _assignSubMenuNames(state.rootMenu.items, new Set(), out);
+    _assignSubMenuNames(state.rootMenu.items, baseNames, out);
     return out;
   }
 
@@ -783,6 +854,42 @@ const DesignerGenerateCode = (() => {
     return out;
   }
 
+  // ── Non-Arduino CPP adapter header ───────────────────────────────
+  // "Non-Arduino CPP code" target (family 'nonArduinoCpp') reuses this
+  // generator's normal _generateH/_generateCpp/_generateSubMenuFiles
+  // output almost completely unmodified -- still `#include <pfodParser.h>`
+  // and still wraps literals in Arduino's F("...") PROGMEM macro, exactly
+  // as for every other (Arduino) family. The generated code always uses
+  // the pfodStream/pfodPrint names (see _generateH's pfodCloseConnectionPtr
+  // typedef and _generateCpp's debugPtr), never the Arduino Stream/Print
+  // names, so the same generated code is byte-identical between Arduino
+  // and non-Arduino boards -- the Arduino pfodParser library provides
+  // `typedef Print pfodPrint;` / `typedef Stream pfodStream;` so it still
+  // compiles there, while pfodParserCPP has pfodStream/pfodPrint as its
+  // real (non-aliased) class names. _triggerDownload adds extra generated
+  // files alongside the others for 'nonArduinoCpp' only: a local
+  // pfodParser.h that pulls in the real (non-Arduino) pfodParserCPP.h and
+  // defines F(x) as a no-op -- so the rest of the unchanged generated code
+  // compiles as-is -- plus the static target_Stream.h/.cpp (a pfodStream
+  // skeleton the user completes for their board's UART, used by
+  // variants/nonArduinoCpp/serial.tpl) and target_pfodClock.cpp (supplies
+  // the micros() pfodParserCPP needs) from NON_ARDUINO_CPP_FILES (built by
+  // build_boards.js from variants/nonArduinoCpp/, see inoTemplates.js's
+  // sibling registry), and readme.txt explaining both.
+  function _nonArduinoCppAdapterHeader(state) {
+    return _fileHeader(state) +
+      '// Adapter so the generated pfodMainMenu.h/.cpp\'s #include <pfodParser.h>,\n' +
+      '// F("...") and millis() calls work unchanged against the plain-C++ pfodParserCPP\n' +
+      '// library. Keep this file alongside the other generated files (same\n' +
+      '// folder) so <pfodParser.h> resolves to it.\n' +
+      '#pragma once\n' +
+      '#include "pfodParserCPP.h"\n' +
+      '#include "pfodClock.h" // millis(), derived from micros() -- see readme.txt if micros() does not work on your micro\n' +
+      '#ifndef F\n' +
+      '#define F(string_literal) (string_literal)\n' +
+      '#endif\n';
+  }
+
   // ── .h generator ──────────────────────────────────────────────────
   // pfodMainMenu is a real class (public virtual sendMainMenu/
   // sendMainMenuUpdate — public so a sketch can send the menu itself, and
@@ -798,7 +905,8 @@ const DesignerGenerateCode = (() => {
   function _generateH(state) {
     const menu  = state.getActiveMenu();
     const items = menu.items;
-    const hookNames = _computeHookNames(items);
+    const baseNames = _collectBaseNames(state);
+    const hookNames = _computeHookNames(items, baseNames);
 
     let out = _fileHeader(state);
     out += '#ifndef PFOD_MAIN_MENU_H\n';
@@ -806,7 +914,7 @@ const DesignerGenerateCode = (() => {
     out += '// pfodMainMenu.h\n';
     out += '\n';
     out += '#include <pfodParser.h>\n';
-    out += 'typedef void (*pfodCloseConnectionPtr)(Stream *);  // the pointer to the method that handles parser closeConnection calls\n';
+    out += 'typedef void (*pfodCloseConnectionPtr)(pfodStream *);  // the pointer to the method that handles parser closeConnection calls\n';
     out += '\n';
     const charts = items.filter(i => i.type === 'chart');
 
@@ -827,7 +935,7 @@ const DesignerGenerateCode = (() => {
       out += '    virtual void tickCharts(pfodParser &parser); // streams this level\'s own charts + every nested sub-menu\'s\n';
     }
     for (const item of charts) {
-      out += '    virtual void ' + _chartPrefix(item.autoCmd) + '_sendData(pfodParser &parser);\n';
+      out += '    virtual void ' + _chartPrefix(item, baseNames) + '_sendData(pfodParser &parser); // chart -- \'' + _labelComment(item) + '\'\n';
     }
     out += '  protected:\n';
     out += _declareHookLines(items, hookNames);
@@ -837,11 +945,11 @@ const DesignerGenerateCode = (() => {
     // protected, not private, so a user's own subclass can reach the cmd
     // of any item it wants to handle itself.
     for (const item of items) {
-      const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+      const label = _labelComment(item);
       if (item.type === 'drawing') {
-        out += '    pfodAutoCmd ' + _dwgCmdVarName(item.autoCmd) + '; // drawing menu item\n';
+        out += '    pfodAutoCmd ' + _dwgCmdVarName(item, baseNames) + '; // drawing -- \'' + label + '\'\n';
       } else {
-        out += '    pfodAutoCmd ' + _cmdVarName(item.autoCmd) + '; // ' + item.type + ' -- \'' + label + '\'\n';
+        out += '    pfodAutoCmd ' + _cmdVarName(item, baseNames) + '; // ' + item.type + ' -- \'' + label + '\'\n';
       }
     }
     out += '  private:\n';
@@ -883,8 +991,9 @@ const DesignerGenerateCode = (() => {
     const charts    = items.filter(i => i.type === 'chart');
     const drawings  = items.filter(i => i.type === 'drawing');
     const childSubs = items.filter(i => i.type === 'submenu' && i.subMenu);
-    const submenuNames = _collectSubMenuNames(state);
-    const hookNames = _computeHookNames(items);
+    const baseNames = _collectBaseNames(state);
+    const submenuNames = _collectSubMenuNames(state, baseNames);
+    const hookNames = _computeHookNames(items, baseNames);
 
     let out = _fileHeader(state);
     out += '/* ===== pfod Command for ' + name + ' ====\n';
@@ -910,8 +1019,8 @@ const DesignerGenerateCode = (() => {
       }
     }
     for (const child of childSubs) {
-      out += '#include "' + submenuNames.get(child).className + '.h" // sub-menu -- \'' +
-             _cppStr((child.text || '').replace(/\n/g, ' ').trim()) + '\'\n';
+      const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+      out += '#include "' + submenuNames.get(child).className + '.h" // sub-menu -- \'' + childPrompt + '\'\n';
     }
     out += '\n';
     out += '// #define DEBUG\n';
@@ -932,11 +1041,11 @@ const DesignerGenerateCode = (() => {
     for (const item of items) {
       if (item.pin && item.pin.name) {
         const pinLabel = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
-        pinLines.push('const int ' + _pinConstName(item.autoCmd) + ' = ' + item.pin.codeName + '; // name the ' + item.pin.type.replace(/_/g, ' ') + ' pin for \'' + pinLabel + '\'\n');
+        pinLines.push('const int ' + _pinConstName(item, baseNames) + ' = ' + item.pin.codeName + '; // name the ' + item.pin.type.replace(/_/g, ' ') + ' pin for \'' + pinLabel + '\'\n');
       }
     }
     for (const item of charts) {
-      const prefix = _chartPrefix(item.autoCmd);
+      const prefix = _chartPrefix(item, baseNames);
       for (let n = 1; n <= 3; n++) {
         const p = item.plots[n - 1];
         if (p.pin && p.pin.name) {
@@ -956,7 +1065,7 @@ const DesignerGenerateCode = (() => {
       pinLines.forEach((line) => { out += line; });
       out += '\n';
     }
-    out += 'static Print* debugPtr = NULL;  // local to this file\n';
+    out += 'static pfodPrint* debugPtr = NULL;  // local to this file\n';
     out += 'static const unsigned long refresh_ms = ' + menu.refresh_ms + '; // main menu refresh\n';
     out += 'const char* mainMenuPromptText_var = "' + _cppStr(menu.promptText || '') + '"; // current prompt text -- change this + call sendMainMenu() or sendMainMenuUpdate() to update the prompt\n';
     if (_needsSwap01(items)) {
@@ -971,46 +1080,46 @@ const DesignerGenerateCode = (() => {
     // sub-menu text).
     for (const item of items) {
       if (item.type === 'label') {
-        const textVar = _intVarName(item.autoCmd);
+        const textVar = _intVarName(item, baseNames);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'Label');
         out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenu() to update the label (see docs/pfodAI-guide.md §6.3a to also push it via sendMainMenuUpdate())\n';
       } else if (item.type === 'button') {
-        const textVar = _intVarName(item.autoCmd);
+        const textVar = _intVarName(item, baseNames);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'Button');
         out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenu() to update the button\n';
       } else if (item.type === 'submenu') {
-        const textVar = _intVarName(item.autoCmd);
+        const textVar = _intVarName(item, baseNames);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'Sub-menu');
         out += 'const char* ' + textVar + ' = "' + _cppStr(item.text || '') + '"; // current text for \'' + leading + '\' -- change this + call sendMainMenu() to update the sub-menu button\n';
       } else if (item.type === 'onoff') {
-        const intVar  = _intVarName(item.autoCmd);
+        const intVar  = _intVarName(item, baseNames);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'output');
         const initVar = (item.pin && item.pin.invertOutput) ? (item.current === 0 ? 1 : 0) : item.current;
         out += 'int ' + intVar + ' = ' + initVar + '; // name the variable for \'' + leading + '\'  0=' + (item.lowText || 'Low') + ' 1=' + (item.highText || 'High') + ' \n';
         if (item.pulse && item.pulse !== 'none') {
-          const cmdVar   = _cmdVarName(item.autoCmd);
+          const cmdVar   = _cmdVarName(item, baseNames);
           const pulseSecs = (item.pulse_ms / 1000.0).toFixed(1);
-          out += 'static unsigned long ' + cmdVar + '_pulseStartTime=0; // the time when ' + cmdVar + ' pulse started\n';
-          out += 'static bool ' + cmdVar + '_pulseRunning = false; // true when ' + cmdVar + ' pulse running\n';
-          out += 'static unsigned long ' + cmdVar + '_PULSE_LENGTH = ' + item.pulse_ms + '; // ' + pulseSecs + ' secs\n';
-          out += 'static void ' + cmdVar + '_checkPulse();\n';
+          out += 'static unsigned long ' + cmdVar + '_pulseStartTime=0; // the time when ' + cmdVar + ' pulse started -- \'' + leading + '\'\n';
+          out += 'static bool ' + cmdVar + '_pulseRunning = false; // true when ' + cmdVar + ' pulse running -- \'' + leading + '\'\n';
+          out += 'static unsigned long ' + cmdVar + '_PULSE_LENGTH = ' + item.pulse_ms + '; // ' + pulseSecs + ' secs -- \'' + leading + '\'\n';
+          out += 'static void ' + cmdVar + '_checkPulse(); // \'' + leading + '\'\n';
         }
       } else if (item.type === 'pwm') {
-        const intVar  = _intVarName(item.autoCmd);
+        const intVar  = _intVarName(item, baseNames);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'slider');
         out += 'int ' + intVar + ' = ' + item.minValue + '; // initial value for \'' + leading + '\' range ' + item.minValue + ' to ' + item.maxValue + '\n';
       } else if (item.type === 'onoffdisplay') {
-        const intVar  = _intVarName(item.autoCmd);
+        const intVar  = _intVarName(item, baseNames);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'display');
         out += 'int ' + intVar + ' = ' + item.current + '; // display variable for \'' + leading + '\'  0=' + (item.lowText || 'Off') + ' 1=' + (item.highText || 'On') + ' \n';
       } else if (item.type === 'datadisplay') {
-        const intVar  = _intVarName(item.autoCmd);
+        const intVar  = _intVarName(item, baseNames);
         const leading = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'reading');
         out += 'int ' + intVar + ' = ' + item.minValue + '; // data display variable for \'' + leading + '\' range ' + item.minValue + ' to ' + item.maxValue + '\n';
         if (item.pin && item.pin.name) {
-          out += 'pfodDelay ' + _cppId(item.autoCmd) + '_adcTimer; // ADC timer\n';
-          out += 'unsigned long ' + _cppId(item.autoCmd) + '_ADC_READ_INTERVAL = 1000; // 1sec, edit this to change adc read interval\n';
-          out += 'void ' + _cppId(item.autoCmd) + '_readADC();\n';
+          out += 'pfodDelay ' + _itemBase(item, baseNames) + '_adcTimer; // ADC timer for \'' + leading + '\'\n';
+          out += 'unsigned long ' + _itemBase(item, baseNames) + '_ADC_READ_INTERVAL = 1000; // 1sec, edit this to change adc read interval -- \'' + leading + '\'\n';
+          out += 'void ' + _itemBase(item, baseNames) + '_readADC(); // for \'' + leading + '\'\n';
         }
       }
     }
@@ -1029,21 +1138,23 @@ const DesignerGenerateCode = (() => {
     out += 'bool clearPlot = false; // set by the {@} response code\n';
     out += '\n';
     for (const item of charts) {
-      const prefix = _chartPrefix(item.autoCmd);
+      const prefix = _chartPrefix(item, baseNames);
       const chartLabel = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'chart');
       out += '// plotting data variables for \'' + chartLabel + '\'\n';
       for (let n = 1; n <= 3; n++) {
         const p = item.plots[n - 1];
-        out += 'static int ' + prefix + '_plot_' + n + '_varMin = ' + p.dataRangeMin + ';\n';
-        out += 'static int ' + prefix + '_plot_' + n + '_var = ' + prefix + '_plot_' + n + '_varMin;\n';
-        out += 'static float ' + prefix + '_plot_' + n + '_scaling;\n';
-        out += 'static float ' + prefix + '_plot_' + n + '_varDisplayMin = ' + _floatLit(p.displayMin) + ';\n';
+        const plotLabel = _cppStr((p.plotLabel || '').replace(/\n/g, ' ').trim() || ('plot ' + n));
+        const plotNote = ' // chart \'' + chartLabel + '\' -- plot \'' + plotLabel + '\'\n';
+        out += 'static int ' + prefix + '_plot_' + n + '_varMin = ' + p.dataRangeMin + ';' + plotNote;
+        out += 'static int ' + prefix + '_plot_' + n + '_var = ' + prefix + '_plot_' + n + '_varMin;' + plotNote;
+        out += 'static float ' + prefix + '_plot_' + n + '_scaling;' + plotNote;
+        out += 'static float ' + prefix + '_plot_' + n + '_varDisplayMin = ' + _floatLit(p.displayMin) + ';' + plotNote;
       }
       const intervalIdx   = chartDataIntervalIdx(item);
       const intervalMs    = CHART_DATA_INTERVALS[intervalIdx];
       const intervalLabel = CHART_DATA_INTERVAL_LABELS[intervalIdx];
-      out += 'static pfodDelay ' + prefix + '_plotDataTimer; // plot data timer\n';
-      out += 'static unsigned long ' + prefix + '_PLOT_DATA_INTERVAL = ' + intervalMs + ';// ms == ' + intervalLabel + ', edit this to change the plot data interval\n';
+      out += 'static pfodDelay ' + prefix + '_plotDataTimer; // plot data timer -- \'' + chartLabel + '\'\n';
+      out += 'static unsigned long ' + prefix + '_PLOT_DATA_INTERVAL = ' + intervalMs + ';// ms == ' + intervalLabel + ', edit this to change the plot data interval -- \'' + chartLabel + '\'\n';
     }
     if (charts.length > 0) out += '\n';
 
@@ -1059,10 +1170,10 @@ const DesignerGenerateCode = (() => {
     for (const item of items) {
       const hookName = hookNames.get(item);
       if (!hookName) continue;
-      if      (item.type === 'onoff')  out += _onoffHookBody(item, 'pfodMainMenu', hookName);
-      else if (item.type === 'pwm')    out += _pwmHookBody(item, 'pfodMainMenu', hookName);
-      else if (item.type === 'button') out += _buttonHookBody('pfodMainMenu', hookName);
-      else if (item.type === 'chart')  out += _chartReadPlotDataHookBody(item, 'pfodMainMenu', hookName);
+      if      (item.type === 'onoff')  out += _onoffHookBody(item, 'pfodMainMenu', hookName, baseNames);
+      else if (item.type === 'pwm')    out += _pwmHookBody(item, 'pfodMainMenu', hookName, baseNames);
+      else if (item.type === 'button') out += _buttonHookBody(item, 'pfodMainMenu', hookName);
+      else if (item.type === 'chart')  out += _chartReadPlotDataHookBody(item, 'pfodMainMenu', hookName, baseNames);
     }
 
     out += 'pfodMainMenu::pfodMainMenu() {\n';
@@ -1083,44 +1194,46 @@ const DesignerGenerateCode = (() => {
     for (const item of items) {
       const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
       if (item.type === 'onoff') {
-        const intVar  = _intVarName(item.autoCmd);
+        const intVar  = _intVarName(item, baseNames);
         const initVar = (item.pin && item.pin.invertOutput) ? (item.current === 0 ? 1 : 0) : item.current;
         if (item.pin && item.pin.name) {
-          const pinConst  = _pinConstName(item.autoCmd);
+          const pinConst  = _pinConstName(item, baseNames);
           const initLevel = initVar ? 'HIGH' : 'LOW';
           out += '  pinMode(' + pinConst + ', ' + _pinModeStr(item.pin.type) + '); // ' + item.pin.type.replace(/_/g, ' ') + ' for \'' + label + '\' is initially ' + initLevel + ',\n';
           out += '  ' + _pinWriteFn(item.pin.type) + '(' + pinConst + ',' + intVar + '); // set output\n';
         }
       } else if (item.type === 'pwm') {
-        const intVar = _intVarName(item.autoCmd);
+        const intVar = _intVarName(item, baseNames);
         if (item.pin && item.pin.name) {
-          const pinConst = _pinConstName(item.autoCmd);
+          const pinConst = _pinConstName(item, baseNames);
           out += '  pinMode(' + pinConst + ', OUTPUT); // output for \'' + label + '\' is initially ' + item.minValue + ',\n';
           out += '  ' + _pinWriteFn(item.pin.type) + '(' + pinConst + ',' + intVar + '); // set output\n';
         }
       } else if (item.type === 'onoffdisplay') {
         if (item.pin && item.pin.name) {
-          const pinConst = _pinConstName(item.autoCmd);
+          const pinConst = _pinConstName(item, baseNames);
           out += '  pinMode(' + pinConst + ', INPUT); // input for \'' + label + '\'\n';
         }
       } else if (item.type === 'datadisplay') {
         if (item.pin && item.pin.name) {
-          out += '  ' + _cppId(item.autoCmd) + '_adcTimer.start(' + _cppId(item.autoCmd) + '_ADC_READ_INTERVAL); // start ADC timer\n';
+          out += '  ' + _itemBase(item, baseNames) + '_adcTimer.start(' + _itemBase(item, baseNames) + '_ADC_READ_INTERVAL); // start ADC timer -- \'' + label + '\'\n';
         }
       }
     }
     for (const item of charts) {
-      const prefix = _chartPrefix(item.autoCmd);
+      const prefix = _chartPrefix(item, baseNames);
+      const chartLabel = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || 'chart');
       out += '\n';
       out += '  // calculate the plot vars scaling here once to reduce computation\n';
       for (let n = 1; n <= 3; n++) {
         const p = item.plots[n - 1];
+        const plotLabel = _cppStr((p.plotLabel || '').replace(/\n/g, ' ').trim() || ('plot ' + n));
         out += '  ' + prefix + '_plot_' + n + '_scaling = getPlotVarScaling(' + p.dataRangeMax + ',' +
                prefix + '_plot_' + n + '_varMin,' + _floatLit(p.displayMax) + ',' +
-               prefix + '_plot_' + n + '_varDisplayMin);\n';
+               prefix + '_plot_' + n + '_varDisplayMin); // chart \'' + chartLabel + '\' -- plot \'' + plotLabel + '\'\n';
       }
       out += '\n';
-      out += '  ' + prefix + '_plotDataTimer.start(' + prefix + '_PLOT_DATA_INTERVAL); // start plot timer\n';
+      out += '  ' + prefix + '_plotDataTimer.start(' + prefix + '_PLOT_DATA_INTERVAL); // start plot timer -- \'' + chartLabel + '\'\n';
     }
     // Prime the auto-assigned identifiers -- same reason each drawing's own
     // init() sends itself (dwgArduinoExport.js): pfodAutoCmd hands out its
@@ -1150,7 +1263,8 @@ const DesignerGenerateCode = (() => {
       }
     }
     for (const child of childSubs) {
-      out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.init(); // initialize sub-menu\n';
+      const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+      out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.init(); // initialize sub-menu -- \'' + childPrompt + '\'\n';
     }
     out += '}\n\n';
 
@@ -1174,9 +1288,9 @@ const DesignerGenerateCode = (() => {
     out += '    if (\'.\' == cmd) {\n';
     out += '      // pfodApp has connected and sent {.} , it is asking for the main menu\n';
     out += '      if (!parser.isRefresh()) {\n';
-    out += '        sendMainMenu(parser); // send back the menu designed\n';
+    out += '        sendMainMenu(parser); // send back the menu designed -- \'' + _cppStr((menu.promptText || '').replace(/\n/g, ' ').trim() || name) + '\'\n';
     out += '      } else {\n';
-    out += '        sendMainMenuUpdate(parser); // menu is cached just send update\n';
+    out += '        sendMainMenuUpdate(parser); // menu is cached just send update -- \'' + _cppStr((menu.promptText || '').replace(/\n/g, ' ').trim() || name) + '\'\n';
     out += '      }\n';
     out += '\n';
     out += '      // handle {@} request\n';
@@ -1195,14 +1309,16 @@ const DesignerGenerateCode = (() => {
       returnTrue:     '',
       hookNames:      hookNames,
       chartContext:   '// in the main Menu of ' + name,
+      baseNames:      baseNames,
     };
     for (const item of items) {
       out += _itemDispatchBranch(item, ctx, submenuNames);
     }
     for (const child of childSubs) {
       const info = submenuNames.get(child);
+      const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
       out += '    } else if (' + _subMenuAccessor(info) + '.handleCmd(parser, cmd, pfodFirstArg, &pfodLongRtn)) {\n';
-      out += '      // handled by the sub-menu\'s own items\n';
+      out += '      // handled by the sub-menu\'s own items -- \'' + childPrompt + '\'\n';
     }
 
     out += '    } else if (\'!\' == cmd) {\n';
@@ -1217,7 +1333,8 @@ const DesignerGenerateCode = (() => {
     out += '  }\n';
     for (const item of items) {
       if (_itemHasPulse(item)) {
-        out += '  ' + _cmdVarName(item.autoCmd) + '_checkPulse(); \n';
+        const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+        out += '  ' + _cmdVarName(item, baseNames) + '_checkPulse(); // \'' + label + '\'\n';
       }
     }
     // A sub-menu has no loop of its own, so its pulse timers are checked
@@ -1225,18 +1342,21 @@ const DesignerGenerateCode = (() => {
     // does (see _subtreeHasPulse / _generateSubMenuFiles's own tickPulses).
     for (const child of childSubs) {
       if (!_subtreeHasPulse(child.subMenu)) continue; // that child has no tickPulses() of its own
-      out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.tickPulses(); // sub-menu pulse timers\n';
+      const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+      out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.tickPulses(); // sub-menu pulse timers -- \'' + childPrompt + '\'\n';
     }
     for (const item of items) {
       if (item.type === 'onoffdisplay' && item.pin && item.pin.name) {
-        const intVar   = _intVarName(item.autoCmd);
-        const pinConst = _pinConstName(item.autoCmd);
-        out += '  ' + intVar + ' = digitalRead(' + pinConst + '); // read input pin\n';
+        const intVar   = _intVarName(item, baseNames);
+        const pinConst = _pinConstName(item, baseNames);
+        const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+        out += '  ' + intVar + ' = digitalRead(' + pinConst + '); // read input pin -- \'' + label + '\'\n';
       }
     }
     for (const item of items) {
       if (item.type === 'datadisplay' && item.pin && item.pin.name) {
-        out += '  ' + _cppId(item.autoCmd) + '_readADC(); \n';
+        const label = _cppStr((item.text || '').replace(/\n/g, ' ').trim() || item.type);
+        out += '  ' + _itemBase(item, baseNames) + '_readADC(); // \'' + label + '\'\n';
       }
     }
     const hasCharts = _subtreeHasChart(menu);
@@ -1251,11 +1371,12 @@ const DesignerGenerateCode = (() => {
     if (hasCharts) {
       out += 'void pfodMainMenu::tickCharts(pfodParser &parser) {\n';
       for (const item of charts) {
-        out += '  ' + _chartPrefix(item.autoCmd) + '_sendData(parser);\n';
+        out += '  ' + _chartPrefix(item, baseNames) + '_sendData(parser);\n';
       }
       for (const child of childSubs) {
         if (!_subtreeHasChart(child.subMenu)) continue; // that child has no tickCharts() of its own
-        out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.tickCharts(parser);\n';
+        const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+        out += '  ' + _subMenuAccessor(submenuNames.get(child)) + '.tickCharts(parser); // sub-menu -- \'' + childPrompt + '\'\n';
       }
       out += '}\n\n';
     }
@@ -1264,7 +1385,7 @@ const DesignerGenerateCode = (() => {
     // timer, call the virtual readPlotData hook, stream one CSV record
     // (time, plot1..plot3) per interval.
     for (const item of charts) {
-      out += _chartSendDataMethod(item, 'pfodMainMenu', hookNames.get(item));
+      out += _chartSendDataMethod(item, 'pfodMainMenu', hookNames.get(item), baseNames);
     }
     if (charts.length > 0) {
       out += 'float getPlotVarScaling(long varMax, long varMin, float displayMax, float displayMin) {\n';
@@ -1296,14 +1417,14 @@ const DesignerGenerateCode = (() => {
 
       const allFmt = slotFmt + inlineFmt;
       if (item.type === 'onoff') {
-        const intVar      = _intVarName(item.autoCmd);
+        const intVar      = _intVarName(item, baseNames);
         const disabledFlag = item.formats.disabled ? '!' : '';
         const fmtChar     = item.displayFormat === 'text' ? 't' : item.displayFormat === 'slider' ? 's' : '';
         const lowEsc      = _cppStr(item.lowText || 'Low');
         const highEsc     = _cppStr(item.highText || 'High');
         const trailEsc    = _cppStr(item.trailingText || '');
         const textEsc     = _cppStr(item.text || '');
-        out += '  parser.slider(' + _cmdVarName(item.autoCmd) + '); // start Slider\n';
+        out += '  parser.slider(' + _cmdVarName(item, baseNames) + '); // start Slider\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(\'`\');\n';
@@ -1315,14 +1436,14 @@ const DesignerGenerateCode = (() => {
         out += '  parser.print(F("~' + textEsc + '~' + trailEsc + '~' + lowEsc + '\\\\' + highEsc + '~' + fmtChar + '"));\n';
         out += '  // Note the \\\\\\\\ inside the \' \'s to send \\\\ ...\n';
       } else if (item.type === 'pwm') {
-        const intVar      = _intVarName(item.autoCmd);
+        const intVar      = _intVarName(item, baseNames);
         const disabledFlag = item.formats.disabled ? '!' : '';
         const fmtChar     = item.displayFormat === 'text' ? 't' : item.displayFormat === 'slider' ? 's' : '';
         const textEsc     = _cppStr(item.text || '');
         const trailEsc    = _cppStr(item.trailingText || '');
         const maxScaleEsc = _cppStr(item.maxScaleStr || '');
         const minScaleEsc = _cppStr(item.minScaleStr || '');
-        out += '  parser.slider(' + _cmdVarName(item.autoCmd) + '); // start Slider\n';
+        out += '  parser.slider(' + _cmdVarName(item, baseNames) + '); // start Slider\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(\'`\');\n';
@@ -1330,8 +1451,8 @@ const DesignerGenerateCode = (() => {
         out += '  parser.print(F("~' + textEsc + '~' + trailEsc + '`' + item.maxValue + '`' + item.minValue + '~' + maxScaleEsc + '~' + minScaleEsc + '~' + fmtChar + '"));\n';
       } else if (item.type === 'button') {
         const disabledFlag = item.formats.disabled ? '!' : '';
-        const textVar      = _intVarName(item.autoCmd);
-        out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button\n';
+        const textVar      = _intVarName(item, baseNames);
+        out += '  parser.button(' + _cmdVarName(item, baseNames) + '); // start Button\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(F("~"));\n';
@@ -1339,51 +1460,51 @@ const DesignerGenerateCode = (() => {
       } else if (item.type === 'chart') {
         const disabledFlag = item.formats.disabled ? '!' : '';
         const textEsc      = _cppStr(item.text || '');
-        out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button (opens chart)\n';
+        out += '  parser.button(' + _cmdVarName(item, baseNames) + '); // start Button (opens chart)\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(F("~' + textEsc + '"));\n';
       } else if (item.type === 'label') {
-        const textVar = _intVarName(item.autoCmd);
-        out += '  parser.label(' + _cmdVarName(item.autoCmd) + '); // start Label\n';
+        const textVar = _intVarName(item, baseNames);
+        out += '  parser.label(' + _cmdVarName(item, baseNames) + '); // start Label\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(F("~"));\n';
         out += '  parser.print(' + textVar + '); // output the current text\n';
       } else if (item.type === 'onoffdisplay') {
-        const intVar     = _intVarName(item.autoCmd);
+        const intVar     = _intVarName(item, baseNames);
         const fmtChar    = item.displayFormat === 'text' ? 't' : item.displayFormat === 'slider' ? 's' : '';
         const lowEsc     = _cppStr(item.lowText || 'Off');
         const highEsc    = _cppStr(item.highText || 'On');
         const trailEsc   = _cppStr(item.trailingText || '');
         const textEsc    = _cppStr(item.text || '');
-        out += '  parser.onOffDisplay(' + _cmdVarName(item.autoCmd) + '); // start On/Off Display (outputs |!cmd)\n';
+        out += '  parser.onOffDisplay(' + _cmdVarName(item, baseNames) + '); // start On/Off Display (outputs |!cmd)\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(\'`\');\n';
         out += '  parser.print(' + intVar + '); // output the current state 0 ' + (item.lowText || 'Off') + ' or 1 ' + (item.highText || 'On') + '\n';
         out += '  parser.print(F("~' + textEsc + '~' + trailEsc + '~' + lowEsc + '\\\\' + highEsc + '~' + fmtChar + '"));\n';
         out += '  // Note the \\\\\\\\ inside the \' \'s to send \\\\ ...\n';
       } else if (item.type === 'datadisplay') {
-        const intVar      = _intVarName(item.autoCmd);
+        const intVar      = _intVarName(item, baseNames);
         const fmtChar     = item.displayFormat === 'text' ? 't' : item.displayFormat === 'slider' ? 's' : '';
         const textEsc     = _cppStr(item.text || '');
         const unitsEsc    = _cppStr(item.trailingText || '');
         const maxScaleEsc = _cppStr(item.maxScaleStr || '');
         const minScaleEsc = _cppStr(item.minScaleStr || '');
-        out += '  parser.onOffDisplay(' + _cmdVarName(item.autoCmd) + '); // start Data Display (outputs |!cmd)\n';
+        out += '  parser.onOffDisplay(' + _cmdVarName(item, baseNames) + '); // start Data Display (outputs |!cmd)\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(\'`\');\n';
         out += '  parser.print(' + intVar + '); // output the current value\n';
         out += '  parser.print(F("~' + textEsc + '~' + unitsEsc + '`' + item.maxValue + '`' + item.minValue + '~' + maxScaleEsc + '~' + minScaleEsc + '~' + fmtChar + '"));\n';
       } else if (item.type === 'submenu') {
-        const textVar = _intVarName(item.autoCmd);
-        out += '  parser.button(' + _cmdVarName(item.autoCmd) + '); // start Button (opens sub-menu)\n';
+        const textVar = _intVarName(item, baseNames);
+        out += '  parser.button(' + _cmdVarName(item, baseNames) + '); // start Button (opens sub-menu)\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(F("~"));\n';
         out += '  parser.print(' + textVar + '); // output the current text\n';
       } else if (item.type === 'drawing') {
         const disabledFlag = item.formats.disabled ? '!' : '';
         out += '  parser.print(F("|+")); // start Drawing\n';
-        out += '  parser.print(' + _dwgCmdVarName(item.autoCmd) + '); // drawing menu item cmd\n';
+        out += '  parser.print(' + _dwgCmdVarName(item, baseNames) + '); // drawing menu item cmd -- \'' + _labelComment(item) + '\'\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         if (allFmt) out += '  parser.print(F("' + _cppStr(allFmt) + '"));' + fmtCmt + '\n';
         out += '  parser.print(F("~"));\n';
@@ -1414,9 +1535,9 @@ const DesignerGenerateCode = (() => {
 
     for (const item of items) {
       if (item.type === 'onoff') {
-        const intVar      = _intVarName(item.autoCmd);
+        const intVar      = _intVarName(item, baseNames);
         const disabledFlag = item.formats.disabled ? '!' : '';
-        out += '  parser.slider(' + _cmdVarName(item.autoCmd) + '); // start Slider\n';
+        out += '  parser.slider(' + _cmdVarName(item, baseNames) + '); // start Slider\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         out += '  parser.print(\'`\');\n';
         if (item.pin && item.pin.invertOutput) {
@@ -1425,26 +1546,26 @@ const DesignerGenerateCode = (() => {
           out += '  parser.print(' + intVar + '); // output the current value \n';
         }
       } else if (item.type === 'pwm') {
-        const intVar      = _intVarName(item.autoCmd);
+        const intVar      = _intVarName(item, baseNames);
         const disabledFlag = item.formats.disabled ? '!' : '';
-        out += '  parser.slider(' + _cmdVarName(item.autoCmd) + '); // start Slider\n';
+        out += '  parser.slider(' + _cmdVarName(item, baseNames) + '); // start Slider\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
         out += '  parser.print(\'`\');\n';
         out += '  parser.print(' + intVar + '); // output the current value \n';
       } else if (item.type === 'onoffdisplay') {
-        const intVar = _intVarName(item.autoCmd);
-        out += '  parser.onOffDisplay(' + _cmdVarName(item.autoCmd) + '); // start On/Off Display (outputs |!cmd)\n';
+        const intVar = _intVarName(item, baseNames);
+        out += '  parser.onOffDisplay(' + _cmdVarName(item, baseNames) + '); // start On/Off Display (outputs |!cmd)\n';
         out += '  parser.print(\'`\');\n';
         out += '  parser.print(' + intVar + '); // output the current state\n';
       } else if (item.type === 'datadisplay') {
-        const intVar = _intVarName(item.autoCmd);
-        out += '  parser.onOffDisplay(' + _cmdVarName(item.autoCmd) + '); // start Data Display (outputs |!cmd)\n';
+        const intVar = _intVarName(item, baseNames);
+        out += '  parser.onOffDisplay(' + _cmdVarName(item, baseNames) + '); // start Data Display (outputs |!cmd)\n';
         out += '  parser.print(\'`\');\n';
         out += '  parser.print(' + intVar + '); // output the current value\n';
       } else if (item.type === 'drawing') {
         const disabledFlag = item.formats.disabled ? '!' : '';
         out += '  parser.print(F("|+")); // drawing menu item update\n';
-        out += '  parser.print(' + _dwgCmdVarName(item.autoCmd) + ');\n';
+        out += '  parser.print(' + _dwgCmdVarName(item, baseNames) + '); // -- \'' + _labelComment(item) + '\'\n';
         if (disabledFlag) out += '  parser.print(F("!")); // disable this menu item\n';
       }
     }
@@ -1456,10 +1577,10 @@ const DesignerGenerateCode = (() => {
 
     for (const item of items) {
       if (item.type === 'datadisplay' && item.pin && item.pin.name) {
-        const intVar   = _intVarName(item.autoCmd);
-        const pinConst = _pinConstName(item.autoCmd);
-        const adcTimer = _cppId(item.autoCmd) + '_adcTimer';
-        const readFn   = _cppId(item.autoCmd) + '_readADC';
+        const intVar   = _intVarName(item, baseNames);
+        const pinConst = _pinConstName(item, baseNames);
+        const adcTimer = _itemBase(item, baseNames) + '_adcTimer';
+        const readFn   = _itemBase(item, baseNames) + '_readADC';
         out += 'void ' + readFn + '() {\n';
         out += '  if (' + adcTimer + '.justFinished()) {\n';
         out += '    ' + adcTimer + '.repeat(); // restart timer, without drift\n';
@@ -1471,8 +1592,8 @@ const DesignerGenerateCode = (() => {
     }
     for (const item of items) {
       if (item.type === 'onoff' && item.pulse && item.pulse !== 'none') {
-        const cmdVar    = _cmdVarName(item.autoCmd);
-        const intVar    = _intVarName(item.autoCmd);
+        const cmdVar    = _cmdVarName(item, baseNames);
+        const intVar    = _intVarName(item, baseNames);
         const returnVal = item.pulse === 'low' ? 1 : 0;
         const returnLvl = returnVal ? 'HIGH' : 'LOW';
         out += 'static void ' + cmdVar + '_checkPulse() {\n';
@@ -1480,7 +1601,7 @@ const DesignerGenerateCode = (() => {
         out += '    ' + cmdVar + '_pulseRunning = false; // timer finished\n';
         out += '    ' + intVar + ' = ' + returnVal + ';  // return output to ' + returnLvl + '\n';
         if (item.pin && item.pin.name) {
-          out += '    ' + _pinWriteFn(item.pin.type) + '(' + _pinConstName(item.autoCmd) + ',' + intVar + '); // update output pin\n';
+          out += '    ' + _pinWriteFn(item.pin.type) + '(' + _pinConstName(item, baseNames) + ',' + intVar + '); // update output pin\n';
         }
         out += '  }\n';
         out += '}\n';
@@ -1541,7 +1662,8 @@ const DesignerGenerateCode = (() => {
 
     const charts   = items.filter(i => i.type === 'chart');
     const drawings = items.filter(i => i.type === 'drawing');
-    const hookNames = _computeHookNames(items);
+    const baseNames = _collectBaseNames(state);
+    const hookNames = _computeHookNames(items, baseNames);
     const guard = _cppId(className).toUpperCase();
 
     // ── .h ──
@@ -1569,10 +1691,10 @@ const DesignerGenerateCode = (() => {
       h += '    virtual void tickPulses(); // checks this level\'s own pulse timers + every nested sub-menu\'s\n';
     }
     for (const cItem of charts) {
-      h += '    virtual void ' + _chartPrefix(cItem.autoCmd) + '_sendData(pfodParser &parser);\n';
+      h += '    virtual void ' + _chartPrefix(cItem, baseNames) + '_sendData(pfodParser &parser); // ' + _subMenuNote(label) + 'chart -- \'' + _labelComment(cItem) + '\'\n';
     }
     h += '  protected:\n';
-    h += _declareHookLines(items, hookNames);
+    h += _declareHookLines(items, hookNames, label);
     // pfodAutoCmd members — one per item at this sub-menu level. Matches
     // dwgArduinoExport.js's own _generateHeader() / _generateH()'s own
     // main-menu pfodAutoCmd members above.  protected, alongside the hooks,
@@ -1580,11 +1702,11 @@ const DesignerGenerateCode = (() => {
     // any item it wants to send or handle itself -- private would make the
     // override impossible to write.
     for (const sItem of items) {
-      const sLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
+      const sLabel = _labelComment(sItem);
       if (sItem.type === 'drawing') {
-        h += '    pfodAutoCmd ' + _dwgCmdVarName(sItem.autoCmd) + '; // drawing\n';
+        h += '    pfodAutoCmd ' + _dwgCmdVarName(sItem, baseNames) + '; // ' + _subMenuNote(label) + 'drawing -- \'' + sLabel + '\'\n';
       } else {
-        h += '    pfodAutoCmd ' + _cmdVarName(sItem.autoCmd) + '; // ' + sItem.type + ' -- \'' + sLabel + '\'\n';
+        h += '    pfodAutoCmd ' + _cmdVarName(sItem, baseNames) + '; // ' + _subMenuNote(label) + sItem.type + ' -- \'' + sLabel + '\'\n';
       }
     }
     h += '  private:\n';
@@ -1614,8 +1736,8 @@ const DesignerGenerateCode = (() => {
     // file, so a plain quoted include (not '../') is correct here, same
     // as pfodMainMenu.cpp's own includes.
     for (const child of childSubs) {
-      cpp += '#include "' + names.get(child).className + '.h" // sub-menu -- \'' +
-             _cppStr((child.text || '').replace(/\n/g, ' ').trim()) + '\'\n';
+      const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+      cpp += '#include "' + names.get(child).className + '.h" // sub-menu -- \'' + childPrompt + '\'\n';
     }
     // No <pfodDwgs.h> / <pfodDrawing.h> here either -- each Dwg_<name>.h
     // below already pulls in what a drawing needs, same as _generateCpp's
@@ -1649,7 +1771,7 @@ const DesignerGenerateCode = (() => {
                                      (i.type === 'onoff' || i.type === 'pwm'));
     const plotPinLines = [];
     for (const cItem of charts) {
-      const prefix = _chartPrefix(cItem.autoCmd);
+      const prefix = _chartPrefix(cItem, baseNames);
       for (let n = 1; n <= 3; n++) {
         const p = cItem.plots[n - 1];
         if (p.pin && p.pin.name) {
@@ -1663,7 +1785,7 @@ const DesignerGenerateCode = (() => {
       cpp += '// Pin settings\n';
       for (const sItem of pinnedItems) {
         const pinLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
-        cpp += 'const int ' + _pinConstName(sItem.autoCmd) + ' = ' + sItem.pin.codeName +
+        cpp += 'const int ' + _pinConstName(sItem, baseNames) + ' = ' + sItem.pin.codeName +
           '; // name the ' + sItem.pin.type.replace(/_/g, ' ') + ' pin for \'' + pinLabel + '\'\n';
       }
       plotPinLines.forEach((line) => { cpp += line; });
@@ -1685,25 +1807,25 @@ const DesignerGenerateCode = (() => {
     for (const sItem of items) {
       const sLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
       if (sItem.type === 'label') {
-        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the label (see docs/pfodAI-guide.md §6.3a to also push it via sendMenuUpdate())\n';
+        cpp += 'const char* ' + _intVarName(sItem, baseNames) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the label (see docs/pfodAI-guide.md §6.3a to also push it via sendMenuUpdate())\n';
       } else if (sItem.type === 'button') {
-        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the button\n';
+        cpp += 'const char* ' + _intVarName(sItem, baseNames) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the button\n';
       } else if (sItem.type === 'submenu') {
-        cpp += 'const char* ' + _intVarName(sItem.autoCmd) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the sub-menu button\n';
+        cpp += 'const char* ' + _intVarName(sItem, baseNames) + ' = "' + _cppStr(sItem.text || '') + '"; // current text for \'' + sLabel + '\' -- change this + call sendMenu() to update the sub-menu button\n';
       } else if (sItem.type === 'onoff') {
         const initVar = (sItem.pin && sItem.pin.invertOutput)
           ? (sItem.current === 0 ? 1 : 0) : sItem.current;
-        cpp += 'int ' + _intVarName(sItem.autoCmd) + ' = ' + initVar + '; // \'' + sLabel + '\'\n';
+        cpp += 'int ' + _intVarName(sItem, baseNames) + ' = ' + initVar + '; // \'' + sLabel + '\'\n';
         if (_itemHasPulse(sItem)) {
-          const cmdVar    = _cmdVarName(sItem.autoCmd);
+          const cmdVar    = _cmdVarName(sItem, baseNames);
           const pulseSecs = (sItem.pulse_ms / 1000.0).toFixed(1);
-          cpp += 'static unsigned long ' + cmdVar + '_pulseStartTime=0; // the time when ' + cmdVar + ' pulse started\n';
-          cpp += 'static bool ' + cmdVar + '_pulseRunning = false; // true when ' + cmdVar + ' pulse running\n';
-          cpp += 'static unsigned long ' + cmdVar + '_PULSE_LENGTH = ' + sItem.pulse_ms + '; // ' + pulseSecs + ' secs\n';
-          cpp += 'static void ' + cmdVar + '_checkPulse();\n';
+          cpp += 'static unsigned long ' + cmdVar + '_pulseStartTime=0; // the time when ' + cmdVar + ' pulse started -- \'' + sLabel + '\'\n';
+          cpp += 'static bool ' + cmdVar + '_pulseRunning = false; // true when ' + cmdVar + ' pulse running -- \'' + sLabel + '\'\n';
+          cpp += 'static unsigned long ' + cmdVar + '_PULSE_LENGTH = ' + sItem.pulse_ms + '; // ' + pulseSecs + ' secs -- \'' + sLabel + '\'\n';
+          cpp += 'static void ' + cmdVar + '_checkPulse(); // \'' + sLabel + '\'\n';
         }
       } else if (sItem.type === 'pwm') {
-        cpp += 'int ' + _intVarName(sItem.autoCmd) + ' = ' + sItem.minValue + '; // \'' + sLabel + '\'\n';
+        cpp += 'int ' + _intVarName(sItem, baseNames) + ' = ' + sItem.minValue + '; // \'' + sLabel + '\'\n';
       }
     }
     cpp += '\n';
@@ -1715,21 +1837,23 @@ const DesignerGenerateCode = (() => {
     // would be a duplicate definition and fail to link.
 
     for (const cItem of charts) {
-      const prefix = _chartPrefix(cItem.autoCmd);
+      const prefix = _chartPrefix(cItem, baseNames);
       const chartLabel = _cppStr((cItem.text || '').replace(/\n/g, ' ').trim() || 'chart');
       cpp += '// plotting data variables for \'' + chartLabel + '\'\n';
       for (let n = 1; n <= 3; n++) {
         const p = cItem.plots[n - 1];
-        cpp += 'static int ' + prefix + '_plot_' + n + '_varMin = ' + p.dataRangeMin + ';\n';
-        cpp += 'static int ' + prefix + '_plot_' + n + '_var = ' + prefix + '_plot_' + n + '_varMin;\n';
-        cpp += 'static float ' + prefix + '_plot_' + n + '_scaling;\n';
-        cpp += 'static float ' + prefix + '_plot_' + n + '_varDisplayMin = ' + _floatLit(p.displayMin) + ';\n';
+        const plotLabel = _cppStr((p.plotLabel || '').replace(/\n/g, ' ').trim() || ('plot ' + n));
+        const plotNote = ' // chart \'' + chartLabel + '\' -- plot \'' + plotLabel + '\'\n';
+        cpp += 'static int ' + prefix + '_plot_' + n + '_varMin = ' + p.dataRangeMin + ';' + plotNote;
+        cpp += 'static int ' + prefix + '_plot_' + n + '_var = ' + prefix + '_plot_' + n + '_varMin;' + plotNote;
+        cpp += 'static float ' + prefix + '_plot_' + n + '_scaling;' + plotNote;
+        cpp += 'static float ' + prefix + '_plot_' + n + '_varDisplayMin = ' + _floatLit(p.displayMin) + ';' + plotNote;
       }
       const intervalIdx   = chartDataIntervalIdx(cItem);
       const intervalMs    = CHART_DATA_INTERVALS[intervalIdx];
       const intervalLabel = CHART_DATA_INTERVAL_LABELS[intervalIdx];
-      cpp += 'static pfodDelay ' + prefix + '_plotDataTimer; // plot data timer\n';
-      cpp += 'static unsigned long ' + prefix + '_PLOT_DATA_INTERVAL = ' + intervalMs + ';// ms == ' + intervalLabel + ', edit this to change the plot data interval\n';
+      cpp += 'static pfodDelay ' + prefix + '_plotDataTimer; // plot data timer -- \'' + chartLabel + '\'\n';
+      cpp += 'static unsigned long ' + prefix + '_PLOT_DATA_INTERVAL = ' + intervalMs + ';// ms == ' + intervalLabel + ', edit this to change the plot data interval -- \'' + chartLabel + '\'\n';
     }
     if (charts.length > 0) cpp += '\n';
 
@@ -1747,10 +1871,10 @@ const DesignerGenerateCode = (() => {
     for (const sItem of items) {
       const hookName = hookNames.get(sItem);
       if (!hookName) continue;
-      if      (sItem.type === 'onoff')  cpp += _onoffHookBody(sItem, className, hookName);
-      else if (sItem.type === 'pwm')    cpp += _pwmHookBody(sItem, className, hookName);
-      else if (sItem.type === 'button') cpp += _buttonHookBody(className, hookName);
-      else if (sItem.type === 'chart')  cpp += _chartReadPlotDataHookBody(sItem, className, hookName);
+      if      (sItem.type === 'onoff')  cpp += _onoffHookBody(sItem, className, hookName, baseNames);
+      else if (sItem.type === 'pwm')    cpp += _pwmHookBody(sItem, className, hookName, baseNames);
+      else if (sItem.type === 'button') cpp += _buttonHookBody(sItem, className, hookName);
+      else if (sItem.type === 'chart')  cpp += _chartReadPlotDataHookBody(sItem, className, hookName, baseNames);
     }
 
     cpp += className + '::' + className + '() {\n';
@@ -1768,8 +1892,8 @@ const DesignerGenerateCode = (() => {
     for (const sItem of items) {
       if (!(sItem.pin && sItem.pin.name)) continue;
       const sLabel   = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
-      const pinConst = _pinConstName(sItem.autoCmd);
-      const intVar   = _intVarName(sItem.autoCmd);
+      const pinConst = _pinConstName(sItem, baseNames);
+      const intVar   = _intVarName(sItem, baseNames);
       if (sItem.type === 'onoff') {
         const initVar   = sItem.pin.invertOutput ? (sItem.current === 0 ? 1 : 0) : sItem.current;
         const initLevel = initVar ? 'HIGH' : 'LOW';
@@ -1781,16 +1905,18 @@ const DesignerGenerateCode = (() => {
       }
     }
     for (const cItem of charts) {
-      const prefix = _chartPrefix(cItem.autoCmd);
+      const prefix = _chartPrefix(cItem, baseNames);
+      const chartLabel = _cppStr((cItem.text || '').replace(/\n/g, ' ').trim() || 'chart');
       cpp += '\n';
       cpp += '  // calculate the plot vars scaling here once to reduce computation\n';
       for (let n = 1; n <= 3; n++) {
         const p = cItem.plots[n - 1];
+        const plotLabel = _cppStr((p.plotLabel || '').replace(/\n/g, ' ').trim() || ('plot ' + n));
         cpp += '  ' + prefix + '_plot_' + n + '_scaling = getPlotVarScaling(' + p.dataRangeMax + ',' +
                prefix + '_plot_' + n + '_varMin,' + _floatLit(p.displayMax) + ',' +
-               prefix + '_plot_' + n + '_varDisplayMin);\n';
+               prefix + '_plot_' + n + '_varDisplayMin); // chart \'' + chartLabel + '\' -- plot \'' + plotLabel + '\'\n';
       }
-      cpp += '  ' + prefix + '_plotDataTimer.start(' + prefix + '_PLOT_DATA_INTERVAL); // start plot timer\n';
+      cpp += '  ' + prefix + '_plotDataTimer.start(' + prefix + '_PLOT_DATA_INTERVAL); // start plot timer -- \'' + chartLabel + '\'\n';
     }
     // Prime this level's own pfodAutoCmds, exactly as pfodMainMenu::init()
     // does for the top level -- see the note there. sendMenu() rather than
@@ -1814,7 +1940,8 @@ const DesignerGenerateCode = (() => {
       }
     }
     for (const child of childSubs) {
-      cpp += '  ' + _subMenuAccessor(names.get(child)) + '.init(); // initialize nested sub-menu\n';
+      const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+      cpp += '  ' + _subMenuAccessor(names.get(child)) + '.init(); // initialize nested sub-menu -- \'' + childPrompt + '\'\n';
     }
     cpp += '}\n\n';
 
@@ -1834,33 +1961,33 @@ const DesignerGenerateCode = (() => {
       const sFmtCmt  = _fmtComment(sEff);
       if (sItem.type === 'button') {
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
-        const sTextVar = _intVarName(sItem.autoCmd);
-        cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button -- \'' + sLabel + '\'\n';
+        const sTextVar = _intVarName(sItem, baseNames);
+        cpp += '  parser.button(' + _cmdVarName(sItem, baseNames) + '); // start Button -- \'' + sLabel + '\'\n';
         if (sDisabledFlag) cpp += '  parser.print(F("!")); // disable this menu item\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(F("~"));\n';
         cpp += '  parser.print(' + sTextVar + '); // output the current text\n';
       } else if (sItem.type === 'label') {
-        const sTextVar = _intVarName(sItem.autoCmd);
-        cpp += '  parser.label(' + _cmdVarName(sItem.autoCmd) + '); // start Label -- \'' + sLabel + '\'\n';
+        const sTextVar = _intVarName(sItem, baseNames);
+        cpp += '  parser.label(' + _cmdVarName(sItem, baseNames) + '); // start Label -- \'' + sLabel + '\'\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(F("~"));\n';
         cpp += '  parser.print(' + sTextVar + '); // output the current text\n';
       } else if (sItem.type === 'onoff') {
-        const sIntVar  = _intVarName(sItem.autoCmd);
+        const sIntVar  = _intVarName(sItem, baseNames);
         const sFmtChar = sItem.displayFormat === 'text' ? 't' : sItem.displayFormat === 'slider' ? 's' : '';
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
-        cpp += '  parser.slider(' + _cmdVarName(sItem.autoCmd) + '); // start Slider -- \'' + sLabel + '\'\n';
+        cpp += '  parser.slider(' + _cmdVarName(sItem, baseNames) + '); // start Slider -- \'' + sLabel + '\'\n';
         if (sDisabledFlag) cpp += '  parser.print(F("!")); // disable this menu item\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(\'`\');\n';
         cpp += '  parser.print(' + sIntVar + '); // output the current value\n';
         cpp += '  parser.print(F("~' + _cppStr(sItem.text || '') + '~' + _cppStr(sItem.trailingText || '') + '~' + _cppStr(sItem.lowText || 'Low') + '\\\\' + _cppStr(sItem.highText || 'High') + '~' + sFmtChar + '"));\n';
       } else if (sItem.type === 'pwm') {
-        const sIntVar  = _intVarName(sItem.autoCmd);
+        const sIntVar  = _intVarName(sItem, baseNames);
         const sFmtChar = sItem.displayFormat === 'text' ? 't' : sItem.displayFormat === 'slider' ? 's' : '';
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
-        cpp += '  parser.slider(' + _cmdVarName(sItem.autoCmd) + '); // start Slider -- \'' + sLabel + '\'\n';
+        cpp += '  parser.slider(' + _cmdVarName(sItem, baseNames) + '); // start Slider -- \'' + sLabel + '\'\n';
         if (sDisabledFlag) cpp += '  parser.print(F("!")); // disable this menu item\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(\'`\');\n';
@@ -1869,20 +1996,20 @@ const DesignerGenerateCode = (() => {
       } else if (sItem.type === 'chart') {
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
         const sTextEsc = _cppStr(sItem.text || '');
-        cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button (opens chart) -- \'' + sLabel + '\'\n';
+        cpp += '  parser.button(' + _cmdVarName(sItem, baseNames) + '); // start Button (opens chart) -- \'' + sLabel + '\'\n';
         if (sDisabledFlag) cpp += '  parser.print(F("!")); // disable this menu item\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(F("~' + sTextEsc + '"));\n';
       } else if (sItem.type === 'submenu') {
-        const sTextVar = _intVarName(sItem.autoCmd);
-        cpp += '  parser.button(' + _cmdVarName(sItem.autoCmd) + '); // start Button (opens nested sub-menu) -- \'' + sLabel + '\'\n';
+        const sTextVar = _intVarName(sItem, baseNames);
+        cpp += '  parser.button(' + _cmdVarName(sItem, baseNames) + '); // start Button (opens nested sub-menu) -- \'' + sLabel + '\'\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(F("~"));\n';
         cpp += '  parser.print(' + sTextVar + '); // output the current text\n';
       } else if (sItem.type === 'drawing') {
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
         cpp += '  parser.print(F("|+")); // start Drawing -- \'' + sLabel + '\'\n';
-        cpp += '  parser.print(' + _dwgCmdVarName(sItem.autoCmd) + '); // drawing menu item cmd\n';
+        cpp += '  parser.print(' + _dwgCmdVarName(sItem, baseNames) + '); // drawing menu item cmd -- \'' + sLabel + '\'\n';
         if (sDisabledFlag) cpp += '  parser.print(F("!")); // disable this menu item\n';
         if (sAllFmt) cpp += '  parser.print(F("' + _cppStr(sAllFmt) + '"));' + sFmtCmt + '\n';
         cpp += '  parser.print(F("~"));\n';
@@ -1911,17 +2038,17 @@ const DesignerGenerateCode = (() => {
     cpp += '  // send menu items that should be updated\n';
     for (const sItem of items) {
       if (sItem.type === 'onoff') {
-        cpp += '  parser.slider(' + _cmdVarName(sItem.autoCmd) + '); // start Slider\n';
+        cpp += '  parser.slider(' + _cmdVarName(sItem, baseNames) + '); // start Slider\n';
         cpp += '  parser.print(\'`\');\n';
-        cpp += '  parser.print(' + _intVarName(sItem.autoCmd) + '); // output the current value\n';
+        cpp += '  parser.print(' + _intVarName(sItem, baseNames) + '); // output the current value\n';
       } else if (sItem.type === 'pwm') {
-        cpp += '  parser.slider(' + _cmdVarName(sItem.autoCmd) + '); // start Slider\n';
+        cpp += '  parser.slider(' + _cmdVarName(sItem, baseNames) + '); // start Slider\n';
         cpp += '  parser.print(\'`\');\n';
-        cpp += '  parser.print(' + _intVarName(sItem.autoCmd) + '); // output the current value\n';
+        cpp += '  parser.print(' + _intVarName(sItem, baseNames) + '); // output the current value\n';
       } else if (sItem.type === 'drawing') {
         const sDisabledFlag = sItem.formats.disabled ? '!' : '';
         cpp += '  parser.print(F("|+")); // drawing menu item update\n';
-        cpp += '  parser.print(' + _dwgCmdVarName(sItem.autoCmd) + ');\n';
+        cpp += '  parser.print(' + _dwgCmdVarName(sItem, baseNames) + '); // -- \'' + _labelComment(sItem) + '\'\n';
         if (sDisabledFlag) cpp += '  parser.print(F("!")); // disable this menu item\n';
       }
     }
@@ -1942,13 +2069,15 @@ const DesignerGenerateCode = (() => {
       returnTrue:     'return true;\n',
       hookNames:      hookNames,
       chartContext:   '',
+      baseNames:      baseNames,
     };
     for (const sItem of items) {
       cpp += _itemDispatchBranch(sItem, ctx, names);
     }
     for (const child of childSubs) {
       const cInfo = names.get(child);
-      cpp += '  } else if (' + _subMenuAccessor(cInfo) + '.handleCmd(parser, cmd, pfodFirstArg, pfodLongRtn)) {\n';
+      const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+      cpp += '  } else if (' + _subMenuAccessor(cInfo) + '.handleCmd(parser, cmd, pfodFirstArg, pfodLongRtn)) { // sub-menu -- \'' + childPrompt + '\'\n';
       cpp += '    return true;\n';
     }
     cpp += '  }\n';
@@ -1961,11 +2090,12 @@ const DesignerGenerateCode = (() => {
     if (_subtreeHasChart(subMenu)) {
       cpp += 'void ' + className + '::tickCharts(pfodParser &parser) {\n';
       for (const cItem of charts) {
-        cpp += '  ' + _chartPrefix(cItem.autoCmd) + '_sendData(parser);\n';
+        cpp += '  ' + _chartPrefix(cItem, baseNames) + '_sendData(parser);\n';
       }
       for (const child of childSubs) {
         if (!_subtreeHasChart(child.subMenu)) continue; // that child has no tickCharts() of its own
-        cpp += '  ' + _subMenuAccessor(names.get(child)) + '.tickCharts(parser);\n';
+        const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+        cpp += '  ' + _subMenuAccessor(names.get(child)) + '.tickCharts(parser); // sub-menu -- \'' + childPrompt + '\'\n';
       }
       cpp += '}\n\n';
     }
@@ -1979,26 +2109,28 @@ const DesignerGenerateCode = (() => {
       cpp += 'void ' + className + '::tickPulses() {\n';
       for (const sItem of items) {
         if (!_itemHasPulse(sItem)) continue;
-        cpp += '  ' + _cmdVarName(sItem.autoCmd) + '_checkPulse();\n';
+        const sPulseLabel = _cppStr((sItem.text || '').replace(/\n/g, ' ').trim() || sItem.type);
+        cpp += '  ' + _cmdVarName(sItem, baseNames) + '_checkPulse(); // \'' + sPulseLabel + '\'\n';
       }
       for (const child of childSubs) {
         if (!_subtreeHasPulse(child.subMenu)) continue; // that child has no tickPulses() of its own
-        cpp += '  ' + _subMenuAccessor(names.get(child)) + '.tickPulses();\n';
+        const childPrompt = _cppStr((child.subMenu.promptText || '').replace(/\n/g, ' ').trim() || (child.text || '').replace(/\n/g, ' ').trim());
+        cpp += '  ' + _subMenuAccessor(names.get(child)) + '.tickPulses(); // sub-menu pulse timers -- \'' + childPrompt + '\'\n';
       }
       cpp += '}\n\n';
     }
 
     // Per-chart sendData methods.
     for (const cItem of charts) {
-      cpp += _chartSendDataMethod(cItem, className, hookNames.get(cItem));
+      cpp += _chartSendDataMethod(cItem, className, hookNames.get(cItem), baseNames);
     }
 
     // Pulse-timer helpers -- return the output to its rest level once the
     // pulse length has elapsed.  Same shape as _generateCpp's own.
     for (const sItem of items) {
       if (!_itemHasPulse(sItem)) continue;
-      const cmdVar    = _cmdVarName(sItem.autoCmd);
-      const intVar    = _intVarName(sItem.autoCmd);
+      const cmdVar    = _cmdVarName(sItem, baseNames);
+      const intVar    = _intVarName(sItem, baseNames);
       const returnVal = sItem.pulse === 'low' ? 1 : 0;
       const returnLvl = returnVal ? 'HIGH' : 'LOW';
       cpp += 'static void ' + cmdVar + '_checkPulse() {\n';
@@ -2006,7 +2138,7 @@ const DesignerGenerateCode = (() => {
       cpp += '    ' + cmdVar + '_pulseRunning = false; // timer finished\n';
       cpp += '    ' + intVar + ' = ' + returnVal + ';  // return output to ' + returnLvl + '\n';
       if (sItem.pin && sItem.pin.name) {
-        cpp += '    ' + _pinWriteFn(sItem.pin.type) + '(' + _pinConstName(sItem.autoCmd) + ',' + intVar + '); // update output pin\n';
+        cpp += '    ' + _pinWriteFn(sItem.pin.type) + '(' + _pinConstName(sItem, baseNames) + ',' + intVar + '); // update output pin\n';
       }
       cpp += '  }\n';
       cpp += '}\n\n';
@@ -2046,16 +2178,32 @@ const DesignerGenerateCode = (() => {
     // e.g. inside the generated files' own comments/JSON `name` field).
     const fileName = _cppId(name) || 'Menu';
     const enc  = new TextEncoder();
+    // "Non-Arduino CPP code": same generator output as every Arduino
+    // family, but the sketch's top-level file is a main.cpp (see
+    // variants/nonArduinoCpp/serial.tpl) instead of a .ino, plus the
+    // pfodParser.h adapter and the static target_Stream.h/.cpp,
+    // target_pfodClock.cpp and readme.txt from NON_ARDUINO_CPP_FILES below
+    // so that unchanged output compiles against pfodParserCPP.
+    const isNonArduinoCpp = state.board.family === 'nonArduinoCpp';
     // names is not read here any more — the design's own json bundle
     // below carries every linked dwg, built from the same collectAllDwgs
     // walk this one uses.
     const { files: dwgFiles, missing } = _generateDrawingFiles(state);
 
     const entries = [
-      { path: fileName + '/' + fileName + '.ino',   data: enc.encode(_generateIno(state)) },
+      { path: fileName + '/' + (isNonArduinoCpp ? 'main.cpp' : fileName + '.ino'), data: enc.encode(_generateIno(state)) },
       { path: fileName + '/pfodMainMenu.h',     data: enc.encode(_generateH(state)) },
       { path: fileName + '/pfodMainMenu.cpp',   data: enc.encode(_generateCpp(state)) },
     ];
+    if (isNonArduinoCpp) {
+      entries.push({ path: fileName + '/pfodParser.h', data: enc.encode(_nonArduinoCppAdapterHeader(state)) });
+      // Static files (no per-design substitution), built into
+      // NON_ARDUINO_CPP_FILES by build_boards.js from the fixed set under
+      // variants/nonArduinoCpp/ -- see designer/boards/shared/nonArduinoCppFiles.js.
+      for (const [filename, content] of Object.entries(NON_ARDUINO_CPP_FILES)) {
+        entries.push({ path: fileName + '/' + filename, data: enc.encode(content) });
+      }
+    }
     dwgFiles.forEach((f) => entries.push({ path: fileName + '/' + f.filename, data: enc.encode(f.content) }));
 
     // The design that produced this sketch, so it can be re-opened and
@@ -2080,7 +2228,7 @@ const DesignerGenerateCode = (() => {
     // One SubMenu_<ident>.h/.cpp pair per sub-menu, any nesting depth —
     // _generateSubMenuFiles recurses into its own nested sub-menus and
     // returns their files via childFiles, already flattened.
-    const submenuNames = _collectSubMenuNames(state);
+    const submenuNames = _collectSubMenuNames(state, _collectBaseNames(state));
     const menu = state.getActiveMenu();
     const topLevelSubmenus = menu.items.filter(i => i.type === 'submenu' && i.subMenu);
     topLevelSubmenus.forEach((item) => {
@@ -2128,11 +2276,16 @@ const DesignerGenerateCode = (() => {
   // editChart.js can display the *exact* generated variable name in the
   // "no I/O pins defined" placeholder toggle (see PLACEHOLDER_PIN_NAME) --
   // duplicating the naming rule there would risk drifting out of sync
-  // with what this file actually emits.
+  // with what this file actually emits. Both take `state` because an
+  // item that hasn't been through Generate Code yet has no codeVarNo,
+  // so the preview has to compute a likely one -- see _previewBaseName,
+  // which is careful never to assign/persist one just from being
+  // previewed (only _collectBaseNames, i.e. actually generating code,
+  // does that).
   return Object.freeze({
     send,
-    pinConstName:     _pinConstName,
-    chartPlotPinName: (autoCmd, plotNum) => _chartPrefix(autoCmd) + '_plot_' + plotNum + '_pin',
+    pinConstName:     (item, state) => _previewBaseName(item, state) + '_pin',
+    chartPlotPinName: (item, plotNum, state) => _previewBaseName(item, state) + '_plot_' + plotNum + '_pin',
   });
 })();
 

@@ -127,9 +127,15 @@ const DesignerEditMenu = (() => {
     if (!isInSubmenu) {
       const supported = DesignerEditConnection.supportedConnections(state.board);
       // Always use the actual selected connection's short label as the base.
-      // Serial always shows its fixed baud rate alongside the label.
+      // Serial shows its fixed baud rate alongside the label -- except for
+      // the non-Arduino targets (Minimal C Code, Non-Arduino CPP code),
+      // whose generated code never calls Serial.begin()/equivalent itself
+      // (the user's own UART setup happens inside target_Stream::begin(),
+      // see variants/nonArduinoCpp/target_Stream.{h,cpp}), so a baud rate
+      // here would claim a fact the generated code doesn't establish.
+      const isNonArduinoTarget = state.board.family === 'ccode' || state.board.family === 'nonArduinoCpp';
       const baseLabel = (DesignerEditConnection.connectionLabels[state.connection] || state.connection) +
-        (state.connection === 'serial' ? ('@' + state.baud) : '');
+        (state.connection === 'serial' && !isNonArduinoTarget ? ('@' + state.baud) : '');
       // For single-transport boards, preserve any extra \n-delimited markup from
       // familyConnectionTypes (e.g. ccode/unlistedBoard add "\n<i>Use for non-Arduino boards").
       // Multi-transport boards just show the selected transport label.
