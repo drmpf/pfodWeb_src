@@ -286,7 +286,7 @@ const DesignerGenerateCcode = (() => {
     const prefix = _chartPrefix(item.autoCmd);
     const lines  = [];
     lines.push('// plotting data variables for \'' + _cStr(item.chartLabel || item.text || '') + '\'');
-    lines.push('static volatile uint8_t ' + prefix + '_sendDataFlag = 0; // set this to 1 from your own timer to send a data point');
+    lines.push('volatile uint8_t ' + prefix + '_sendDataFlag = 0; // set this to 1 from your own timer to send a data point');
     lines.push('static long ' + prefix + '_plot_X_var = 0; // increments once per data row sent; overwrite before calling sendData for a real X value');
     for (let n = 1; n <= 3; n++) {
       const p = item.plots[n - 1];
@@ -446,6 +446,9 @@ const DesignerGenerateCcode = (() => {
       out += '\n';
       out += '  // set true (1) by the {@} handler on (re)connect so the next chart open clears stale data\n';
       out += '  extern uint8_t pfodParser_clearPlot;\n';
+      for (const item of charts) {
+        out += '  extern volatile uint8_t ' + _chartPrefix(item.autoCmd) + '_sendDataFlag; // set to 1 from your own timer to send a data row\n';
+      }
     }
     out += '\n';
     out += '  void pfodParser_setup(void);   // call this just once\n';
@@ -500,6 +503,21 @@ const DesignerGenerateCcode = (() => {
       for (const item of charts) out += _chartVarsDecl(item).join('\n') + '\n';
     }
     out += '\n';
+
+    // Forward declarations for the chart/pulse/scaling helpers -- each is
+    // CALLED from pfodParser_setup()/pfodParser_parse() above, but its
+    // `static` definition only appears further down the file (the chart
+    // send-data functions, pulse check functions, and the scaling helper
+    // are all emitted after the per-menu-node send/sendUpdate functions).
+    // Without a prototype, gcc treats the first (implicit, non-static)
+    // mention as a non-static declaration, then errors on the later
+    // `static` definition conflicting with it.
+    for (const item of charts) out += 'static void ' + _chartPrefix(item.autoCmd) + '_sendData(void);\n';
+    for (const item of pulseItems) out += 'static void ' + _baseId(item.autoCmd) + '_checkPulse(void);\n';
+    if (charts.some((it) => it.plots.some((p) => !_isIdentityScale(p)))) {
+      out += 'static float pfodParser_getPlotVarScaling(long varMax, long varMin, float displayMax, float displayMin);\n';
+    }
+    if (charts.length > 0 || pulseItems.length > 0) out += '\n';
 
     // Forward declarations for every menu node, in case items reference
     // a node defined later in the file.

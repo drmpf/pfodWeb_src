@@ -267,6 +267,12 @@ Object.assign(DrawingViewer.prototype, {
    *     drawing finishes with the parts held plus that start's items.
    *   - An update with ~m replying to a load is logged, no more is requested, and
    *     its items are applied as an ordinary update.
+   *   - Any other reply to a part request is logged, no more is requested, and the
+   *     drawing finishes with the parts held, so what was received is shown.
+   *
+   * Once started, a drawing's load always runs to the end: menu changes
+   * (removeInsertedDrawing) and queue clears (clearPendingQueue) leave its part
+   * requests in place.  Only a part request that fails, or an exit, ends it early.
    *
    * While parts are held, addToRequestQueue refuses new loads of the drawing, as
    * pfodApp's canSendImageRequest does.
@@ -304,8 +310,11 @@ Object.assign(DrawingViewer.prototype, {
         collection.items.push(...items);
         return this._finishMoreData(name, collection);
       }
-      console.error(`[MORE_DATA] "${name}": expected the next part but got "${data.cmd[0]}", dropping ${collection.items.length} items`);
-      this.moreDataCollections.delete(name);
+      // Any other reply ends the drawing with the parts already received, so
+      // what did arrive is shown rather than thrown away.  The reply itself is
+      // not a part of this drawing and is not applied.
+      console.error(`[MORE_DATA] "${name}": expected the next part but got "${data.cmd[0]}", showing the ${collection.items.length} items received`);
+      return this._finishMoreData(name, collection);
     }
 
     // The reply to a part request nothing is waiting for any more, because the
@@ -359,9 +368,43 @@ Object.assign(DrawingViewer.prototype, {
    */
   _finishMoreData(name, collection) {
     this.moreDataCollections.delete(name);
-    const head = collection.head.replace(/^(\{\+[0-9A-Fa-f]*`\d+`\d+~)m/, '$1');
+    // The colour may be a name as well as a number or hex (see translateDwgResponse).
+    const head = collection.head.replace(/^(\{\+[0-9A-Za-z]*`\d+`\d+~)m/, '$1');
     console.log(`[MORE_DATA] "${name}": complete, ${collection.items.length} items under "${head}"`);
     return { data: { cmd: [head, ...collection.items, '}'] }, request: collection.request };
+  },
+
+  /**
+   * Cache a drawing whose ~m load has finished after the menu that asked for it
+   * has gone, without keeping or showing it.  The next menu that has the drawing
+   * shows it from the cache and requests its update as usual.
+   *
+   * The per-drawing cache (pfodWeb_dwg_<conn>_<name>) holds the drawing's
+   * processed collections, so the drawing is processed into the live
+   * DrawingManager, which saves that cache entry, and then removed again with
+   * removeInsertedDrawing().  Nothing is drawn, since the drawing has no menu
+   * canvas.  Child drawings the processing queued (insertDwg) go with it, as do
+   * the refresh stamps it set.  An unversioned drawing is not cached, as for
+   * any other drawing, so the next menu with it loads it from the start.
+   *
+   * Called with the drawing's part request still in sentRequest, so the child
+   * requests queued here are not sent before removeInsertedDrawing() drops them.
+   *
+   * @param {Object} data - the completed message from _finishMoreData
+   * @param {Object} request - the drawing's original load request
+   */
+  _cacheUnshownDrawing(data, request) {
+    const name = this._extractCmdToken(request.cmd);
+    console.log(`[MORE_DATA] "${name}": complete but no longer on screen — caching it only`);
+    data.name = name;
+    this.processDrawingData(data, null, request.requestType);
+    this.removeInsertedDrawing(name);
+    const dm = this.redraw.redrawDrawingManager;
+    for (const key of [...this.itemRefreshTimes.keys()]) {
+      if (key !== 'menu' && !dm.drawings.includes(key)) {
+        this.itemRefreshTimes.delete(key);
+      }
+    }
   },
 
   /**
@@ -388,7 +431,7 @@ Object.assign(DrawingViewer.prototype, {
     const collection = this.moreDataCollections.get(name);
     if (!collection) return null;
     const isNextPart = recordedCmd === '{' + name + '`' + collection.nextOffset + '}';
-    const isStart = recordedReply !== null && /^\{\+[0-9A-Fa-f]*`\d+`\d+/.test(recordedReply);
+    const isStart = recordedReply !== null && /^\{\+[0-9A-Za-z]*`\d+`\d+/.test(recordedReply);
     return (isNextPart && !isStart) ? null : report(name, collection);
   },
 
@@ -517,6 +560,18 @@ Object.assign(DrawingViewer.prototype, {
       const currentBareCmd = currentMenuCmd.slice(1, -1);
       const baseMenuDataForReqCmd = this.menuCache ? this.menuCache.getParsedMenu(bareCmd) : null;
       const isForwardNavigation = baseMenuDataForReqCmd && (reqCmd !== currentMenuCmd);
+      //   (d) The current screen is not a menu — a numeric, text or selection
+      //       input screen whose tick button sent its cmd + value (e.g.
+      //       {LMV`56}) — and the device replies with a {;} menu update.
+      //       That is the same as pressing back on that screen: show the menu
+      //       the back button would have requested (the nav-stack top), with
+      //       the update applied.  That menu is the last one shown, held in
+      //       memory by pfodMenuDisplay.getLastMenu() whether or not it had a
+      //       version, as pfodApp does — so no cache entry is needed.  The
+      //       submitted cmd has no menu of its own, so (a) and (c) never match
+      //       it.  Not for back, which (c) / the error path own.
+      const baseMenuDataForCurrent = (reqType !== 'back')
+          ? window.pfodMenuDisplay.getLastMenu() : null;
 
       if (isForwardNavigation) {
         console.log('[MENU_CACHE] {;} response is forward-nav to cached submenu "' + bareCmd + '" - showing from cache with update applied');
@@ -584,6 +639,12 @@ Object.assign(DrawingViewer.prototype, {
         // update applied.
         console.log('[MENU_CACHE] {;} response (back navigation) - showing cached menu "' + bareCmd + '" with update applied');
         this._navigateToMenu(baseMenuDataForReqCmd, menuData, reqCmd, reqType, request, self);
+      } else if (baseMenuDataForCurrent) {
+        // (d) — see above.  Shown as a back to the nav-stack top.
+        console.log('[MENU_CACHE] {;} response to "' + reqCmd + '" from a non-menu screen - returning to last menu "' + currentBareCmd + '" with update applied, as back would');
+        this._navigateToMenu(baseMenuDataForCurrent, menuData, currentMenuCmd, 'back', request, self);
+        // The toolbar's reload must target that menu, not the submitted cmd.
+        return 'returnedToMenu';
       } else {
         // Back-nav arrived for a menu the toolbar pre-hid, but we have no
         // cached parsed copy of it (typical cause: that menu's prior {,}
@@ -971,8 +1032,12 @@ Object.assign(DrawingViewer.prototype, {
       var result = this.processMenuResponse(data, request);
       if (result) {
         // Menu responses represent navigation to a new display
-        // updateNavigationStack will skip refresh, refresh-insertDwg, and back requests internally
-        this.updateNavigationStack(this.sentRequest);
+        // updateNavigationStack will skip refresh, refresh-insertDwg, and back requests internally.
+        // 'returnedToMenu': an input screen's reply put the display back on
+        // the menu at the nav-stack top, which the toolbar handles as a back.
+        this.updateNavigationStack(result === 'returnedToMenu'
+          ? Object.assign({}, this.sentRequest, { requestType: 'back' })
+          : this.sentRequest);
         return; // menu was handled
       }
     }
@@ -1302,6 +1367,10 @@ Object.assign(DrawingViewer.prototype, {
   _exitToConnectionScreen() {
     this.stopKeepAlivePolling();
     this.clearPendingQueue();
+    // Exit ends drawing loads too — clearPendingQueue keeps a drawing's part
+    // requests, but nothing is sent after the disconnect below.
+    this.requestQueue = [];
+    this.moreDataCollections.clear();
     if (this.connectionManager) {
       this.connectionManager.disconnect().catch(() => {});
       // The reload below (window.location.replace) fires beforeunload,

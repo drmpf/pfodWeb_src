@@ -497,6 +497,9 @@ Object.assign(DrawingViewer.prototype, {
         this.processRequestQueue();
         return;
       }
+      // A different request back means this reply was the last part of a ~m
+      // drawing, and request becomes that drawing's original load request.
+      const finishedMoreData = collected.request !== request;
       data = collected.data;
       request = collected.request;
 
@@ -505,6 +508,18 @@ Object.assign(DrawingViewer.prototype, {
       // stay separate per design name automatically.
       if (typeof cacheResponse === 'function') {
         cacheResponse(data, request, this.connectionManager);
+      }
+
+      // A ~m drawing that finished loading after the menu showing it was left
+      // (pruneDrawingsNotInMenu removed it from dm.drawings) is only cached.
+      if (finishedMoreData
+          && !this.redraw.redrawDrawingManager.drawings.includes(this._extractCmdToken(request.cmd))) {
+        this._cacheUnshownDrawing(data, request);
+        console.log(`[SENTREQUEST] CLEARED: "${request.cmd}" (${request.requestType}) - cached a drawing no longer on screen at ${new Date().toISOString()}`);
+        this.sentRequest = null;
+        this.scheduleNextKeepAlive();
+        this.processRequestQueue();
+        return;
       }
 
       // Show loading message only on initial load, not during refresh cycles to prevent flashing
@@ -978,6 +993,9 @@ Object.assign(DrawingViewer.prototype, {
       () => { console.info('[HTTP_RETRY] User closed the retry alert; retry still pending'); }
     );
     console.warn(`[HTTP_RETRY] "${request.cmd}" (${request.requestType}) failed: ${error.message} — retrying in ${secs}s with the dedup sequence reset`);
+    // Kept so clearPendingQueue can still resend a drawing's part request
+    // when reload / back cancels this retry.  Only read while httpRetryTimer is set.
+    this._httpRetryRequest = request;
     this.httpRetryTimer = setTimeout(() => {
       this.httpRetryTimer = null;
       if (this.exitPending) return;

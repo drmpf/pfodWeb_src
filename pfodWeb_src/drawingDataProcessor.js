@@ -278,13 +278,19 @@ class DrawingDataProcessor {
             const x = Math.min(Math.max(data.x || 50, 1), 255);
             const y = Math.min(Math.max(data.y || 50, 1), 255);
         
-            // Handle color validation - accept both numbers and string numbers
+            // Handle color validation - accept numbers, string numbers and
+            // 6-hex-digit RRGGBB strings (spec 8.11, as pfodApp's
+            // ColourCalcs.processColor reads any 6-char colour as hex).
+            // The hex test must come first: an all-digit hex such as
+            // "009900" also passes !isNaN and would otherwise be parsed as
+            // decimal 9900, fail the 0-255 range check, and become black.
             let colorValue = data.color;
-            if (typeof colorValue === 'string' && !isNaN(colorValue)) {
+            const isHexColor = (typeof colorValue === 'string' && /^[0-9A-Fa-f]{6}$/.test(colorValue));
+            if (!isHexColor && typeof colorValue === 'string' && !isNaN(colorValue)) {
                 console.log(`[COLOR_CONVERSION] Converting string color "${colorValue}" to number ${parseInt(colorValue)}`);
                 colorValue = isNaN(parseInt(colorValue))? 0 : parseInt(colorValue);
             }
-            const validColor = (typeof colorValue === 'number' && ((colorValue >= 0 && colorValue <= 255) || colorValue === -1)) ? colorValue : 0;
+            const validColor = isHexColor ? colorValue.toUpperCase() : (typeof colorValue === 'number' &&((colorValue >= 0 && colorValue <= 255) || colorValue === -1)) ? colorValue : 0;
             console.log(`[COLOR_VALIDATION] Original color: ${data.color} (${typeof data.color}) -> Final color: ${validColor}`);
 
             const drawingData = {

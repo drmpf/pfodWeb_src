@@ -737,7 +737,7 @@ Every file picker in the app is covered, because the hook wraps the shared
 | Dwg Controls Panel | Load Dwg (`.pfodDwg_json` or `.zip`) |
 | Dwg Controls Panel, missing-insertDwg prompt | Load File… |
 | Select Dwg for a menu item | Load Dwg from File |
-| Connection prompt, page loaded with `?replay` | Replay Raw Msg File (`pfod-messages-<date>.json`, or a pfodApp debug log `.txt`) — see below |
+| Connection prompt, page loaded with `?replay` | Replay Raw Msg File (`pfod-messages-<date>.json`, or a pfodApp debug log `.txt`) — scripts use `pfodReplay` instead, see below |
 
 > **If `pfodWebFileHook` is `undefined` from your JavaScript tool, you are
 > in an isolated world, not the page.** Some browser-automation tools
@@ -760,17 +760,37 @@ Every file picker in the app is covered, because the hook wraps the shared
 **Replaying a Raw Message recording.** The connection prompt's **Replay
 Raw Msg File** button loads a `.json` exported from the Raw Message
 viewer and runs the client against it as if it were a live device — no
-board, no pfodProxy. **The button is hidden unless the page's URL has
-`replay` in it**, so open `http://127.0.0.1:8137/pfodWeb.html?replay`. Arm
-the recording, then press the button:
+board, no pfodProxy.
+
+**From a script, use `window.pfodReplay` and do not press the button.**
+It starts the replay directly, with no file chooser to get stuck in, and
+works without `?replay` in the URL. Call it while the connection prompt is
+showing (a freshly loaded page), in the page itself (see the isolated-world
+note above):
 
 ```js
-// The page must be served over http (as above) and the .json beside it.
-await pfodWebFileHook.armFromUrls('/pfod-messages-2026-11-02T09-28-24.020Z.json');
-// or, with the content in hand:
-pfodWebFileHook.arm({ name: 'pfod-messages-….json', text: '…the JSON…' });
-// then press Replay Raw Msg File
+// The page must be served over http (as above) and the recording beside it.
+await pfodReplay.fromUrl('/pfod-messages-2026-11-02T09-28-24.020Z.json');  // → true
+await pfodReplay.fromUrl('/frontScreen.txt');   // a pfodApp debug log
+// or, with the content in hand (a .txt name selects the pfodApp log parser):
+pfodReplay.fromText('pfod-messages-….json', '…the JSON…');                // → true
+// when it has played: close the "Replay finished" popup, then
+// pfodMenuDisplay.exportPng() for the screen — both described below.
 ```
+
+| Call | Does |
+|---|---|
+| `fromText(fileName, text)` | Validate the recording and start the replay. Returns `true` if it started, `false` if the text was rejected — the reason is in a pfodAlert (§4.1.2) and the console, and the prompt stays up. |
+| `fromUrl(url)` | Fetch the recording, then `fromText` with the url's last path segment as the name. Returns a Promise of the same; rejects if the fetch fails. |
+
+Both run exactly what the button runs once its file has been read, so the
+replay is the real one. Every replay — button or hook — first clears the
+display cache (the same clear as **Clear Menu Cache**), so it always starts
+from a cleared cache as the recording did; there is nothing to clear by hand. For a person at the keyboard the button is hidden
+unless the page's URL has `replay` in it
+(`http://127.0.0.1:8137/pfodWeb.html?replay`); pressing it after
+`pfodWebFileHook.arm(…)` also avoids the dialog, but `pfodReplay` is the
+script route.
 
 The file alone drives the replay. Each entry plays at its recorded `ms`:
 recorded cmds are sent, and recorded replies and raw data arrive, with the
@@ -783,6 +803,27 @@ pfodAlert, so readable — §4.1.2) gives the file's counts of messages sent,
 messages received and raw data lines. A `{!}` in the file ends the replay
 there: it is not sent, later entries are not played, and the alert adds
 "Client Exited {!}". Every entry needs a numeric `ms`.
+
+> **Close the "Replay finished" popup before you look at the result.** It is
+> a pfodAlert — a DOM modal, not a native `alert()` — laid over the whole
+> page with a dark backdrop, so the menu behind it is covered and a
+> screenshot shows the popup rather than the replayed screen. Wait at least
+> as long as the recording runs, then dismiss it from the page's DOM; this
+> works from the isolated world too, since it only touches the DOM:
+>
+> ```js
+> document.querySelectorAll('.pfod-alert-overlay button').forEach(b => {
+>   if (b.textContent.trim() === 'Close') b.click();
+> });
+> ```
+>
+> Read its counts first if you want them (`.pfod-alert-overlay` `innerText`).
+>
+> **Then capture the screen with the page's own hook, not a browser
+> screenshot:** `await pfodMenuDisplay.exportPng()` (in the page — see
+> "Capturing the displayed menu" below) returns the replayed menu, drawings
+> included, as a PNG `dataUrl` (and offers it for download as
+> `pfod-menu-<date>.png`).
 
 The button also takes a pfodApp debug log (`.txt`). Only the log's **last
 connection** is played. pfodApp appends each connection to the log, and a
@@ -807,6 +848,20 @@ first to capture another part of a long menu. The scrollbar is left out, but
 the strip reserved for it stays. If no menu is displayed it rejects rather than
 raising a native alert. This is separate from the Dwg Controls Panel's Export
 PNG, which captures the previewed drawing's canvas.
+
+> **`exportPng()` needs images allowed for the page's site.** It renders the
+> menu through an `<img>`, and if the browser blocks images for the site
+> (Chrome: Site settings → Images → Block) that image never loads — neither
+> `onload` nor `onerror` fires. After 5 seconds `exportPng()` gives up and
+> rejects with a message saying the browser may be blocking images and to
+> allow them in the site settings (the toolbar's Export PNG shows the same
+> message in a pfodAlert). Allow images for `127.0.0.1` (or whatever host
+> serves the page), reload, and try again.
+>
+> Each drawing on its own needs no image load: its canvas can be read
+> directly, `pfodMenuDisplay.getMenuCanvas('<loadCmd>').canvas.toDataURL()`,
+> which works even with images blocked — but that is the drawing only, not
+> the menu around it.
 
 > **Record from a cleared cache, or the replay has nothing to draw.** A
 > recording made while the browser already had the device's menu cached

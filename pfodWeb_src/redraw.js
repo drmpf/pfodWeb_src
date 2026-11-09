@@ -267,11 +267,16 @@ function pfodColorTagToHex(s) {
  */
 function pfodFindTag(text, i) {
   const MAX_TAG_CONTENT_LEN = 9; // "bg " + 6-digit hex -- the longest shape in the whole spec
+  // A <bg X> tag may have extra spaces around its colour, e.g. "<bg  r >", as
+  // pfodApp trims them (ColourCalcs.processColor), so it may exceed the length
+  // limit; only that exact shape -- bg, spaces, a 1-6 char colour, spaces --
+  // gets the extra room.
+  const BG_TAG_SHAPE = /^bg\s+[0-9A-Za-z]{1,6}\s*$/;
   const close = text.indexOf('>', i + 1);
   const nextOpen = text.indexOf('<', i + 1);
   if (close === -1 || (nextOpen !== -1 && nextOpen < close)) return null;
-  if ((close - i - 1) > MAX_TAG_CONTENT_LEN) return null;
   const content = text.substring(i + 1, close);
+  if (content.length > MAX_TAG_CONTENT_LEN && !BG_TAG_SHAPE.test(content)) return null;
   const isClosing = content.startsWith('/');
   const shapeContent = isClosing ? content.substring(1) : content;
 
@@ -290,8 +295,9 @@ function pfodFindTag(text, i) {
   } else if (/^-\d{1,3}$/.test(shapeContent)) {
     kind = 'fontSize';
     value = -parseInt(shapeContent.substring(1), 10);
-  } else if (!isClosing && shapeContent.startsWith('bg ')) {
-    const hex = pfodColorTagToHex(shapeContent.substring(3));
+  } else if (!isClosing && BG_TAG_SHAPE.test(shapeContent)) {
+    // Spaces around the colour are trimmed, as pfodApp does.
+    const hex = pfodColorTagToHex(shapeContent.substring(2).trim());
     if (hex !== null) { kind = 'bg'; value = hex; }
   } else {
     const hex = pfodColorTagToHex(shapeContent);

@@ -29,14 +29,22 @@
 
 // JS_VERSION is available globally via window.JS_VERSION from pfodWeb.js
 
-// Parse a dwg <colour> wire field (spec 8.11): either a decimal 0-255 palette
-// index or a 6-hex-digit RRGGBB string. A bare index is never 6 chars (max
-// "255"), so a 6-char run is unambiguously hex here.
+// Parse a dwg <colour> wire field (spec 8.11): a decimal 0-255 palette
+// index, a 6-hex-digit RRGGBB string, or a pfod colour name (r, g, n, w, gy,
+// ... — the same names as the menu <bg> and colour tags).  A bare index is
+// never 6 chars (max "255"), so a 6-char run is unambiguously hex here.
+//
+// The names match pfodApp, which reads every dwg item colour with
+// ColourCalcs.processColor(): fewer than 6 chars is looked up as a colour
+// name or palette number, 6 chars as hex.  A name is returned as its palette
+// index from PFOD_COLOR_NAME_TO_INDEX (redraw.js, loaded before this file in
+// both builds), whose 16 entries are pfodApp's 16 named colours.
 // @param {string} s - raw field text (already split out by caller)
 // @returns {number|string|undefined} palette index, uppercase RRGGBB string, or undefined if s is ''
 function parseDwgColour(s) {
     if (s === '' || s === undefined) return undefined;
     if (/^[0-9A-Fa-f]{6}$/.test(s)) return s.toUpperCase();
+    if (Object.prototype.hasOwnProperty.call(PFOD_COLOR_NAME_TO_INDEX, s)) return PFOD_COLOR_NAME_TO_INDEX[s];
     return parseInt(s, 10);
 }
 
@@ -1186,10 +1194,13 @@ function translateRawTouchActionInput(rawTouchActionInputString) {
             backgroundColor: undefined
         };
 
-        const bgColorMatch = text.match(/<bg\s+([0-9A-Fa-f]+)>/);
+        // The colour may be a pfod colour name (<bg r>) as well as a 0-255
+        // number or RRGGBB hex, and spaces around it are allowed, as pfodApp's
+        // ColourCalcs.processColor trims them; parseDwgColour resolves it.
+        const bgColorMatch = text.match(/<bg\s+([0-9A-Za-z]+)\s*>/);
         if (bgColorMatch) {
             result.backgroundColor = parseDwgColour(bgColorMatch[1]);
-            result.text = result.text.replace(/<bg\s+[0-9A-Fa-f]+>/g, '').replace(/<\\bg\s+[0-9A-Fa-f]+>/g, '');
+            result.text = result.text.replace(/<bg\s+[0-9A-Za-z]+\s*>/g, '').replace(/<\\bg\s+[0-9A-Za-z]+\s*>/g, '');
         }
 
         return result;
@@ -1347,7 +1358,10 @@ function translateDwgResponse(cmd) {
     // as the version).  So "~~~X01" has an EMPTY version, and that dwg is
     // re-requested as plain {cmd}, the same as pfodApp does, rather than with a
     // "~X01" version the device doesn't recognise.
-    const regex = /^\{\+(?:([0-9A-Fa-f]*)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~([^~]*)(?:~.*)?)?$/;
+    // The colour group takes letters as well as digits so a pfod colour name
+    // ({+bl`85`45...}) is read, as pfodApp does (ColourCalcs.processColor);
+    // parseDwgColour resolves it.
+    const regex = /^\{\+(?:([0-9A-Za-z]*)`(\d+)`(\d+))?(~(m)?)?(`?(\d+)?~([^~]*)(?:~.*)?)?$/;
     const match = cmdString.match(regex);
 
     if (!match) {

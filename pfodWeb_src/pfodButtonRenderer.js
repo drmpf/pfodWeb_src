@@ -1055,25 +1055,15 @@ function renderPfodNavButtons(navItems, onClick, menuBgColor) {
 /**
  * Compute the display string for a numeric slider item.
  * Formula: minScale + (currentValue - minValue) * (maxScale - minScale) / (maxValue - minValue)
- * Decimal places: max of the precision in each scale string, minimum 1.
- * Prepends '+' when showPlus is active (either scale string starts with '+') and value > 0.
+ * Formatted exactly as pfodApp does — decimals, trailing zeros, '+' sign and
+ * E notation — see pfodFormatSliderValue (displayTextUtils.js).
  *
  * @param {object} nsd - numericSliderData from the parsed item
  * @returns {string}
  */
 function computeNumericDisplayText(nsd) {
-    const range = nsd.maxValue - nsd.minValue;
-    const scaleMin = parseFloat(nsd.minScaleStr);
-    const scaleMax = parseFloat(nsd.maxScaleStr);
-    const val = range === 0 ? scaleMin
-              : scaleMin + (nsd.currentValue - nsd.minValue) * (scaleMax - scaleMin) / range;
-    const dec = (!isNaN(scaleMin) && !isNaN(scaleMax))
-        ? calcDisplayDecimalPlaces(range, scaleMax - scaleMin)
-        : 0;
-    let formatted = val.toFixed(dec).replace(/\.?0+$/, ''); // trim trailing zeros
-    const showPlus = nsd.maxScaleStr.startsWith('+') || nsd.minScaleStr.startsWith('+');
-    if (showPlus && val > 0) formatted = '+' + formatted;
-    return formatted;
+    return pfodFormatSliderValue(nsd.currentValue, nsd.minValue, nsd.maxValue,
+                                 nsd.minScaleStr, nsd.maxScaleStr);
 }
 
 /**

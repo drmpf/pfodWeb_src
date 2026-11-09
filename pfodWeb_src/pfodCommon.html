@@ -3126,43 +3126,101 @@
 
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    let entries;
-                    try {
-                        entries = /\.txt$/i.test(file.name)
-                            ? ReplayAdapter.parsePfodAppDebugLog(e.target.result)
-                            : JSON.parse(e.target.result);
-                        if (!Array.isArray(entries)) {
-                            throw new Error('file is not a JSON array of messages');
-                        }
-                        entries.forEach(function(entry, i) {
-                            if (!entry || typeof entry.direction !== 'string' || typeof entry.message !== 'string' || typeof entry.ms !== 'number') {
-                                throw new Error('entry ' + i + ' has no string direction/message or numeric ms');
-                            }
-                        });
-                    } catch (err) {
-                        console.error('[REPLAY] Invalid replay file ' + file.name + ':', err);
-                        pfodAlert('Cannot replay ' + file.name + '\n\n' + err.message, () => {});
-                        return;
-                    }
-                    console.log('[REPLAY] Loaded ' + file.name + ' with ' + entries.length + ' entries');
-
-                    window.pfodConnectionManager = new ConnectionManager({
-                        protocol: 'replay',
-                        replayEntries: entries,
-                        replayFileName: file.name
-                    });
-
-                    document.getElementById('connection-prompt').style.display = 'none';
-                    if (typeof continueInitialization === 'function') {
-                        continueInitialization({ protocol: 'replay' });
-                        window.pfodConnectionManager.adapter.startReplay(window.drawingViewer);
-                    }
+                    startRawMsgReplay(file.name, e.target.result);
                 };
                 reader.readAsText(file);
             });
 
             fileInput.click();
         }
+
+        /**
+         * Start a replay from a recording's text — the part of the Replay Raw
+         * Msg File button after the file has been read.  Also the script hook
+         * for replays (window.pfodReplay, below), which needs no file chooser
+         * and no ?replay in the URL.
+         *
+         * The text is validated here (system boundary): a .txt name means a
+         * pfodApp debug log, which must hold pfodApp log messages; any other
+         * name must parse as a JSON array whose entries each have a string
+         * direction, a string message and a numeric ms.  Anything else is
+         * reported with pfodAlert and the connection prompt stays up.
+         *
+         * A valid recording always replays from a cleared cache: the same
+         * clear as the Clear Menu Cache button runs before the replay starts.
+         *
+         * @param {string} fileName - the recording's name; its .txt extension
+         *   selects the pfodApp debug log parser
+         * @param {string} text - the recording's contents
+         * @returns {boolean} true if the replay started, false if the text was
+         *   rejected (the reason is in the pfodAlert and the console)
+         */
+        function startRawMsgReplay(fileName, text) {
+            let entries;
+            try {
+                entries = /\.txt$/i.test(fileName)
+                    ? ReplayAdapter.parsePfodAppDebugLog(text)
+                    : JSON.parse(text);
+                if (!Array.isArray(entries)) {
+                    throw new Error('file is not a JSON array of messages');
+                }
+                entries.forEach(function(entry, i) {
+                    if (!entry || typeof entry.direction !== 'string' || typeof entry.message !== 'string' || typeof entry.ms !== 'number') {
+                        throw new Error('entry ' + i + ' has no string direction/message or numeric ms');
+                    }
+                });
+            } catch (err) {
+                console.error('[REPLAY] Invalid replay file ' + fileName + ':', err);
+                pfodAlert('Cannot replay ' + fileName + '\n\n' + err.message, () => {});
+                return false;
+            }
+            console.log('[REPLAY] Loaded ' + fileName + ' with ' + entries.length + ' entries');
+
+            // A replay always starts from a cleared cache, as the recording was
+            // made: anything cached in this browser (menus, drawings, versions)
+            // would change which requests the client makes and what it shows.
+            // Same clear as the Clear Menu Cache button; it must run before the
+            // connection starts, as that is when the menu cache is read.
+            clearCachedDrawings();
+
+            window.pfodConnectionManager = new ConnectionManager({
+                protocol: 'replay',
+                replayEntries: entries,
+                replayFileName: fileName
+            });
+
+            document.getElementById('connection-prompt').style.display = 'none';
+            if (typeof continueInitialization === 'function') {
+                continueInitialization({ protocol: 'replay' });
+                window.pfodConnectionManager.adapter.startReplay(window.drawingViewer);
+            }
+            return true;
+        }
+
+        /**
+         * Script hook for replays, so automation never presses the Replay Raw
+         * Msg File button (which opens a native file chooser).  Call it while
+         * the connection prompt is showing.  Documented in docs/pfodAI-guide.md
+         * §4.1.1 "Replaying a Raw Message recording".
+         *
+         *   pfodReplay.fromText(fileName, text) → true if the replay started
+         *   pfodReplay.fromUrl(url)             → Promise of the same, fetching
+         *                                         the recording from url (served
+         *                                         over http beside the page); the
+         *                                         name for the .txt test is the
+         *                                         url's last path segment
+         */
+        window.pfodReplay = Object.freeze({
+            fromText: startRawMsgReplay,
+            fromUrl: async function(url) {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error('pfodReplay.fromUrl: ' + url + ' → HTTP ' + response.status);
+                }
+                const fileName = decodeURIComponent(new URL(url, window.location.href).pathname.split('/').pop());
+                return startRawMsgReplay(fileName, await response.text());
+            }
+        });
 
         // Clear cached drawings function — preserves designer-saved menus,
         // the Dwg Designer's own saved/loaded dwgs (DwgLibrary — dwgDesigner/

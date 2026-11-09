@@ -39,6 +39,12 @@ class PfodMenuDisplay {
         this._currentMenu = null;
         this._onItemClick = null;
 
+        // The last menu shown, kept after hide() clears _currentMenu — pfodApp's
+        // parser keeps the same (pfodParser.v2_Menu), versioned or not.  It is
+        // the same object as _currentMenu while shown, so update()'s in-place
+        // {;} merges keep it current.  See getLastMenu().
+        this._lastMenu = null;
+
         // True while any pointer is held down inside the menu scroll area.
         // Covers HTML buttons, sliders, toggles, and dwg canvases — all of which are
         // children of _scrollArea so their pointer events bubble up here.
@@ -123,6 +129,7 @@ class PfodMenuDisplay {
 
         this._onItemClick = onItemClick;
         this._currentMenu = menuData;
+        this._lastMenu = menuData;
         this._menuCanvases = {};
 
         // Clear previous content
@@ -599,6 +606,20 @@ class PfodMenuDisplay {
     }
 
     /**
+     * The last menu shown, with every {;} update merged into it — still held
+     * after hide(), e.g. while a numeric/text/selection input screen opened
+     * from it is showing.  Kept in memory whether or not the menu had a
+     * version, as pfodApp keeps its last menu, so a {;} reply to an input
+     * screen's tick can be applied to it.
+     *
+     * @returns {object|null} parsed menu (pfodParseMenu() shape), or null if no
+     *   menu has been shown yet
+     */
+    getLastMenu() {
+        return this._lastMenu;
+    }
+
+    /**
      * Hide the menu display and switch to message-mode.
      * Moves the drawing canvas back to #canvas-wrapper and clears the menu content.
      */
@@ -832,7 +853,9 @@ class PfodMenuDisplay {
      * @returns {Promise<{fileName: string, width: number, height: number, dataUrl: string}>}
      *          the file offered for download, its size in pixels, and its
      *          contents, which lets a script check the image without the file
-     * @throws (rejects) if no menu is displayed, or the image can't be built
+     * @throws (rejects) if no menu is displayed, or the image can't be built,
+     *         or it has not rendered within 5 seconds (images blocked for the
+     *         site — the message says to allow them in the site settings)
      */
     async exportPng() {
         if (!document.body.classList.contains('menu-mode')) {
@@ -888,14 +911,39 @@ class PfodMenuDisplay {
 
         // A data: URL, not a blob: one, because Chrome treats a foreignObject
         // SVG from a blob: URL as cross-origin and then refuses toDataURL.
+        //
+        // If the browser blocks images for this site (Chrome: Site settings →
+        // Images → Block), the image never loads and neither onload nor onerror
+        // fires, so without a time limit this would wait forever.  An image of
+        // the page's own DOM builds in well under a second, so
+        // PNG_RENDER_TIMEOUT_MS is generous; it covers the load and the decode.
+        const PNG_RENDER_TIMEOUT_MS = 5000;
         const img = new Image();
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = () => reject(new Error('The browser could not render the menu as an image.'));
-            img.src = 'data:image/svg+xml;charset=utf-8,' +
-                encodeURIComponent(new XMLSerializer().serializeToString(svg));
+        let timer = null;
+        const timedOut = new Promise((resolve, reject) => {
+            timer = setTimeout(() => reject(new Error(
+                'The menu image did not render within ' + (PNG_RENDER_TIMEOUT_MS / 1000) + ' seconds.\n\n' +
+                'The browser may be blocking images for this site. ' +
+                'Allow images for ' + window.location.host + ' in the browser\'s site settings ' +
+                '(Chrome: click the icon left of the address, Site settings, Images: Allow), ' +
+                'then reload and try again.')), PNG_RENDER_TIMEOUT_MS);
         });
-        await img.decode();
+        try {
+            await Promise.race([
+                (async () => {
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = () => reject(new Error('The browser could not render the menu as an image.'));
+                        img.src = 'data:image/svg+xml;charset=utf-8,' +
+                            encodeURIComponent(new XMLSerializer().serializeToString(svg));
+                    });
+                    await img.decode();
+                })(),
+                timedOut
+            ]);
+        } finally {
+            clearTimeout(timer);
+        }
 
         const canvas = document.createElement('canvas');
         canvas.width = width;

@@ -693,20 +693,28 @@ Object.assign(DrawingViewer.prototype, {
 
   // Clear all pending requests from queue (keeps sentRequest intact).
   // Called before sending a back/refresh command to discard queued stale requests.
+  //
+  // A drawing's part requests (moreData) are kept: once a drawing has started
+  // loading over several ~m messages it is loaded to the end (see
+  // _collectMoreData), and its held parts in moreDataCollections stay with it.
+  // They sort after back/menu requests (RequestOrdinal), so the request that
+  // follows this clear still goes first.
   clearPendingQueue() {
     // A retry waiting on its 30 s timer is a pending request too — the
     // user's reload / back / exit must not have the old one reappear
-    // behind it.
+    // behind it.  A part request waiting to be retried is sent again now
+    // instead, at the head of the kept requests, so its drawing still finishes.
+    const retryRequest = this.httpRetryTimer ? this._httpRetryRequest : null;
     this._cancelHttpRetry();
     const clearTime = Date.now();
     const queueLength = this.requestQueue.length;
     console.info(`[QUEUE] Clearing queue at ${clearTime}, length=${queueLength}, sentRequest: ${this.sentRequest ? this.sentRequest.cmd + '(' + this.sentRequest.requestType + ')#' + this.sentRequest._id : 'null'}`);
     console.log(`[QUEUE_MUTATION] clearPendingQueue contents before clear (length=${queueLength}):`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})#${r._id}`)));
-    this.requestQueue = [];
-    // Any request for a drawing's next part has just gone with the queue, so those
-    // drawings have to be loaded again from their start.
-    this.moreDataCollections.clear();
-    console.info(`[QUEUE] Cleared ${queueLength} pending requests at ${Date.now()}, elapsed: ${Date.now() - clearTime}ms`);
+    this.requestQueue = this.requestQueue.filter(r => r.requestType === 'moreData');
+    if (retryRequest && retryRequest.requestType === 'moreData') {
+      this.requestQueue.unshift(retryRequest);
+    }
+    console.info(`[QUEUE] Cleared pending requests at ${Date.now()}, kept ${this.requestQueue.length} drawing part request(s), elapsed: ${Date.now() - clearTime}ms`);
   }
 
 });

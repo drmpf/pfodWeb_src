@@ -569,8 +569,12 @@ Object.assign(DrawingViewer.prototype, {
     // Match queue entries against `drawingName` via cmd-derived identifier.
     // For drawing-fetch entries the cmd token IS the loadCmd; for touch-style
     // entries the cmd token is the menuItemCmd, so resolve via menu-items.
+    // A drawing's part requests (moreData) are never matched: once a drawing has
+    // started loading over several ~m messages it is loaded to the end, even if
+    // the menu that asked for it has gone (see _collectMoreData).
     const matchesDrawing = (req) => {
       if (!req || !req.cmd) return false;
+      if (req.requestType === 'moreData') return false;
       const tok = this._extractCmdToken(req.cmd);
       if (tok === drawingName) return true;
       const resolved = this._resolveLoadCmdFromRequest(req);

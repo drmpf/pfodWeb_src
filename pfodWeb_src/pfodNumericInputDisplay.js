@@ -12,7 +12,9 @@
 //
 // pfod format: {#<cmd>[~<prompt>]`<current>[`<max>[`<min>]][~units[~scale[~offset]]}
 // Submission sends: {<cmd>`<integerValue>} as a 'touch' request.
-// Display value = (integerValue * scale) + offset, shown with units appended.
+// Display value = (integerValue + offset) * scale, as pfodApp shows it, with
+// units appended.  offset is in raw counts.  A leading '+' on scale puts '+'
+// on positive values.
 //
 // State read:    document.body.className
 // State written: document.body.className (numeric-input-mode <-> message-mode)
@@ -34,6 +36,7 @@ class PfodNumericInputDisplay {
     this._max = 254;
     this._scale = 1;
     this._offset = 0;
+    this._addPlusSign = false;
     this._units = '';
     this._currentInt = 0;
     this._onSubmit = null;
@@ -69,7 +72,7 @@ class PfodNumericInputDisplay {
     }
 
     let current = 0, max = 254, min = 0;
-    let units = '', scale = 1, offset = 0;
+    let units = '', scale = 1, offset = 0, addPlusSign = false;
     let unitsTail = '';
 
     // Each backtick segment is a numeric field; the final one may have ~units~scale~offset appended.
@@ -98,7 +101,12 @@ class PfodNumericInputDisplay {
     if (unitsTail) {
       const tailParts = unitsTail.split('~');
       units = tailParts[0] || '';
-      if (tailParts.length > 1) { const s = parseFloat(tailParts[1]); if (!isNaN(s)) scale = s; }
+      if (tailParts.length > 1) {
+        // A leading '+' on the scale asks for a '+' on positive values, as in
+        // pfodApp (MenuItem.cleanUpScale).
+        addPlusSign = tailParts[1].trim().startsWith('+');
+        const s = parseFloat(tailParts[1]); if (!isNaN(s)) scale = s;
+      }
       if (tailParts.length > 2) { const o = parseFloat(tailParts[2]); if (!isNaN(o)) offset = o; }
     }
 
@@ -107,7 +115,7 @@ class PfodNumericInputDisplay {
     // Clamp current to [min, max]
     current = Math.max(min, Math.min(max, current));
 
-    return { cmd, prompt, current, max, min, units, scale, offset };
+    return { cmd, prompt, current, max, min, units, scale, offset, addPlusSign };
   }
 
   // Show the numeric input screen.
@@ -119,11 +127,10 @@ class PfodNumericInputDisplay {
     this._max = inputData.max;
     this._scale = inputData.scale;
     this._offset = inputData.offset;
+    this._addPlusSign = inputData.addPlusSign;
     this._units = substituteUnsupportedUnitsGlyphs(inputData.units || '');
     this._currentInt = inputData.current;
     this._onSubmit = onSubmit;
-    // dp: just enough so one raw count produces a visible change (scale = display change per count)
-    this._decimals = calcDisplayDecimalPlaces(1, this._scale);
 
     const slider = document.getElementById('numeric-input-slider');
     const promptEl = document.getElementById('numeric-input-prompt');
@@ -155,9 +162,9 @@ class PfodNumericInputDisplay {
     promptEl.style.color = contrastHex;
 
     // Show transient popup with the valid display-value range
-    const minDisplay = (this._min * this._scale + this._offset).toFixed(this._decimals);
-    const maxDisplay = (this._max * this._scale + this._offset).toFixed(this._decimals);
-    popupText.textContent = 'Number between ' + minDisplay + ' and ' + maxDisplay;
+    // Same order as pfodApp: min's value first, then max's (with a negative
+    // scale min's value is the larger).
+    popupText.textContent = 'Number between ' + this._formatDisplay(this._min) + ' and ' + this._formatDisplay(this._max);
     popup.style.display = 'flex';
     if (this._popupTimer) clearTimeout(this._popupTimer);
     this._popupTimer = setTimeout(() => {
@@ -209,10 +216,13 @@ class PfodNumericInputDisplay {
     return document.body.className === 'numeric-input-mode';
   }
 
-  // Format display value: (intVal * scale) + offset, to the calculated decimal places.
+  // Format display value: (intVal + offset) * scale, as pfodApp does.  The
+  // offset is in raw COUNTS: it removes an ADC's offset (e.g. 0V reading 5
+  // counts is sent as offset -5), so (count + offset) is the corrected count.
+  // See pfodFormatScaledValue (displayTextUtils.js), a port of pfodApp's
+  // MenuItem.getScaledValue/scaleToValue.
   _formatDisplay(intVal) {
-    const d = intVal * this._scale + this._offset;
-    return d.toFixed(this._decimals);
+    return pfodFormatScaledValue(intVal, this._scale, this._offset, this._addPlusSign);
   }
 
   // Update the visible value text span with current integer value.
@@ -251,7 +261,9 @@ class PfodNumericInputDisplay {
     const valueText = document.getElementById('numeric-input-value-text');
     const displayVal = parseFloat(field.value);
     if (!isNaN(displayVal)) {
-      let intVal = Math.round((displayVal - this._offset) / this._scale);
+      // Inverse of (intVal + offset) * scale, rounded as pfodApp does
+      // (XSliderViewActivity: floor(display / scale - offset + 0.5)).
+      let intVal = Math.floor((displayVal / this._scale) - this._offset + 0.5);
       intVal = Math.max(this._min, Math.min(this._max, intVal));
       this._currentInt = intVal;
       const slider = document.getElementById('numeric-input-slider');
