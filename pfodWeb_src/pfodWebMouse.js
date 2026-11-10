@@ -261,7 +261,7 @@ window.pfodWebMouse = {
     }
     console.log(`DOWN in touchZone: enlarge by ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
     colPixelsHalf9mm = colPixelsHalf9mm / scale.scaleX;
-    rowPixelsHalf9mm = rowPixelsHalf9mm / scale.scaleX;
+    rowPixelsHalf9mm = rowPixelsHalf9mm / scale.scaleY;
     console.log(`DOWN in touchZone: canvas ${scale.rect.width} x ${scale.rect.height}`);
     console.log(`DOWN in touchZone: enlarge by dwg coords ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
 
@@ -426,7 +426,7 @@ window.pfodWebMouse = {
     }
     console.log(`DRAG in touchZone enlarge by ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
     colPixelsHalf9mm = colPixelsHalf9mm / scale.scaleX;
-    rowPixelsHalf9mm = rowPixelsHalf9mm / scale.scaleX;
+    rowPixelsHalf9mm = rowPixelsHalf9mm / scale.scaleY;
     console.log(`DRAG in touchZone canvas ${scale.rect.width} x ${scale.rect.height}`);
     console.log(`DRAG in touchZone enlarge by dwg coords ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
 
@@ -620,7 +620,7 @@ window.pfodWebMouse = {
     }
     console.log(`CLICK in touchZone: enlarge by ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
     colPixelsHalf9mm = colPixelsHalf9mm / scale.scaleX;
-    rowPixelsHalf9mm = rowPixelsHalf9mm / scale.scaleX;
+    rowPixelsHalf9mm = rowPixelsHalf9mm / scale.scaleY;
     console.log(`CLICK in touchZone: canvas ${scale.rect.width} x ${scale.rect.height}`);
     console.log(`CLICK in touchZone: enlarge by dwg coords ${colPixelsHalf9mm} x ${rowPixelsHalf9mm}`);
 

@@ -1633,27 +1633,40 @@ class Redraw {
             let scaledY = translatedY * this.canvas.scaleY;
             let scaledWidth = width * this.canvas.scaleX;
             let scaledHeight = height * this.canvas.scaleY;
-            // add extra  colPixelsHalf9mm,  rowPixelsHalf9mm
-            let extra_scaledX = scaledX -colPixelsHalf9mm;
-            let extra_scaledY = scaledY - rowPixelsHalf9mm;
-            let extra_scaledWidth = scaledWidth + 2 * colPixelsHalf9mm;
-            let extra_scaledHeight = scaledHeight + 2 * rowPixelsHalf9mm;
             console.log(`[DRAWING_TOUCHZONE] TouchZone after canvas scaling: x=${scaledX}, y=${scaledY}, width=${scaledWidth}, height=${scaledHeight}`);
-            
+
+            // The outline is the touchZone as sent, unless the page URL has
+            // ?enlargedTouchZones (window.PFOD_ENLARGED_TOUCHZONES, set in
+            // pfodCommon.html).  Then it is the area that actually responds
+            // to a touch: the zone enlarged by colPixelsHalf9mm /
+            // rowPixelsHalf9mm on every side, clipped to the canvas — as
+            // pfodApp shows active regions (V2_ImageActiveAreaUpdate.addToImage)
+            // and as pfodWebMouse hit-tests.  The half-9mm values are CSS
+            // pixels of the on-screen canvas (rect), so they are converted to
+            // canvas pixels here.
+            let outlineLeft = scaledX;
+            let outlineTop = scaledY;
+            let outlineRight = scaledX + scaledWidth;
+            let outlineBottom = scaledY + scaledHeight;
+            if (window.PFOD_ENLARGED_TOUCHZONES) {
+                const cssToCanvasX = rect.width > 0 ? this.canvas.width / rect.width : 1;
+                const cssToCanvasY = rect.height > 0 ? this.canvas.height / rect.height : 1;
+                const extraX = colPixelsHalf9mm * cssToCanvasX;
+                const extraY = rowPixelsHalf9mm * cssToCanvasY;
+                outlineLeft   = Math.max(0, outlineLeft - extraX);
+                outlineTop    = Math.max(0, outlineTop - extraY);
+                outlineRight  = Math.min(this.canvas.width, outlineRight + extraX);
+                outlineBottom = Math.min(this.canvas.height, outlineBottom + extraY);
+            }
+
             // Round to whole pixels for sharp edges
-            const roundedX = Math.round(scaledX);
-            const roundedY = Math.round(scaledY);
+            const roundedX = Math.round(outlineLeft);
+            const roundedY = Math.round(outlineTop);
             const minPixelSize = 2; // Minimum size to ensure visibility
-            const roundedWidth = Math.max(Math.round(scaledWidth), minPixelSize);
-            const roundedHeight = Math.max(Math.round(scaledHeight), minPixelSize);
-            
-            // Round to whole pixels for sharp edges
-            const extra_roundedX = Math.round(extra_scaledX);
-            const extra_roundedY = Math.round(extra_scaledY);
-            const extra_roundedWidth = Math.max(Math.round(extra_scaledWidth), minPixelSize);
-            const extra_roundedHeight = Math.max(Math.round(extra_scaledHeight), minPixelSize);
-            
-            console.log(`[DRAWING_TOUCHZONE] TouchZone after rounding: x=${roundedX}, y=${roundedY}, width=${roundedWidth}, height=${roundedHeight}`);
+            const roundedWidth = Math.max(Math.round(outlineRight - outlineLeft), minPixelSize);
+            const roundedHeight = Math.max(Math.round(outlineBottom - outlineTop), minPixelSize);
+
+            console.log(`[DRAWING_TOUCHZONE] TouchZone outline (${window.PFOD_ENLARGED_TOUCHZONES ? 'enlarged' : 'as sent'}) after rounding: x=${roundedX}, y=${roundedY}, width=${roundedWidth}, height=${roundedHeight}`);
             
             // Store original styles
             const originalStroke = this.ctx.strokeStyle;
@@ -1675,8 +1688,7 @@ class Redraw {
             this.ctx.beginPath();
             const doubleLinePixels = -2; // draw line inside
             this.ctx.strokeRect(roundedX-doubleLinePixels, roundedY-doubleLinePixels, roundedWidth+2*doubleLinePixels, roundedHeight+2*doubleLinePixels);
-          //  this.ctx.strokeRect(extra_roundedX, extra_roundedY, extra_roundedWidth, extra_roundedHeight);
-            
+
             this.ctx.setLineDash([]); // Reset to solid line
 //            this.ctx.beginPath();
 //            this.ctx.strokeRect(roundedX, roundedY, roundedWidth, roundedHeight);

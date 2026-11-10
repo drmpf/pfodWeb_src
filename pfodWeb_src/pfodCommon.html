@@ -1608,6 +1608,18 @@
         // updateURLFromForm() rebuilds the URL, and re-adds this from here.
         window.PFOD_REPLAY_ENABLED = new URLSearchParams(window.location.search).has('replay');
 
+        // true when this page was loaded with ?enlargedTouchZones in its URL
+        // (any value, or none).  The arg is converted to lower case and may be
+        // enlarge or enlarged, touchzone or touchzones: enlargedtouchzones,
+        // enlargetouchzones, enlargedtouchzone or enlargetouchzone.  With
+        // debug on, touchZones are then outlined at the size that responds to
+        // a touch — enlarged by half 9mm on every side, as pfodApp shows
+        // active regions — instead of as sent (see redraw.js touchZone
+        // drawing).  Read once and re-added by updateURLFromForm() as
+        // enlargedTouchZones, like PFOD_REPLAY_ENABLED.
+        window.PFOD_ENLARGED_TOUCHZONES = [...new URLSearchParams(window.location.search).keys()]
+            .some(key => /^enlarged?touchzones?$/.test(key.toLowerCase()));
+
         // extraFonts/pfodweb-extra-fonts.css's <link> (see pfodWeb.html's
         // <head>) loads fine over file:// -- only the @font-face src url()
         // fetches inside it are blocked, since font resources are always
@@ -2003,6 +2015,8 @@
             // itself stays set, so switching back to another protocol on this
             // page load restores both the arg and the button.
             if (window.PFOD_REPLAY_ENABLED && protocol !== 'designer') params.set('replay', '');
+            // Same for ?enlargedTouchZones (debug touchZone outlines).
+            if (window.PFOD_ENLARGED_TOUCHZONES) params.set('enlargedTouchZones', '');
             if (protocol === 'http') {
                 const ip = document.getElementById('prompt-ip').value.trim();
                 if (ip) params.set('targetIP', ip);
