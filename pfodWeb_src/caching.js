@@ -210,6 +210,18 @@ function cacheResponse(data, request, connectionManager) {
     const version = extractVersionFromResponse(msgType);
     if (!version) {
       if (responseType === 'menuUpdate' || responseType === 'dwgUpdate') {
+        // Only a drawing load's {+|..} reply confirms the request's version.
+        // Any other request's {+|..} reply (touch/drag/partialSlider) keeps
+        // the updated drawing's own version, as in pfodApp, where an update
+        // never changes a drawing's version.  A touchZone touch carries the
+        // version of the drawing owning the zone (pfodWebMouse.addDwgVersion),
+        // which is the drawing its reply updates, so nothing is lost; any
+        // other version on such a request (e.g. a menu cmd's cached menu
+        // version) is not the drawing's and must not be stamped on it.
+        if (responseType === 'dwgUpdate' && !DwgLoadRequestTypes.has(request.requestType)) {
+          console.log(`[CACHE] dwgUpdate for ${request.requestType} "${request.cmd}" — drawing keeps its own version`);
+          return;
+        }
         const requestVersion = getVersionFromRequest(request);
         if (requestVersion) {
           console.log(`[CACHE] ${responseType} matched request version "${requestVersion}" — existing cache entry is still valid, no re-cache needed`);

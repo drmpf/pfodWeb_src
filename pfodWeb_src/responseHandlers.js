@@ -237,9 +237,9 @@ Object.assign(DrawingViewer.prototype, {
   // touched zone, carried on the request as touchZoneInfo.sourceDwgName by
   // handleTouchZoneActivation.  The response's dwg update is applied to this
   // drawing's per-drawing-raw collections and re-merged, so the new state
-  // survives later re-merges.  Returns null for requests with no zone behind
-  // them (touchActionInput submits, menu item presses) — those keep the
-  // legacy direct-to-merged write.
+  // survives later re-merges.  touchActionInput submits carry it too.
+  // Returns null for requests with no zone behind them (menu item presses) —
+  // those keep the legacy direct-to-merged write.
   _touchSourceDwg(request) {
     return (request && request.touchZoneInfo && request.touchZoneInfo.sourceDwgName) || null;
   },
@@ -340,6 +340,64 @@ Object.assign(DrawingViewer.prototype, {
       }
     }
     return { data, request };
+  },
+
+  /**
+   * Apply pfodApp's rules for a drawing reply to a touch on a touchZone (touch,
+   * drag, up, ... — any request carrying touchZoneInfo.sourceDwgName), before
+   * anything else uses the reply.  Both follow
+   * pfodAppConnectionService.v2_ImageLoad for isImageDrawingCmd() cmds:
+   *   - While a load or refresh of the zone's drawing is waiting for its own
+   *     reply (queued, or its ~m parts still arriving), pfodApp has that
+   *     drawing's ImageDataWriter open, logs "Ignoring response to cmd ..."
+   *     and handles the reply as empty (handleEmptyOrErrorMsg).  The load's
+   *     reply then shows the drawing's state.  Here the reply becomes {}.
+   *     The reason: the user touched a drawing that is in the process of
+   *     being changed, so the touch's reply is for a drawing that is about to
+   *     be replaced.  Only the zone's own drawing counts; a touch on any other
+   *     drawing, or on this one once its load has finished, is applied.
+   *   - Otherwise a full drawing {+<cols>`<rows>..}, or an update with ~m, is
+   *     an error, because a touch can only be answered by a single update.
+   *     pfodApp logs the error and applies the reply as an update
+   *     (convertUpdateToError), so the drawing keeps its size, colour and
+   *     version, and the ~m is ignored.  Here the header becomes {+, so the
+   *     items are applied as an update.
+   * Other replies (menus, raw data, {}) and other requests are left alone.
+   *
+   * The reply is read with translateDwgResponse, as _collectMoreData does,
+   * not classifyResponseShape: pfodToJson splits the reply at '|', so an
+   * update's first element is "{+" or "{+~m", which that reports as a start.
+   *
+   * @param {Object} data - the parsed reply, {cmd: [...]}; changed in place
+   * @param {Object} request - the request it answers
+   */
+  _applyDwgTouchReplyRules(data, request) {
+    const zoneDwg = this._touchSourceDwg(request);
+    if (!zoneDwg) return;
+    const shape = classifyResponseShape(data);
+    if (shape !== 'dwg-start' && shape !== 'dwg-update') return;
+    const parsed = window.translateDwgResponse([data.cmd[0]]);
+
+    const loadWaiting = this.moreDataCollections.has(zoneDwg)
+      || this.requestQueue.some(r =>
+        (DwgLoadRequestTypes.has(r.requestType) || r.requestType === 'moreData')
+        && this._extractCmdToken(r.cmd) === zoneDwg);
+    // Log texts as pfodApp writes them to its debug log, with the cmd without
+    // its braces as QueuedCommand.getMsg() gives it, e.g. X01:HFP~AS3`37`3`0
+    // (pfodAppConnectionService.v2_ImageLoad, V2_ImageDataMsg.convertUpdateToError).
+    const msg = request.cmd.slice(1, -1);
+    if (loadWaiting) {
+      console.log(`Ignoring response to cmd --  ${msg}    waiting to display the following Image load/refresh response.`);
+      data.cmd = ['{', '}'];
+      return;
+    }
+    if (parsed.pfodDrawing === 'start') {
+      console.error(`ERROR: Expected Dwg Update '{+|..' response\nfor cmd:${msg}  Last cmd --  ${msg}`);
+      data.cmd[0] = '{+';
+    } else if (parsed.pfodDrawing === 'update' && parsed.more) {
+      console.error(`ERROR: Dwg Update cannot have ~m  Last cmd --  ${msg}`);
+      data.cmd[0] = '{+';
+    }
   },
 
   /**
@@ -600,15 +658,16 @@ Object.assign(DrawingViewer.prototype, {
             }
           }
         }
-        // Re-request drawing items so drawings stay in sync with the {;} update.
-        // Fires for every in-place menu update (menuRefresh, refresh, touch sub-cmd
-        // returning {;}) — matching the back-arrow path in _navigateToMenu, which
-        // queues drawing fetches unconditionally.  Driven only by whether the
-        // current menu has drawings, not by reqType.
+        // Re-request the drawing items pfodApp would load after this {;}
+        // update (_dwgItemsToLoad): all non-hidden ones when the cmd had a
+        // cached menu (e.g. a menu refresh {X01:HFS}), otherwise only those the
+        // update names.  A drawing not re-requested keeps its own refresh
+        // timer.  Fires for every in-place menu update.  menuData is the
+        // update itself; _currentMenu's items hold the merged hidden flag.
         if (window.pfodMenuDisplay._currentMenu && window.pfodMenuDisplay._currentMenu.hasDrawing) {
           const connectionId = (typeof getConnectionIdentifier === 'function')
             ? getConnectionIdentifier(this.connectionManager) : null;
-          for (const dwgItem of window.pfodMenuDisplay._currentMenu.drawingItems) {
+          for (const dwgItem of this._dwgItemsToLoad(window.pfodMenuDisplay._currentMenu.drawingItems, menuData, request)) {
             const drawingName = dwgItem.loadCmd;
             this.currentIdentifier = dwgItem.cmd;
             // Hydrate per-drawing state from cache (if any) before building
@@ -704,6 +763,40 @@ Object.assign(DrawingViewer.prototype, {
     return true;
   },
 
+  /**
+   * Decide which drawing items of a menu are loaded after a menu response, as
+   * pfodApp's V2_NewMenuViewActivity.checkForImagesToLoad does: it loads every
+   * non-hidden drawing item whose updateImage flag is set.  The flag is set by
+   * pfodParser.V2_add_V2_MenuItem on
+   *   - every item of a full menu {,..} as it is parsed, and
+   *   - only the items a {;..} update names (matched by cmd, findByCmd).
+   * Before sending a cmd that has a cached menu, pfodApp re-parses that cached
+   * full menu into its parser (pfodAppState.sendMessageAndWait ->
+   * CachedMenuParser.parseMsg), so every item is flagged and a {;} reply to it
+   * loads every drawing item.  A {;} reply to any other cmd (an input screen's
+   * submit, a slider, a touch) is applied to the menu already shown, so only
+   * the drawing items it names are loaded.  Hidden items are never loaded.
+   * Here a cmd had a cached menu when it was sent with a menu version: a plain
+   * menu cmd {<version>:<menuCmd>}, versioned only from the menu cache
+   * (versionedMenuCmd / the menu button handler).
+   *
+   * @param {Object[]} drawingItems - the shown menu's drawing items, with
+   *        their merged formats (hidden is non-sticky, set by each update)
+   * @param {?Object} update - the parsed {;} update, or null for a full menu
+   * @param {?Object} request - the request the menu response answers
+   * @returns {Object[]} the drawing items to load
+   */
+  _dwgItemsToLoad(drawingItems, update, request) {
+    const visible = drawingItems.filter(item => !item.formats.hidden);
+    if (!update) return visible;
+    const cmd = request ? request.cmd : '';
+    const sentWithCachedMenu = getVersionFromRequest(request) !== null
+      && pfodStripMenuCmdVersion(cmd) === '{' + this._extractCmdToken(cmd) + '}';
+    if (sentWithCachedMenu) return visible;
+    const updatedCmds = new Set(update.items.map(item => item.cmd));
+    return visible.filter(item => updatedCmds.has(item.cmd));
+  },
+
   // Show a menu (or navigate to one from cache), optionally applying a pending {;} update after show.
   // Handles nav stack push, mode transition out of menu-mode, canvas registration, and drawing requests.
   _navigateToMenu(menuData, pendingUpdate, reqCmd, reqType, request, self) {
@@ -756,6 +849,10 @@ Object.assign(DrawingViewer.prototype, {
         for (const dwgItem of menuData.drawingItems) {
           const drawingName = dwgItem && dwgItem.loadCmd;
           if (!drawingName) continue;
+          // Hidden drawings are not shown or loaded (see the loop below), so
+          // they are not restored from cache either: that would register them
+          // in dm.drawings, and the refresh timer would then load them.
+          if (dwgItem.formats.hidden) continue;
           if (!this.redraw.redrawDrawingManager.drawingsData[drawingName]?.data) {
             this.redraw.redrawDrawingManager.loadDrawingDataFromStorage(drawingName, preloadConnId);
           }
@@ -829,7 +926,13 @@ Object.assign(DrawingViewer.prototype, {
     if (menuData.hasDrawing) {
       const connectionId = (typeof getConnectionIdentifier === 'function')
         ? getConnectionIdentifier(this.connectionManager) : null;
-      for (const dwgItem of menuData.drawingItems) {
+      // The drawing items pfodApp would load (_dwgItemsToLoad): every
+      // non-hidden one for a full menu or a {;} reply to a cmd with a cached
+      // menu (forward to a cached submenu, back); only the named ones for a
+      // {;} reply to any other cmd (an input screen's submit, path (d)).
+      // Hidden items are not shown (pfodMenuDisplay.show) and not loaded; an
+      // update that shows one again names it, and it is loaded then.
+      for (const dwgItem of this._dwgItemsToLoad(menuData.drawingItems, pendingUpdate, request)) {
         if (!dwgItem.loadCmd) {
           throw new Error(`[QUEUE] Menu drawing item has no loadCmd — cannot determine drawing to fetch. dwgItem=${JSON.stringify(dwgItem)}`);
         }

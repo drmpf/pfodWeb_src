@@ -428,6 +428,17 @@ Object.assign(DrawingViewer.prototype, {
       return;
     }
 
+    // Replay finished: the last screen stays clickable.  What would be sent is
+    // logged to the Raw Message viewer, but not queued or sent, and no reply
+    // is expected (ReplayAdapter.logUnsentCmd).  {!} still goes through the
+    // queue so closing the connection works as before.
+    if (this.connectionManager.protocol === 'replay'
+        && this.connectionManager.adapter.finished
+        && requestType !== 'exitAbort') {
+      this.connectionManager.adapter.logUnsentCmd(cmd);
+      return;
+    }
+
     // {!} wipes the queue and blocks further additions
     if (requestType === 'exitAbort') {
       console.log(`[QUEUE_MUTATION] exitAbort - clearing entire queue (was length=${this.requestQueue.length}):`, JSON.stringify(this.requestQueue.map(r => `${r.cmd}(${r.requestType})`)));
@@ -522,7 +533,10 @@ Object.assign(DrawingViewer.prototype, {
    *     initial {.} or a drawing a menu asked for, that request takes its place
    *     and keeps its type, provided that type accepts the recorded reply.
    *   - Otherwise a plain {+..} drawing fetch is a 'refresh'; anything else is
-   *     a 'touch', the type a menu press uses, which accepts any reply.
+   *     a 'touch', the type a menu press uses, which accepts any reply.  A
+   *     touch on a drawing also gets the touchZoneInfo a real touch carries,
+   *     rebuilt from the cmd (_replayTouchZoneInfo), so its reply is routed
+   *     and checked (_applyDwgTouchReplyRules) the same way.
    *
    * @param {string} recordedCmd - the cmd without its dedup prefix, e.g. "{c7}"
    * @param {string|null} recordedReply - its recorded {..} reply, if any
@@ -550,6 +564,10 @@ Object.assign(DrawingViewer.prototype, {
     } else if (recordedReply !== null && recordedReply.startsWith('{+')
             && strippedCmd === '{' + this._extractCmdToken(recordedCmd) + '}') {
       requestType = 'refresh';
+    } else {
+      // A recorded touch on a drawing carries the same touchZoneInfo a real
+      // touch does, so its reply is handled the same way.
+      touchZoneInfo = this._replayTouchZoneInfo(recordedCmd);
     }
 
     console.log(`[REPLAY] Sending recorded "${recordedCmd}" as ${requestType}`);
@@ -563,6 +581,40 @@ Object.assign(DrawingViewer.prototype, {
       _replayRecorded: true
     });
     this.processRequestQueue();
+  },
+
+  /**
+   * Rebuild, for a recorded drawing touch in a replay, the touchZoneInfo that
+   * handleTouchZoneActivation (pfodWebMouse.js) gives a real touch:
+   *   {cmd: <touchZone cmd>, filter: <touch type>, sourceDwgName: <drawing
+   *   that owns the zone>}
+   * A real touch gets it from the mouse hit-test; a replay has only the cmd
+   * text, so it is worked out from that and the drawing on screen:
+   *   {[<version>:]<menuItemCmd>~<zoneCmd>`<col>`<row>`<touchType>[~<text>]}
+   *   - menuItemCmd -> the menu item's drawing (_resolveLoadCmdFromRequest)
+   *   - zoneCmd     -> that drawing's merged touchZone (allTouchZonesByCmd),
+   *                    whose parentDrawingName is the drawing owning the zone,
+   *                    the menu drawing or an inserted one
+   *   - touchType   -> filter, as a real touch sets it
+   * A <version>: is only taken before the first ~ ` or }, as _extractCmdToken
+   * does, so a ':' in touchActionInput text is not mistaken for one.
+   *
+   * @param {string} recordedCmd - the recorded cmd without its dedup prefix
+   * @returns {?Object} the touchZoneInfo, or null when the cmd is not a
+   *          drawing touch, or no zone on screen has that cmd (logged), as for
+   *          a real press that hit no touchZone
+   */
+  _replayTouchZoneInfo(recordedCmd) {
+    const m = recordedCmd.match(/^\{(?:[^:~`}]*:)?[^~`}:]+~([^`~}]+)`-?\d+`-?\d+`(\d+)(?:~[^}]*)?\}$/);
+    if (!m) return null;
+    const loadCmd = this._resolveLoadCmdFromRequest({ cmd: recordedCmd });
+    if (!loadCmd) return null;
+    const zone = this.redraw.redrawDrawingManager.allTouchZonesByCmd[loadCmd]?.[m[1]];
+    if (!zone) {
+      console.warn(`[REPLAY] "${recordedCmd}": no touchZone "${m[1]}" in drawing "${loadCmd}" on screen - sent without touchZoneInfo`);
+      return null;
+    }
+    return { cmd: m[1], filter: parseInt(m[2], 10), sourceDwgName: zone.parentDrawingName };
   },
 
   // Return true if cmd is the pfod empty-response '{}'.

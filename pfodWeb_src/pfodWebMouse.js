@@ -232,6 +232,13 @@ window.pfodWebMouse = {
       const release = (why) => () => {
         const held = window.pfodWebMouse._holdViewer || drawingViewer;
         held.touchState.isDown = false;
+        // End pfodApp's fingerDown, and run any refresh cycle it skipped
+        // (pfodApp reschedules a refresh it skipped for fingerDown).
+        held.touchState.fingerDownOnDwg = false;
+        if (held.touchState.refreshSkippedForTouch) {
+          held.touchState.refreshSkippedForTouch = false;
+          drawingViewer.scheduleNextUpdate();
+        }
         window.pfodWebMouse._endTouchHold(held, why);
       };
       document.addEventListener('mouseup', release('document mouseup'));
@@ -305,6 +312,10 @@ window.pfodWebMouse = {
     const dwgDown = this._menuDrawingName;
     const hasAnyTouchZones =
       Object.keys(dmDown.allTouchZonesByCmd[dwgDown] || {}).length > 0;
+    // pfodApp sets fingerDown on ACTION_DOWN anywhere on a drawing that has
+    // touchZones (V2_ImageRowHolder: haveActiveRegions), and not at all on
+    // one without.  Cleared by the document-level release listener.
+    this.touchState.fingerDownOnDwg = hasAnyTouchZones;
     if (!foundTouchZone && !hasAnyTouchZones) {
       const itemCmd = this.currentIdentifier;
       if (itemCmd && window.pfodMenuDisplay) {
@@ -535,11 +546,14 @@ window.pfodWebMouse = {
         console.log(`Mouse UP in touchZone: cmd=${this.touchState.targetTouchZone.cmd}`);
         window.pfodWebMouse.handleTouchZoneActivation.call(this, this.touchState.targetTouchZone, TouchZoneFilters.UP, x, y);
       }
-
       // Handle DOWN_DRAG_UP filter - only sends on finger up - Works
-      if (this.touchState.targetTouchZone.filter & TouchZoneFilters.DOWN_DRAG_UP) {
+      // Sent as an UP touch (`4), as pfodApp does: V2_ImageRowHolder sends
+      // the release of a DOWN_UP zone with DWG_UP_FLAG, not DWG_DOWN_UP_FLAG.
+      // else-if: a zone with both UP and DOWN_UP sends the release once, as
+      // pfodApp's sendDwgMsgPrivate does.
+      else if (this.touchState.targetTouchZone.filter & TouchZoneFilters.DOWN_DRAG_UP) {
         console.log(`DOWN_UP in touchZone: cmd=${this.touchState.targetTouchZone.cmd}`);
-        window.pfodWebMouse.handleTouchZoneActivation.call(this, this.touchState.targetTouchZone, TouchZoneFilters.DOWN_DRAG_UP, x, y);
+        window.pfodWebMouse.handleTouchZoneActivation.call(this, this.touchState.targetTouchZone, TouchZoneFilters.UP, x, y);
       }
     }
 
@@ -917,6 +931,30 @@ window.pfodWebMouse = {
     };
   },
 
+  /**
+   * Prefix a drawing touch cmd with the version of the drawing that owns the
+   * touched zone, e.g. {HFP~AS3`37`3`0} -> {X01:HFP~AS3`37`3`0}.  For a zone
+   * in an inserted drawing that is the inserted drawing's version, not the
+   * menu drawing's.  pfodApp does the same: the touch is queued with
+   * touched.getLoadCmd() (V2_ImageRowHolder.sendMsgAfterDialog), the drawing
+   * the zone was loaded from, and pfodAppState.sendMessageAndWait adds
+   * getCurrentImageVersion(imageLoadCmd).
+   * The version comes from the drawing's in-memory data or its per-connection
+   * cache (DrawingManager.getStoredVersion), the same lookup drawing loads use.
+   * Called with `this` = the DrawingViewer.
+   * @param {string} drawingName - load cmd of the drawing owning the touchZone
+   *        (touchZone.parentDrawingName), e.g. "p" or an inserted drawing's
+   * @param {string} cmd - the touch cmd, starting with '{'
+   * @returns {string} cmd with "<version>:" after the '{', or cmd unchanged
+   *          when the drawing has no version
+   */
+  addDwgVersion: function(drawingName, cmd) {
+    const connectionId = getConnectionIdentifier(this.connectionManager);
+    const version = this.redraw.redrawDrawingManager.getStoredVersion(drawingName, connectionId);
+    console.log(`[TOUCH_VERSION] drawingName: ${drawingName}, version: "${version}"`);
+    return version ? '{' + version + ':' + cmd.substring(1) : cmd;
+  },
+
   // Handle touchZone activation by queueing a request (instance method)
   handleTouchZoneActivation: function(touchZone, touchType, x, y, sendMsg = true) {
     if (!touchZone.cmd) throw new Error('[pfodWebMouse] handleTouchZoneActivation: touchZone.cmd is missing or empty');
@@ -983,7 +1021,7 @@ window.pfodWebMouse = {
       : undefined;
     if (touchActionInput) {
       console.log(`[TOUCH_ACTION_INPUT] Found touchActionInput for cmd=${touchZone.cmd}`);
-      window.pfodWebMouse.executeTouchActionInput.call(this, drawingName, touchZone.cmd, touchActionInput, col, row, touchType);
+      window.pfodWebMouse.executeTouchActionInput.call(this, drawingName, touchZone.cmd, touchActionInput, col, row, touchType, touchZone.parentDrawingName);
       return; // touchActionInput handles its own execution flow
     }
 
@@ -996,13 +1034,8 @@ window.pfodWebMouse = {
       const identifier = this.currentIdentifier;
       let touchZoneCmd = `{${identifier}~${touchZone.cmd}\`${col}\`${row}\`${touchType}}`;
 
-      // Add version to command if available
-      const savedVersion = localStorage.getItem(`${drawingName}_version`);
-      console.log(`[TOUCH_ACTION_QUEUE] drawingName: ${drawingName}, savedVersion: "${savedVersion}"`);
-      if (savedVersion !== null) {
-        touchZoneCmd = '{' + savedVersion + ':' + touchZoneCmd.substring(1);
-        console.log(`[TOUCH_ACTION_QUEUE] Added version to command: ${touchZoneCmd}`);
-      }
+      // Add the version of the drawing that owns the touchZone, as pfodApp does
+      touchZoneCmd = window.pfodWebMouse.addDwgVersion.call(this, touchZone.parentDrawingName, touchZoneCmd);
 
       console.log(`[TOUCH_ACTION_QUEUE] command: ${touchZoneCmd}`);
 
@@ -1185,7 +1218,9 @@ window.pfodWebMouse = {
   },
 
   // Execute touchActionInput - opens text dialog and handles response
-  executeTouchActionInput: function(drawingName, cmd, touchActionInput, col, row, touchType) {
+  // zoneDrawingName is the drawing that owns the touchZone (its
+  // parentDrawingName), whose version the cmd is sent with, as pfodApp does.
+  executeTouchActionInput: function(drawingName, cmd, touchActionInput, col, row, touchType, zoneDrawingName) {
     console.log(`[TOUCH_ACTION_INPUT] Executing touchActionInput: cmd=${cmd}, prompt="${touchActionInput.prompt}", textIdx=${touchActionInput.textIdx}`);
 
     // Get initial text from textIdx if specified
@@ -1247,13 +1282,8 @@ window.pfodWebMouse = {
         const identifier = this.currentIdentifier;
         let touchZoneCmd = `{${identifier}~${cmd}\`${col}\`${row}\`${touchType}~${text}}`;
 
-        // Add version to command if available
-        const savedVersion = localStorage.getItem(`${drawingName}_version`);
-        console.log(`[TOUCH_ACTION_INPUT] drawingName: ${drawingName}, savedVersion: ${savedVersion}`);
-        if (savedVersion !== null) {
-          touchZoneCmd = '{' + savedVersion + ':' + touchZoneCmd.substring(1);
-          console.log(`[TOUCH_ACTION_INPUT] Added version to command: ${touchZoneCmd}`);
-        }
+        // Add the version of the drawing that owns the touchZone, as pfodApp does
+        touchZoneCmd = window.pfodWebMouse.addDwgVersion.call(this, zoneDrawingName, touchZoneCmd);
 
         console.log(`[TOUCH_ACTION_INPUT] command: ${touchZoneCmd}`);
         console.log(`[TOUCH_ACTION_INPUT] Sending request with edited text: ${touchZoneCmd}`);
@@ -1268,9 +1298,13 @@ window.pfodWebMouse = {
           credentials: 'same-origin',
           cache: 'no-cache'
         };
+        // sourceDwgName routes the reply to the drawing owning the touchZone,
+        // as for a plain touch (handleTouchZoneActivation) and as in pfodApp,
+        // which applies it to that drawing (touched.getLoadCmd()).
         this.addToRequestQueue(touchZoneCmd, options, {
           cmd: cmd,
-          filter: touchType
+          filter: touchType,
+          sourceDwgName: zoneDrawingName
         }, 'touch');
 
         // After the text input is confirmed, run any other touchActions for this cmd

@@ -100,6 +100,20 @@ Object.assign(DrawingViewer.prototype, {
   async fetchRefresh() {
     console.log(`[REFRESH] Refresh timer fired at ${new Date().toISOString()}`);
 
+    // While a finger is down on any drawing with touchZones, skip the whole
+    // refresh cycle — the menu refresh and every drawing's refresh, not only
+    // the touched drawing's — as pfodApp's sendRefresh and
+    // sendImageRefreshInternal (V2_NewMenuViewActivity) do when isFingerDown(),
+    // which checks every non-hidden drawing row.  Not rescheduled here, so the
+    // timer does not spin while the finger stays down; the release re-arms it
+    // (pfodWebMouse document release listener), as pfodApp reschedules.
+    // Loads asked for by a menu response are not skipped, as in pfodApp.
+    if (this.touchState.fingerDownOnDwg) {
+      console.log(`[REFRESH] Skipping refresh cycle - finger down on a drawing`);
+      this.touchState.refreshSkippedForTouch = true;
+      return;
+    }
+
     // Check if a touchActionInput dialog is currently open
     if (window.pfodWebMouse.touchActionInputOpen) {
       console.log(`[REFRESH] Blocking refresh cycle - touchActionInput dialog is open`);

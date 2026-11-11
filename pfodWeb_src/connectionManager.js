@@ -2807,6 +2807,7 @@ class ReplayAdapter extends PfodConnectionBase {
     this.timer = null;              // pending wait for the next entry
     this.awaitingSend = null;       // 'sent' entry handed to the queue, not yet sent
     this.checkedFirstMenu = false;  // true once _firstMenuError has seen the first {.}
+    this.finished = false;          // true once _finish() has run, see logUnsentCmd()
     // Shared parser state used by PfodConnectionBase.processReadBuffer()
     this.readBuffer = '';
     this.responseResolve = null;
@@ -3099,6 +3100,7 @@ class ReplayAdapter extends PfodConnectionBase {
    * @param {string} [note] - shown above the counts, e.g. why the replay ended
    */
   _finish(note) {
+    this.finished = true;
     this._rejectPending('Replay response timeout - no valid response recorded');
     console.log('[REPLAY] Finished');
     const moreDataError = this.viewer.replayMoreDataError(null, null);
@@ -3128,6 +3130,22 @@ class ReplayAdapter extends PfodConnectionBase {
       }
       this._scheduleNext();
     });
+  }
+
+  /**
+   * After the replay has finished, the last screen stays live so the user can
+   * click on it and see what would be sent.  Each cmd the client asks to send
+   * is logged here to the Raw Message viewer as 'sent' and nothing more: it is
+   * not queued, not sent, and no reply is expected.  Called from
+   * addToRequestQueue (navigationAndQueue.js) instead of queuing the request.
+   * No dedup prefix is added, as no dedup character is used up by a real send.
+   * @param {string} cmd - the cmd the client would have sent, e.g. "{AS2}"
+   */
+  logUnsentCmd(cmd) {
+    console.log(`[REPLAY] Finished - logged "${cmd}" as sent, not sent, no reply expected`);
+    if (ConnectionManager.messageCollector) {
+      ConnectionManager.messageCollector.addMessage('sent', cmd, this.protocol, cmd);
+    }
   }
 
   /** No connect phase — the recording is always available. */

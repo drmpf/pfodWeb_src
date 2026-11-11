@@ -3,7 +3,8 @@
 // Depends on: nothing
 // Called by:  pfodWeb.js (reads window.JS_VERSION on load and stores in this.js_ver,
 //             logs version after bundle load)
-  var JS_VERSION = "V4.1.16-- 10th Nov 2026";
+  var JS_VERSION = "V4.1.17-- 11th Nov 2026";
+// V4.1.17 fixed missing version no from touch cmds
 // V4.1.16 added url option enlargeTouchZones to show actual mouse active area
 // V4.1.15 fixed return from numeric input screen and parsing of <bg 006600> in dwgs, fixed Minimal C Code generator: charts/pulse outputs now compile (missing forward declarations, sendDataFlag visibility)
 // V4.1.14 added support for ~m for large dwgs, fixed parsing of formatting tags, added pfodParserCPP support, increaased msgs to 5000 lines

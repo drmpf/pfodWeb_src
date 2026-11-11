@@ -503,6 +503,11 @@ Object.assign(DrawingViewer.prototype, {
       data = collected.data;
       request = collected.request;
 
+      // pfodApp's rules for a drawing touch's reply: ignored while a load of
+      // the zone's drawing is waiting, and a full drawing applied as an update.
+      // Before caching, so such a reply is never cached as a drawing start.
+      this._applyDwgTouchReplyRules(data, request);
+
       // Cache response if it has a version.  PfodMenuCache scopes
       // entries by connectionId, so designer-vs-real-device entries
       // stay separate per design name automatically.

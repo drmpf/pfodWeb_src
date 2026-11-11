@@ -183,7 +183,9 @@ class DrawingDataProcessor {
         // menuDwg's merged idx/cmd space rather than a component drawing's
         // per-drawing-raw collections.  Only touch-style requests
         // (touch/drag/partialSlider) WITHOUT a source dwg take this path now
-        // (e.g. touchActionInput submits).  Source-routed touch responses
+        // (e.g. a press on a drawing with no touchZones, which is sent as a
+        // menu item press with no touchZoneInfo).  Source-routed
+        // touch responses, including touchActionInput submits
         // (data._sourceDwgRouted, set in handleDwgResponse) are applied to
         // the source dwg's per-drawing-raw collections like a refresh update
         // and re-merged, so the new state survives later re-merges.

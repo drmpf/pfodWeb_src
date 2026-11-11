@@ -360,6 +360,15 @@ class DrawingViewer {
       // drag out of the zone or off the canvas keeps holding while the
       // button is still down.  See shouldDeferRedraw() in requestQueue.js.
       holdingUpdates: false,
+      // pfodApp's fingerDown (V2_ImageRowHolder): true from a press anywhere
+      // on a drawing that has touchZones until the pointer is released (up or
+      // cancel), even if it is dragged off the drawing.  While it is true the
+      // refresh cycle is skipped (fetchRefresh), as pfodApp's sendRefresh /
+      // sendImageRefreshInternal skip when isFingerDown().
+      fingerDownOnDwg: false,
+      // Set when fetchRefresh skipped a refresh cycle for fingerDownOnDwg, so
+      // the release re-arms the refresh timer, as pfodApp reschedules it.
+      refreshSkippedForTouch: false,
       hasEnteredZones: new Set(),
       hasDragged: false,
       lastSentTouchType: null
