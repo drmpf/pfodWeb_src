@@ -1433,13 +1433,16 @@ class Redraw {
             // Calculate the starting point (top-left) and dimensions based on rectangle properties
             let startX, startY, width, height;
             
-            // If centered is true, negative values result in the same drawing as positive values
+            // Centered, as pfodApp draws it (V2_ImageBoxUpdate.addToImage): a
+            // negative size first reflects the rectangle about its offset
+            // (sortRect), then it is centred on that, so a negative size
+            // reflects the positive-size rectangle about its left/top edge.
+            // e.g. offset 50 size 20 -> 40..60, size -20 -> 20..40.
             if (centered) {
-                // For centered rectangles, the center point is at the transformed offset
-                startX = transformedXOffset - Math.abs(transformedXSize) / 2;
-                startY = transformedYOffset - Math.abs(transformedYSize) / 2;
                 width = Math.abs(transformedXSize);
                 height = Math.abs(transformedYSize);
+                startX = transformedXOffset + Math.min(transformedXSize, 0) - width / 2;
+                startY = transformedYOffset + Math.min(transformedYSize, 0) - height / 2;
                 console.log(`[DRAWING_RECTANGLE] Centered rectangle: Position set to (${startX},${startY}), size set to ${width}x${height}`);
             } else {
                 // For non-centered rectangles, handle negative sizes
@@ -1591,13 +1594,15 @@ class Redraw {
             // Calculate the starting point (top-left) and dimensions based on touchZone properties
             let startX, startY, width, height;
             
-            // If centered is true, negative values result in the same drawing as positive values
+            // Centered, as pfodApp places it (V2_ImageActiveAreaUpdate sortRect
+            // then setRect): a negative size first reflects the zone about its
+            // offset, then it is centred on that — the same as centred
+            // rectangles, so a zone still overlays its rectangle.
             if (centered) {
-                // For centered touchZones, the center point is at the transformed offset
-                startX = transformedXOffset - Math.abs(transformedXSize) / 2;
-                startY = transformedYOffset - Math.abs(transformedYSize) / 2;
                 width = Math.abs(transformedXSize);
                 height = Math.abs(transformedYSize);
+                startX = transformedXOffset + Math.min(transformedXSize, 0) - width / 2;
+                startY = transformedYOffset + Math.min(transformedYSize, 0) - height / 2;
                 console.log(`[DRAWING_TOUCHZONE] Centered touchZone: Position set to (${startX},${startY}), size set to ${width}x${height}`);
             } else {
                 // For non-centered touchZones, handle negative sizes

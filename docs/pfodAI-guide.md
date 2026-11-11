@@ -1364,6 +1364,21 @@ and the generated/hand-edited C++, in either direction:
 | `pushZero` / `popZero` | `dwgsPtr->pushZero(x, y, scale); ... dwgsPtr->popZero();` | `pfodDwgsBase.h` |
 | (canvas) | `dwgsPtr->start(x, y, backgroundColor);` ... `dwgsPtr->end();` / `dwgsPtr->startUpdate(); ... dwgsPtr->end();` | `pfodDwgs.h` |
 
+**A negative size REFLECTS the shape — it does not just make it bigger the other
+way.** For `rectangle` and `touchZone`, a negative width (or height) gives the
+positive-size shape **reflected about its left (or top) edge**, and this holds
+for `.centered()` items too. So a centred item with a negative size is **not**
+centred on its offset:
+
+| `offset(50,..)`, width | `+20` | `-20` |
+|---|---|---|
+| not centred | 50…70 | 30…50 (reflected about 50) |
+| `.centered()` | 40…60 | **20…40** (reflected about 40, its left edge) |
+
+pfodApp and pfodWeb both draw and hit-test it this way, and the touched col/row
+follow the same zone. If you want a centred shape to stay centred on its offset,
+give it a positive size.
+
 `idxVar`/`cmdVar` above are the `pfodAutoIdx`/`pfodAutoCmd` **member
 variables** named after the JSON `idxName`/`cmdName` (§3). **Never pass a
 literal number** to `.idx()`/`.cmd()` in hand-written code — always pass the

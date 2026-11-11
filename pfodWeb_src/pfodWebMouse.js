@@ -892,11 +892,13 @@ window.pfodWebMouse = {
     let x, y, width, height;
 
     if (centered) {
-      // For centered zones, center point is at the offset
-      x = transform.x + scaledXOffset - Math.abs(scaledXSize) / 2;
-      y = transform.y + scaledYOffset - Math.abs(scaledYSize) / 2;
+      // As pfodApp (V2_ImageActiveAreaUpdate sortRect then setRect): a
+      // negative size first reflects the zone about its offset, then it is
+      // centred on that.  Matches redraw.js's centred rectangles/touchZones.
       width = Math.abs(scaledXSize);
       height = Math.abs(scaledYSize);
+      x = transform.x + scaledXOffset + Math.min(scaledXSize, 0) - width / 2;
+      y = transform.y + scaledYOffset + Math.min(scaledYSize, 0) - height / 2;
     } else {
       // For non-centered zones, handle negative sizes
       if (scaledXSize >= 0) {
@@ -955,6 +957,52 @@ window.pfodWebMouse = {
     return version ? '{' + version + ':' + cmd.substring(1) : cmd;
   },
 
+  /**
+   * Work out one coordinate (col or row) of a touch on a touchZone, exactly as
+   * pfodApp does (V2_ImageRowHolder.processImageEvent and
+   * V2_ImageActiveAreaUpdate.sortRect / setLimitedRect):
+   *   1. the pointer, less the zone's push-zero base, divided by its scale, in
+   *      the drawing's own (unscaled) units; Java's (int) truncates towards 0.
+   *      The zone's own offset is NOT subtracted.
+   *   2. limited to the zone: a negative size is first sorted (offset += size,
+   *      size = -size); a centred zone is then offset by half its size; a
+   *      fractional start is rounded, the end truncated.
+   *      So a centred zone with a negative size is the positive one
+   *      reflected about its left/top edge: offset 50 size -20 spans 20..40
+   *      (size 20: 40..60), the same as redraw.js draws centred rectangles and
+   *      touchZones and calculateTouchZoneBounds hit-tests them.
+   *      See touchZoneColRow.md.
+   * e.g. x~AS3~12~8~31~-4 under z~0~8 touched 6 units in from its left gives
+   * col 37 (zone spans 31..43), and VSlider's offset(-1,0).size(2,-255) gives
+   * col -1..1, row -255..0.
+   *
+   * @param {number} pointer - pointer x (or y) in the root drawing's units
+   * @param {number} base - zone.transform.x (or .y), its push-zero base
+   * @param {number} scale - zone.transform.scale, its push-zero scale
+   * @param {number} offset - the zone's xOffset (or yOffset) as sent
+   * @param {number} size - the zone's xSize (or ySize) as sent, may be negative
+   * @param {boolean|string} centred - true for a centred zone (xc)
+   * @returns {number} the touched col (or row), an integer
+   */
+  touchedColOrRow: function(pointer, base, scale, offset, size, centred) {
+    let value = Math.trunc((pointer - base) / scale);
+    if (size < 0) {
+      offset += size;
+      size = -size;
+    }
+    if (centred === true || centred === 'true') {
+      offset -= size / 2;
+    }
+    let start = Math.trunc(offset);
+    if (offset !== start) {
+      start = Math.trunc(offset + 0.5);
+    }
+    const end = Math.trunc(offset + size);
+    if (value < start) value = start;
+    if (value > end) value = end;
+    return value;
+  },
+
   // Handle touchZone activation by queueing a request (instance method)
   handleTouchZoneActivation: function(touchZone, touchType, x, y, sendMsg = true) {
     if (!touchZone.cmd) throw new Error('[pfodWebMouse] handleTouchZoneActivation: touchZone.cmd is missing or empty');
@@ -962,49 +1010,19 @@ window.pfodWebMouse = {
     // Skip disabled touchZones
     if (touchZone.filter & TouchZoneFilters.TOUCH_DISABLED) return;
 
-    // Calculate touchZone bounds in canvas coordinates left, rigth, top, bottom, width, height
-    const bounds = window.pfodWebMouse.calculateTouchZoneBounds.call(this, touchZone);
-    // apply min extra
-    //    bounds.left -= colHalf9mm;
-    //    bounds.right += colHalf9mm;
-    //    bounds.top -= rowHalf9mm;
-    //    bounds.bottom += rowHalf9mm;
-    //    bounds.width = bounds.right - bounds.left;
-    //    bounds.height = bounds.bottom - bounds.top;
-
-    // Get the original touchZone dimensions (unscaled)
-    const xSize = parseFloat(touchZone.xSize || 1);
-    const ySize = parseFloat(touchZone.ySize || 1);
-
-    // Convert global coordinates to touchZone-relative coordinates
-    // First, get the position within the rendered (scaled) touchZone
-    const relativeX = x - bounds.left;
-    const relativeY = y - bounds.top;
-
-    // Scale to original touchZone coordinate system.
-    // For negative sizes the zone extends in the negative direction, so the
-    // screen-top of the rendered zone maps to the most-negative drawing coord.
-    const scaledCol = (relativeX / bounds.width) * Math.abs(xSize);
-    const scaledRow = (relativeY / bounds.height) * Math.abs(ySize);
-
-    let col = xSize < 0 ? Math.floor(xSize + scaledCol) : Math.floor(scaledCol);
-    let row = ySize < 0 ? Math.floor(ySize + scaledRow) : Math.floor(scaledRow);
-
-    // Clamp to [min, max] where min/max depend on the sign of each size.
-    const colMin = Math.min(0, xSize);
-    const colMax = Math.max(0, xSize);
-    const rowMin = Math.min(0, ySize);
-    const rowMax = Math.max(0, ySize);
-    if (col < colMin) col = colMin;
-    if (col > colMax) col = colMax;
-    if (row < rowMin) row = rowMin;
-    if (row > rowMax) row = rowMax;
+    // The touched col/row, as pfodApp works them out (see touchZoneColRow.md):
+    // the touch point in the drawing's own coordinates under the zone's push
+    // zero, NOT measured from the zone's top-left, limited to the zone.  It is
+    // both sent in the cmd and put into touchActions for TOUCHED_COL /
+    // TOUCHED_ROW, which do not add the zone's offset, so an action written as
+    // offset(TOUCHED_COL, ..) is drawn under the finger wherever the zone is.
+    const col = window.pfodWebMouse.touchedColOrRow(x, touchZone.transform.x, touchZone.transform.scale,
+      parseFloat(touchZone.xOffset || 0), parseFloat(touchZone.xSize || 1), touchZone.centered);
+    const row = window.pfodWebMouse.touchedColOrRow(y, touchZone.transform.y, touchZone.transform.scale,
+      parseFloat(touchZone.yOffset || 0), parseFloat(touchZone.ySize || 1), touchZone.centered);
 
     console.log(`[TOUCH_ZONE} TouchZone activated: cmd=${touchZone.cmd}, touchType=${touchType}`);
-    console.log(`Global coords: (${x}, ${y}), TouchZone bounds: (${bounds.left}, ${bounds.top}, ${bounds.width}, ${bounds.height})`);
-    console.log(`Original size: ${xSize}x${ySize}, Displayed size: ${bounds.width}x${bounds.height}`);
-    console.log(`Relative coords: (${relativeX}, ${relativeY}), Scaled: (${scaledCol}, ${scaledRow})`);
-    console.log(`[TOUCH_ZONE]  Cell index: col=${col}, row=${row} (range 0,0 to ${xSize},${ySize})`);
+    console.log(`[TOUCH_ZONE]  Global coords: (${x}, ${y}), zone offset ${touchZone.xOffset},${touchZone.yOffset} size ${touchZone.xSize}x${touchZone.ySize}, touched col=${col}, row=${row}`);
 
     // Get the drawing name (the menuDwg this touch belongs to) — set on the
     // per-item canvas proxy by setupMenuCanvasListeners.  The backup object
@@ -1101,20 +1119,50 @@ window.pfodWebMouse = {
     
     // Create a pseudo update response with the touchAction items
     const backupIndexedForDwg = backup.allIndexedItemsByNumber[drawingName] || {};
+    // Every action item is drawn at its touchZone's transform and clip
+    // region.  pfodApp draws an action at the base it was parsed with, and a
+    // touchAction always follows its touchZone with no push/pop between, so
+    // that base is the touchZone's (merged, so composed for inserted drawings).
+    const touchedZone = (backup.allTouchZonesByCmd[drawingName] || {})[cmd];
+    if (!touchedZone) throw new Error(`[TOUCH_ACTION] executeTouchAction: no touchZone "${cmd}" in "${drawingName}" for its touchAction`);
     const pseudoUpdateResponse = {
       pfodDrawing: 'update',
       name: drawingName,
       items: touchActions.map(actionItem => {
         const item = JSON.parse(JSON.stringify(actionItem));
 
-        if (item.idx !== undefined) {
-          const backupIndexedItem = backupIndexedForDwg[item.idx];
+        // An indexed action replaces (or hides/unhides) its indexed item.  A
+        // non-indexed one is drawn as an extra item, after the other
+        // non-indexed items and under the indexed ones, as pfodApp does
+        // (V2_Drawing.reloadImageDwgForAction: getIdxInt() == 0 ->
+        // addMergedNonIdxDwgUpdate; DrawingUtils draws non-idx first).
+        // hide/unhide/erase without an idx target a cmd or a drawing, not a
+        // shape, so they are not drawn.  An idx of 0 means no index, as in
+        // pfodApp (getIdxInt() == 0); the translator gives an item without one
+        // idx 0.  An indexed action with no item at that index is drawn as a
+        // new indexed item, as pfodApp's addMergedDwgUpdate put()s it anyway —
+        // except hide/unhide, which have nothing to act on.  A non-indexed
+        // insertDwg is skipped, as addMergedNonIdxDwgUpdate skips
+        // V2_ImageDwgUpdate.  Every action is drawn at its touchZone's
+        // transform (below).
+        let backupIndexedItem = null;
+        if (item.idx) {
+          backupIndexedItem = backupIndexedForDwg[item.idx];
           if (!backupIndexedItem) {
-            console.info(`[TOUCH_ACTION] Processing touchAction but no dwg item for this index`, JSON.stringify(item,null,2));
-            return null; // Return null for invalid items, they'll be filtered out
+            if (item.type === 'hide' || item.type === 'unhide') {
+              console.info(`[TOUCH_ACTION] ${item.type} touchAction but no dwg item for this index`, JSON.stringify(item,null,2));
+              return null;
+            }
+            console.info(`[TOUCH_ACTION] No dwg item for this index - adding the touchAction as a new indexed item`, JSON.stringify(item,null,2));
+          } else {
+            console.info(`[TOUCH_ACTION] Processing touchAction to update `, JSON.stringify(backupIndexedItem,null,2));
           }
-          console.info(`[TOUCH_ACTION] Processing touchAction to update `, JSON.stringify(backupIndexedItem,null,2));
-          
+        } else if (item.type === 'hide' || item.type === 'unhide' || item.type === 'erase' || item.type === 'insertDwg') {
+          console.info(`[TOUCH_ACTION] Skipping non-indexed ${item.type} touchAction`, JSON.stringify(item,null,2));
+          return null;
+        }
+        {
+
           // Apply special touchZone values if they exist (support both string and numeric formats)
           if (item.xOffset === 'COL' || item.xOffset === TouchZoneSpecialValues.TOUCHED_COL) {
             item.xOffset = col;
@@ -1158,16 +1206,14 @@ window.pfodWebMouse = {
             }
           }
 
-          // Add transform and clipRegion from backup
-          item.transform = backupIndexedItem.transform;// || { x: 0, y: 0, scale: 1 };
-          item.clipRegion = backupIndexedItem.clipRegion;// || { x: 0, y: 0, width: 100, height: 20 };
-          
+          // Drawn at its touchZone's transform and clip region (see above),
+          // whether it replaces an indexed item, is a new indexed item or is
+          // non-indexed — as pfodApp draws every action at its own base.
+          item.transform = touchedZone.transform;
+          item.clipRegion = touchedZone.clipRegion;
+
           console.info(`[TOUCH_ACTION] Processing touchAction as pseudo update `, JSON.stringify(item,null,2));
           return item;
-          
-        } else {
-          console.info(`[TOUCH_ACTION] Processing touchAction but it has no index`, JSON.stringify(item,null,2));
-          return null; // Return null for items without index
         }
       }).filter(item => item !== null)
     };
@@ -1190,7 +1236,7 @@ window.pfodWebMouse = {
       console.info(`[TOUCH_ACTION] Applying processed item to working copy:`, JSON.stringify(processedItem, null, 2));
 
       // Handle hide/unhide items specially - they modify target item visibility instead of replacing the item
-      if (processedItem.idx !== undefined) {
+      if (processedItem.idx) { // idx 0 = no index, as above
         if (processedItem.type === 'hide' || processedItem.type === 'unhide') {
           const targetItem = workingCopy.allIndexedItemsByNumber[processedItem.idx];
           if (targetItem) {
@@ -1206,6 +1252,14 @@ window.pfodWebMouse = {
           console.info(`[TOUCH_ACTION] Updated working copy indexed item ${processedItem.idx} with processed touchAction item`);
           console.log(`[TOUCH_ACTION_DEBUG] Working copy item ${processedItem.idx} after update:`, JSON.stringify(workingCopy.allIndexedItemsByNumber[processedItem.idx], null, 2));
         }
+      } else {
+        // Non-indexed action: an extra unindexed item, drawn after the other
+        // unindexed items and under the indexed ones (redrawCanvasImpl), as
+        // pfodApp's addMergedNonIdxDwgUpdate does.  The working copy is
+        // thrown away on the reply (touchActionBackups restore), so it
+        // is gone once the touch's reply arrives, as in pfodApp.
+        workingCopy.allUnindexedItems.push(processedItem);
+        console.info(`[TOUCH_ACTION] Added non-indexed touchAction ${processedItem.type} to working copy as an extra item`);
       }
     });
 
