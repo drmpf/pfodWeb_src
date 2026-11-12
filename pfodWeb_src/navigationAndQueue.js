@@ -564,6 +564,12 @@ Object.assign(DrawingViewer.prototype, {
     } else if (recordedReply !== null && recordedReply.startsWith('{+')
             && strippedCmd === '{' + this._extractCmdToken(recordedCmd) + '}') {
       requestType = 'refresh';
+    } else if (this._replayInputScreenCmd() === this._extractCmdToken(recordedCmd)) {
+      // The submit of the text, numeric or selection input screen being shown
+      // ({cmd`n}, {cmd~text}, {cmd`i`j..}), which a live client queues as
+      // 'input' (responseHandlers onSubmit), so its reply is handled the same
+      // way.  Any other cmd sent meanwhile, e.g. a keepAlive { }, is not.
+      requestType = 'input';
     } else {
       // A recorded touch on a drawing carries the same touchZoneInfo a real
       // touch does, so its reply is handled the same way.
@@ -581,6 +587,21 @@ Object.assign(DrawingViewer.prototype, {
       _replayRecorded: true
     });
     this.processRequestQueue();
+  },
+
+  /**
+   * The cmd of the text, numeric or selection input screen now shown, for
+   * replaySendRecorded to recognise that screen's submit.
+   * @returns {?string} the screen's cmd (e.g. "ATI"), or null when no input
+   *          screen is shown
+   */
+  _replayInputScreenCmd() {
+    const screen = {
+      'input-mode': window.pfodInputDisplay,
+      'numeric-input-mode': window.pfodNumericInputDisplay,
+      'selection-mode': window.pfodSelectionDisplay
+    }[document.body.className];
+    return (screen && screen._cmd) || null;
   },
 
   /**

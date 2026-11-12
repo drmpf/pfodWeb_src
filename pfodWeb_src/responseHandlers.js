@@ -401,6 +401,35 @@ Object.assign(DrawingViewer.prototype, {
   },
 
   /**
+   * pfodApp's rule for a drawing reply {+..} to a cmd that is neither a drawing
+   * load nor a touch on a touchZone (pfodAppConnectionService.v2_ImageLoad,
+   * "not a drawing cmd or load or continue"): the cmd is looked up as a menu
+   * item that has a drawing (getMenuDwgLoadCmd).  Found, the reply is that
+   * drawing's ("pretend we sent a load cmd") — pfodWeb: _resolveLoadCmdFromRequest.
+   * Not found, pfodApp logs
+   *   ERROR: Received Drawing response, but cmd:<cmd> is does not have a Drawing.  Last cmd --  <msg>
+   * and handles the reply as empty (handleEmptyOrErrorMsg); here it becomes {}.
+   * e.g. a selection screen's {ATI`2} answered by a drawing: empty, so the
+   * input screen goes back to its menu (handleEmptyResponse, as pfodApp's
+   * SingleListSelectionViewActivity calls myOnBackPressed()), and that menu's
+   * drawings are reloaded, which shows the drawing's new state.
+   * Called next to _applyDwgTouchReplyRules, before the reply is cached or used.
+   *
+   * @param {Object} data - the parsed reply, {cmd: [...]}; changed in place
+   * @param {Object} request - the request it answers
+   */
+  _applyDwgReplyToNonDwgCmdRule(data, request) {
+    const shape = classifyResponseShape(data);
+    if (shape !== 'dwg-start' && shape !== 'dwg-update') return;
+    if (DwgLoadRequestTypes.has(request.requestType) || request.requestType === 'moreData') return;
+    if (this._touchSourceDwg(request)) return;
+    if (this._resolveLoadCmdFromRequest(request)) return;
+    const msg = request.cmd.slice(1, -1);
+    console.error(`ERROR: Received Drawing response, but cmd:${this._extractCmdToken(request.cmd)} is does not have a Drawing.  Last cmd --  ${msg}`);
+    data.cmd = ['{', '}'];
+  },
+
+  /**
    * Forget the parts held for a drawing when the request for its next part has
    * failed with nothing left to retry it.  No more parts will come, and new loads
    * of the drawing are refused while parts are held, so holding on to them would

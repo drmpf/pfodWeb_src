@@ -3,7 +3,8 @@
 // Depends on: nothing
 // Called by:  pfodWeb.js (reads window.JS_VERSION on load and stores in this.js_ver,
 //             logs version after bundle load)
-  var JS_VERSION = "V4.1.18-- 12th Nov 2026";
+  var JS_VERSION = "V4.1.19-- 12th Nov 2026";
+// V4.1.19 make pfodWeb error handling match pfodApp's for invalid responses
 // V4.1.18 fixed touchZone cmd row/col numbers to include touchzone offset as per pfodApp, show unversioned touchActions
 // V4.1.17 fixed missing version no from touch cmds
 // V4.1.16 added url option enlargeTouchZones to show actual mouse active area

@@ -507,6 +507,9 @@ Object.assign(DrawingViewer.prototype, {
       // the zone's drawing is waiting, and a full drawing applied as an update.
       // Before caching, so such a reply is never cached as a drawing start.
       this._applyDwgTouchReplyRules(data, request);
+      // pfodApp's rule for a drawing reply to a cmd with no drawing (e.g. an
+      // input screen's submit): handled as empty, so the input screen goes back.
+      this._applyDwgReplyToNonDwgCmdRule(data, request);
 
       // Cache response if it has a version.  PfodMenuCache scopes
       // entries by connectionId, so designer-vs-real-device entries
