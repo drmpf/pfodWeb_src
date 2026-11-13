@@ -11,37 +11,34 @@
 
 </p>
 
-## What you need to download from here
+## You don't need this repository unless you intend to rebuild pfodWeb yourself
 
-**You don't need this entire repository.**
+Download **pfodParser library** instead from [pfodParser.zip](https://www.forward.com.au/pfod/pfodParserLibraries/pfodParser.zip) 
+OR [github](https://github.com/drmpf/pfodParser/releases) OR if using Arduino IDE, either via the Arduino Library manager.
 
-For a quick start download the raw [pfodWeb.html](https://github.com/drmpf/pfodWeb_src/tree/main/pfodWeb/pfodWeb.html) and open it in your web browser. 
-That will let you run the Designer and chart streaming csv data or an existing csv data file.
+The pfodParser library includes a full working copy of pfodWeb with docs and extras. 
+Then go to the **pfodParser/pfodWeb** directory and open pfodWeb.html in your web browser.
 
-To control/monitor your microprocessor you need to use the pfodParser librery on the micro side. The pfodParser library includes 
-a full working copy of pfodWeb with docs and extras. Download the pfodParser library, either from Arduino Library manager or from 
-[pfodParser.zip](https://www.forward.com.au/pfod/pfodParserLibraries/pfodParser.zip) 
-or from the pfodParser's latest release on [github](https://github.com/drmpf/pfodParser/releases). 
-Then go to the pfodParser/pfodWeb directory and open pfodWeb.html in your web browser.
-
-For non-Arduino based microprocessors there is [pfodParserC Library](https://www.forward.com.au/pfod/PIC/index.html) 
-and a **Minimal C code - Serial** pfodWeb Designer target that generates the appropiate code.
+The pfodParser download includes an Arduino library, **pfodParser**, and pure CPP library, **pfodParseCPP**, for non-Arduino boards, STM32, SAM, PIC32, 
+NXP Kinetis, NXP MCX, etc.  There are also examples of the **Minimal C code - Serial** 
+pfodWeb Designer target that generates for very small micros, ATtiny, PIC16/18, etc.
 
 ## pfodWeb
 
 pfodWeb.html V4.1.8+ is optimized for use by AI to design user interfaces. See AI Coding below.
 
-pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) designer, code generator and client for controlling and monitoring Arduino and other embedded devices from a browser — 
-no app install, no internet, server access required. pfodWeb.html renders device-defined drawings, menus, 
+pfodWeb.html is a [pfod protocol](https://www.pfod.com.au/) designer, code generator and client for controlling and monitoring Arduino and non-Arduino embedded devices from a browser — 
+no app install, no internet or server access required. pfodWeb.html renders device-defined drawings, menus, 
 and charts, and talks to devices via Serial, BLE and TCP/IP and HTTP, using the [pfodProxy](https://www.forward.com.au/pfod/pfodWeb/pfodWeb_startup.html) as a bridge if the browser
 does not support the connection natively.
 
-The designer / code generator includes pinouts for over 600 boards for connecting the controls directly to the board's I/O.
+The designer / code generator includes pinouts for over 600 Arduino boards for connecting the controls directly to the board's I/O. 
+ It also has design/code generator targets from non-Arduino C++ devices and Minimal C very small micros.
 
-The Arduino [pfodParser library](https://github.com/drmpf/pfodParser) provides the device side support to display GUI's on pfodWeb.
+The [pfodParser library](https://github.com/drmpf/pfodParser) provides the device side support to display GUI's on pfodWeb.
 
 
-pfodWeb is distributed, with the Arduino pfodParser library, as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly
+pfodWeb is distributed, with the pfodParser library, as a single, self-contained HTML file (all JS/CSS/fonts inlined) so it can be opened directly
  in an off-line browser. 
 It can also be served from the microprocessor itself for complete off-line stand alone deployment.
   
@@ -52,7 +49,8 @@ There is also an Android client, [pfodApp](https://www.forward.com.au/pfod/index
 ## AI coding
 
 ***Note:*** This repository is **NOT** need for AI assisted user interface coding.  
-Download the [pfodParser (github)](https://github.com/drmpf/pfodParser) library instead 
+Download the pfodParser library from [pfodParser.zip](https://www.forward.com.au/pfod/pfodParserLibraries/pfodParser.zip) 
+OR [github](https://github.com/drmpf/pfodParser/releases) instead 
 which includes the complete pfodWeb.html and its docs.  In the pfodParser library under ***pfodParser/pfodWeb/docs*** are
  three .md files for the AI assistant to consume.  
 

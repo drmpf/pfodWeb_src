@@ -15,8 +15,6 @@ The BLE and TCP/IP versions also work unchanged with the Android **pfodApp**, si
 | Sketch | Connection | Compiles for | Notes |
 |---|---|---|---|
 | `demoScreens_serial` | Serial @ 115200 | Any board with `Serial` | Uno or higher - Full demo over Serial |
-| `demoScreens_tcpip` | TCP/IP, port 4989 | **ESP8266, Pi Pico W, Pi Pico 2W, ESP32, ESP32-C3** | Full demo over WiFi Needs WiFi credentials. Connects to pfodApp as well |
-| `demoScreens_http` | HTTP (port 80) **and** TCP/IP (port 4989) at the same time | **ESP8266, Pi Pico W, Pi Pico 2W, ESP32, ESP32-C3** | Full demo, Needs WiFi credentials. Can optionally serve pfodWeb itself from LittleFS |
 | `Hello_World_serial` | Serial @ 115200 | Any Arduino board with a `Serial` port | Trivial Display |
 | `LedOnOff_serial` | Serial @ 115200 | Any board with `Serial` and `LED_BUILTIN` | Has an `#ifdef ESP8266` LED-polarity switch |
 | `LedOnOff_ble` | BLE (Nordic UART service) | **ESP32, ESP32-C3** | Needs ≥2 MB APP partition. Connects to pfodApp as well |
@@ -80,42 +78,8 @@ hierarchy.
 It also streams **raw data**: *outside* any `{…}` message so that
 pfodWeb treats it as CSV plot data.
 
-### 2. `demoScreens_tcpip` — the full demo over TCP/IP
 
-**Connection:** TCP/IP port 4989 · **Compiles for:** ESP8266, Pi Pico W, Pi Pico 2W, ESP32, ESP32-C3
-
-Same screens as `demoScreens_serial`
-
-```cpp
-const int portNo = 4989;
-const char staticIP[] = "10.1.1.100";  // set to "" for DHCP (not recommended)
-```
-
-### 3. `demoScreens_http` — the full demo over HTTP *and* TCP/IP together
-
-**Connection:** HTTP port 80 + TCP/IP port 4989 · **Compiles for:** ESP8266, Pi Pico W, Pi Pico 2W, ESP32, ESP32-C3
-
-The most complete example. It starts both servers in `setup()` so a browser running pfodWeb and an Android pfodApp can be connected at the same time. 
-
-It also ships a `data/` sub-directory containing the gzipped pfodWeb bundle, so the board can serve
-the whole web GUI itself for a stand-alone, off-line installation:
-
-```cpp
-static bool useLittleFSToServe_pfodWeb = false;   // set true to serve pfodWeb from LittleFS
-static uint32_t cacheSec = 10*60;                 // browser cache timeout, used only when the above is true
-```
-
-To use it:
-
-1. Set the Tools menu flash size to give a **1 MB LittleFS** file system.
-2. Set `useLittleFSToServe_pfodWeb = true`, set the SSID/password and static IP.
-3. Upload the sketch, **close the Serial Monitor**, then `Ctrl+Shift+P` →
-   *Upload LittleFS to Pico/ESP8266/ESP32* to upload the `data/` directory.
-   This needs the [arduino-littlefs-upload](https://github.com/earlephilhower/arduino-littlefs-upload)
-   V0.2.0 plugin for Arduino IDE V2.
-4. Browse to `http://<board-ip>` — note **http://**, not https://.
-
-### 4. `Hello_World_serial` — simplest GUI example
+### 2. `Hello_World_serial` — simplest GUI example
 
 **Connection:** Serial @ 115200 · **Header board:** Arduino UNO
 
@@ -131,7 +95,7 @@ Dwg_HelloWorld.cpp/.h      the drawing itself
 menujson/                  pfodWeb Designer source (see "The menujson folders" below)
 ```
 
-### 5. `LedOnOff_serial` — LED control over Serial
+### 3. `LedOnOff_serial` — LED control over Serial
 
 **Connection:** Serial @ 115200 · 
 
@@ -140,7 +104,7 @@ Adds interaction to the GUI. The main-menu drawing `LedOnOff` inserts two sub-dr
 *"Led is Off"* in black. The drawing refreshes every 2000 ms, and touches call `turnLedOn()` /
 `turnLedOff()` in the .ino, which drive `LED_BUILTIN`.
 
-### 6. `LedOnOff_ble` — the same GUI over Bluetooth Low Energy
+### 4. `LedOnOff_ble` — the same GUI over Bluetooth Low Energy
 
 **Connection:** BLE · **Compiles for:** ESP32, ESP32-C3
 
@@ -155,7 +119,7 @@ Sends are buffered through `pfodBLEBufferedSerial` to avoid flooding the BLE lin
   customise what appears in the BLE device list.
 * `Serial` remains free and is used for debug output at 115200.
 
-### 7. `LedOnOff_tcp` — the same GUI over TCP/IP
+### 5. `LedOnOff_tcp` — the same GUI over TCP/IP
 
 **Connection:** TCP/IP port 4989 · **Compiles for:** ESP8266, Pi Pico W, Pi Pico 2W, ESP32, ESP32-C3
 
@@ -173,7 +137,7 @@ IPAddress staticIP;                   // or leave blank for DHCP and read the IP
 If you are debugging a Pi Pico with a PicoProbe, uncomment `#define PICO_PROBE` to move `Serial`
 to `Serial1`.
 
-### 8. `LedOnOff_http` — the same GUI over HTTP
+### 6. `LedOnOff_http` — the same GUI over HTTP
 
 **Connection:** HTTP port 80 · **Compiles for:** ESP8266, Pi Pico W, Pi Pico 2W, ESP32, ESP32-C3
 
